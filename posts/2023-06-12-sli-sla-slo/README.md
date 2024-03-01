@@ -1,5 +1,9 @@
 # What is SLA, SLI and SLO's?
 
+Author: [@simlarsen] (https://www.github.com/simlarsen)
+
+> Here's the difference between SLI, SLO, and SLA. 
+
 ## SLA - Service level agreement.
 
 SLA basically means a Service Level Agreement. **It’s a formal agreement or a legal contract between you and your customers.** It basically describes the reliability of your product/service in a formal agreement.
