@@ -1,6 +1,6 @@
 # What is SLA, SLI and SLO's?
 
-Author: [@simlarsen] (https://www.github.com/simlarsen)
+Author: [@simlarsen](https://www.github.com/simlarsen)
 
 > Here's the difference between SLI, SLO, and SLA. 
 
