@@ -1,4 +1,4 @@
-Learning Resource
-Site Reliabiity Engineering
-Kubernetes
-Ceph
+- Learning Resource
+- Site Reliabiity Engineering
+- Kubernetes
+- Ceph
