@@ -1,8 +1,8 @@
 # What is SLA, SLI and SLO's?
 
 Author: [simlarsen](https://www.github.com/simlarsen)
-
-> Here's the difference between SLI, SLO, and SLA. 
+Tags: Learn, Site Reliabiity Engineering
+Description: Here's the difference between SLI, SLO, and SLA. 
 
 ### SLA - Service level agreement.
 
