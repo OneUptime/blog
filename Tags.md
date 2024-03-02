@@ -1,6 +1,6 @@
 # Tags
 
-- Learning Resource
+- Learn
 - Site Reliabiity Engineering
 - Kubernetes
 - Ceph
