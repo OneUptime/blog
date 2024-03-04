@@ -5,5 +5,12 @@
     "authorGitHubUsername": "devneelpatel",
     "tags": ["Learning Resource", "Site Reliabiity Engineering"],
     "post": "2023-06-12-sli-sla-slo"
+  },
+  {
+    "title": "Why we dont like TDD: A Developer’s Perspective",
+    "description": "Test-Driven Development (TDD) is a software practice emphasizing writing tests before code. Many find drawbacks in committing to an API prematurely and hindering exploration during early development. ",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": ["Tests"],
+    "post": "2023-11-21-why-we-dont-like-tdd"
   }
 ]
