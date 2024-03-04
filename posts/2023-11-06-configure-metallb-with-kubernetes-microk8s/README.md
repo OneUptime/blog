@@ -35,9 +35,9 @@ metadata:
   namespace: metallb-system
 spec: 
   addresses:
-    - <PUBLIC_IP_ADDRESS_1> # Please also include CIDR. Ex: 51.568.145.125/32
-    - <PUBLIC_IP_ADDRESS_2>
-    - <MORE_IP_IF_YOU_HAVE_THEM>
+    - PUBLIC_IP_ADDRESS_1 # Please replace this. Please also include CIDR. Ex: 51.568.145.125/32
+    - PUBLIC_IP_ADDRESS_2 # Please replace this. Please also include CIDR. Ex: 51.568.145.125/32
+    - MORE_IP_IF_YOU_HAVE_THEM # Please replace this. Please also include CIDR. Ex: 51.568.145.125/32
 ```
 
 And apply it with:
