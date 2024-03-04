@@ -5,12 +5,5 @@
     "authorGitHubUsername": "simlarsen",
     "tags": ["Learning Resource", "Site Reliabiity Engineering"],
     "post": "2023-06-12-sli-sla-slo"
-  },
-  {
-    "title": "Test",
-    "description": "Here's the difference between SLI, SLO, and SLA.",
-    "authorGitHubUsername": "simlarsen",
-    "tags": ["Site Reliabiity Engineering"],
-    "post": "2023-06-12-sli-sla-slo"
   }
 ]
