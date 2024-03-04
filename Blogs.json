@@ -12,5 +12,12 @@
     "authorGitHubUsername": "devneelpatel",
     "tags": ["Tests"],
     "post": "2023-11-21-why-we-dont-like-tdd"
+  },
+  {
+    "title": "How to configure MetalLB with Kubernetes (Microk8s).",
+    "description": "MetalLB is a load-balancer implementation for bare metal Kubernetes clusters, using standard routing protocols. Learn how to configure MetalLB with Kubernetes (Microk8s).",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": ["Kubernetes", "Microk8s"],
+    "post": "2023-11-06-configure-metallb-with-kubernetes-microk8s"
   }
 ]

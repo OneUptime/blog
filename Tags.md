@@ -5,3 +5,4 @@
 - Kubernetes
 - Ceph
 - Tests
+- Microk8s
