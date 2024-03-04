@@ -1,6 +1,6 @@
 # What is SLA, SLI and SLO's?
 
-Author: [simlarsen](https://www.github.com/simlarsen)
+Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: Learning Resource, Site Reliabiity Engineering
 
