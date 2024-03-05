@@ -19,5 +19,12 @@
     "authorGitHubUsername": "devneelpatel",
     "tags": ["Kubernetes", "Microk8s"],
     "post": "2023-11-06-configure-metallb-with-kubernetes-microk8s"
+  },
+  {
+    "title": "How moving from AWS to Bare-Metal saved us $230,000 /yr.",
+    "description": "Cloud is not the right choice for every start up. Here's how we saved $230,000 /yr by moving from AWS to Bare Metal.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": ["Cloud", "AWS"],
+    "post": "2023-10-30-moving-from-aws-to-bare-metal"
   }
 ]

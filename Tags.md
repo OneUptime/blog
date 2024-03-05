@@ -6,3 +6,5 @@
 - Ceph
 - Tests
 - Microk8s
+- Cloud
+- AWS
