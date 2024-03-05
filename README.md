@@ -48,9 +48,11 @@ Please make sure to add the tags to the `Tags.md` file in the root of the reposi
 }
 ```
 
-**Step 6**: Create a new branch and submit a pull request
+**Step 6**: Create and add a social media image and place it under the `posts/YYYY-MM-DD-title-of-the-post` directory. The image should be named `social-media.png` and should be 1280x720 pixels. This image will be used when sharing the post on social media like Twitter, LinkedIn, etc.
 
-**Step 7**: Once the pull request is approved, it will be merged and your blog post will be live on the OneUptime blog.
+**Step 7**: Create a new branch and submit a pull request
+
+**Step 8**: Once the pull request is approved, it will be merged and your blog post will be live on the OneUptime blog.
 
 ### Content Policy
 
