@@ -4,7 +4,7 @@ Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: AWS, Cloud
 
-Description: 
+Description: How technologies like Docker, Kubernetes, Helm, Microk8s, Ceph and more make transitioning to bare-metal infrastructure significantly easier than it was just a few years ago.
 
 In the ever-evolving world of technology, businesses are constantly looking for ways to optimize their operations and reduce costs. One such journey we embarked on was moving our infrastructure from Amazon Web Services (AWS) to a bare-metal solution. This transition not only provided us with more control over our resources but also resulted in substantial financial savings.
 
