@@ -22,7 +22,7 @@
   },
   {
     "title": "How moving from AWS to Bare-Metal saved us $230,000 /yr.",
-    "description": "Cloud is not the right choice for every start up. Here's how we saved $230,000 /yr by moving from AWS to Bare Metal.",
+    "description": "How technologies like Docker, Kubernetes, Helm, Microk8s, Ceph and more make transitioning to bare-metal infrastructure significantly easier than it was just a few years ago.",
     "authorGitHubUsername": "devneelpatel",
     "tags": ["Cloud", "AWS"],
     "post": "2023-10-30-moving-from-aws-to-bare-metal"
