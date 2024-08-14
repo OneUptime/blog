@@ -6,7 +6,7 @@ Tags: DataDog, Open Source
 
 Description: Building an open-source alternative to Datadog enhances cost-efficiency, observability, and data privacy, offering a net-positive impact on the software world.
 
-### It's expensive - a lot of companies pay more in Datadog bill than in cloud costs. 
+### It's expensive - a lot of companies pay more in Datadog bills than in cloud costs. 
 
 Many organizations find themselves spending more on Datadog's monitoring and observability services than on their actual cloud infrastructure. This can be a significant financial burden, especially for startups and small to medium-sized enterprises. By building an open-source alternative like OneUptime, we aim to provide a cost-effective solution that offers similar, if not superior, capabilities without the hefty price tag. This allows companies to allocate their budgets more efficiently and invest in other critical areas of their business.
 
