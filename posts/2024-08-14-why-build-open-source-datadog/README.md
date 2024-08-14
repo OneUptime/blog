@@ -10,7 +10,7 @@ Description: Building an open-source alternative to Datadog enhances cost-effici
 
 Many organizations find themselves spending more on Datadog's monitoring and observability services than on their actual cloud infrastructure. This can be a significant financial burden, especially for startups and small to medium-sized enterprises. By building an open-source alternative like OneUptime, we aim to provide a cost-effective solution that offers similar, if not superior, capabilities without the hefty price tag. This allows companies to allocate their budgets more efficiently and invest in other critical areas of their business.
 
-### We love open source. We beloieve open software wins. We believe open protocol wins. 
+### We love open source. We believe open software wins. We believe open protocol wins. 
 
 At OneUptime, we believe in the power of open source. **Open-source software is eating the world.**  It allows anyone to contribute to and improve OneUptime increasing the pace of development and innovation, ensuring it evolves to meet the community's needs. Open protocols like [OpenTelemetry](https://opentelemetry.io/) and standards ensure interoperability and prevent vendor lock-in, giving users the freedom to choose the best tools for their needs. By embracing open source, we are 100% committed to building a robust, flexible, and community-driven observability platform. We believe that open software and open protocols are the future of observability and are essential for driving the best observability experience for developers. 
 
