@@ -8,3 +8,6 @@
 - Microk8s
 - Cloud
 - AWS
+- Openlit
+- LLM Observability
+- OpenTelemetry

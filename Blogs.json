@@ -33,5 +33,12 @@
     "authorGitHubUsername": "devneelpatel",
     "tags": ["DataDog", "Open Source"],
     "post": "2024-08-14-why-build-open-source-datadog"
-  }
+  },
+  {
+    "title": "Montinoring LLM Application(s) with Openlit and OneUptime",
+    "description": "How to monitor LLMs using tools like Openlit & OpenTelemetry to ensure accurate outputs, improve data retrieval, and optimize costs, with OneUptime for visualizing performance metrics.",
+    "authorGitHubUsername": "AmanAgarwal041",
+    "tags": ["LLM Observability", "Openlit", "OpenTelemetry"],
+    "post": "2024-09-13-montinoring-llm-with-openlit-and-oneuptime"
+}
 ]
