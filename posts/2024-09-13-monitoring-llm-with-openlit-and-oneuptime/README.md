@@ -1,4 +1,4 @@
-#Montinoring LLM Application(s) with Openlit and OneUptime
+#Monitoring LLM Application(s) with Openlit and OneUptime
 
 Author: [AmanAgarwal041](https://github.com/AmanAgarwal041)
 
