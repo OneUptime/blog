@@ -40,5 +40,12 @@
     "authorGitHubUsername": "AmanAgarwal041",
     "tags": ["LLM Observability", "Openlit", "OpenTelemetry"],
     "post": "2024-09-13-monitoring-llm-with-openlit-and-oneuptime"
-}
+  },
+  {
+    "title": "How to name spans in OpenTelemetry?",
+    "description": "Here's how to craft meaningful span names that enhance your observability efforts, making debugging and performance tuning a breeze. From best practices to advanced strategies, this guide covers it all. ",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": ["Tracing", "OpenTelemetry"],
+    "post": "2024-11-04-how-to-name-spans-in-opentelemetry"
+  }
 ]
