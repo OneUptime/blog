@@ -11,3 +11,6 @@
 - Openlit
 - LLM Observability
 - OpenTelemetry
+- Tracing
+- Logs
+
