@@ -12,8 +12,10 @@ Tracing allows developers to understand how their applications behave in real-ti
 
 Properly named spans are more than just identifiers; they are the keys to understanding application workflows. Clear and consistent naming of spans ensures:
 
- - **Quick Diagnosis:** Easily identify where performance issues lie.
- - **Workflow Clarity:** Understand the sequence and hierarchy of operations within your application.
+- **Quick Diagnosis:** Easily identify where performance issues lie.
+
+- **Workflow Clarity:** Understand the sequence and hierarchy of operations within your application.
+ 
 - **Insightful Analysis:** Provide meaningful data for debugging and performance tuning.
 
 ### Principles for Naming Spans
@@ -27,12 +29,14 @@ For example:
 span.setName('YourClassName.functionName');
 ```
 
+
  - **Maintain Consistency:** 
  Use a consistent naming convention throughout your application. This could follow the pattern component_operation or Component.operation
 
 ```typescript
 span.setName('UserService.fetchUserById');
 ```
+
 
 - **Adopt Hierarchical Naming**:
 If your application has multiple layers or components, a hierarchical naming convention can add clarity, indicating the context in which an operation occurs.
