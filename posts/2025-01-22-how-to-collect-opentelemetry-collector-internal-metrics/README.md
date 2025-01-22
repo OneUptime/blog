@@ -16,7 +16,7 @@ The OpenTelemetry Collector provides a built-in metrics pipeline that can be use
 
 Here's how you can configure the OpenTelemetry Collector to collect internal metrics:
 
-1. Add the following configuration to the `config.yaml` file of the OpenTelemetry Collector:
+**Add the following configuration to the `config.yaml` file of the OpenTelemetry Collector:**
 
 ```yaml
 # This is how your service section should look like
@@ -43,7 +43,7 @@ This is how OpenTelemetry Metrics will look like in OneUptime:
 
 These are some of the metrics expored by the OpenTelemetry Collector:
 
-![metric-list](./metric-list.png)
+![metric-list](./metrics-list.png)
 
 Here's how one of the metrics looks like in OneUptime:
 
