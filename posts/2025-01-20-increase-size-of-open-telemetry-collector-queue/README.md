@@ -41,7 +41,9 @@ After making these changes, restart the OpenTelemetry Collector for the changes 
 ### Some things to be aware of:
 
 - Increasing the sending queue size will increase the memory usage of the Collector. Make sure you have enough memory available on your system.
+
 - Increasing the number of consumers will increase the CPU usage of the Collector. Make sure you have enough CPU resources available on your system.
+
 - If your backend where the data is being sent is slow, increasing the sending queue size might not help. You might need to look into optimizing the backend or scaling the network. 
 
 By increasing the sending queue size and the number of consumers, you can ensure that your OpenTelemetry Collector can handle more data and send it to the backend without dropping it.
