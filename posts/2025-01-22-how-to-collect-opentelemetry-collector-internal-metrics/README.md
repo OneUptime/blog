@@ -43,11 +43,11 @@ This is how OpenTelemetry Metrics will look like in OneUptime:
 
 These are some of the metrics expored by the OpenTelemetry Collector:
 
-![metric-list](/2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics/metric-list.png)
+![metric-list](./metric-list.png)
 
 Here's how one of the metrics looks like in OneUptime:
 
-![metric-details](/2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics/metric-details.png)
+![metric-details](./metric-details.png)
 
 
 ### Some things to be aware of:
