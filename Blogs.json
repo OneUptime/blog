@@ -54,5 +54,12 @@
     "authorGitHubUsername": "devneelpatel",
     "tags": ["OpenTelemetry"],
     "post": "2025-01-20-increase-size-of-open-telemetry-collector-queue"
+  },
+  {
+    "title": "How to collect internal metrics from OpenTelemetry Collector?",
+    "description": "Sometimes your OpenTelemetry Collector might not be able to send all the data to the backend. This is because the sending queue is full. This post will help you increase the size of the sending queue.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": ["OpenTelemetry"],
+    "post": "2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics"
   }
 ]
