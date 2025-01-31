@@ -13,4 +13,8 @@
 - OpenTelemetry
 - Tracing
 - Logs
+- Workflows
+- Components
+- Slack
+- JSON
 
