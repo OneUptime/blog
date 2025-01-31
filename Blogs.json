@@ -61,5 +61,12 @@
     "authorGitHubUsername": "devneelpatel",
     "tags": ["OpenTelemetry"],
     "post": "2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics"
+  },
+  {
+    "title": "OneUptime and Slack (and probably Teams)",
+    "description": "Learn how to use workflows to send messages to Slack when incidents are created or updated.",
+    "authorGitHubUsername": "mikepearce",
+    "tags": ["Workflows", "Slack", "Components", "JSON"],
+    "post": "2025-01-31-oneuptime-and-slack-and-probably-teams"
   }
 ]
