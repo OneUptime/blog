@@ -142,7 +142,7 @@ List out the Datadog features you actively use. If you're only leveraging basic 
 If your environment scales frequently, consider monitoring solutions with pricing models better suited to dynamic infrastructures. Companies like OneUptime offer transparent pricing that scales with your needs. They only charge based on the number of data you ingest vs the number of hosts you run observability on.
 
 
-**Your Next Steps**
+### **Your Next Steps**
 
 - **Audit Your Current Setup:**
 
@@ -159,24 +159,24 @@ Don't hesitate to trial other monitoring tools. Many are open-source, offer free
 Remember, the goal is to achieve optimal observability without compromising your financial health. By taking control of your monitoring strategy, you ensure that you're investing wisely in your infrastructure's future.
 
 
-**Strategies to Control Costs**
+### **Strategies to Control Costs**
 
-1. **Audit and Optimize Metrics**
+#### **Audit and Optimize Metrics**
 
 Conduct regular reviews of the metrics you're collecting. Identify what's essential for your monitoring goals and trim the rest. Use aggregation and sampling to reduce the volume without losing critical insights.
 
-2. **Adjust Data Retention Policies**
+#### **Adjust Data Retention Policies**
 
 Customize retention periods for different types of data. Maybe you need logs from the past week, not the past year. Shortening retention can significantly cut costs.
 
-3. **Leverage Tags Wisely**
+#### **Leverage Tags Wisely**
 
 Be strategic with tagging. While tags help in filtering and analyzing data, excessive or unnecessary tags increase metric cardinality and thus costs.
 
-4. **Negotiate with Datadog**
+#### **Negotiate with Datadog**
 
 Everyone (mostly) is open to negotiation. If you're a significant user, engage with Datadog's sales team. There might be room for custom pricing or enterprise agreements that provide better value.
 
-**Final Thoughts**
+### Final Thoughts**
 
 Monitoring is not a luxury; it's a necessity. But it shouldn't consume a disproportionate share of your IT budget. By understanding where costs originate and actively managing your usage, you can harness the power of Datadog (or any monitoring tool) without financial strain. Remember, the goal is to optimize your monitoring strategy, not your monitoring bill and keep your infrastructure healthy without breaking the bank.
