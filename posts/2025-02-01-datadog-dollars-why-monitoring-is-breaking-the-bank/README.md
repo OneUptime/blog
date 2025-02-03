@@ -12,9 +12,9 @@ Have you ever opened your monitoring bill and felt your heart skip a beat? You'r
 
 Datadog has positioned itself as a go-to solution for infrastructure monitoring, application performance, log management, and more. Its comprehensive features act like a Swiss Army knife for DevOps teams. The convenience of having everything under one roof is compelling, but it can also lead to costs piling up in unexpected ways.
 
-### **Why the Bill Balloons**
+### Why the Bill Balloons
 
-#### **Per-Host Pricing Model**
+#### Per-Host Pricing Model
 
 Datadog charges based on the number of hosts and the services you monitor. In dynamic environments, especially those leveraging microservices and auto-scaling, the number of hosts can fluctuate rapidly. It's akin to paying rent for every room in a hotel, even if you're only staying in a few.
 
@@ -31,7 +31,7 @@ Peak Season: 500 hosts x $15/host = $7,500/month
 
 Suddenly, the monthly monitoring cost jumps by tenfold, all due to auto-scaling.
 
-#### **High Cardinality Metrics**
+#### High Cardinality Metrics
 
 The platform encourages you to send a plethora of custom metrics. While granular data is valuable, tracking every possible metric can be like trying to count every grain of sand on a beach. Each additional metric increases your bill, and high cardinality (metrics with many unique tag combinations) can cause costs to skyrocket.
 
@@ -52,7 +52,7 @@ Total Time Series = 1 metric x 5 regions x 1,000,000 user_ids = 5,000,000 time s
 
 Managing five million time series for a single metric is both impractical and expensive.
 
-#### **Log Management Costs**
+#### Log Management Costs
 
 Logs are essential for debugging and compliance but can generate massive volumes of data. Datadog's pricing for log ingestion and retention can be steep. Imagine saving every single receipt from your grocery shopping; over time, storage and management become overwhelming and costly.
 
@@ -70,7 +70,7 @@ Retention Costs (for 15 days): Additional fees apply
 
 Over a year, that's $18,000 just for log ingestion, not including retention surcharges. This can be a hefty expense for a startup.
 
-#### **Premium Features Add Up**
+#### Premium Features Add Up
 
 Features like APM (Application Performance Monitoring), RUM (Real User Monitoring), and Synthetic Monitoring offer deep insights but come with additional fees. It's the equivalent of adding premium channels to your cable subscription; each one enhances your experience but increases the monthly bill.
 
@@ -92,7 +92,7 @@ A media company decides to implement:
 
 These features provide valuable insights but can drastically increase expenses if not carefully managed.
 
-#### **Over-Reliance on Default Settings**
+#### Over-Reliance on Default Settings
 
 Datadog's default configurations are designed for broad applicability, not cost efficiency. Without fine-tuning, you might be collecting and storing more data than necessary. It's like leaving all the lights on in your house all the time—convenient but expensive.
 
@@ -100,7 +100,7 @@ Datadog's default configurations are designed for broad applicability, not cost 
 
 By default, Datadog might retain all logs for 15 days which could increase cost. Consider lower retention for non-essential logs / info logs and only choose to retain error logs. 
 
-### **Beyond the Bill: Making Monitoring Work for You**
+### Beyond the Bill: Making Monitoring Work for You
 
 **Preventing Bill Shock**
 
@@ -129,7 +129,7 @@ Define retention policies based on the importance of data. Critical error logs m
 OneUptime offers a cost-effective alternative to Datadog, providing essential monitoring features without the premium price tag and it's 100% open-source. It can be a viable solution for organizations looking to optimize monitoring costs or moving towards a more open-source ecosystem for observability. Spend less on monitoring and more on innovation and orgnizations can choose to self-host their data, if their data is sensitive which was not possible with Datadog. Please check out [OneUptime](https://oneuptime.com) and give it a try!
 
 
-### **The Bigger Picture: Is Datadog Right for You?**
+### The Bigger Picture: Is Datadog Right for You?
 
 **Assess Your Actual Needs**
 
@@ -142,7 +142,7 @@ List out the Datadog features you actively use. If you're only leveraging basic 
 If your environment scales frequently, consider monitoring solutions with pricing models better suited to dynamic infrastructures. Companies like OneUptime offer transparent pricing that scales with your needs. They only charge based on the number of data you ingest vs the number of hosts you run observability on.
 
 
-### **Your Next Steps**
+### Your Next Steps
 
 - **Audit Your Current Setup:**
 
@@ -159,21 +159,21 @@ Don't hesitate to trial other monitoring tools. Many are open-source, offer free
 Remember, the goal is to achieve optimal observability without compromising your financial health. By taking control of your monitoring strategy, you ensure that you're investing wisely in your infrastructure's future.
 
 
-### **Strategies to Control Costs**
+### Strategies to Control Costs
 
-#### **Audit and Optimize Metrics**
+####Audit and Optimize Metrics
 
 Conduct regular reviews of the metrics you're collecting. Identify what's essential for your monitoring goals and trim the rest. Use aggregation and sampling to reduce the volume without losing critical insights.
 
-#### **Adjust Data Retention Policies**
+#### Adjust Data Retention Policies
 
 Customize retention periods for different types of data. Maybe you need logs from the past week, not the past year. Shortening retention can significantly cut costs.
 
-#### **Leverage Tags Wisely**
+#### Leverage Tags Wisely
 
 Be strategic with tagging. While tags help in filtering and analyzing data, excessive or unnecessary tags increase metric cardinality and thus costs.
 
-#### **Negotiate with Datadog**
+#### Negotiate with Datadog
 
 Everyone (mostly) is open to negotiation. If you're a significant user, engage with Datadog's sales team. There might be room for custom pricing or enterprise agreements that provide better value.
 
