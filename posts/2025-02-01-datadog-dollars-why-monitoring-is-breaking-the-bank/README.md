@@ -161,7 +161,7 @@ Remember, the goal is to achieve optimal observability without compromising your
 
 ### Strategies to Control Costs
 
-####Audit and Optimize Metrics
+#### Audit and Optimize Metrics
 
 Conduct regular reviews of the metrics you're collecting. Identify what's essential for your monitoring goals and trim the rest. Use aggregation and sampling to reduce the volume without losing critical insights.
 
