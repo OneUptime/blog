@@ -16,7 +16,7 @@ Absolutely! Adding real-world examples will make these points more tangible and 
 
 ### **Why the Bill Balloons**
 
-1. **Per-Host Pricing Model**
+#### **Per-Host Pricing Model**
 
 Datadog charges based on the number of hosts and the services you monitor. In dynamic environments, especially those leveraging microservices and auto-scaling, the number of hosts can fluctuate rapidly. It's akin to paying rent for every room in a hotel, even if you're only staying in a few.
 
@@ -33,7 +33,7 @@ Peak Season: 500 hosts x $15/host = $7,500/month
 
 Suddenly, the monthly monitoring cost jumps by tenfold, all due to auto-scaling.
 
-2. **High Cardinality Metrics**
+#### **High Cardinality Metrics**
 
 The platform encourages you to send a plethora of custom metrics. While granular data is valuable, tracking every possible metric can be like trying to count every grain of sand on a beach. Each additional metric increases your bill, and high cardinality (metrics with many unique tag combinations) can cause costs to skyrocket.
 
@@ -54,7 +54,7 @@ Total Time Series = 1 metric x 5 regions x 1,000,000 user_ids = 5,000,000 time s
 
 Managing five million time series for a single metric is both impractical and expensive.
 
-3. **Log Management Costs**
+#### **Log Management Costs**
 
 Logs are essential for debugging and compliance but can generate massive volumes of data. Datadog's pricing for log ingestion and retention can be steep. Imagine saving every single receipt from your grocery shopping; over time, storage and management become overwhelming and costly.
 
@@ -72,7 +72,7 @@ Retention Costs (for 15 days): Additional fees apply
 
 Over a year, that's $18,000 just for log ingestion, not including retention surcharges. This can be a hefty expense for a startup.
 
-4. **Premium Features Add Up**
+#### **Premium Features Add Up**
 
 Features like APM (Application Performance Monitoring), RUM (Real User Monitoring), and Synthetic Monitoring offer deep insights but come with additional fees. It's the equivalent of adding premium channels to your cable subscription; each one enhances your experience but increases the monthly bill.
 
@@ -94,7 +94,7 @@ A media company decides to implement:
 
 These features provide valuable insights but can drastically increase expenses if not carefully managed.
 
-5. **Over-Reliance on Default Settings**
+#### **Over-Reliance on Default Settings**
 
 Datadog's default configurations are designed for broad applicability, not cost efficiency. Without fine-tuning, you might be collecting and storing more data than necessary. It's like leaving all the lights on in your house all the time—convenient but expensive.
 
@@ -180,8 +180,6 @@ Be strategic with tagging. While tags help in filtering and analyzing data, exce
 4. **Negotiate with Datadog**
 
 Everyone (mostly) is open to negotiation. If you're a significant user, engage with Datadog's sales team. There might be room for custom pricing or enterprise agreements that provide better value.
-
-
 
 **Final Thoughts**
 
