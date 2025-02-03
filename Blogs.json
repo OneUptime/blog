@@ -63,10 +63,17 @@
     "post": "2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics"
   },
   {
-    "title": "OneUptime and Slack (and probably Teams)",
+    "title": "Integrating OneUptime and Slack (and probably Teams)",
     "description": "Learn how to use workflows to send messages to Slack when incidents are created or updated.",
     "authorGitHubUsername": "mikepearce",
     "tags": ["Workflows", "Slack", "Components", "JSON"],
-    "post": "2025-01-31-oneuptime-and-slack-and-probably-teams"
+    "post": "2025-01-31-integrating-oneuptime-and-slack-and-probably-teams"
+  },
+  {
+    "title": "Datadog Dollars: Why Your Monitoring Bill Is Breaking the Bank",
+    "description": "Have you ever opened your monitoring bill and felt your heart skip a beat? You're not alone. In the world of digital infrastructure, many companies are experiencing sticker shock when they see their Datadog invoices. Let's unpack why your monitoring bill might be breaking the bank and explore how you can rein it back in.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": ["Observability", "Datadog"],
+    "post": "2025-02-01-datadog-dollars-why-monitoring-is-breaking-the-bank"
   }
 ]
