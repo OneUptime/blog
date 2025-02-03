@@ -177,6 +177,6 @@ Be strategic with tagging. While tags help in filtering and analyzing data, exce
 
 Everyone (mostly) is open to negotiation. If you're a significant user, engage with Datadog's sales team. There might be room for custom pricing or enterprise agreements that provide better value.
 
-### Final Thoughts**
+### Final Thoughts
 
 Monitoring is not a luxury; it's a necessity. But it shouldn't consume a disproportionate share of your IT budget. By understanding where costs originate and actively managing your usage, you can harness the power of Datadog (or any monitoring tool) without financial strain. Remember, the goal is to optimize your monitoring strategy, not your monitoring bill and keep your infrastructure healthy without breaking the bank.
