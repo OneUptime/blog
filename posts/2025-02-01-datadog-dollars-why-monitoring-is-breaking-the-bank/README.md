@@ -102,8 +102,6 @@ Datadog's default configurations are designed for broad applicability, not cost 
 
 By default, Datadog might retain all logs for 15 days which could increase cost. Consider lower retention for non-essential logs / info logs and only choose to retain error logs. 
 
----
-
 ### **Beyond the Bill: Making Monitoring Work for You**
 
 **Preventing Bill Shock**
