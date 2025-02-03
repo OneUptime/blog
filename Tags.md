@@ -13,4 +13,6 @@
 - OpenTelemetry
 - Tracing
 - Logs
+- DataDog
+- Observability
 
