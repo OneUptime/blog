@@ -1,4 +1,4 @@
-# OneUptime and Slack (and probably Teams)
+# Integrating OneUptime and Slack (and probably Teams)
 
 Author: [mikepearce](https://github.com/MikePearce)
 
