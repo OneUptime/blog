@@ -15,4 +15,8 @@
 - Logs
 - DataDog
 - Observability
+- Workflows
+- Components
+- Slack
+- JSON
 
