@@ -75,5 +75,12 @@
     "authorGitHubUsername": "devneelpatel",
     "tags": ["Observability", "Datadog"],
     "post": "2025-02-01-datadog-dollars-why-monitoring-is-breaking-the-bank"
+  },
+  {
+    "title": "The Power of Three: How Small Teams Drive Big Results at OneUptime",
+    "description": "We have found that keeping teams small and focused isnt just efficient — its transformative. Here is how this approach helped us deliver platforms rivaling the scope of Incident.io, StatusPage.io, and more—all with just two tiny teams.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": ["Team Management", "Startups"],
+    "post": "2025-03-13-power-of-three-how-small-teams-drive-big-results"
   }
 ]

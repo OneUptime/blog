@@ -19,4 +19,6 @@
 - Components
 - Slack
 - JSON
+- Team Management
+- Startups
 
