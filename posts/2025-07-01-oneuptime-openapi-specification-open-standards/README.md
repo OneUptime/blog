@@ -173,27 +173,6 @@ openapi-generator-cli generate \
   -o ./oneuptime-python-sdk
 ```
 
-### **3. Build Integrations**
-
-```python
-# Example: Python integration for automated incident creation
-import oneuptime_client
-
-client = oneuptime_client.ApiClient(
-    configuration=oneuptime_client.Configuration(
-        host="https://oneuptime.com/api",
-        api_key={'ApiKey': 'your-api-key'}
-    )
-)
-
-# Create an incident when your custom monitoring detects an issue
-incident_api = oneuptime_client.IncidentApi(client)
-incident = incident_api.create_incident({
-    "title": "Database Connection Timeout",
-    "description": "Unable to connect to primary database",
-    "severity_id": "critical-severity-id"
-})
-```
 
 ## Future Enhancements
 

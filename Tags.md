@@ -1,24 +1,36 @@
 # Tags
 
-- Learning Resource
-- Site Reliabiity Engineering
-- Kubernetes
-- Ceph
-- Tests
-- Microk8s
-- Cloud
+- AI
+- API
 - AWS
-- Openlit
-- LLM Observability
-- OpenTelemetry
-- Tracing
-- Logs
-- DataDog
-- Observability
-- Workflows
+- Automation
+- Ceph
+- Cloud
 - Components
-- Slack
+- DataDog
+- DevOps
+- Infrastructure as Code
+- Interoperability
 - JSON
-- Team Management
+- Kubernetes
+- LLM Observability
+- Learning Resource
+- Logs
+- MCP
+- Microk8s
+- Model Context Protocol
+- Observability
+- Open Source
+- OpenAPI
+- OpenTelemetry
+- Openlit
+- Site Reliabiity Engineering
+- Slack
+- Standards
 - Startups
+- Team Management
+- Terraform
+- Tests
+- Tracing
+- Workflows
 
