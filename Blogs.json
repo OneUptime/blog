@@ -1,26 +1,5 @@
 [
   {
-    "title": "Introducing OneUptime MCP Server: Bringing AI-Native Observability to Your Workflow",
-    "description": "OneUptime now provides a production-ready Model Context Protocol (MCP) server that gives AI assistants direct access to your observability infrastructure. Create incidents, query logs, manage monitors, and automate operations—all through natural language conversations with AI.",
-    "authorGitHubUsername": "devneelpatel",
-    "tags": ["MCP", "AI", "Model Context Protocol", "Open Source", "Observability", "Automation"],
-    "post": "2025-07-01-oneuptime-mcp-server-ai-observability"
-  },
-  {
-    "title": "OneUptime Embraces Open Standards: Complete OpenAPI 3.0 Specification Now Available",
-    "description": "OneUptime now provides a comprehensive OpenAPI 3.0 specification covering our entire API surface. This commitment to open standards enables seamless integrations, third-party tool development, and demonstrates our dedication to interoperability in the open source ecosystem.",
-    "authorGitHubUsername": "devneelpatel",
-    "tags": ["OpenAPI", "Open Source", "Standards", "Interoperability", "API"],
-    "post": "2025-07-01-oneuptime-openapi-specification-open-standards"
-  },
-  {
-    "title": "Introducing the OneUptime Terraform Provider: Infrastructure as Code for Complete Observability",
-    "description": "We're excited to announce the release of the official OneUptime Terraform provider! Now you can manage your entire observability infrastructure as code, from uptime monitors and status pages to incident management workflows and on-call schedules.",
-    "authorGitHubUsername": "devneelpatel",
-    "tags": ["Infrastructure as Code", "Terraform", "DevOps", "Automation"],
-    "post": "2025-07-01-introducing-terraform-provider-for-oneuptime"
-  },
-  {
     "title": "What is SLA, SLI and SLO's?",
     "description": "Here's the difference between SLI, SLO, and SLA.",
     "authorGitHubUsername": "devneelpatel",
@@ -103,5 +82,33 @@
     "authorGitHubUsername": "devneelpatel",
     "tags": ["Team Management", "Startups"],
     "post": "2025-03-13-power-of-three-how-small-teams-drive-big-results"
+  },
+  {
+    "title": "Introducing OneUptime MCP Server: Bringing AI-Native Observability to Your Workflow",
+    "description": "OneUptime now provides a production-ready Model Context Protocol (MCP) server that gives AI assistants direct access to your observability infrastructure. Create incidents, query logs, manage monitors, and automate operations—all through natural language conversations with AI.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": [
+      "MCP",
+      "AI",
+      "Model Context Protocol",
+      "Open Source",
+      "Observability",
+      "Automation"
+    ],
+    "post": "2025-07-01-oneuptime-mcp-server-ai-observability"
+  },
+  {
+    "title": "OneUptime Embraces Open Standards: Complete OpenAPI 3.0 Specification Now Available",
+    "description": "OneUptime now provides a comprehensive OpenAPI 3.0 specification covering our entire API surface. This commitment to open standards enables seamless integrations, third-party tool development, and demonstrates our dedication to interoperability in the open source ecosystem.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": ["OpenAPI", "Open Source", "Standards", "Interoperability", "API"],
+    "post": "2025-07-01-oneuptime-openapi-specification-open-standards"
+  },
+  {
+    "title": "Introducing the OneUptime Terraform Provider: Infrastructure as Code for Complete Observability",
+    "description": "We're excited to announce the release of the official OneUptime Terraform provider! Now you can manage your entire observability infrastructure as code, from uptime monitors and status pages to incident management workflows and on-call schedules.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": ["Infrastructure as Code", "Terraform", "DevOps", "Automation"],
+    "post": "2025-07-01-introducing-terraform-provider-for-oneuptime"
   }
 ]
