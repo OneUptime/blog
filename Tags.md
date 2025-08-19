@@ -24,6 +24,9 @@
 - OpenAPI
 - OpenTelemetry
 - Openlit
+ - Platform Strategy
+ - Product
+ - PWA
 - Site Reliabiity Engineering
 - Slack
 - Standards
@@ -32,5 +35,6 @@
 - Terraform
 - Tests
 - Tracing
+ - Web Architecture
 - Workflows
 
