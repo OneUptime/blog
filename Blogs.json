@@ -111,4 +111,12 @@
     "tags": ["Infrastructure as Code", "Terraform", "DevOps", "Automation"],
     "post": "2025-07-01-introducing-terraform-provider-for-oneuptime"
   }
+  ,
+  {
+    "title": "Why Progressive Web Apps (PWA) Are the Future (And Why We Chose Them for OneUptime)",
+    "description": "Native apps had a good run, but the web has caught up. Here's why PWAs now outperform traditional native app strategies for most SaaS platforms—and why OneUptime intentionally chose a single PWA-first codebase instead of separate iOS and Android apps.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": ["PWA", "Web Architecture", "Product", "Platform Strategy"],
+    "post": "2025-08-19-why-pwa-is-the-future"
+  }
 ]
