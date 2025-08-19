@@ -4,9 +4,9 @@ Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: Security, SaaS, Open Source, Identity
 
-Description: SSO, SCIM, and 2FA are baseline security hygiene—not enterprise upsells. Here’s the short case and how OneUptime prices differently.
+Description: SSO, SCIM, and 2FA are baseline security hygiene — not enterprise upsells. Here’s the short case and how OneUptime prices differently.
 
-Too many (even “open source”) SaaS products still lock SSO behind an enterprise tier. That’s not clever packaging — it’s pushing smaller teams towards weaker security. Entire sites like [sso.tax](https://sso.tax/) exist because this pattern has worn out its welcome.
+Too many (even “open source”) SaaS products still lock SSO behind an enterprise tier. That’s not clever packaging, it’s pushing smaller teams towards weaker security. Entire sites like [sso.tax](https://sso.tax/) exist because this pattern has worn out its welcome.
 
 ### Why SSO Must Be Baseline
 
@@ -16,11 +16,11 @@ SSO reduces credential sprawl and orphaned accounts, centralizes disable/offboar
 
 ### SCIM + 2FA Belong There Too
 
-SCIM automates birth / change / disable. 2FA blocks common takeover paths. Manual deprovisioning + no MFA is still a top incident root cause. These aren’t “automation luxuries” — they’re basic guardrails.
+SCIM automates birth / change / disable. 2FA blocks common takeover paths. Manual deprovisioning + no MFA is still a top incident root cause. These aren’t “automation luxuries”. **They’re basic guardrails.**
 
 ### What You *Should* Monetize Instead
 
-Monetize the things that genuinely carry incremental infrastructure, regulatory, or people cost: custom data residency / region pinning, multi‑cloud or dedicated clusters, high‑volume or long‑retention audit export, priority / 24×7 escalation support, and bespoke compliance reporting or success engineering. That’s where enterprise pricing makes sense — **SSO simply isn’t in that bucket.**
+Monetize the things that genuinely carry incremental infrastructure, regulatory, or people cost: custom data residency / region pinning, multi‑cloud or dedicated clusters, high‑volume or long‑retention audit export, priority / 24×7 escalation support, and bespoke compliance reporting or success engineering. That’s where enterprise pricing makes sense. **SSO simply isn’t in that bucket.**
 
 ### Our Approach at OneUptime
 
