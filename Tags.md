@@ -2,20 +2,20 @@
 
 - AI
 - API
-- AWS
 - Automation
-- Ceph
+- AWS
 - Cloud
 - Components
 - DataDog
+- Datadog
 - DevOps
+- Identity
 - Infrastructure as Code
 - Interoperability
 - JSON
 - Kubernetes
-- LLM Observability
 - Learning Resource
-- Logs
+- LLM Observability
 - MCP
 - Microk8s
 - Model Context Protocol
@@ -24,9 +24,11 @@
 - OpenAPI
 - OpenTelemetry
 - Openlit
- - Platform Strategy
- - Product
- - PWA
+- Platform Strategy
+- Product
+- PWA
+- SaaS
+- Security
 - Site Reliabiity Engineering
 - Slack
 - Standards
@@ -35,6 +37,6 @@
 - Terraform
 - Tests
 - Tracing
- - Web Architecture
+- Web Architecture
 - Workflows
 
