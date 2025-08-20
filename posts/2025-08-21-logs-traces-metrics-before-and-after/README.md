@@ -12,7 +12,7 @@ Description: A journey from firefighting in the dark to calm, data-driven operat
 
 ## Act I — Fog
 
-![act-1](./act-1.png)
+![Act 1](./act-1.png)
 
 Monday, 09:12 AM.
 
