@@ -11,7 +11,9 @@ Modern systems fail in nonlinear ways: partial outages, latent dependencies, ret
 
 ## Pillar 1: Metrics – Fast Answers, Slow Stories
 
-Metrics are your system’s vital signs: time-series numbers optimized for *cheap storage, fast math, and real-time alerting*.
+Metrics are your system’s vital signs: time-series numbers optimized for *cheap storage, fast math, and real-time alerting*. 
+
+> Metrics summarize state over time, but they don’t tell you *why* something happened. They answer: *How is my system performing?*
 
 Strengths:
 - Cheap to retain at high aggregation
@@ -31,6 +33,8 @@ Design Tips:
 ## Pillar 2: Logs – Infinite Detail, Zero Structure (Unless You Add It)
 
 Logs are the unstructured (or semi-structured) breadcrumbs. They answer: *What exactly happened?* They’re flexible—but that flexibility kills budgets if unmanaged.
+
+> Logs are your system’s *raw history*. They capture everything from debug statements to error traces. They answer: *What happened at this point in time?*
 
 Strengths:
 
@@ -53,6 +57,8 @@ Cost Levers:
 ## Pillar 3: Traces – The Causal Spine
 
 Traces model the *story* of a request: a tree (or DAG) of spans across services. They answer: *Where is latency introduced? Which dependency failed?* and provide the join key for everything else.
+
+> Traces are your system’s *causal spine*. They show how requests flow through your architecture, revealing dependencies and bottlenecks. They answer: *What is the path of execution?*
 
 Strengths:
 - Precise latency breakdown and critical path insight
