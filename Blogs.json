@@ -146,7 +146,7 @@
     "description": "A practical guide to weaving logs, metrics, and traces into one observability fabric with OpenTelemetry—while avoiding Datadog/New Relic lock‑in and cutting costs using OneUptime.",
     "authorGitHubUsername": "devneelpatel",
 
-    "tags": ["Observability", "OpenTelemetry", "Logs", "Metrics", "Traces", "Vendor Lock-In", "Open Source"],
+  "tags": ["Observability", "OpenTelemetry", "Logs", "Metrics", "Traces", "Open Source"],
     "post": "2025-08-20-three-pillars-of-observability-logs-metrics-traces"
   }
 ]

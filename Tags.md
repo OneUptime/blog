@@ -40,3 +40,8 @@
 - Web Architecture
 - Workflows
 
+// Added missing tags used in posts
+- Logs
+- Metrics
+- Traces
+
