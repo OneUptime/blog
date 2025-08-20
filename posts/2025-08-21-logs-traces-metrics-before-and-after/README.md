@@ -239,5 +239,5 @@ Own your telemetry. Don’t rent your visibility.
 
 If you’re stitching tools manually or overpaying just to *see* reality—start decoupling now. Instrument once with OTel, route via a Collector, let OneUptime unify the narrative.
 
-Need help? The OneUptime support and engineering is there. *Bring a gnarly trace. We like stories.*
+Need help? The OneUptime support and engineering is there. *Bring a gnarly trace. We'll help you write stories.*
 
