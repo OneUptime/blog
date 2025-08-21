@@ -59,15 +59,14 @@ Traces are **not** about aggregated metrics or high-level summaries. They are **
 
 For example, a trace might show (single trace id with a root span and children):
 
-```mermaid
-gantt
-    title Trace Timeline: HTTP POST /checkout
-| 1234abcd  | a1b2c3d4  | root0001       | auth-service    | authenticate            | 180ms    | 12:00:00.010   | 12:00:00.190   | OK     | user_id=42 |
-| 1234abcd  | q7r8s9t0  | root0001       | payment-service | process-payment         | 520ms    | 12:00:00.200   | 12:00:00.720   | OK     | retries=1 (child ops sampled) |
-| 1234abcd  | pspErr01  | q7r8s9t0       | payment-service | POST /psp/charge        | 310ms    | 12:00:00.210   | 12:00:00.520   | ERROR  | timeout retry=1 |
-| 1234abcd  | psp22222  | q7r8s9t0       | payment-service | POST /psp/charge        | 160ms    | 12:00:00.540   | 12:00:00.700   | OK     | amount=42.00 USD |
-| 1234abcd  | u1v2w3x4  | root0001       | order-service   | create-order            | 180ms    | 12:00:00.730   | 12:00:00.910   | OK     | order_id=987654 |
-```
+| Trace ID   | Span ID   | Parent Span ID | Service          | Operation               | Duration | Start Time      | End Time        | Status | Details                    |
+|------------|-----------|----------------|------------------|-------------------------|----------|-----------------|-----------------|--------|----------------------------|
+| 1234abcd   | a1b2c3d4  | root0001       | auth-service     | authenticate            | 180ms    | 12:00:00.010    | 12:00:00.190    | OK     | user_id=42                 |
+| 1234abcd   | q7r8s9t0  | root0001       | payment-service  | process-payment         | 520ms    | 12:00:00.200    | 12:00:00.720    | OK     | retries=1 (child ops sampled) |
+| 1234abcd   | pspErr01  | q7r8s9t0       | payment-service  | POST /psp/charge        | 310ms    | 12:00:00.210    | 12:00:00.520    | ERROR  | timeout retry=1            |
+| 1234abcd   | psp22222  | q7r8s9t0       | payment-service  | POST /psp/charge        | 160ms    | 12:00:00.540    | 12:00:00.700    | OK     | amount=42.00 USD           |
+| 1234abcd   | u1v2w3x4  | root0001       | order-service    | create-order            | 180ms    | 12:00:00.730    | 12:00:00.910    | OK     | order_id=987654            |
+
 
 [Traces](./trace.svg)
 
