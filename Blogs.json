@@ -154,5 +154,19 @@
       "Open Source"
     ],
     "post": "2025-08-21-logs-traces-metrics-before-and-after"
+  },
+  {
+    "title": "Traces vs Metrics in OpenTelemetry: Knowing What vs Pinpointing Where",
+    "description": "Metrics tell you what changed. Traces tell you where. Logs tell you why. How to design each signal intentionally with OpenTelemetry and avoid wasted spend.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": [
+      "Observability",
+      "OpenTelemetry",
+      "Metrics",
+      "Traces",
+      "Logs",
+      "Open Source"
+    ],
+    "post": "2025-08-21-traces-vs-metrics-in-opentelemetry"
   }
 ]
