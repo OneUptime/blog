@@ -68,7 +68,7 @@ For example, a trace might show (single trace id with a root span and children):
 | 1234abcd   | u1v2w3x4  | root0001       | order-service    | create-order            | 180ms    | 12:00:00.730    | 12:00:00.910    | OK     | order_id=987654            |
 
 
-[Traces](./trace.svg)
+![Traces](./trace.svg)
 
 Notes:
 - Parent Span ID links tree structure (root span has none).
