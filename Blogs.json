@@ -168,5 +168,12 @@
       "Open Source"
     ],
     "post": "2025-08-21-traces-vs-metrics-in-opentelemetry"
+  },
+  {
+    "title": "Why Engineers Should Spend a Day Each Week in Support & Sales",
+    "description": "Embedding engineers directly into customer support and sales one day a week compounds product quality, empathy, velocity, and credibility with a deeply technical buyer.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": ["Product", "Team Management", "Startups", "Engineering Culture", "Customer Support", "Sales"],
+    "post": "2025-08-2022-why-engineers-should-spend-20-percent-of-time-talking-to-customers"
   }
 ]

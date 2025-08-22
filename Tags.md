@@ -6,9 +6,12 @@
 - AWS
 - Cloud
 - Components
+- Customer Experience
+- Customer Support
 - DataDog
 - Datadog
 - DevOps
+- Engineering Culture
 - Identity
 - Infrastructure as Code
 - Interoperability
@@ -26,8 +29,10 @@
 - Openlit
 - Platform Strategy
 - Product
+- Product Development
 - PWA
 - SaaS
+- Sales
 - Security
 - Site Reliabiity Engineering
 - Slack
@@ -39,8 +44,6 @@
 - Tracing
 - Web Architecture
 - Workflows
-
-// Added missing tags used in posts
 - Logs
 - Metrics
 - Traces
