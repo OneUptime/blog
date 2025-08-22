@@ -165,5 +165,3 @@ Direct customer contact sparks innovative solutions that wouldn't emerge from is
 ---
 
 In an engineering-led culture, serving engineering customers, with engineers doing customer support and sales, authenticity isn't just nice to have, it's the foundation of everything we build.
-
----
