@@ -3,101 +3,126 @@
     "title": "What is SLA, SLI and SLO's?",
     "description": "Here's the difference between SLI, SLO, and SLA.",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["Learning Resource", "Site Reliabiity Engineering"],
+    "tags": [
+      "Learning Resource",
+      "Site Reliabiity Engineering"
+    ],
     "post": "2023-06-12-sli-sla-slo"
   },
   {
     "title": "Why we dont like TDD: A Developer’s Perspective",
     "description": "Test-Driven Development (TDD) is a software practice emphasizing writing tests before code. Many find drawbacks in committing to an API prematurely and hindering exploration during early development. ",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["Tests"],
+    "tags": [
+      "Tests"
+    ],
     "post": "2023-11-21-why-we-dont-like-tdd"
   },
   {
     "title": "How to configure MetalLB with Kubernetes (Microk8s).",
     "description": "MetalLB is a load-balancer implementation for bare metal Kubernetes clusters, using standard routing protocols. Learn how to configure MetalLB with Kubernetes (Microk8s).",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["Kubernetes", "Microk8s"],
+    "tags": [
+      "Kubernetes",
+      "Microk8s"
+    ],
     "post": "2023-11-06-configure-metallb-with-kubernetes-microk8s"
   },
   {
     "title": "How moving from AWS to Bare-Metal saved us $230,000 /yr.",
     "description": "How technologies like Docker, Kubernetes, Helm, Microk8s, Ceph and more make transitioning to bare-metal infrastructure significantly easier than it was just a few years ago.",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["Cloud", "AWS"],
+    "tags": [
+      "Cloud",
+      "AWS"
+    ],
     "post": "2023-10-30-moving-from-aws-to-bare-metal"
   },
   {
     "title": "Why build open-source DataDog?",
     "description": "Building an open-source alternative to Datadog enhances cost-efficiency, observability, and data privacy, offering a net-positive impact on the software world.",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["DataDog", "Open Source"],
+    "tags": [
+      "DataDog",
+      "Open Source"
+    ],
     "post": "2024-08-14-why-build-open-source-datadog"
   },
   {
     "title": "Monitoring LLM Application(s) with Openlit and OneUptime",
     "description": "How to monitor LLMs using tools like Openlit & OpenTelemetry to ensure accurate outputs, improve data retrieval, and optimize costs, with OneUptime for visualizing performance metrics.",
     "authorGitHubUsername": "AmanAgarwal041",
-    "tags": ["LLM Observability", "Openlit", "OpenTelemetry"],
+    "tags": [
+      "LLM Observability",
+      "Openlit",
+      "OpenTelemetry"
+    ],
     "post": "2024-09-13-monitoring-llm-with-openlit-and-oneuptime"
   },
   {
     "title": "How to name spans in OpenTelemetry?",
     "description": "Here's how to craft meaningful span names that enhance your observability efforts, making debugging and performance tuning a breeze. From best practices to advanced strategies, this guide covers it all. ",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["Tracing", "OpenTelemetry"],
+    "tags": [
+      "Tracing",
+      "OpenTelemetry"
+    ],
     "post": "2024-11-04-how-to-name-spans-in-opentelemetry"
   },
   {
     "title": "How to increase the size of the sending queue in OpenTelemetry Collector?",
     "description": "Sometimes your OpenTelemetry Collector might not be able to send all the data to the backend. This is because the sending queue is full. This post will help you increase the size of the sending queue.",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["OpenTelemetry"],
+    "tags": [
+      "OpenTelemetry"
+    ],
     "post": "2025-01-20-increase-size-of-open-telemetry-collector-queue"
   },
   {
     "title": "How to collect internal metrics from OpenTelemetry Collector?",
     "description": "Sometimes your OpenTelemetry Collector might not be able to send all the data to the backend. This is because the sending queue is full. This post will help you increase the size of the sending queue.",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["OpenTelemetry"],
+    "tags": [
+      "OpenTelemetry"
+    ],
     "post": "2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics"
   },
   {
     "title": "Integrating OneUptime and Slack (and probably Teams)",
     "description": "Learn how to use workflows to send messages to Slack when incidents are created or updated.",
     "authorGitHubUsername": "mikepearce",
-    "tags": ["Workflows", "Slack", "Components", "JSON"],
+    "tags": [
+      "Workflows",
+      "Slack",
+      "Components",
+      "JSON"
+    ],
     "post": "2025-01-31-integrating-oneuptime-and-slack-and-probably-teams"
   },
   {
     "title": "Datadog Dollars: Why Your Monitoring Bill Is Breaking the Bank",
     "description": "Have you ever opened your monitoring bill and felt your heart skip a beat? You're not alone. In the world of digital infrastructure, many companies are experiencing sticker shock when they see their Datadog invoices. Let's unpack why your monitoring bill might be breaking the bank and explore how you can rein it back in.",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["Observability", "Datadog"],
+    "tags": [
+      "Observability",
+      "Datadog"
+    ],
     "post": "2025-02-01-datadog-dollars-why-monitoring-is-breaking-the-bank"
   },
   {
     "title": "The Power of Three: How Small Teams Drive Big Results at OneUptime",
     "description": "We have found that keeping teams small and focused isnt just efficient — its transformative. Here is how this approach helped us deliver platforms rivaling the scope of Incident.io, StatusPage.io, and more—all with just two tiny teams.",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["Team Management", "Startups"],
+    "tags": [
+      "Team Management",
+      "Startups"
+    ],
     "post": "2025-03-13-power-of-three-how-small-teams-drive-big-results"
   },
   {
     "title": "Introducing OneUptime MCP Server: Bringing AI-Native Observability to Your Workflow",
     "description": "OneUptime now provides a production-ready Model Context Protocol (MCP) server that gives AI assistants direct access to your observability infrastructure. Create incidents, query logs, manage monitors, and automate operations—all through natural language conversations with AI.",
     "authorGitHubUsername": "devneelpatel",
-
     "tags": [
       "MCP",
       "AI",
@@ -112,39 +137,55 @@
     "title": "OneUptime Embraces Open Standards: Complete OpenAPI 3.0 Specification Now Available",
     "description": "OneUptime now provides a comprehensive OpenAPI 3.0 specification covering our entire API surface. This commitment to open standards enables seamless integrations, third-party tool development, and demonstrates our dedication to interoperability in the open source ecosystem.",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["OpenAPI", "Open Source", "Standards", "Interoperability", "API"],
+    "tags": [
+      "OpenAPI",
+      "Open Source",
+      "Standards",
+      "Interoperability",
+      "API"
+    ],
     "post": "2025-07-01-oneuptime-openapi-specification-open-standards"
   },
   {
     "title": "Introducing the OneUptime Terraform Provider: Infrastructure as Code for Complete Observability",
     "description": "We're excited to announce the release of the official OneUptime Terraform provider! Now you can manage your entire observability infrastructure as code, from uptime monitors and status pages to incident management workflows and on-call schedules.",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["Infrastructure as Code", "Terraform", "DevOps", "Automation"],
+    "tags": [
+      "Infrastructure as Code",
+      "Terraform",
+      "DevOps",
+      "Automation"
+    ],
     "post": "2025-07-01-introducing-terraform-provider-for-oneuptime"
   },
   {
     "title": "Native apps had a good run, but PWA has caught up and is the future.",
     "description": "Native apps had a good run, but the web has caught up. Here's why PWAs now outperform traditional native app strategies for most SaaS platforms—and why OneUptime intentionally chose a single PWA-first codebase instead of separate iOS and Android apps.",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["PWA", "Web Architecture", "Product", "Platform Strategy"],
+    "tags": [
+      "PWA",
+      "Web Architecture",
+      "Product",
+      "Platform Strategy"
+    ],
     "post": "2025-08-19-native-apps-had-a-good-run-but-pwa-has-caught-up-and-is-the-future"
   },
   {
     "title": "Stop Paywalling Security: SSO Is a Basic Right, Not an Enterprise Perk",
     "description": "Too many SaaS and open-source products still hide SSO behind an enterprise plan. Here's why SSO, SCIM, and 2FA must be baseline security—not monetization levers—and how OneUptime approaches pricing differently.",
     "authorGitHubUsername": "devneelpatel",
-
-    "tags": ["Security", "SaaS", "Open Source", "Identity"],
+    "tags": [
+      "Security",
+      "SaaS",
+      "Open Source",
+      "Identity"
+    ],
     "post": "2025-08-19-sso-is-a-security-basic-not-an-enterprise-perk"
   },
   {
     "title": "Logs, Metrics & Traces: A Before and After Story.",
     "description": "A journey from firefighting in the dark to calm, data-driven operations by unifying metrics, logs, and traces with OpenTelemetry.",
     "authorGitHubUsername": "devneelpatel",
-
     "tags": [
       "Observability",
       "OpenTelemetry",
@@ -173,7 +214,32 @@
     "title": "Why Engineers Should Spend a Day Each Week in Support & Sales",
     "description": "Embedding engineers directly into customer support and sales one day a week compounds product quality, empathy, velocity, and credibility with a deeply technical buyer.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": ["Product", "Team Management", "Startups", "Engineering Culture", "Customer Support", "Sales"],
+    "tags": [
+      "Product",
+      "Team Management",
+      "Startups",
+      "Engineering Culture",
+      "Customer Support",
+      "Sales"
+    ],
     "post": "2025-08-22-why-engineers-should-spend-20-percent-of-time-talking-to-customers"
+  },
+  {
+    "title": "How to reduce noise in OpenTelemetry? Keep What Matters, Drop the Rest.",
+    "description": "A practical guide to reducing telemetry noise with OpenTelemetry—curating metrics, tail sampling traces, structured log policies, and SLO-first alerting to surface only what accelerates MTTR.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Observability",
+      "OpenTelemetry",
+      "Logs",
+      "Metrics",
+      "Traces",
+      "Sampling",
+      "SLOs",
+      "Cardinality",
+      "Alerting",
+      "Cost Optimization"
+    ],
+    "post": "2025-08-25-how-to-reduce-noise-in-opentelemetry"
   }
 ]

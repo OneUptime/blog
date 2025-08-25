@@ -47,4 +47,9 @@
 - Logs
 - Metrics
 - Traces
+- Sampling
+- SLOs
+- Cardinality
+- Alerting
+- Cost Optimization
 
