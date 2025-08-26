@@ -52,4 +52,7 @@
 - Cardinality
 - Alerting
 - Cost Optimization
+- Monitoring
+- NodeJS
+- TypeScript
 

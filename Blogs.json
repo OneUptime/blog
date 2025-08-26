@@ -241,5 +241,19 @@
       "Cost Optimization"
     ],
     "post": "2025-08-25-how-to-reduce-noise-in-opentelemetry"
+  },
+  {
+    "title": "What are metrics in OpenTelemetry: A Complete Guide",
+    "description": "A comprehensive guide to understanding metrics in OpenTelemetry—what they are, how they work, and how to implement them effectively in TypeScript/Node.js applications with practical code examples.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": [
+      "OpenTelemetry",
+      "Metrics",
+      "Observability",
+      "TypeScript",
+      "NodeJS",
+      "Monitoring"
+    ],
+    "post": "2025-08-26-what-are-metrics-in-opentelemetry"
   }
 ]
