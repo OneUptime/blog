@@ -45,10 +45,45 @@ Values that can increase or decrease.
 **Example**: `http.active_requests`, `database.connections.active`
 
 ### 3. Histogram
-Records distribution of values, automatically creating buckets.
+Records distribution of values by automatically creating buckets to track how values are distributed across different ranges. Histograms are perfect for understanding percentiles (P50, P95, P99) and identifying performance patterns.
 
-**Use cases**: Request latencies, response sizes, processing times  
-**Example**: `http.request.duration`, `database.query.duration`
+**How it works**: When you record a value, the histogram automatically places it into predefined buckets (e.g., 0-10ms, 10-50ms, 50-100ms, etc.) and tracks the count in each bucket. This allows you to calculate percentiles and understand the distribution of your data.
+
+**Use cases**: 
+- Request latencies and response times
+- Response payload sizes  
+- Processing times and queue wait times
+- Database query durations
+- File upload/download sizes
+- Memory allocation sizes
+
+**Key benefits**:
+- Automatic percentile calculation (P50, P95, P99)
+- Efficient storage compared to storing all individual values
+- Works well with alerting on SLA thresholds
+- Great for performance trend analysis
+
+**Example metrics**: `http.request.duration`, `database.query.duration`, `file.upload.size`
+
+**Practical example**:
+```typescript
+// Creating a histogram for request duration
+const requestDuration = meter.createHistogram('http_request_duration_seconds', {
+  description: 'HTTP request duration in seconds',
+  unit: 's',
+});
+
+// Recording values - histogram automatically buckets these
+requestDuration.record(0.023, { method: 'GET', route: '/api/users' });    // Fast request
+requestDuration.record(0.156, { method: 'POST', route: '/api/orders' });  // Slower request
+requestDuration.record(1.234, { method: 'GET', route: '/api/reports' });  // Slow request
+
+// The histogram will automatically track:
+// - Total count of requests
+// - Sum of all durations 
+// - Distribution across buckets (e.g., 0-0.1s: 1, 0.1-0.5s: 1, 1-2.5s: 1)
+// - This enables percentile calculations in your monitoring backend like OneUptime
+```
 
 ### 4. Gauge
 Represents a current value that can arbitrarily go up and down.
@@ -82,7 +117,7 @@ import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions'
 
 // Create an OTLP HTTP exporter for OneUptime
 const otlpExporter = new OTLPMetricExporter({
-  url: 'https://otlp.oneuptime.com/v1/metrics',
+  url: 'https://oneuptime.com/otlp/v1/metrics',
   headers: {
     'x-oneuptime-token': process.env.ONEUPTIME_OTLP_TOKEN,
   },
@@ -457,61 +492,18 @@ import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 
 // Basic OTLP exporter configuration
 const otlpExporter = new OTLPMetricExporter({
-  url: 'https://otlp.oneuptime.com/v1/metrics',
+  url: 'https://oneuptime.com/otlp/v1/metrics',
   headers: {
     'x-oneuptime-token': process.env.ONEUPTIME_OTLP_TOKEN,
   },
-});
-
-// Advanced configuration with custom headers and timeouts
-const advancedOtlpExporter = new OTLPMetricExporter({
-  url: 'https://otlp.oneuptime.com/v1/metrics',
-  headers: {
-    'x-oneuptime-token': process.env.ONEUPTIME_OTLP_TOKEN,
-    'x-environment': process.env.NODE_ENV || 'development',
-    'x-service-version': process.env.SERVICE_VERSION || '1.0.0',
-  },
-  timeoutMillis: 15000, // 15 second timeout
 });
 
 // Create metric reader with custom export interval
 const metricReader = new PeriodicExportingMetricReader({
-  exporter: advancedOtlpExporter,
+  exporter: otlpExporter,
   exportIntervalMillis: 15000, // Export every 15 seconds
   exportTimeoutMillis: 5000,   // Timeout after 5 seconds
 });
-```
-
-### Environment Variables Setup
-Create a `.env` file for your configuration:
-
-```bash
-# OneUptime Configuration
-ONEUPTIME_OTLP_TOKEN=your-oneuptime-otlp-token
-NODE_ENV=production
-SERVICE_VERSION=1.2.3
-HOSTNAME=my-app-instance-1
-
-# Optional: Custom OTLP endpoint if using self-hosted OneUptime
-ONEUPTIME_OTLP_ENDPOINT=https://your-oneuptime-instance.com/otlp/v1/metrics
-```
-
-### Alternative: Prometheus Integration
-If you prefer Prometheus format, you can also use the Prometheus exporter:
-
-```bash
-npm install @opentelemetry/exporter-prometheus
-```
-
-```yaml
-# prometheus.yml
-global:
-  scrape_interval: 15s
-
-scrape_configs:
-  - job_name: 'node-app'
-    static_configs:
-      - targets: ['localhost:9090']
 ```
 
 ### Error Handling and Retry Logic
@@ -524,10 +516,9 @@ import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 class RobustOTLPSetup {
   private static createExporter(): OTLPMetricExporter {
     return new OTLPMetricExporter({
-      url: process.env.ONEUPTIME_OTLP_ENDPOINT || 'https://otlp.oneuptime.com/v1/metrics',
+      url: process.env.ONEUPTIME_OTLP_ENDPOINT || 'https://oneuptime.com/otlp/v1/metrics',
       headers: {
         'x-oneuptime-token': process.env.ONEUPTIME_OTLP_TOKEN!,
-        'x-environment': process.env.NODE_ENV || 'development',
       },
       timeoutMillis: 10000,
       // Optional: Add custom retry configuration
