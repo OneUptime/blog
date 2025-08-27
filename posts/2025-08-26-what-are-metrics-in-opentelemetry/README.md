@@ -93,6 +93,68 @@ Represents a current value that can arbitrarily go up and down.
 
 ---
 
+
+### Gauge vs UpDownCounter (Key Differences)
+
+These two instruments often get mixed up because both can reflect values that move up and down. The difference is about *how* you obtain the value and *what semantic meaning* you want to convey.
+
+| Aspect | UpDownCounter | Gauge (Observable Gauge) |
+|--------|---------------|--------------------------|
+| How it's updated | You call `add(+/-N)` on every event that changes the total (delta-based updates). | You provide a callback that reports the *current* value when the SDK collects metrics (point-in-time observation). |
+| What it represents | A running total that can increase or decrease as things happen. | An instantaneous measurement / snapshot right now. |
+| Typical semantics | Tracking the net change over time (open minus closed, allocated minus freed). | Sampling a value that already exists (current memory, queue length read from a data structure, temperature). |
+| Implementation style | Synchronous: you must be present at every change event. | Asynchronous: you don't need to hook each event; you just read current state periodically. |
+| Aggregation | Produces a sum (can go up or down). | Produces the last observed value per collection interval (no summing). |
+| Good examples | Active HTTP connections (you know exactly when they open/close). | Process RSS memory (you only sample current usage), CPU utilization %, current queue depth. |
+| Bad / awkward usage | Sampling something periodically (you'd miss changes if you rely on deltas you don't have). | Trying to count events (you'd overwrite rather than accumulate). |
+
+#### Mental model
+Ask yourself: Do I observe a current state? Use a Gauge. Do I react to discrete events that change a count up or down? Use an UpDownCounter.
+
+#### Example Comparison
+
+```typescript
+// UpDownCounter: we see every connection open/close event
+const activeConnections = meter.createUpDownCounter('http_active_connections');
+
+server.on('connection', (sock) => {
+  activeConnections.add(1);
+  sock.on('close', () => activeConnections.add(-1));
+});
+
+// Gauge: we just sample queue length when metrics are collected
+const queueSize = meter.createObservableGauge('job_queue_size');
+queueSize.addCallback((result) => {
+  result.observe(jobQueue.length, { queue: 'email' });
+});
+```
+
+#### Another Example: Memory
+You usually DO NOT use an UpDownCounter for memory because you do not reliably intercept every allocation/free. Instead you sample the *current* heap or RSS value with a Gauge.
+
+```typescript
+const memoryGauge = meter.createObservableGauge('process_memory_heap_used_bytes');
+memoryGauge.addCallback((result) => {
+  result.observe(process.memoryUsage().heapUsed);
+});
+```
+
+#### Anti-Patterns
+1. Using a Gauge to represent a cumulative total (you'll lose historical increments). Use a Counter / UpDownCounter instead.
+2. Using an UpDownCounter when you cannot observe all change events—your value will drift and become wrong; prefer a Gauge snapshot.
+3. Emitting high-cardinality labels on Gauges each collection cycle (same caution as any metric type).
+
+#### Quick Decision Cheat Sheet
+| If... | Choose |
+|-------|--------|
+| You can hook every increment AND decrement event | UpDownCounter |
+| You only know the current state when polled | Gauge |
+| You need a strictly increasing total | Counter |
+| You need distribution / percentiles | Histogram |
+
+---
+
+
 ## Setting Up OpenTelemetry Metrics in Node.js
 
 Let's start with a practical implementation. First, install the required dependencies:
