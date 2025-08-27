@@ -256,4 +256,19 @@
     ],
     "post": "2025-08-26-what-are-metrics-in-opentelemetry"
   }
+  ,
+  {
+    "title": "What are Traces and Spans in OpenTelemetry: A Practical Guide",
+    "description": "A comprehensive, code-heavy guide to understanding traces and spans in OpenTelemetry—how they work, how they relate, and how to instrument real Node.js / TypeScript applications effectively for deep insight and faster debugging.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Tracing",
+      "Traces",
+      "Observability",
+      "TypeScript",
+      "NodeJS"
+    ],
+    "post": "2025-08-27-traces-and-spans-in-opentelemetry"
+  }
 ]

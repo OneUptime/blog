@@ -1,0 +1,532 @@
+# What are Traces and Spans in OpenTelemetry: A Practical Guide (Node.js & TypeScript)
+
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
+
+Tags: OpenTelemetry, Tracing, Traces, Observability, TypeScript, NodeJS
+
+Description: A comprehensive, practical guide to understanding traces and spans in OpenTelemetry—how they work, how they relate, and how to instrument real Node.js / TypeScript applications effectively for deep insight and faster debugging.
+
+---
+
+> Metrics tell you **what** changed. Logs tell you **why** something happened. **Traces tell you *where* time was spent and *how* a request moved across your system.**
+
+At the heart of distributed tracing in OpenTelemetry are two core concepts:
+
+- **Trace**: The full journey of one request / transaction across services.
+- **Span**: A timed unit of work inside that journey (function call, DB query, external API call, queue processing, etc.).
+
+This guide walks through how traces and spans are structured, how context is propagated, how to model work properly, and how to implement everything in Node.js / TypeScript with practical patterns you can copy into production.
+
+---
+
+## Table of Contents
+
+1. Core Concepts
+2. Anatomy of a Span
+3. Visual Mental Model
+4. Setting Up Tracing in Node.js
+5. Manual Instrumentation Basics
+6. Express / Fastify Middleware Example
+7. Database + External Call Spans
+8. Error Recording & Status
+9. Attributes, Events & Links
+10. Context Propagation (Sync + Async)
+11. Sampling (Head & Tail)
+12. Span Naming Best Practices
+13. Common Anti-Patterns
+14. Putting It All Together
+15. Next Steps (Correlating with Metrics & Logs)
+
+---
+
+## 1. Core Concepts
+
+| Concept | Description |
+|---------|-------------|
+| Trace | A collection / tree / or DAG of spans that represents a single logical request or workflow. Identified by a trace_id. |
+| Span | One operation with a start/end timestamp, attributes, status, events, parent span id (optional), and links. |
+| Root Span | The first span in a trace (no parent). Usually represents the entry point (HTTP server request, queue message, cron job). |
+| Child Span | A span whose parent is another span. Represents a nested unit of work. |
+| Context | Propagated metadata carrying the current active span / trace across process and network boundaries. |
+| Sampler | Decides whether to record/export a trace. |
+| Exporter | Sends finished spans to a backend (e.g., OneUptime, Jaeger, Tempo, etc.). |
+
+---
+
+## 2. Anatomy of a Span
+
+A span includes:
+
+- Name (string)
+- Start time + End time (high resolution)
+- Span ID (8 bytes) & Trace ID (16 bytes)
+- Parent Span ID (optional)
+- Attributes (key/value—indexed metadata)
+- Events (timestamped annotations: retries, cache miss, etc.)
+- Status (OK, ERROR, UNSET)
+- Links (connect to other traces/spans)
+- Kind (SERVER, CLIENT, INTERNAL, PRODUCER, CONSUMER)
+
+---
+
+## 3. Visual Mental Model
+
+```
+Trace (id=abc123...) ─ Root Span (HTTP GET /checkout)
+	├─ Span: Validate Cart
+	├─ Span: DB SELECT products
+	├─ Span: Call Payment API
+	│    ├─ Span: DNS Lookup
+	│    └─ Span: TLS Handshake
+	└─ Span: Publish Order Event (Kafka)
+```
+
+---
+
+## 4. Setting Up Tracing in Node.js
+
+Install dependencies:
+
+```bash
+npm install @opentelemetry/api \
+						@opentelemetry/sdk-node \
+						@opentelemetry/auto-instrumentations-node \
+						@opentelemetry/exporter-otlp-http \
+						@opentelemetry/resources \
+						@opentelemetry/semantic-conventions
+```
+
+### telemetry.ts
+
+```typescript
+// telemetry.ts
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
+import { Resource } from '@opentelemetry/resources';
+import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { ParentBasedSampler, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-node';
+
+// Export traces to OneUptime via OTLP HTTP
+const traceExporter = new OTLPTraceExporter({
+	url: process.env.ONEUPTIME_OTLP_TRACES_ENDPOINT || 'https://oneuptime.com/otlp/v1/traces',
+	headers: { 'x-oneuptime-token': process.env.ONEUPTIME_OTLP_TOKEN || '' },
+});
+
+// 10% sampling for new root traces, child decisions follow parent
+const sampler = new ParentBasedSampler({
+	root: new TraceIdRatioBasedSampler(parseFloat(process.env.OTEL_TRACES_SAMPLING_RATE || '0.1')),
+});
+
+export const sdk = new NodeSDK({
+	traceExporter,
+	sampler,
+	resource: new Resource({
+		[SemanticResourceAttributes.SERVICE_NAME]: 'checkout-service',
+		[SemanticResourceAttributes.SERVICE_VERSION]: '1.2.3',
+		[SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+	}),
+	instrumentations: [getNodeAutoInstrumentations()],
+});
+
+export async function startTelemetry() {
+	await sdk.start();
+	console.log('✅ OpenTelemetry tracing started');
+}
+
+export async function shutdownTelemetry() {
+	await sdk.shutdown();
+}
+```
+
+Initialize this BEFORE importing the rest of your app (so auto-instrumentation wraps modules):
+
+```typescript
+// index.ts (entrypoint)
+import './telemetry';
+import { startTelemetry } from './telemetry';
+import { startServer } from './server';
+
+startTelemetry().then(startServer);
+```
+
+---
+
+## 5. Manual Instrumentation Basics
+
+```typescript
+// tracing-utils.ts
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+
+const tracer = trace.getTracer('checkout-tracer', '1.0.0');
+
+export async function withSpan<T>(
+	name: string,
+	fn: (span: ReturnType<typeof tracer.startSpan>) => Promise<T> | T,
+	attrs: Record<string, any> = {}
+): Promise<T> {
+	const span = tracer.startSpan(name, { attributes: attrs });
+	try {
+		return await context.with(trace.setSpan(context.active(), span), async () => {
+			const result = await fn(span);
+			return result;
+		});
+	} catch (err: any) {
+		span.recordException(err);
+		span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+		throw err;
+	} finally {
+		span.end();
+	}
+}
+
+export { tracer };
+```
+
+Usage:
+
+```typescript
+// inventory.ts
+import { withSpan } from './tracing-utils';
+
+export async function reserveInventory(sku: string, qty: number) {
+	return withSpan('inventory.reserve', async (span) => {
+		span.setAttribute('inventory.sku', sku);
+		span.setAttribute('inventory.requested_qty', qty);
+		// ... business logic
+		await new Promise(r => setTimeout(r, 25));
+		span.setAttribute('inventory.allocated_qty', qty);
+		return { success: true };
+	});
+}
+```
+
+---
+
+## 6. Express Middleware (Root Spans + Child Spans)
+
+Auto-instrumentation handles HTTP server spans, but custom middleware gives you more control:
+
+```typescript
+// server.ts
+import express from 'express';
+import { tracer } from './tracing-utils';
+import { reserveInventory } from './inventory';
+import { processPayment } from './payments';
+import { shipOrder } from './shipping';
+import { context, trace, SpanKind } from '@opentelemetry/api';
+
+export function startServer() {
+	const app = express();
+	app.use(express.json());
+
+	app.post('/checkout', async (req, res, next) => {
+		// Use existing active span created by auto-instrumentation
+		const activeSpan = trace.getSpan(context.active());
+		activeSpan?.setAttribute('checkout.user_id', req.body.userId || 'anonymous');
+		activeSpan?.setAttribute('checkout.cart_size', req.body.items?.length || 0);
+
+		try {
+			await reserveInventory('SKU-123', 2);
+			await processPayment(req.body.paymentToken, 42.5);
+			await shipOrder('SKU-123');
+			res.json({ status: 'ok' });
+		} catch (e) {
+			next(e);
+		}
+	});
+
+	app.listen(3000, () => console.log('HTTP server on :3000'));
+}
+```
+
+---
+
+## 7. Database + External Call Spans
+
+```typescript
+// db.ts
+import { tracer } from './tracing-utils';
+import { SpanStatusCode } from '@opentelemetry/api';
+
+export async function query(sql: string, params: any[]) {
+	const span = tracer.startSpan('db.query', {
+		attributes: {
+			'db.system': 'postgresql',
+			'db.statement': sql, // Consider truncation for sensitive data
+		},
+	});
+	try {
+		await new Promise(r => setTimeout(r, 15)); // simulate latency
+		span.setAttribute('db.rows', 3);
+		return [{ id: 1 }, { id: 2 }];
+	} catch (err: any) {
+		span.recordException(err);
+		span.setStatus({ code: SpanStatusCode.ERROR });
+		throw err;
+	} finally {
+		span.end();
+	}
+}
+
+// external.ts
+import fetch from 'node-fetch';
+import { tracer } from './tracing-utils';
+import { SpanKind } from '@opentelemetry/api';
+
+export async function callPaymentGateway(token: string, amount: number) {
+	const span = tracer.startSpan('payment.api.charge', { kind: SpanKind.CLIENT, attributes: { amount } });
+	try {
+		const res = await fetch('https://payments.example.com/charge', { method: 'POST' });
+		span.setAttribute('http.status_code', res.status);
+		return await res.json();
+	} finally {
+		span.end();
+	}
+}
+```
+
+---
+
+## 8. Error Recording & Status
+
+Always set status + record exception:
+
+```typescript
+try {
+	// ...
+} catch (err: any) {
+	span.recordException(err);
+	span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+	throw err;
+}
+```
+
+Do NOT put PII (e.g., emails, tokens) inside attributes or error messages.
+
+---
+
+## 9. Attributes, Events & Links
+
+### Attributes
+Structured key/value metadata for filtering & aggregation.
+
+```typescript
+span.setAttribute('cache.hit', true);
+span.setAttribute('retry.count', 2);
+```
+
+### Events
+Timeline markers (use for *notable* state changes):
+
+```typescript
+span.addEvent('payment.retry', { attempt: 2, delay_ms: 500 });
+span.addEvent('circuit.breaker.open');
+```
+
+### Links
+Connect spans across traces (e.g., async fan-out, message queues, parent trace lost):
+
+```typescript
+import { trace, context, Link } from '@opentelemetry/api';
+
+function startSpanWithLink(previousSpanContext: any) {
+	const tracer = trace.getTracer('link-demo');
+	const span = tracer.startSpan('worker.process', { links: [{ context: previousSpanContext }] });
+	span.end();
+}
+```
+
+---
+
+## 10. Context Propagation (Async Boundaries)
+
+Node's async model can lose context if instrumentation is incomplete. OpenTelemetry patches most core libs, but for custom async boundaries:
+
+```typescript
+import { context, trace } from '@opentelemetry/api';
+
+function scheduleWork(fn: () => Promise<void>) {
+	const activeCtx = context.active();
+	setTimeout(() => {
+		context.with(activeCtx, () => { fn(); });
+	}, 10);
+}
+
+export function runWorkflow() {
+	const tracer = trace.getTracer('workflow');
+	const span = tracer.startSpan('workflow.run');
+	context.with(trace.setSpan(context.active(), span), () => {
+		scheduleWork(async () => {
+			const child = tracer.startSpan('delayed.step');
+			await new Promise(r => setTimeout(r, 20));
+			child.end();
+			span.end();
+		});
+	});
+}
+```
+
+Propagation over HTTP / messaging uses W3C `traceparent` + `tracestate` headers. Example injecting outbound request:
+
+```typescript
+import { propagation, trace, context } from '@opentelemetry/api';
+import fetch from 'node-fetch';
+
+async function outboundCall() {
+	const tracer = trace.getTracer('client');
+	return tracer.startActiveSpan('external.call', async (span) => {
+		const headers: Record<string,string> = {};
+		propagation.inject(context.active(), headers);
+		const res = await fetch('https://api.example.com/data', { headers });
+		span.setAttribute('http.status_code', res.status);
+		span.end();
+		return res.json();
+	});
+}
+```
+
+---
+
+## 11. Sampling
+
+### Head Sampling
+Decided at trace start (e.g., `TraceIdRatioBasedSampler`). Pros: low overhead. Cons: may miss interesting rare traces.
+
+### Tail Sampling (Collector)
+Decision after seeing entire trace (e.g., keep only errors or slow ones). Configure in OpenTelemetry Collector:
+
+```yaml
+processors:
+	tail_sampling:
+		decision_wait: 5s
+		num_traces: 50000
+		policies:
+			- name: errors
+				type: status_code
+				status_code:
+					status_codes: [ ERROR ]
+			- name: slow
+				type: latency
+				latency:
+					threshold_ms: 500
+			- name: traffic-sample
+				type: probabilistic
+				probabilistic:
+					sampling_percentage: 10
+```
+
+Use head sampling for baseline + tail sampling to enrich with high-value traces.
+
+---
+
+## 12. Span Naming Best Practices
+
+Good names are stable, low-cardinality, action-oriented:
+
+| Bad | Good |
+|-----|------|
+| getUserById_123 | user.fetch |
+| SELECT * FROM users WHERE id=1 | db.query.users.select |
+| callStripe | payment.gateway.charge |
+| process | order.fulfillment.stage1 |
+
+Server spans: `HTTP {METHOD} {ROUTE}` => `HTTP GET /checkout`
+
+DB spans: `db.query.<table>.<operation>`
+
+External API: `<domain_group>.<resource>.<action>`
+
+Background job: `job.<queue>.<task>`
+
+---
+
+## 13. Common Anti-Patterns
+
+1. Span explosion (creating spans inside tight loops > thousands/second).
+2. High-cardinality span names (embedding IDs, timestamps).
+3. Logging everything as events (events should be selective).
+4. PII in attributes (violates privacy/compliance).
+5. Mixing domains in one span (split DB, cache, external API).
+6. Forgetting to end spans (leads to memory leaks / incomplete traces).
+
+---
+
+## 14. Putting It All Together (Composite Example)
+
+```typescript
+// order-service.ts
+import { tracer, withSpan } from './tracing-utils';
+import { reserveInventory } from './inventory';
+import { callPaymentGateway } from './external';
+import { query } from './db';
+import { SpanStatusCode } from '@opentelemetry/api';
+
+interface OrderInput { userId: string; items: { sku: string; qty: number }[]; total: number; }
+
+export async function createOrder(order: OrderInput) {
+	return withSpan('order.create', async (span) => {
+		span.setAttribute('order.item_count', order.items.length);
+		span.setAttribute('order.total', order.total);
+
+		span.addEvent('order.validation.start');
+		if (order.total <= 0) {
+			span.setStatus({ code: SpanStatusCode.ERROR, message: 'Invalid total' });
+			throw new Error('Invalid total');
+		}
+		span.addEvent('order.validation.end');
+
+		for (const item of order.items) {
+			await reserveInventory(item.sku, item.qty);
+		}
+
+		await withSpan('order.payment', async (child) => {
+			const result = await callPaymentGateway('token', order.total);
+			child.setAttribute('payment.approved', !!result);
+		});
+
+		await withSpan('order.persist', async () => {
+			await query('INSERT INTO orders ...', []);
+		});
+
+		span.addEvent('order.complete');
+		return { id: 'ord_123', ...order };
+	});
+}
+```
+
+---
+
+## 15. Next Steps (Correlating Signals)
+
+- Add metrics for latency percentiles of `order.create` (histogram) to monitor trends.
+- Emit structured logs with `trace_id` / `span_id` for deep root-cause analysis.
+- Use tail sampling to always keep failed `order.payment` spans.
+- Derive SLOs from success latency + error rate.
+
+---
+
+## Summary
+
+| You Want To Know | Use Traces & Spans For |
+|------------------|------------------------|
+| Where time is spent | Latency breakdown inside a single request |
+| Which dependency is slow | Span-level durations (DB vs API vs cache) |
+| Why a request failed | Error status + recorded exceptions |
+| Concurrency issues | Overlapping spans showing contention |
+| Cross-service flow | Parent/child relationships & context propagation |
+
+Traces + spans give you high-resolution *causal context*. Model them thoughtfully: fewer, higher-quality spans with consistent naming and actionable attributes beat noisy, low-value tracing every time.
+
+---
+
+*Want to visualize these traces instantly? Send them via OTLP to [OneUptime](https://oneuptime.com) and correlate with metrics & logs for full-fidelity observability.*
+
+---
+
+### See Also
+
+- [What are metrics in OpenTelemetry: A Complete Guide](/posts/2025-08-26-what-are-metrics-in-opentelemetry/) — Understand the quantitative side (counts, rates, percentiles) to pair with your tracing data.
+- [How to name spans in OpenTelemetry](/posts/2024-11-04-how-to-name-spans-in-opentelemetry/) — Apply consistent naming so traces remain searchable and comparable over time.
+
+
