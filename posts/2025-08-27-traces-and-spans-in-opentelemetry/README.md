@@ -94,7 +94,8 @@ Rules of thumb:
 - If you have > ~25 spans for a simple request → you might be over-instrumenting.
 - Prefer attributes over putting details in the span name.
 
----
+
+--- 
 
 ## 3. Visual Mental Model
 
@@ -129,6 +130,76 @@ Reading this:
 3. Work is mostly sequential (little overlap) → potential parallelization later.
 
 If you only had logs you’d guess. With spans you *see* where time went.
+
+---
+
+### Span Kind Explained
+
+The span kind answers a simple question: "What role is this operation playing in the overall flow?" It adds directional semantics so your backend can do smarter grouping (e.g., separating inbound server latency from outbound dependency calls).
+
+| Kind | When To Use | Think Of It As | Common Attributes |
+|------|-------------|----------------|------------------|
+| SERVER | Handling an incoming request that originated outside this process (HTTP server, gRPC server, message consumer if you treat the message as a request) | Entry point | `http.method`, `http.route`, `messaging.operation=process` |
+| CLIENT | Making an outbound call to another service or dependency (HTTP fetch, gRPC client, DB driver if not auto-instrumented) | Outbound dependency | `http.method`, `http.url`, `db.system` |
+| INTERNAL | Pure in-process work that is neither an inbound nor outbound boundary (algorithmic step, domain service call) | Implementation detail | Domain-specific attributes |
+| PRODUCER | Publishing/sending a message to a broker/queue/stream (Kafka produce, RabbitMQ publish) | Enqueue action | `messaging.operation=publish`, topic/queue name |
+| CONSUMER | Receiving/processing a message from a broker/queue/stream (Kafka poll, SQS receive) | Dequeue processing | `messaging.operation=process`, ack state |
+
+Quick decision tree:
+1. Is this the first span created when the request hit this service? → SERVER.
+2. Are we calling something else over the network? → CLIENT.
+3. Are we putting a message on a queue/stream? → PRODUCER.
+4. Are we handling a message pulled from a queue/stream? → CONSUMER.
+5. Otherwise → INTERNAL.
+
+Why it matters:
+- Latency breakdown dashboards often separate SERVER vs CLIENT time.
+- Some backends collapse INTERNAL spans by default to reduce noise.
+- PRODUCER/CONSUMER clarify asynchronous hops so you can see queue handoff latency.
+
+Common pitfalls:
+- Marking everything INTERNAL (loses semantics).
+- Using SERVER for background cron jobs (better: INTERNAL or a synthetic root INTERNAL span). If it's externally triggered (e.g., HTTP webhook) then SERVER is correct.
+- Using CLIENT for DB calls when the instrumentation already sets the appropriate kind (double-wrapping spans).
+
+Node.js example:
+
+```typescript
+import { trace, SpanKind } from '@opentelemetry/api';
+const tracer = trace.getTracer('example');
+
+// 1. Incoming HTTP (auto-instrumentation usually creates this SERVER span for you)
+// Assume we already have an active SERVER span here.
+
+// 2. Outbound HTTP call (CLIENT)
+const clientSpan = tracer.startSpan('inventory.api.get', { kind: SpanKind.CLIENT, attributes: { 'http.method': 'GET' } });
+// ... perform fetch
+clientSpan.end();
+
+// 3. Internal calculation (INTERNAL)
+const internalSpan = tracer.startSpan('pricing.compute', { kind: SpanKind.INTERNAL });
+// ... CPU work
+internalSpan.end();
+
+// 4. Publish message (PRODUCER)
+const produceSpan = tracer.startSpan('kafka.produce.order', { kind: SpanKind.PRODUCER, attributes: { 'messaging.destination': 'orders' } });
+// ... send to Kafka
+produceSpan.end();
+
+// 5. Consume message (CONSUMER) – in a worker process
+const consumerSpan = tracer.startSpan('kafka.consume.order', { kind: SpanKind.CONSUMER, attributes: { 'messaging.destination': 'orders' } });
+// ... process payload
+consumerSpan.end();
+```
+
+When PRODUCER and CONSUMER are used correctly, you can measure:
+1. Time inside the producing service (PRODUCER span duration)
+2. Queue / broker delay (difference between PRODUCER end and CONSUMER start)
+3. Processing time (CONSUMER span duration)
+
+That separation helps answer: "Are we slow, or is the queue backed up?"
+
+If you skip span kind entirely, everything defaults to INTERNAL and you lose this analytical power.
 
 ---
 
@@ -366,25 +437,110 @@ span.setAttribute('retry.count', 2);
 ```
 
 ### Events
-Timeline markers (use for *notable* state changes):
+Events are timestamped annotations that live *inside* a span. They answer: "What important thing happened at this specific moment while this span was running?" They do **not** represent separate units of work (that’s what child spans are for), and they do **not** replace logs (logs can be unbounded, free‑form; events should be concise & structured).
 
+Use events for:
+- Milestones: `validation.start`, `cache.miss`, `retry`, `circuit.breaker.open`
+- State transitions: `order.status.changed`
+- Intermittent detail you may want to filter on later (but not enough to justify a new span)
+
+Avoid events for:
+- Highly repetitive signals (loop iterations, per-row processing)
+- Bulk debug dumping (use logs with trace/span IDs instead)
+- Long-running operations (use a child span instead so you get duration)
+
+Example (retry flow):
 ```typescript
-span.addEvent('payment.retry', { attempt: 2, delay_ms: 500 });
-span.addEvent('circuit.breaker.open');
+span.addEvent('payment.attempt', { attempt: 1 });
+// call fails
+span.addEvent('payment.retry_scheduled', { after_ms: 250 });
+// second try
+span.addEvent('payment.attempt', { attempt: 2, final: true });
 ```
 
+Events vs spans vs logs (quick guide):
+| You need | Use |
+|----------|-----|
+| Duration of a sub-operation | Child span |
+| Single point-in-time marker | Event |
+| Rich, possibly verbose diagnostic output | Log (with trace + span IDs) |
+| Structured milestone you may query/filter | Event (with attributes) |
+
+Best practices:
+- Limit to a handful (e.g., < 15) per span or you risk noise.
+- Prefer consistent event names (`verb.noun` or `domain.action`).
+- Add minimal attributes (keep cardinality low: `attempt`, `status`, not `user_id`).
+
+Anti‑patterns:
+- Turning every function call into an event.
+- Emitting repeating per-element events in large batches.
+- Using events to store big blobs (stick to small primitives / short strings).
+
 ### Links
-Connect spans across traces (e.g., async fan-out, message queues, parent trace lost):
+Links connect the current span to *other* span contexts **without** establishing a parent/child relationship. Use them when there isn’t a single clear parent or when you intentionally want to keep traces separate but correlated.
 
+Typical use cases:
+1. Fan-out / fan-in: An aggregator span links to many upstream spans it’s merging results from.
+2. Batch processing: A worker processes a batch of messages from different original traces; each message’s original context is linked.
+3. Message queue hops when you purposely start a *new* trace per consumer but still want to show lineage.
+4. Long-running orchestrator referencing shorter-lived transactional spans.
+5. Stitching after context loss (recover partial context from headers/logs and link rather than fake parenting).
+
+Child span vs link decision:
+| Scenario | Use Child Span | Use Link |
+|----------|----------------|----------|
+| Direct causal, synchronous or awaited work | ✅ | ❌ |
+| Multiple equally-important source contexts | ❌ | ✅ |
+| You want one coherent end-to-end trace | ✅ | (Usually not) |
+| Data arrives from many unrelated traces | ❌ | ✅ |
+| Async message consumed and you continue original trace | ✅ (propagate) | ❌ |
+| New trace per consumed message but still correlate | ❌ | ✅ |
+
+Code examples:
+
+Linking multiple prior spans (batch aggregation):
 ```typescript
-import { trace, context, Link } from '@opentelemetry/api';
+import { trace, context } from '@opentelemetry/api';
+const tracer = trace.getTracer('batch-aggregator');
 
-function startSpanWithLink(previousSpanContext: any) {
-	const tracer = trace.getTracer('link-demo');
-	const span = tracer.startSpan('worker.process', { links: [{ context: previousSpanContext }] });
+// Suppose we decoded contexts from 3 messages
+function aggregate(messages: { spanContext: any; payload: any }[]) {
+	const links = messages.map(m => ({ context: m.spanContext, attributes: { source: 'queue' } }));
+	const span = tracer.startSpan('batch.aggregate', { links });
+	try {
+		// ... combine payloads
+	} finally { span.end(); }
+}
+```
+
+Starting a new trace but linking to original (decoupled async stage):
+```typescript
+import { context as otelContext, trace } from '@opentelemetry/api';
+function processEvent(originalSpanContext: any) {
+	const tracer = trace.getTracer('analytics-pipeline');
+	// No parent: intentionally new root
+	const span = tracer.startSpan('analytics.enrich', { links: [{ context: originalSpanContext }] });
+	// ... enrichment logic
 	span.end();
 }
 ```
+
+Recovering partial context from headers (e.g., only trace id present):
+```typescript
+import { isSpanContextValid, SpanContext, trace } from '@opentelemetry/api';
+
+function startSpanWithRecoveredContext(recovered: Partial<SpanContext>) {
+	const tracer = trace.getTracer('recovery');
+	// If we can’t validate as a proper parent, link instead of forging one
+	const links = isSpanContextValid(recovered as SpanContext) ? [{ context: recovered as SpanContext, attributes: { recovered: true } }] : [];
+	const span = tracer.startSpan('recovered.work', { links });
+	span.end();
+}
+```
+
+Metrics impact: links do not create additional timing branches, so they are cheaper than extra spans while still preserving relationship.
+
+Warning: Overusing links to approximate parenting makes traces harder to understand—use them intentionally, not as a default.
 
 ---
 
