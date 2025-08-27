@@ -731,7 +731,7 @@ Traces + spans give you high-resolution *causal context*. Model them thoughtfull
 
 ### See Also
 
-- [What are metrics in OpenTelemetry: A Complete Guide](/posts/2025-08-26-what-are-metrics-in-opentelemetry/) — Understand the quantitative side (counts, rates, percentiles) to pair with your tracing data.
-- [How to name spans in OpenTelemetry](/posts/2024-11-04-how-to-name-spans-in-opentelemetry/) — Apply consistent naming so traces remain searchable and comparable over time.
+- [What are metrics in OpenTelemetry: A Complete Guide](/blog/posts/2025-08-26-what-are-metrics-in-opentelemetry/) — Understand the quantitative side (counts, rates, percentiles) to pair with your tracing data.
+- [How to name spans in OpenTelemetry](/blog/posts/2024-11-04-how-to-name-spans-in-opentelemetry/) — Apply consistent naming so traces remain searchable and comparable over time.
 
 
