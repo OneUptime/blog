@@ -51,7 +51,7 @@ This guide walks through how traces and spans are structured, how context is pro
 | Sampler | The rule that decides: keep (record/export) this trace or drop it to save cost/noise. |
 | Exporter | The piece that ships finished spans to your backend (OneUptime, Jaeger, Tempo, etc.). |
 
-Quick analogy: A trace is a movie, spans are the scenes, the root span is the opening scene, child spans are nested scenes, context is the camera following the actors, the sampler decides which movies get released, and the exporter is the distributor sending them to the theater (your observability platform).
+Quick analogy (HTTP request version): A trace is the entire lifecycle of one HTTP request from accept to response. The root span is the server receiving the request. Child spans are each stage: auth middleware, controller handler, database query, cache lookup, external API call, response serialization. Context is the request-scoped metadata that flows through each layer so new spans attach correctly. The sampler is the decision point that says “do we keep detailed timing for this request or drop it?” The exporter is the component that ships the finished request timeline to your observability backend (OneUptime, Jaeger, Tempo, etc.).
 
 ---
 
