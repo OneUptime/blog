@@ -1,4 +1,4 @@
-# What are Traces and Spans in OpenTelemetry: A Practical Guide (Node.js & TypeScript)
+# What are Traces and Spans in OpenTelemetry: A Practical Guide
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
