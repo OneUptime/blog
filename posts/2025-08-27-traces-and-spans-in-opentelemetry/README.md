@@ -55,33 +55,80 @@ Quick analogy (HTTP request version): A trace is the entire lifecycle of one HTT
 
 ---
 
-## 2. Anatomy of a Span
+## 2. Anatomy of a Span (Plain English)
 
-A span includes:
+Think of a span as an operation in your code (like a function call / database call) with a small JSON blob of context.
 
-- Name (string)
-- Start time + End time (high resolution)
-- Span ID (8 bytes) & Trace ID (16 bytes)
-- Parent Span ID (optional)
-- Attributes (key/value—indexed metadata)
-- Events (timestamped annotations: retries, cache miss, etc.)
-- Status (OK, ERROR, UNSET)
-- Links (connect to other traces/spans)
-- Kind (SERVER, CLIENT, INTERNAL, PRODUCER, CONSUMER)
+| Piece | What It Is | Why It Matters |
+|-------|-------------|----------------|
+| Name | A short label (e.g. `db.query.users.select`) | Shows up in UI & search; keep it stable & low-cardinality. |
+| Start / End Time | High‑precision timestamps | Lets you calculate exact duration & order of operations. |
+| Span ID | Unique ID for this span | Links this node inside the trace tree. |
+| Trace ID | Shared ID across all spans in the same request | Groups everything so you can view the whole journey. |
+| Parent Span ID | The ID of the span that spawned this one (optional) | Builds the tree hierarchy. Missing = root span. |
+| Attributes | Key/value pairs (e.g. `http.method=GET`) | Filter, group, aggregate, and diagnose quickly. Avoid PII. |
+| Events | Timestamped notes inside the span | Mark milestones (retry, cache_miss) without creating new spans. |
+| Status | OK, ERROR, or UNSET + optional message | Surfaces failures fast; ERROR often drives alerting or tail sampling. |
+| Links | References to spans from other traces | Connect workflows (fan-out, async, message handoff) without parent/child. |
+| Kind | SERVER, CLIENT, INTERNAL, PRODUCER, CONSUMER | Tells the backend how to interpret direction & role. |
+
+Minimal example (conceptually):
+
+```jsonc
+{
+	"trace_id": "4f3ae9...",
+	"span_id": "92ab13...",
+	"parent_span_id": "d1c044...",
+	"name": "db.query.users.select",
+	"start": 1717080672.123456,
+	"end": 1717080672.145221,
+	"attributes": {"db.system": "postgresql", "db.rows": 3},
+	"events": [{"name": "retry", "time": 1717080672.130001, "attributes": {"attempt": 1}}],
+	"status": {"code": "OK"},
+	"kind": "CLIENT"
+}
+```
+
+Rules of thumb:
+- If you can’t describe the work in one verb phrase → maybe it’s multiple spans.
+- If you have > ~25 spans for a simple request → you might be over-instrumenting.
+- Prefer attributes over putting details in the span name.
 
 ---
 
 ## 3. Visual Mental Model
 
+Plain tree first:
+
 ```
-Trace (id=abc123...) ─ Root Span (HTTP GET /checkout)
-	├─ Span: Validate Cart
-	├─ Span: DB SELECT products
-	├─ Span: Call Payment API
-	│    ├─ Span: DNS Lookup
-	│    └─ Span: TLS Handshake
-	└─ Span: Publish Order Event (Kafka)
+Trace (HTTP GET /checkout)
+└─ Root: HTTP GET /checkout
+	 ├─ inventory.reserve
+	 ├─ db.query.products.select
+	 ├─ payment.api.charge
+	 │   ├─ dns.lookup
+	 │   └─ tls.handshake
+	 └─ kafka.produce.order.created
 ```
+
+Same thing with timing ideas (length ≈ duration):
+
+```
+HTTP GET /checkout  |=============================|
+	inventory.reserve |====| 
+	db.query.products |===|
+	payment.api.charge        |----------|
+		dns.lookup              |-| 
+		tls.handshake              |--|
+	kafka.produce.order.created          |==|
+```
+
+Reading this:
+1. `payment.api.charge` dominates latency → investigate there first.
+2. DNS + TLS are nested inside the payment call (network setup cost).
+3. Work is mostly sequential (little overlap) → potential parallelization later.
+
+If you only had logs you’d guess. With spans you *see* where time went.
 
 ---
 
