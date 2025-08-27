@@ -41,15 +41,17 @@ This guide walks through how traces and spans are structured, how context is pro
 
 ## 1. Core Concepts
 
-| Concept | Description |
-|---------|-------------|
-| Trace | A collection / tree / or DAG of spans that represents a single logical request or workflow. Identified by a trace_id. |
-| Span | One operation with a start/end timestamp, attributes, status, events, parent span id (optional), and links. |
-| Root Span | The first span in a trace (no parent). Usually represents the entry point (HTTP server request, queue message, cron job). |
-| Child Span | A span whose parent is another span. Represents a nested unit of work. |
-| Context | Propagated metadata carrying the current active span / trace across process and network boundaries. |
-| Sampler | Decides whether to record/export a trace. |
-| Exporter | Sends finished spans to a backend (e.g., OneUptime, Jaeger, Tempo, etc.). |
+| Concept | Description (Plain Language) |
+|---------|------------------------------|
+| Trace | The full story of a single request. Made of many spans. Has a `trace_id` so all pieces stay linked. |
+| Span | One timed step in that story (e.g., DB query, HTTP call, function). Starts, ends, and carries metadata. |
+| Root Span | The first span (no parent). Usually the inbound HTTP request, queue message, or scheduled job trigger. |
+| Child Span | A smaller step inside a bigger one. Lets you break work into clear pieces. |
+| Context | The “current trace + active span” that rides along your async calls and network hops so new spans attach correctly. |
+| Sampler | The rule that decides: keep (record/export) this trace or drop it to save cost/noise. |
+| Exporter | The piece that ships finished spans to your backend (OneUptime, Jaeger, Tempo, etc.). |
+
+Quick analogy: A trace is a movie, spans are the scenes, the root span is the opening scene, child spans are nested scenes, context is the camera following the actors, the sampler decides which movies get released, and the exporter is the distributor sending them to the theater (your observability platform).
 
 ---
 
