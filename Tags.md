@@ -51,8 +51,11 @@
 - SLOs
 - Cardinality
 - Alerting
+- Correlation
 - Cost Optimization
+- Logging
 - Monitoring
 - NodeJS
+- Structured Logging
 - TypeScript
 
