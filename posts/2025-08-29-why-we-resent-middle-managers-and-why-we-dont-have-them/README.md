@@ -45,8 +45,8 @@ At OneUptime, we've structured our organization to eliminate these problems enti
 ### Direct Leadership Model
 
 Small teams, every engineer reports directly to either:
-- **Product CTO** for technical decisions and career growth
-- **Product CEO** for strategic alignment and resource allocation
+- **CTO** for technical decisions and career growth
+- **CEO** for strategic alignment and resource allocation
 
 This means:
 - **Zero information filtering** between engineers and decision-makers
@@ -115,13 +115,13 @@ Here's how scaling actually works in practice:
 - No middle management layer needed between teams
 - Leadership bandwidth grows linearly, not exponentially
 
-### "How do you coordinate between teams?"
+### "How do you coordinate between product teams?"
 
 Teams coordinate directly through:
+
 - **Shared technical standards** and architecture guidelines
-- **Regular engineering all-hands** for alignment
-- **Direct communication** between team leads
 - **Shared tooling and documentation** that reduces coordination overhead
+- **API** every product exposes robust API that other product teams can use. 
 
 ### "What about career progression?"
 
