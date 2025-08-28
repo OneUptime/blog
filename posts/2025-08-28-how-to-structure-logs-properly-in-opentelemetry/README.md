@@ -1,5 +1,5 @@
 ````markdown
-# How to Structure Logs Properly in OpenTelemetry: A Complete TypeScript Guide
+# How to Structure Logs Properly in OpenTelemetry: A Complete Guide
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
