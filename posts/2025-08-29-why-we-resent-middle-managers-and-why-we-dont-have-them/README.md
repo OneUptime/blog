@@ -55,7 +55,7 @@ This means:
 
 ### Autonomous Three-Person Teams
 
-Our [team-of-three philosophy](https://oneuptime.com/blog/posts/2025-03-13-power-of-three-how-small-teams-drive-big-results/) eliminates the need for middle management:
+Our [team-of-three philosophy](https://oneuptime.com/blog/posts/2025-03-13-power-of-three-how-small-teams-drive-big-results/view) eliminates the need for middle management:
 
 - Each team is **fully autonomous** with clear objectives
 - Team leads are **technical contributors**, not people managers
