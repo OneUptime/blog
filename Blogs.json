@@ -272,7 +272,7 @@
     "post": "2025-08-27-traces-and-spans-in-opentelemetry"
   },
   {
-    "title": "How to Structure Logs Properly in OpenTelemetry: A Complete TypeScript Guide",
+    "title": "How to Structure Logs Properly in OpenTelemetry: A Complete Guide",
     "description": "A comprehensive guide to structuring logs properly in OpenTelemetry—mastering log correlation with traces, effective attribute usage, and implementing structured logging patterns that enhance debugging and observability.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
