@@ -286,5 +286,18 @@
       "Correlation"
     ],
     "post": "2025-08-28-how-to-structure-logs-properly-in-opentelemetry"
+  },
+  {
+    "title": "Why We Resent Middle Managers (And Why OneUptime Doesn't Have Any)",
+    "description": "Middle managers have become the organizational equivalent of technical debt—layers that slow everything down without adding clear value. At OneUptime, we've intentionally eliminated middle management in favor of direct leadership and autonomous teams. Here's why this approach drives better results, happier engineers, and faster innovation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Team Management",
+      "Engineering Culture",
+      "Leadership",
+      "Organizational Design",
+      "Startups"
+    ],
+    "post": "2025-08-29-why-we-resent-middle-managers-and-why-we-dont-have-them"
   }
 ]

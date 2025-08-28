@@ -6,6 +6,8 @@
 - AWS
 - Cloud
 - Components
+- Correlation
+- Cost Optimization
 - Customer Experience
 - Customer Support
 - DataDog
@@ -17,45 +19,43 @@
 - Interoperability
 - JSON
 - Kubernetes
+- Leadership
 - Learning Resource
 - LLM Observability
+- Logging
+- Logs
 - MCP
+- Metrics
 - Microk8s
 - Model Context Protocol
+- Monitoring
+- NodeJS
 - Observability
 - Open Source
 - OpenAPI
 - OpenTelemetry
 - Openlit
+- Organizational Design
 - Platform Strategy
 - Product
 - Product Development
 - PWA
 - SaaS
 - Sales
+- Sampling
 - Security
 - Site Reliabiity Engineering
 - Slack
+- SLOs
 - Standards
 - Startups
+- Structured Logging
 - Team Management
 - Terraform
 - Tests
 - Tracing
+- Traces
+- TypeScript
 - Web Architecture
 - Workflows
-- Logs
-- Metrics
-- Traces
-- Sampling
-- SLOs
-- Cardinality
-- Alerting
-- Correlation
-- Cost Optimization
-- Logging
-- Monitoring
-- NodeJS
-- Structured Logging
-- TypeScript
 
