@@ -65,9 +65,9 @@ This is where SRE stops being a department and becomes a culture. But it's not e
 
 ## Stage 4: Optimization - The Machine Takes Over
 
-As practices solidify, you begin automating everything. Manual deployments give way to CI/CD pipelines. Scaling happens automatically based on load. Incident response includes automated remediation—restart that service, spin up new instances, route traffic away from failures.
+As practices solidify, you begin automating everything. Manual deployments give way to CI/CD pipelines. Scaling happens automatically based on load. Incident response includes automated remediation with playbooks like restart that service, spin up new instances, route traffic away from failures.
 
-Observability becomes comprehensive. Metrics, logs, and traces paint a complete picture of your systems. You predict capacity needs months in advance. Cross-functional collaboration flourishes—developers and operators work as one team.
+Observability with OpenTelemetry becomes comprehensive. Metrics, logs, and traces paint a complete picture of your systems. Cross-functional collaboration flourishes—developers and operators work as one team.
 
 The pager quiets down. Most issues resolve themselves before humans get involved. The team focuses on strategic improvements rather than tactical firefighting. Efficiency becomes the name of the game.
 
