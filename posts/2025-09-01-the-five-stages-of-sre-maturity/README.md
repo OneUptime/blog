@@ -56,6 +56,8 @@ Incident response becomes coordinated. You have on-call rotations, escalation pa
 
 This is where SRE stops being a department and becomes a culture. But it's not easy. Balancing innovation with stability creates tension. "Move fast and break things" clashes with "measure twice, cut once." Yet, this friction is healthy—it forces the organization to mature.
 
+> "SRE is a culture, not a department."
+
 **You're in this stage if you:**
 - Can quantify exactly how much downtime your business can tolerate
 - Debate feature releases based on their potential impact on error budgets
@@ -85,6 +87,8 @@ But challenges remain. As systems grow, maintaining automation becomes complex. 
 At the pinnacle, reliability becomes invisible to users. Operations run so smoothly that customers never know about the complex machinery keeping everything running. Predictive analytics catch issues before they manifest. Error budgets are rarely touched. Incidents, when they occur, resolve within SLA targets with minimal fuss.
 
 SRE principles influence product design from day one. "How will we monitor this?" is asked during requirements gathering. The organization has achieved operational nirvana—reliable systems that enable business growth without constant drama.
+
+> "A feature is not complete unless you have set up some sort of observability for it."
 
 Yet, even here, vigilance is key. Complacency creeps in when things are too stable. Scaling mature practices to new domains requires ongoing adaptation.
 
