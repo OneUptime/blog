@@ -299,5 +299,20 @@
       "Startups"
     ],
     "post": "2025-08-29-why-we-resent-middle-managers-and-why-we-dont-have-them"
+  },
+  {
+    "title": "The Five Stages of SRE Maturity: From Chaos to Operational Excellence",
+    "description": "Site Reliability Engineering (SRE) isn't a destination—it's a journey. Most organizations evolve through predictable stages of maturity, from alert-ignoring chaos to perfectly oiled operations that rarely breach error budgets. This post outlines the five stages of SRE maturity and how to progress through them.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Site Reliability Engineering",
+      "SRE",
+      "Observability",
+      "DevOps",
+      "SLOs",
+      "Error Budgets",
+      "Incident Management"
+    ],
+    "post": "2025-09-01-the-five-stages-of-sre-maturity"
   }
 ]

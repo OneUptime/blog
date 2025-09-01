@@ -47,6 +47,7 @@
 - Site Reliabiity Engineering
 - Slack
 - SLOs
+- SRE
 - Standards
 - Startups
 - Structured Logging
