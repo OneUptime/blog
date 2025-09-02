@@ -985,3 +985,9 @@ Start with basic correlation and semantic attributes, then gradually add more so
 ---
 
 *Ready to implement structured logging with OpenTelemetry? [OneUptime](https://oneuptime.com) provides complete log management with native OpenTelemetry support, automatic correlation with traces and metrics, and powerful querying capabilities to help you debug faster and understand your systems better.*
+
+**Related Reading:**
+
+- [What are Traces and Spans in OpenTelemetry: A Practical Guide](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)
+- [How to name spans in OpenTelemetry?](https://oneuptime.com/blog/post/2024-11-04-how-to-name-spans-in-opentelemetry/view)
+- [Logs, Metrics & Traces: Turning Three Noisy Streams into One Story](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)

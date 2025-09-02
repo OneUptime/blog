@@ -652,3 +652,9 @@ Start with the basics—request counts, error rates, and response times—then e
 ---
 
 *Want to see your OpenTelemetry metrics in action? [OneUptime](https://oneuptime.com) provides a complete observability platform with native OpenTelemetry support, helping you visualize, alert on, and correlate your metrics with traces and logs.*
+
+**Related Reading:**
+
+- [How to collect internal metrics from OpenTelemetry Collector?](https://oneuptime.com/blog/post/2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics/view)
+- [Traces vs Metrics in Software Observability](https://oneuptime.com/blog/post/2025-08-21-traces-vs-metrics-in-opentelemetry/view)
+- [Logs, Metrics & Traces: Turning Three Noisy Streams into One Story](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)

@@ -153,3 +153,9 @@ Middle management shouldn't be the default solution to organizational complexity
 For most software organizations, **the costs are too high and the benefits too unclear**. Engineers don't need managers—they need clear objectives, autonomous authority, and direct access to leadership.
 
 **About OneUptime:** We're building the next generation of observability and incident management tools with a flat, autonomous organization that proves great software doesn't require management overhead. Learn more at [OneUptime.com](https://oneuptime.com).
+
+**Related Reading:**
+
+- [The Power of Three: How Small Teams Drive Big Results at OneUptime](https://oneuptime.com/blog/post/2025-03-13-power-of-three-how-small-teams-drive-big-results/view)
+- [Why engineers should spend 20% of their time talking to customers.](https://oneuptime.com/blog/post/2025-08-22-why-engineers-should-spend-20-percent-of-time-talking-to-customers/view)
+- [Why we dont like TDD: A Developer’s Perspective](https://oneuptime.com/blog/post/2023-11-21-why-we-dont-like-tdd/view)

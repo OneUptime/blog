@@ -734,4 +734,10 @@ Traces + spans give you high-resolution *causal context*. Model them thoughtfull
 - [What are metrics in OpenTelemetry: A Complete Guide](/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/) — Understand the quantitative side (counts, rates, percentiles) to pair with your tracing data.
 - [How to name spans in OpenTelemetry](/blog/post/2024-11-04-how-to-name-spans-in-opentelemetry/) — Apply consistent naming so traces remain searchable and comparable over time.
 
+**Related Reading:**
+
+- [How to name spans in OpenTelemetry?](https://oneuptime.com/blog/post/2024-11-04-how-to-name-spans-in-opentelemetry/view)
+- [Traces vs Metrics in Software Observability](https://oneuptime.com/blog/post/2025-08-21-traces-vs-metrics-in-opentelemetry/view)
+- [How to Structure Logs Properly in OpenTelemetry: A Complete Guide](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view)
+
 

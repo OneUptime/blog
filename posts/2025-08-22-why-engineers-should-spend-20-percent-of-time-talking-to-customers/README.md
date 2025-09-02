@@ -165,3 +165,9 @@ Direct customer contact sparks innovative solutions that wouldn't emerge from is
 ---
 
 In an engineering-led culture, serving engineering customers, with engineers doing customer support and sales, authenticity isn't just nice to have, it's the foundation of everything we build.
+
+**Related Reading:**
+
+- [The Power of Three: How Small Teams Drive Big Results at OneUptime](https://oneuptime.com/blog/post/2025-03-13-power-of-three-how-small-teams-drive-big-results/view)
+- [Why We Resent Middle Managers (And Why OneUptime Doesn't Have Any)](https://oneuptime.com/blog/post/2025-08-29-why-we-resent-middle-managers-and-why-we-dont-have-them/view)
+- [Why we dont like TDD: A Developer’s Perspective](https://oneuptime.com/blog/post/2023-11-21-why-we-dont-like-tdd/view)

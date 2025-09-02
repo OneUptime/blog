@@ -31,3 +31,9 @@ Tests are incredibly valuable, and they’re a crucial part of the development p
 > TDD has its place in the software development lifecycle, it’s not always the best approach for every situation.
 
 As with any methodology, it’s important to understand its strengths and weaknesses, and to use it where it makes the most sense. And remember, the ultimate goal is to produce high-quality, reliable software - whether you use TDD or not.
+
+**Related Reading:**
+
+- [The Power of Three: How Small Teams Drive Big Results at OneUptime](https://oneuptime.com/blog/post/2025-03-13-power-of-three-how-small-teams-drive-big-results/view)
+- [Why engineers should spend 20% of their time talking to customers.](https://oneuptime.com/blog/post/2025-08-22-why-engineers-should-spend-20-percent-of-time-talking-to-customers/view)
+- [Why We Resent Middle Managers (And Why OneUptime Doesn't Have Any)](https://oneuptime.com/blog/post/2025-08-29-why-we-resent-middle-managers-and-why-we-dont-have-them/view)

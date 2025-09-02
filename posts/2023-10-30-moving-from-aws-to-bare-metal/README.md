@@ -91,4 +91,10 @@ It’s important to remember that each business has its own unique needs. What p
 
 Thanks to advancements in technologies like Docker, Kubernetes, Helm, Microk8s, and more, transitioning to bare-metal infrastructure is now significantly easier than it was just a few years ago.
 
+**Related Reading:**
+
+- [How to configure MetalLB with Kubernetes (Microk8s).](https://oneuptime.com/blog/post/2023-11-06-configure-metallb-with-kubernetes-microk8s/view)
+- [Datadog Dollars: Why Your Monitoring Bill Is Breaking the Bank](https://oneuptime.com/blog/post/2025-02-01-datadog-dollars-why-monitoring-is-breaking-the-bank/view)
+- [Why build open-source DataDog?](https://oneuptime.com/blog/post/2024-08-14-why-build-open-source-datadog/view)
+
 

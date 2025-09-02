@@ -246,3 +246,9 @@ If you're spending heavily on Datadog or New Relic just to get the basics—star
 ---
 
 Need help instrumenting or migrating? The OneUptime community can help. Drop in, ask a question, or share a trace war story.
+
+**Related Reading:**
+
+- [Logs, Metrics & Traces: A Before and After Story](https://oneuptime.com/blog/post/2025-08-21-logs-traces-metrics-before-and-after/view)
+- [Traces vs Metrics in Software Observability](https://oneuptime.com/blog/post/2025-08-21-traces-vs-metrics-in-opentelemetry/view)
+- [Why build open-source DataDog?](https://oneuptime.com/blog/post/2024-08-14-why-build-open-source-datadog/view)

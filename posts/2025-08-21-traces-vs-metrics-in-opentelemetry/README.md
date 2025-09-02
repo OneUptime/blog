@@ -116,3 +116,9 @@ Plese note logs are often linked to traces via `trace_id` and `span_id`, allowin
 
 OpenTelemetry gives the neutral contract; OneUptime unifies the view. Pay for insight—not guesswork.
 
+**Related Reading:**
+
+- [Logs, Metrics & Traces: Turning Three Noisy Streams into One Story](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)
+- [Logs, Metrics & Traces: A Before and After Story](https://oneuptime.com/blog/post/2025-08-21-logs-traces-metrics-before-and-after/view)
+- [What are Traces and Spans in OpenTelemetry: A Practical Guide](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)
+

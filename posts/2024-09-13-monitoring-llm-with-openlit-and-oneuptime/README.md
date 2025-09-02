@@ -112,3 +112,9 @@ Once your LLM application is instrumented, you should see the traces and metrics
 
 ## Conclusion
 Effective LLM observability is essential for the efficient and reliable operation of LLM applications. By leveraging OpenTelemetry's open standards and broad compatibility, OneUptime's robust analytical tools, and OpenLIT's seamless auto-instrumentation for over 20 GenAI tools ranging from LLMs, VectorDBs and GPUs, developers can achieve comprehensive visibility into their LLM performance. This integrated approach ensures that all aspects of your LLM systems are transparent, actionable, and optimized for peak efficiency and reliability.
+
+**Related Reading:**
+
+- [Why build open-source DataDog?](https://oneuptime.com/blog/post/2024-08-14-why-build-open-source-datadog/view)
+- [Logs, Metrics & Traces: Turning Three Noisy Streams into One Story](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)
+- [Traces vs Metrics in Software Observability](https://oneuptime.com/blog/post/2025-08-21-traces-vs-metrics-in-opentelemetry/view)

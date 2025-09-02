@@ -53,3 +53,9 @@ Whether you’re building the next Sentry or streamlining your workflow, remembe
 
 **About OneUptime:** We’re on a mission to make software reliability accessible to everyone. Learn how our tools—and our team philosophy—can transform your workflow at [OneUptime.com](https://oneuptime.com).
 
+**Related Reading:**
+
+- [Why engineers should spend 20% of their time talking to customers.](https://oneuptime.com/blog/post/2025-08-22-why-engineers-should-spend-20-percent-of-time-talking-to-customers/view)
+- [Why We Resent Middle Managers (And Why OneUptime Doesn't Have Any)](https://oneuptime.com/blog/post/2025-08-29-why-we-resent-middle-managers-and-why-we-dont-have-them/view)
+- [The Five Stages of SRE Maturity: From Chaos to Operational Excellence](https://oneuptime.com/blog/post/2025-09-01-the-five-stages-of-sre-maturity/view)
+

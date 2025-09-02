@@ -321,3 +321,9 @@ The future of operations is conversational, intelligent, and open source. With O
 ---
 
 *Ready to transform your operations with AI? [Check out our MCP server documentation](https://github.com/oneuptime/oneuptime/tree/master/MCP) and [join our community](https://oneuptime.com/support) to share your experiences.*
+
+**Related Reading:**
+
+- [Introducing the OneUptime Terraform Provider: Infrastructure as Code for Complete Observability](https://oneuptime.com/blog/post/2025-07-01-introducing-terraform-provider-for-oneuptime/view)
+- [OneUptime Embraces Open Standards: Complete OpenAPI 3.0 Specification Now Available](https://oneuptime.com/blog/post/2025-07-01-oneuptime-openapi-specification-open-standards/view)
+- [Monitoring LLM Application(s) with Openlit and OneUptime](https://oneuptime.com/blog/post/2024-09-13-monitoring-llm-with-openlit-and-oneuptime/view)

@@ -175,3 +175,9 @@ function validateUser({
 ### Happy tracing!
 
 Incorporating effective span naming, attributes, events, and exception handling in your OpenTelemetry traces can profoundly enhance your application's observability. By carefully naming your spans, providing detailed attributes, marking significant events, and recording exceptions, you ensure that every aspect of your application's performance is captured and understood. This comprehensive approach not only aids in debugging but also in optimizing and scaling your services with confidence.
+
+**Related Reading:**
+
+- [What are Traces and Spans in OpenTelemetry: A Practical Guide](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)
+- [Traces vs Metrics in Software Observability](https://oneuptime.com/blog/post/2025-08-21-traces-vs-metrics-in-opentelemetry/view)
+- [How to Structure Logs Properly in OpenTelemetry: A Complete Guide](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view)

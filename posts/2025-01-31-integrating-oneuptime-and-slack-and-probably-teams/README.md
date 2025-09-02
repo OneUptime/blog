@@ -113,3 +113,9 @@ https://oneuptime.com/dashboard/{{local.components.incident-state-timeline-on-cr
 ## Connecting to Teams...
 
 .. is exactly the, but replace the Slack component with the Teams one.
+
+**Related Reading:**
+
+- [Introducing the OneUptime Terraform Provider: Infrastructure as Code for Complete Observability](https://oneuptime.com/blog/post/2025-07-01-introducing-terraform-provider-for-oneuptime/view)
+- [Introducing OneUptime MCP Server: Bringing AI-Native Observability to Your Workflow](https://oneuptime.com/blog/post/2025-07-01-oneuptime-mcp-server-ai-observability/view)
+- [OneUptime Embraces Open Standards: Complete OpenAPI 3.0 Specification Now Available](https://oneuptime.com/blog/post/2025-07-01-oneuptime-openapi-specification-open-standards/view)

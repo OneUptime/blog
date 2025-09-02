@@ -218,3 +218,9 @@ The future of observability is open, standards-based, and collaborative. With On
 ---
 
 *Have questions about integrating with OneUptime's API? [Join our community](https://oneuptime.com/community) or [explore our documentation](https://docs.oneuptime.com) to get started.*
+
+**Related Reading:**
+
+- [Introducing the OneUptime Terraform Provider: Infrastructure as Code for Complete Observability](https://oneuptime.com/blog/post/2025-07-01-introducing-terraform-provider-for-oneuptime/view)
+- [Introducing OneUptime MCP Server: Bringing AI-Native Observability to Your Workflow](https://oneuptime.com/blog/post/2025-07-01-oneuptime-mcp-server-ai-observability/view)
+- [Integrating OneUptime and Slack (and probably Teams)](https://oneuptime.com/blog/post/2025-01-31-integrating-oneuptime-and-slack-and-probably-teams/view)

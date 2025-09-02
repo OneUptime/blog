@@ -29,3 +29,9 @@ You can run OneUptime on your own infrastructure, in your own cloud account, or 
 ### We're open telemetry native.
 
 OneUptime is built with OpenTelemetry at its core. OpenTelemetry is an open-source observability framework that provides standardized instrumentation for collecting metrics, logs, and traces. By being OpenTelemetry native, OneUptime ensures seamless integration with a wide range of tools and services, offering a unified and comprehensive observability solution. This native support simplifies the setup process and enhances the platform's flexibility and scalability.
+
+**Related Reading:**
+
+- [Datadog Dollars: Why Your Monitoring Bill Is Breaking the Bank](https://oneuptime.com/blog/post/2025-02-01-datadog-dollars-why-monitoring-is-breaking-the-bank/view)
+- [Monitoring LLM Application(s) with Openlit and OneUptime](https://oneuptime.com/blog/post/2024-09-13-monitoring-llm-with-openlit-and-oneuptime/view)
+- [Logs, Metrics & Traces: Turning Three Noisy Streams into One Story](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)

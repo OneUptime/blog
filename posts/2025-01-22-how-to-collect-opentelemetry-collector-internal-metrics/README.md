@@ -55,3 +55,9 @@ Here's how one of the metrics looks like in OneUptime:
 - You can use any backend that supports the OpenTelemetry Protocol (OTLP) to collect and analyze the metrics. [OneUptime](https://oneuptime.com) is just an example. We also run a SaaS service so you dont have to worry about setting up and maintaining your own monitoring infrastructure.
 
 Happy monitoring and debugging!
+
+**Related Reading:**
+
+- [How to increase the size of the sending queue in OpenTelemetry Collector?](https://oneuptime.com/blog/post/2025-01-20-increase-size-of-open-telemetry-collector-queue/view)
+- [How to reduce noise in OpenTelemetry? Keep What Matters, Drop the Rest.](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view)
+- [What are metrics in OpenTelemetry: A Complete Guide](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view)

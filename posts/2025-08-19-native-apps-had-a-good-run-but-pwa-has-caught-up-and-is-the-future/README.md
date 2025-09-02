@@ -147,3 +147,9 @@ If you’re maintaining three frontends today (web, iOS, Android), ask: What wou
 ---
 
 *Curious how we implement parts of this stack? Let us know, we may publish deeper architecture dives (service worker strategy, offline queue design, push pipeline) next.*
+
+**Related Reading:**
+
+- [The Power of Three: How Small Teams Drive Big Results at OneUptime](https://oneuptime.com/blog/post/2025-03-13-power-of-three-how-small-teams-drive-big-results/view)
+- [Why engineers should spend 20% of their time talking to customers.](https://oneuptime.com/blog/post/2025-08-22-why-engineers-should-spend-20-percent-of-time-talking-to-customers/view)
+- [Why We Resent Middle Managers (And Why OneUptime Doesn't Have Any)](https://oneuptime.com/blog/post/2025-08-29-why-we-resent-middle-managers-and-why-we-dont-have-them/view)

@@ -160,3 +160,9 @@ Start small, think big, and let Infrastructure as Code power your observability 
 ---
 
 *Have questions about the OneUptime Terraform provider? [Join our community](https://oneuptime.com/support) or [check out the documentation](https://oneuptime.com/docs) to get started.*
+
+**Related Reading:**
+
+- [Introducing OneUptime MCP Server: Bringing AI-Native Observability to Your Workflow](https://oneuptime.com/blog/post/2025-07-01-oneuptime-mcp-server-ai-observability/view)
+- [OneUptime Embraces Open Standards: Complete OpenAPI 3.0 Specification Now Available](https://oneuptime.com/blog/post/2025-07-01-oneuptime-openapi-specification-open-standards/view)
+- [Integrating OneUptime and Slack (and probably Teams)](https://oneuptime.com/blog/post/2025-01-31-integrating-oneuptime-and-slack-and-probably-teams/view)

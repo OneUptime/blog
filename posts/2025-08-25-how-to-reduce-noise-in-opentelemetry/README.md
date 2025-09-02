@@ -389,3 +389,9 @@ Own your signal density. Let tools (OneUptime included) *amplify* it, not drown 
 ### Want More?
 
 If you’d like a deeper dive (adaptive sampling configs, cost dashboards, span naming audits), open an issue or reach out. Happy to expand this into a part II.
+
+**Related Reading:**
+
+- [How to increase the size of the sending queue in OpenTelemetry Collector?](https://oneuptime.com/blog/post/2025-01-20-increase-size-of-open-telemetry-collector-queue/view)
+- [How to collect internal metrics from OpenTelemetry Collector?](https://oneuptime.com/blog/post/2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics/view)
+- [What are Traces and Spans in OpenTelemetry: A Practical Guide](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)
