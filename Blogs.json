@@ -314,6 +314,18 @@
       "Incident Management"
     ],
     "post": "2025-09-01-the-five-stages-of-sre-maturity"
+  },
+  {
+    "title": "The Hidden Costs of Dependency Bloat in Software Development",
+    "description": "Dependency bloat isn't just about bundle size—it's a hidden tax on your development velocity, security posture, and long-term maintainability. Learn why fewer dependencies often means faster, safer, and more sustainable software.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Software Development",
+      "Dependencies",
+      "Maintenance",
+      "Security"
+    ],
+    "post": "2025-09-02-the-hidden-costs-of-dependency-bloat-in-software-development"
   }
   
 ]

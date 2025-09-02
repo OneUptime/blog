@@ -12,6 +12,7 @@
 - Customer Support
 - DataDog
 - Datadog
+- Dependencies
 - DevOps
 - Engineering Culture
 - Identity
@@ -24,6 +25,7 @@
 - LLM Observability
 - Logging
 - Logs
+- Maintenance
 - MCP
 - Metrics
 - Microk8s
@@ -47,6 +49,7 @@
 - Site Reliabiity Engineering
 - Slack
 - SLOs
+- Software Development
 - SRE
 - Standards
 - Startups
