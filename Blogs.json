@@ -326,6 +326,20 @@
       "Security"
     ],
     "post": "2025-09-02-the-hidden-costs-of-dependency-bloat-in-software-development"
+  },
+  {
+    "title": "What are Error Budgets? A Guide to Managing Reliability",
+    "description": "Error budgets are a fundamental concept in Site Reliability Engineering that help teams balance innovation with reliability. This guide explains what error budgets are, how to manage them effectively, what to look out for, and how they differ from SLOs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Site Reliability Engineering",
+      "SRE",
+      "Observability",
+      "SLOs",
+      "Error Budgets",
+      "Reliability"
+    ],
+    "post": "2025-09-03-what-are-error-budgets"
   }
   
 ]
