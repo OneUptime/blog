@@ -4,7 +4,7 @@ In the world of Site Reliability Engineering (SRE), metrics are the compass that
 
 This comprehensive guide will decode the essential SRE terminology that every engineer and engineering manager should know, from the foundational metrics like MTTR and MTTD to advanced concepts that shape modern reliability practices.
 
-## The Foundation: The Four Pillars of SRE Metrics
+## The Foundation: Essential SRE Metrics
 
 ### 1. MTTR (Mean Time To Recovery/Repair)
 
@@ -68,7 +68,7 @@ MTBF = (Total Operational Time) / (Number of Failures)
 **Distinction from MTTF**: While MTTF measures time to first failure, MTBF includes the full cycle of operation, failure, repair, and return to operation.
 
 
-### Error Budgets
+### 5. Error Budgets
 
 **Definition**: The amount of unreliability your service can tolerate before it impacts user experience, typically expressed as a percentage of allowed downtime.
 
@@ -82,7 +82,7 @@ For example, a 99.9% availability SLO means you have a 0.1% error budget—rough
 
 **Learn more**: Check out our detailed guide on [what are error budgets](https://oneuptime.com/blog/post/2025-09-03-what-are-error-budgets/view) for comprehensive coverage of this crucial concept.
 
-### Service Level Indicators (SLIs)
+### 6. Service Level Indicators (SLIs)
 
 **Definition**: Quantitative measures of service level, such as request latency, error rate, or throughput.
 
@@ -92,7 +92,7 @@ Common SLIs include:
 - **Throughput**: Requests per second
 - **Quality**: Error rates or data accuracy
 
-### Service Level Objectives (SLOs)
+### 7. Service Level Objectives (SLOs)
 
 **Definition**: Target values or ranges for SLIs that define the desired reliability of a service.
 
@@ -103,7 +103,7 @@ Example SLOs:
 
 **For deeper understanding**: Our post on [SLA, SLI, and SLO differences](https://oneuptime.com/blog/post/2023-06-12-sli-sla-slo/view) provides comprehensive coverage of these foundational concepts.
 
-### Service Level Agreements (SLAs)
+### 8. Service Level Agreements (SLAs)
 
 **Definition**: Business contracts that specify the consequences of not meeting SLOs, typically including financial penalties or service credits.
 
