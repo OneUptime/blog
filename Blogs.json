@@ -358,6 +358,19 @@
       "Incident Management"
     ],
     "post": "2025-09-04-what-is-mttr-mttd-mtbf-and-more"
+  },
+  {
+    "title": "Beyond the AI Stigma: Why Judging Content by Its Creator Misses the Point",
+    "description": "The knee-jerk reaction to dismiss anything created by AI is fundamentally flawed. Quality should be judged by output, not by origin. When AI helps engineers write better code, produce more content, and eliminate grunt work, the real question isn't \"was this made by AI?\" but \"does this solve the problem effectively?\"",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI",
+      "Software Development",
+      "Engineering Culture",
+      "Product Development",
+      "Productivity"
+    ],
+    "post": "2025-09-05-beyond-the-ai-stigma-why-judging-content-by-its-creator-misses-the-point"
   }
   
 ]
