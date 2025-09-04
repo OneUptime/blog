@@ -16,6 +16,7 @@
 - DevOps
 - Engineering Culture
 - Identity
+- Incident Management
 - Infrastructure as Code
 - Interoperability
 - JSON
@@ -31,6 +32,8 @@
 - Microk8s
 - Model Context Protocol
 - Monitoring
+- MTTD
+- MTTR
 - NodeJS
 - Observability
 - Open Source
