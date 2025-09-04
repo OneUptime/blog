@@ -1,5 +1,11 @@
 # Understanding MTTR, MTTD, MTBF and the Complete Reliability Lexicon
 
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
+
+Tags: Site Reliability Engineering, SRE, Observability, MTTR, MTTD, MTBF, Reliability, Metrics, Incident Response
+
+Description: A comprehensive guide to essential SRE metrics including MTTR, MTTD, MTBF, and more. Learn how to measure and improve system reliability with the complete lexicon of reliability engineering terminology that every engineer should know.
+
 In the world of Site Reliability Engineering (SRE), metrics are the compass that guides our reliability journey. While Mean Time To Recovery (MTTR) often steals the spotlight, it's just one piece of a much larger puzzle. Understanding the complete lexicon of SRE metrics is crucial for building robust, reliable systems that users can depend on.
 
 This comprehensive guide will decode the essential SRE terminology that every engineer and engineering manager should know, from the foundational metrics like MTTR and MTTD to advanced concepts that shape modern reliability practices.
