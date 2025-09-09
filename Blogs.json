@@ -371,6 +371,20 @@
       "Productivity"
     ],
     "post": "2025-09-05-why-ai-content-bad-is-a-flawed-mindset"
+  },
+  {
+    "title": "Lessons from npm's Security Failures",
+    "description": "Recent npm security incidents reveal fundamental flaws in package manager design. Here's how every package manager should implement security measures to prevent supply chain attacks and protect developers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Security",
+      "Package Management",
+      "Supply Chain",
+      "DevOps",
+      "Dependencies",
+      "Open Source"
+    ],
+    "post": "2025-09-09-lessons-from-npm-security-failures"
   }
   
 ]

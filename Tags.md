@@ -41,6 +41,7 @@
 - OpenTelemetry
 - Openlit
 - Organizational Design
+- Package Management
 - Platform Strategy
 - Product
 - Product Development
@@ -59,6 +60,7 @@
 - Standards
 - Startups
 - Structured Logging
+- Supply Chain
 - Team Management
 - Terraform
 - Tests
