@@ -46,6 +46,7 @@
 - Product
 - Product Development
 - Productivity
+- Postmortems
 - PWA
 - Reliability
 - SaaS
@@ -62,6 +63,7 @@
 - Structured Logging
 - Supply Chain
 - Team Management
+- Templates
 - Terraform
 - Tests
 - Tracing

@@ -385,6 +385,18 @@
       "Open Source"
     ],
     "post": "2025-09-09-lessons-from-npm-security-failures"
+  },
+  {
+    "title": "Effective Incident Postmortem Templates: Ready-to-Use Examples",
+    "description": "Master incident postmortems with these ready-to-use templates. Learn how to structure effective postmortems to improve reliability and prevent future incidents.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": [
+      "Incident Management",
+      "Postmortems",
+      "Templates",
+      "Reliability"
+    ],
+    "post": "2025-09-09-effective-incident-postmortem-templates-ready-to-use-examples"
   }
   
 ]
