@@ -398,5 +398,20 @@
     ],
     "post": "2025-09-09-effective-incident-postmortem-templates-ready-to-use-examples"
   }
-  
+  ,
+  {
+    "title": "Continuous Profiling with OpenTelemetry: Turning CPU & Memory Hotspots into Action",
+    "description": "A practical guide to continuous profiling with OpenTelemetry—why you need it beyond logs/metrics/traces, core profile types, how to collect CPU & heap profiles in Node.js, and how to correlate them with traces for faster performance debugging.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Profiling",
+      "Observability",
+      "Performance",
+      "NodeJS",
+      "TypeScript",
+      "Tracing"
+    ],
+    "post": "2025-09-09-profiling-with-opentelemetry"
+  }
 ]

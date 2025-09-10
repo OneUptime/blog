@@ -42,11 +42,13 @@
 - Openlit
 - Organizational Design
 - Package Management
+ - Performance
 - Platform Strategy
 - Product
 - Product Development
 - Productivity
 - Postmortems
+ - Profiling
 - PWA
 - Reliability
 - SaaS
