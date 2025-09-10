@@ -400,8 +400,8 @@
   }
   ,
   {
-    "title": "Continuous Profiling with OpenTelemetry: Turning CPU & Memory Hotspots into Action",
-    "description": "A practical guide to continuous profiling with OpenTelemetry—why you need it beyond logs/metrics/traces, core profile types, how to collect CPU & heap profiles in Node.js, and how to correlate them with traces for faster performance debugging.",
+    "title": "Basics of profiling: Turning CPU & Memory Hotspots into Action",
+    "description": "A practical guide to continuous profiling, why you need it beyond logs/metrics/traces, core profile types, how to collect CPU & heap profiles in Node.js, and how to correlate them with traces for faster performance debugging.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "OpenTelemetry",
@@ -412,6 +412,6 @@
       "TypeScript",
       "Tracing"
     ],
-    "post": "2025-09-09-profiling-with-opentelemetry"
+    "post": "2025-09-09-basics-of-profiling"
   }
 ]
