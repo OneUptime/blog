@@ -42,20 +42,21 @@
 - Openlit
 - Organizational Design
 - Package Management
- - Performance
+- Performance
 - Platform Strategy
 - Product
 - Product Development
 - Productivity
 - Postmortems
- - Profiling
+- Profiling
 - PWA
 - Reliability
 - SaaS
 - Sales
 - Sampling
 - Security
-- Site Reliabiity Engineering
+- Site Reliability Engineering
+- Error Budgets
 - Slack
 - SLOs
 - Software Development

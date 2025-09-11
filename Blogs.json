@@ -5,7 +5,7 @@
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "Learning Resource",
-      "Site Reliabiity Engineering"
+  "Site Reliability Engineering"
     ],
     "post": "2023-06-12-sli-sla-slo"
   },
@@ -413,5 +413,25 @@
       "Tracing"
     ],
     "post": "2025-09-09-basics-of-profiling"
+  }
+  ,
+  {
+    "title": "The Ultimate SRE Reliability Checklist: From Chaos to Consistent Excellence",
+    "description": "A comprehensive, opinionated SRE checklist spanning culture, SLOs, observability, alerting, incidents, change management, resilience, automation, cost and continuous improvement—use it as a maturity roadmap.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Site Reliability Engineering",
+      "SRE",
+      "Observability",
+      "Reliability",
+      "Incident Management",
+      "SLOs",
+      "Error Budgets",
+      "DevOps",
+      "Automation",
+      "Metrics",
+      "Postmortems"
+    ],
+    "post": "2025-09-10-sre-checklist"
   }
 ]
