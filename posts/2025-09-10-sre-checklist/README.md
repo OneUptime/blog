@@ -151,7 +151,7 @@ Keep it lean to start: 2–3 user journeys, each with availability + latency.
 **User Journey SLIs**: Real user flows (login, purchase) not raw host stats.  
 **SLO vs SLA Buffer**: Internal SLO stricter than contractual SLA.  
 **Automated Budget Tracking**: No spreadsheets; platform surfaces remaining % + burn velocity.  
-**Dual-Window Burn Alerts**: Fast window (1h) = spikes; slow window (6–24h) = slow bleed.  
+**Dual-Window Burn Rate Alerts**: Use two SLO burn rate evaluations—a short window (~1h) to catch sudden spikes and a longer window (6–24h) to spot slow budget leakage—so you detect both fast failures and quiet degradation without excess paging.
 **Quarterly SLO Review**: Adjust only with justification (not to “look green”).  
 **Roadmap Influence**: Breached budget → triggers backlog reshuffle / freeze rules.  
 **SLO Changelog**: Version changes; helps post-incident context.  
@@ -164,7 +164,7 @@ Keep it lean to start: 2–3 user journeys, each with availability + latency.
 
 Goal: Fewer pivot steps from “alert” to “probable cause.”
 
-**Unified Platform**: Traces, logs, metrics, events discoverable together.  
+**Unified Platform**: Traces, logs, metrics, events discoverable together.  Use OpenTelemetry with a platform like OneUptime (https://oneuptime.com)
 **Golden Signals**: Latency, traffic, errors, saturation for each service template.  
 **High Cardinality Guardrails**: Prevent label explosions (cost + query slowness).  
 **Structured Logs + Correlation IDs**: Standard request ID flows through all tiers.  
@@ -321,34 +321,9 @@ Security events are also availability threats.
 
 ---
 
-## Common Early Smells (Fix ASAP)
-
-- Alerts without runbooks  
-- Multiple dashboards disagree on “health”  
-- Postmortems ending in “human error”  
-- Feature flag platform outage blocks rollback  
-- Retry storms amplifying upstream latency  
-- Unused dashboards nobody opens  
-- SLOs never change priority decisions  
-- Quiet tail latency creep over months
-
----
-
-## Suggested First 90 Days (Sequenced)
-
-1. Weeks 1–2: Reduce alert noise (delete or fix low-value, add runbooks).  
-2. Weeks 3–4: Map top user journeys; draft SLOs; enable automated error budget tracking.  
-3. Weeks 5–6: Incident framework (roles, severity, automated timeline).  
-4. Weeks 7–8: Script & drill rollback (<5 min objective).  
-5. Weeks 9–10: Correlation (structured logs + trace IDs + span naming).  
-6. Weeks 11–12: Dual-window burn alerts; exec + team dashboard.  
-7. Weeks 13–14: Progressive delivery + tuned timeouts/retries.  
-8. Weeks 15–16: Start small fault injection (latency + dependency kill).  
-
----
-
 ## Tooling Principles
 
+- Use one tool for the entire SRE pipeline -> Monitoring / Telemetry -> Incident Management -> Status Page Communication and more. OneUptime (https://oneuptime.com) can help you here.
 - One authoritative incident timeline  
 - Instrument first; optimize second  
 - Fewer, higher-quality signals beat noisy sprawl  
