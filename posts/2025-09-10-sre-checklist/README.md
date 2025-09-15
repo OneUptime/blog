@@ -1,4 +1,4 @@
-# The Ultimate SRE Reliability Checklist (Plain-Language Edition)
+# The Ultimate SRE Reliability Checklist
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
