@@ -24,6 +24,7 @@
 - Leadership
 - Learning Resource
 - LLM Observability
+- Latency
 - Logging
 - Logs
 - Maintenance

@@ -434,4 +434,21 @@
     ],
     "post": "2025-09-10-sre-checklist"
   }
+  ,
+  {
+    "title": "P50 vs P95 vs P99 Latency: What These Percentiles Actually Mean",
+    "description": "A practical guide to understanding P50, P95, and P99 latency percentiles—why averages lie, what each percentile tells you about user experience, how to set SLOs around them, and how to collect them correctly with histograms.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Observability",
+      "Performance",
+      "Metrics",
+      "Latency",
+      "SLOs",
+      "Site Reliability Engineering",
+      "SRE",
+      "Reliability"
+    ],
+    "post": "2025-09-15-p50-vs-p95-vs-p99-latency-percentiles"
+  }
 ]
