@@ -16,17 +16,17 @@ This post explains *exactly* what the OpenTelemetry Collector is, why it exists,
 
 ## Quick Definition
 
-The **OpenTelemetry Collector** is a **vendor‑neutral, pluggable telemetry pipeline** that receives, processes, and exports telemetry signals (traces, metrics, logs, profiles, more coming) from your applications to one or more backends.
+The **OpenTelemetry Collector** is a **vendor‑neutral, pluggable telemetry pipeline** that receives, processes, and exports telemetry signals (traces, metrics, logs, profiles, more coming) from your applications to one or more backends (one of those backends is [OneUptime](https://oneuptime.com)).
 
 It removes vendor SDK lock‑in, centralizes telemetry policy, and gives you a programmable choke point to:
 
-- Transform / redact / enrich data
-- Batch and retry exports
-- Apply sampling strategies (head, tail, probabilistic)
-- Normalize inconsistent instrumentation
-- Split and route different data types to different destinations
-- Protect sensitive backends from untrusted app networks
-- Control cost by dropping what doesn’t matter
+- Clean the data (remove sensitive fields, add context)
+- Batch sends and retry automatically when exports fail
+- Sample smartly (keep errors & rare slow traces, trim noisy success traffic)
+- Smooth out differences between frameworks / SDK versions
+- Route traces, metrics, and logs to different backends
+- Act as a safety barrier between app nodes and the public internet
+- Cut cost early by dropping low‑value or redundant telemetry
 
 ---
 
@@ -68,17 +68,14 @@ graph LR
     D[Service C] --> E
   end
 
-  E[(Central Collector)] -->|Traces| B1[(Tracing Store / OneUptime)]
-  E -->|Metrics| B2[(Metrics Store / OneUptime)]
-  E -->|Logs| B3[(Log Store / OneUptime)]
-  E -->|Sampling Drop| X[Cost Savings]
+  E[(Central Collector)] -->|Telemetry Data| B1[(OTel Backend (ex: OneUptime))]
 ```
 
 **Pros:**
 - Centralized config: sampling, redaction, enrichment
 - One egress channel with batching & retry
 - Decouple app lifecycle from vendor changes
-- Multi-destination routing (e.g., traces → OneUptime, logs → S3)
+- Multi-destination routing (e.g., traces, metrics, logs → OneUptime, logs → S3)
 - Reduce noisy telemetry before it hits priced tiers
 - Security boundary: no direct outbound to internet from app nodes
 
