@@ -159,7 +159,15 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, tail_sampling, attributes/redact]
-      exporters: [ otlphttp_oneuptime]
+      exporters: [otlphttp_oneuptime]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp_oneuptime]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, attributes/redact]
+      exporters: [otlphttp_oneuptime]
     
 ```
 
