@@ -62,13 +62,18 @@ All apps send to a centralized Collector (or a tiered set) which then exports.
 
 ```mermaid
 graph LR
-  subgraph Services
-    A[Service A] --> E
-    C[Service B] --> E
-    D[Service C] --> E
+  subgraph Your Infrastructure
+    A[Service A]
+    C[Service B]
+    D[Service C]
+    A --> E[Central Collector]
+    C --> E
+    D --> E
   end
 
-  E[(Central Collector)] -->|Telemetry Data| B1[(OTel Backend (ex: OneUptime))]
+
+
+  E -->|Telemetry Data| B1[(OTel Backend like OneUptime)]
 ```
 
 **Pros:**
