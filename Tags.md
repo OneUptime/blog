@@ -5,6 +5,7 @@
 - Automation
 - AWS
 - Cloud
+- Collector
 - Components
 - Correlation
 - Cost Optimization

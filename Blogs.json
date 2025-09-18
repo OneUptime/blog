@@ -451,4 +451,22 @@
     ],
     "post": "2025-09-15-p50-vs-p95-vs-p99-latency-percentiles"
   }
+  ,
+  {
+    "title": "OpenTelemetry Collector: What It Is, When You Need It, and When You Don’t",
+    "description": "A practical guide to understanding the OpenTelemetry Collector—what it does, architecture patterns with and without it, and a decision framework for when to deploy it to improve performance, cost, security, and flexibility.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": [
+      "OpenTelemetry",
+      "Observability",
+      "Metrics",
+      "Logs",
+      "Traces",
+      "Collector",
+      "Cost Optimization",
+      "Reliability",
+      "Sampling"
+    ],
+    "post": "2025-09-18-what-is-opentelemetry-collector-and-why-use-one"
+  }
 ]
