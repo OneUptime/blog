@@ -84,29 +84,6 @@ graph LR
 - Potential chokepoint (must size + scale properly)
 - Misconfiguration can drop all telemetry
 
-### 3. Agent (Sidecar / DaemonSet) + Central Collector
-Often best for large clusters: lightweight “agent” near each workload + central aggregating collector.
-
-```mermaid
-graph LR
-  subgraph Node 1
-    A1[App Pods] --> L1[(Agent Collector)]
-  end
-  subgraph Node 2
-    A2[App Pods] --> L2[(Agent Collector)]
-  end
-  subgraph Node 3
-    A3[App Pods] --> L3[(Agent Collector)]
-  end
-
-  L1 --> C[(Central Collector)]
-  L2 --> C
-  L3 --> C
-  C --> B[(Backends)]
-```
-
-**Why agents?** Local UDP/localhost exporters reduce latency & overhead. You also isolate app code from export failures.
-
 ---
 
 ## Direct Export vs Collector: Side‑by‑Side
@@ -171,19 +148,19 @@ processors:
           threshold_ms: 500
 
 exporters:
-  otlphttp/oneuptime:
+  otlphttp_oneuptime:
     endpoint: https://oneuptime.com/otlp/v1/traces
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
-  logging/debug:
-    loglevel: debug
+
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, tail_sampling, attributes/redact]
-      exporters: [otlphttp/oneuptime, logging/debug]
+      exporters: [ otlphttp_oneuptime]
+    
 ```
 
 ---
