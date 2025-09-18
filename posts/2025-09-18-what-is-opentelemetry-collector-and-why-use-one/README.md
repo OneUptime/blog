@@ -176,9 +176,8 @@ service:
 ## When You Definitely Need a Collector
 
 - You want **tail sampling** (decide after seeing full trace) to keep 100% of errors & rare paths but downsample boring traffic.
-- You need **multi-destination routing** (e.g., traces → OneUptime, metrics → Prometheus, logs → S3/ClickHouse, security events → SIEM).
+- You need **multi-destination routing** (e.g., traces, metrics, logs → OneUptime, logs → S3/ClickHouse, security events → SIEM).
 - You must **strip sensitive PII** before it leaves your network.
-- You have **legacy agents** (Jaeger, Zipkin, Prometheus) and want one OTLP backend.
 - You need **cost governance**—drop chatty spans/metrics at the edge.
 - You want **hot-swappable vendors** without touching app code.
 - You require **network isolation** (no direct internet from app nodes).
@@ -191,7 +190,7 @@ service:
 - You are experimenting locally / learning OTel basics.
 - You have no current need for sampling, routing, or redaction.
 
-(But design your SDK setup so you can add a collector later with a one-line endpoint change.)
+(But design your app setup so you can add a collector later with a one-line endpoint change. Ideally an env variable change)
 
 ---
 
@@ -209,127 +208,6 @@ Collector lets you:
 - Route *only* audit-critical logs to expensive storage; bulk to cheap object store
 
 > Every dollar saved upstream compounds monthly. The collector is your first cost control valve.
-
----
-
-## Deployment Patterns
-
-| Pattern | Use Case | Notes |
-|---------|----------|-------|
-| Single Central Collector | Small cluster / beta | Keep HA risk in mind (run 2+ replicas) |
-| DaemonSet Agents + Central | Kubernetes scale | Agents receive via localhost; central does heavy processing |
-| Sidecar per Pod | Hardcore isolation / multi-tenant | Expensive; rarely needed except SaaS isolation |
-| Edge → Regional → Core (Tiered) | Global footprint | Regional collectors fan-in to core exporters |
-| Collector + Kafka Buffer | Burst absorption | Exporters pull from Kafka asynchronously |
-
----
-
-## Reliability Considerations
-
-| Risk | Mitigation |
-|------|-----------|
-| Collector crash drops data | Enable file_storage / persistent queue for retry |
-| Memory blowup under burst | memory_limiter + batching + tail sampling limits |
-| Backpressure to apps | Use agents on-node to decouple network pauses |
-| Misconfig kills pipeline | Health-check endpoints + config validation CI test |
-| Single point of failure | At least 2 collectors behind a load balancer |
-
----
-
-## Example: Migrating From Direct Export to Collector
-
-1. Deploy a minimal collector accepting OTLP on gRPC + HTTP.
-2. Point one non-critical service’s OTLP exporter to it.
-3. Verify: traces/metrics appear unchanged in backend.
-4. Add batch + memory_limiter processors.
-5. Introduce redaction + sampling (start with logging exporter for validation).
-6. Migrate remaining services.
-7. Add multi-backend routing as needed.
-
-> Treat the shift as an **infra refactor**, not a big-bang observability rewrite.
-
----
-
-## Sample Dual-Pipeline Config (Traces + Metrics + Logs)
-
-```yaml
-receivers:
-  otlp:
-    protocols: { grpc: {}, http: {} }
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: 'app'
-          static_configs:
-            - targets: ['app:9090']
-
-processors:
-  batch: {}
-  resource:
-    attributes:
-      - key: deployment.environment
-        value: prod
-        action: upsert
-  attributes/redact:
-    actions:
-      - key: http.request.header.authorization
-        action: delete
-  filter/logs:
-    logs:
-      include:
-        match_type: strict
-        resource_attributes:
-          - key: service.name
-            value: my-api
-
-exporters:
-  otlphttp/oneuptime:
-    endpoint: https://oneuptime.com/otlp/v1/
-    headers: { x-oneuptime-token: ${ONEUPTIME_TOKEN} }
-  logging/debug:
-    loglevel: info
-
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [resource, batch]
-      exporters: [otlphttp/oneuptime]
-    metrics:
-      receivers: [otlp, prometheus]
-      processors: [resource, batch]
-      exporters: [otlphttp/oneuptime]
-    logs:
-      receivers: [otlp]
-      processors: [resource, attributes/redact, batch]
-      exporters: [otlphttp/oneuptime, logging/debug]
-```
-
----
-
-## Decision Checklist (Use This Before Deploying)
-
-Answer “yes” to 2+ of these? Deploy a collector.
-
-- Need to redact / transform telemetry centrally?
-- Want tail or probabilistic sampling?
-- Multi-backend routing required?
-- Concerned about rising observability spend?
-- Need to isolate insecure app networks from internet?
-- Want resilience to backend outages (buffering)?
-- Need to ingest heterogeneous protocols (Jaeger + OTLP + Prometheus)?
-
----
-
-## Common Mistakes
-
-| Mistake | Fix |
-|---------|-----|
-| Enabling tail sampling without sizing memory | Start with head sampling or low trace volume; monitor queue metrics |
-| Redacting after exporting | Redact in processors before exporters |
-| Running single replica in prod | Always deploy at least 2; add readiness probe |
-| Skipping memory_limiter | Mandatory for safety under spikes |
-| Mixing experimental processors blindly | Enable one at a time; watch internal collector metrics |
 
 ---
 
@@ -352,12 +230,12 @@ You can (and should) scrape the collector's own metrics to watch queue length, d
 
 ## Final Take
 
-If observability is core to operating your system (it is), the Collector becomes the *control plane* for your telemetry. Start simple, add capabilities incrementally, and let it pay for itself through cost savings, flexibility, and reliability.
+If observability is core to operating your system (it should be), the Collector becomes the *control plane* for your telemetry. Start simple, add capabilities incrementally, and let it pay for itself through cost savings, flexibility, and reliability.
 
 > Golden rule: **Emit broadly at the edge, curate aggressively in the pipeline, store intentionally in the backend.** The Collector is where that curation lives.
 
 ---
 
-Need a production-grade backend for your Collector pipelines? **OneUptime** natively supports OpenTelemetry for traces, metrics, logs, and more—without vendor lock‑in.
+Need a production-grade backend for your Collector pipelines? **OneUptime** natively supports OpenTelemetry for traces, metrics, logs, and more - without vendor lock‑in.
 
 Happy instrumenting.
