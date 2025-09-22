@@ -469,4 +469,20 @@
     ],
     "post": "2025-09-18-what-is-opentelemetry-collector-and-why-use-one"
   }
+  ,
+  {
+    "title": "Connecting Metrics ↔ Traces with Exemplars in OpenTelemetry",
+    "description": "A hands-on guide to exemplars—how they connect metric points to the exact trace that caused them, why they matter for faster debugging and cost efficiency, and how to enable them end-to-end with OpenTelemetry (apps → collector → backend).",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Metrics",
+      "Traces",
+      "Exemplars",
+      "Correlation",
+      "Histograms",
+      "Performance"
+    ],
+    "post": "2025-09-22-connecting-metrics-to-traces-with-exemplars"
+  }
 ]

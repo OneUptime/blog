@@ -59,6 +59,7 @@
 - Security
 - Site Reliability Engineering
 - Error Budgets
+- Exemplars
 - Slack
 - SLOs
 - Software Development
@@ -73,6 +74,7 @@
 - Tests
 - Tracing
 - Traces
+- Histograms
 - TypeScript
 - Web Architecture
 - Workflows
