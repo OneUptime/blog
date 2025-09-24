@@ -218,25 +218,25 @@ Configure OneUptime to create incidents based on webhook data:
 
 **Incident Title Generation:**
 ```
-[{{ .labels.severity | toUpper }}] {{ .annotations.summary }}
+[{{requestBody.alerts[0].labels.severity}}] {{requestBody.alerts[0].annotations.summary}}
 ```
 
 **Incident Description Template:**
 ```markdown
 **Alert Details:**
-- **Service:** {{ .labels.service }}
-- **Instance:** {{ .labels.instance }}
-- **Started:** {{ .startsAt | formatDate }}
-- **Description:** {{ .annotations.description }}
+- **Service:** {{requestBody.alerts[0].labels.service}}
+- **Instance:** {{requestBody.alerts[0].labels.instance}}
+- **Started:** {{requestBody.alerts[0].startsAt | formatDate}}
+- **Description:** {{requestBody.alerts[0].annotations.description}}
 
 **Additional Context:**
-{{ .annotations.impact }}
+{{requestBody.alerts[0].annotations.impact}}
 
-**Runbook:** {{ .annotations.runbook_url }}
-**Dashboard:** {{ .generatorURL }}
+**Runbook:** {{requestBody.alerts[0].annotations.runbook_url}}
+**Dashboard:** {{requestBody.alerts[0].generatorURL}}
 
-**Affected Services:** {{ .annotations.affected_services }}
-**Owner:** {{ .annotations.owner }}
+**Affected Services:** {{requestBody.alerts[0].annotations.affected_services}}
+**Owner:** {{requestBody.alerts[0].annotations.owner}}
 ```
 
 ---
