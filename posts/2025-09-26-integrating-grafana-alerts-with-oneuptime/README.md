@@ -294,6 +294,7 @@ Immediate: Slack notification to on-call channel
 
 Connect with popular on-call tools:
 
+- **OneUptime**: You can use OneUptime for on-call without using any other tools, but you can integrate with other tools as well.
 - **PagerDuty**: Forward alerts to PD services
 - **Opsgenie**: Create incidents in Opsgenie
 - **VictorOps**: Route alerts through VictorOps
