@@ -70,8 +70,12 @@ flowchart LR
   M --> C
   C --> A
   
+  Slack[Slack]
+  OneUptime_On_Call["OneUptime On-Call"]
+  Update[Update]
+  
   A -->|Device offline| Slack
-  A -->|Custom alert| OneUptime On-Call
+  A -->|Custom alert| OneUptime_On_Call
   A -->|Status page| Update
 ```
 
