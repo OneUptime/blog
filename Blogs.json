@@ -484,5 +484,73 @@
       "Performance"
     ],
     "post": "2025-09-22-connecting-metrics-to-traces-with-exemplars"
+  },
+  {
+    "title": "How to monitor SSL Certificate with OneUptime: Never Let a Certificate Expire Again",
+    "description": "A comprehensive guide to monitoring SSL certificates with OneUptime—from setup and configuration to advanced monitoring scenarios. Learn how to prevent certificate expiration outages, track certificate health, and set up intelligent alerting for your SSL infrastructure.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSL",
+      "TLS",
+      "Certificate Monitoring",
+      "Security",
+      "Monitoring",
+      "Infrastructure",
+      "DevOps",
+      "Reliability",
+      "Uptime Monitoring"
+    ],
+    "post": "2025-09-23-ssl-certificate-monitoring-with-oneuptime"
+  },
+  {
+    "title": "Monitoring IoT Devices with OneUptime: Keep Your Connected Devices in Check",
+    "description": "A comprehensive guide to monitoring IoT devices with OneUptime's incoming request monitors. Learn how to set up heartbeat monitoring for your connected devices, configure alerts, and ensure your IoT infrastructure stays reliable.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "IoT",
+      "Monitoring",
+      "Incoming Request",
+      "Heartbeat",
+      "Devices",
+      "Reliability",
+      "DevOps"
+    ],
+    "post": "2025-09-24-monitoring-iot-devices-with-oneuptime"
+  },
+  {
+    "title": "Monitoring Backup Jobs with OneUptime: Ensure Your Backups Actually Work",
+    "description": "A comprehensive guide to monitoring backup jobs with OneUptime's incoming request monitors. Learn how to track backup job status, detect failures, and ensure your data protection strategy works when you need it most.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Backup",
+      "Monitoring",
+      "Incoming Request",
+      "Heartbeat",
+      "Jobs",
+      "Reliability",
+      "DevOps",
+      "Data Protection",
+      "Automation"
+    ],
+    "post": "2025-09-25-monitoring-backup-jobs-with-oneuptime"
+  },
+  {
+    "title": "Integrating Grafana Alerts with OneUptime: Automated Incident Management",
+    "description": "A comprehensive guide to integrating Grafana alerts with OneUptime's incoming request monitors. Learn how to automatically create incidents, update status pages, and trigger on-call rotations when Grafana detects issues.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Grafana",
+      "Alerts",
+      "Monitoring",
+      "Incoming Request",
+      "Heartbeat",
+      "Status Page",
+      "On-call",
+      "Incident Management",
+      "DevOps",
+      "Webhooks",
+      "Automation"
+    ],
+    "post": "2025-09-26-integrating-grafana-alerts-with-oneuptime"
   }
 ]

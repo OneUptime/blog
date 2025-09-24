@@ -1,9 +1,12 @@
 # Tags
 
 - AI
+- Alerts
 - API
 - Automation
 - AWS
+- Backup
+- Certificate Monitoring
 - Cloud
 - Collector
 - Components
@@ -13,14 +16,20 @@
 - Customer Support
 - DataDog
 - Datadog
+- Data Protection
 - Dependencies
 - DevOps
+- Devices
 - Engineering Culture
 - Identity
 - Incident Management
+- Infrastructure
 - Infrastructure as Code
+- Incoming Request
 - Interoperability
+- IoT
 - JSON
+- Jobs
 - Kubernetes
 - Leadership
 - Learning Resource
@@ -38,6 +47,7 @@
 - MTTR
 - NodeJS
 - Observability
+- On-call
 - Open Source
 - OpenAPI
 - OpenTelemetry
@@ -60,22 +70,29 @@
 - Site Reliability Engineering
 - Error Budgets
 - Exemplars
+- Grafana
 - Slack
 - SLOs
 - Software Development
 - SRE
+- SSL
 - Standards
 - Startups
+- Status Page
 - Structured Logging
 - Supply Chain
 - Team Management
 - Templates
 - Terraform
 - Tests
+- TLS
 - Tracing
 - Traces
+- Heartbeat
 - Histograms
 - TypeScript
+- Uptime Monitoring
 - Web Architecture
+- Webhooks
 - Workflows
 
