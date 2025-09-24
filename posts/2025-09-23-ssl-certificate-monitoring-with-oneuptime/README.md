@@ -1,4 +1,4 @@
-# SHow to monitor SSL Certificate with OneUptime: Never Let a Certificate Expire Again
+# How to monitor SSL Certificate with OneUptime: Never Let a Certificate Expire Again
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
