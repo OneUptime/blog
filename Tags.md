@@ -1,6 +1,7 @@
 # Tags
 
 - AI
+- APM
 - Alerts
 - API
 - Automation
@@ -11,6 +12,7 @@
 - Collector
 - Components
 - Correlation
+- Distributed Systems
 - Cost Optimization
 - Customer Experience
 - Customer Support
@@ -51,6 +53,7 @@
 - Open Source
 - OpenAPI
 - OpenTelemetry
+- Trace Context
 - Openlit
 - Organizational Design
 - Package Management
@@ -95,4 +98,8 @@
 - Web Architecture
 - Webhooks
 - Workflows
+- Synthetic Monitoring
+- Playwright
+- Toil
+- Runbooks
 

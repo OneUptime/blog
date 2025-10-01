@@ -553,4 +553,56 @@
     ],
     "post": "2025-09-26-integrating-grafana-alerts-with-oneuptime"
   }
+  ,
+  {
+    "title": "Mastering APM: End-to-End User Journey Tracing in Distributed Systems",
+    "description": "A practical, end-to-end guide to propagating trace IDs across microservices—HTTP, gRPC, queues, and background jobs—so you can reconstruct real user journeys with OpenTelemetry, W3C Trace Context, and smart sampling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "APM",
+      "OpenTelemetry",
+      "Tracing",
+      "Traces",
+      "Observability",
+      "Distributed Systems",
+      "Trace Context",
+      "Sampling",
+      "Correlation"
+    ],
+    "post": "2025-10-01-mastering-apm-tracing-user-journeys-in-distributed-systems"
+  }
+  ,
+  {
+    "title": "Synthetic Monitoring in OneUptime: Simulating Real User Journeys with Playwright",
+    "description": "How OneUptime implements synthetic monitoring using real browsers, sandboxed user scripts, multi-device/multi-browser matrices, and rich artifacts (logs, screenshots) to proactively validate user journeys before your customers do.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Synthetic Monitoring",
+      "Monitoring",
+      "Reliability",
+      "Performance",
+      "Customer Experience",
+      "Playwright",
+      "Uptime Monitoring",
+      "DevOps"
+    ],
+    "post": "2025-10-01-synthetic-monitoring-in-oneuptime-simulating-real-user-journeys-with-playwright"
+  }
+  ,
+  {
+    "title": "Eliminating Toil: A Practical SRE Playbook",
+    "description": "What toil really is (and isn’t), how to find and measure it, and pragmatic steps to eliminate it with automation, guardrails, and culture.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Site Reliability Engineering",
+      "SRE",
+      "Toil",
+      "Automation",
+      "DevOps",
+      "Observability",
+      "On-call",
+      "Runbooks"
+    ],
+    "post": "2025-10-01-what-is-toil-and-how-to-eliminate-it"
+  }
 ]
