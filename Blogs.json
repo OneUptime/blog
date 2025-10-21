@@ -605,4 +605,17 @@
     ],
     "post": "2025-10-01-what-is-toil-and-how-to-eliminate-it"
   }
+  ,
+  {
+    "title": "DevOps - Here's a brief ode to the unsung heroes",
+    "description": "A brief thank-you to the DevOps teams who helped us keep systems steady when hyperscalers like AWS stumble.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DevOps",
+      "Site Reliability Engineering",
+      "Reliability",
+      "AWS"
+    ],
+    "post": "2025-10-21-ode-to-devops-heroes"
+  }
 ]
