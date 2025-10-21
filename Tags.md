@@ -20,6 +20,7 @@
 - Datadog
 - Data Protection
 - Dependencies
+- Decentralization
 - Disaster Recovery
 - DevOps
 - Devices
@@ -70,6 +71,7 @@
 - SaaS
 - Sales
 - Sampling
+- Self-Hosting
 - Security
 - Site Reliability Engineering
 - Error Budgets

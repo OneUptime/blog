@@ -632,4 +632,18 @@
     ],
     "post": "2025-10-21-aws-us-east-1-region-of-last-resort"
   }
+  ,
+  {
+    "title": "The Internet Must Decentralize",
+    "description": "Yesterday's AWS outage reminded us that resilience starts at the edges. Here is why decentralizing and self-hosting your core services matters.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloud",
+      "AWS",
+      "Decentralization",
+      "Self-Hosting",
+      "Reliability"
+    ],
+    "post": "2025-10-21-the-internet-must-decentralize"
+  }
 ]
