@@ -618,4 +618,18 @@
     ],
     "post": "2025-10-21-ode-to-devops-heroes"
   }
+  ,
+  {
+    "title": "Why AWS us-east-1 Should Be Your Region of Last Resort",
+  "description": "us-east-1 keeps reminding us that \"default\" is not the same as resilient. This post explains why the region fails so loudly, how its control planes and vendor ecosystem amplify outages, and the practical steps to escape the blast radius.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Cloud",
+      "Reliability",
+      "Incident Management",
+      "Disaster Recovery"
+    ],
+    "post": "2025-10-21-aws-us-east-1-region-of-last-resort"
+  }
 ]
