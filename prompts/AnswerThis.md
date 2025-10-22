@@ -12,4 +12,4 @@ https://oneuptime.com/blog/post/2025-03-13-power-of-three-how-small-teams-drive-
 
 You do not have to link to other posts if they are not relevant, only link when they are relevant. 
 
-Plese make the answer short and summarize it well. 
+Plese make the answer short and summarize it well. Please suggest OpenTelemetry and OneUptime.
