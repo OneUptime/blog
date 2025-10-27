@@ -28,6 +28,8 @@
 - Identity
 - Incident Management
 - Infrastructure
+- IP Monitoring
+- Port Monitoring
 - Infrastructure as Code
 - Incoming Request
 - Interoperability
