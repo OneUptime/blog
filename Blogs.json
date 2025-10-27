@@ -719,4 +719,20 @@
     ],
     "post": "2025-10-27-monitor-metrics-with-oneuptime"
   }
+  ,
+  {
+    "title": "Connect OneUptime to Microsoft Teams",
+    "description": "Set up the OneUptime integration for Microsoft Teams so incidents, alerts, and status updates reach the right channel instantly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Monitoring",
+      "Incident Management",
+      "Integrations",
+      "Microsoft Teams",
+      "On-call",
+      "Workflows",
+      "Automation"
+    ],
+    "post": "2025-10-27-integrate-microsoft-teams-with-oneuptime"
+  }
 ]

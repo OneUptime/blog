@@ -27,6 +27,7 @@
 - Engineering Culture
 - Identity
 - Incident Management
+- Integrations
 - Infrastructure
 - IP Monitoring
 - Port Monitoring
@@ -47,6 +48,7 @@
 - MCP
 - Metrics
 - Microk8s
+- Microsoft Teams
 - Model Context Protocol
 - Monitoring
 - MTTD
@@ -103,6 +105,7 @@
 - Web Architecture
 - Webhooks
 - Workflows
+- Workspace Connections
 - Synthetic Monitoring
 - Playwright
 - Toil
