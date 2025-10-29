@@ -1,4 +1,4 @@
-# Bare Metal Two Years Later: Answering Your Toughest Questions About Leaving AWS
+# AWS to Bare Metal Two Years Later: Answering Your Toughest Questions About Leaving AWS
 
 Author: [devneelpatel](https://www.github.com/devneelpatel)
 
@@ -6,7 +6,7 @@ Tags: AWS, Cloud, Infrastructure, Cost Optimization
 
 Description: Two years after our AWS-to-bare-metal migration, we revisit the numbers, share what changed, and address the biggest questions from Hacker News and Reddit.
 
-When we published [How moving from AWS to Bare-Metal saved us $230,000 /yr.](https://oneuptime.com/blog/post/2023-10-30-moving-from-aws-to-bare-metal/view) in 2023, the story travelled far beyond our usual readership. The discussion threads on [Hacker News](https://news.ycombinator.com/item?id=38294569) and [r/sysadmin](https://www.reddit.com/r/sysadmin/comments/17y6zbi/moving_from_aws_to_baremetal_saved_us_230000_yr/) were packed with sharp questions: did we skip Reserved Instances, how do we fail over a single rack, what about the people cost, and when is cloud still the better answer? This follow-up is our long-form reply.
+When we published [How moving from AWS to Bare-Metal saved us $230,000 /yr.](https://oneuptime.com/blog/post/2023-10-30-moving-from-aws-to-bare-metal/view) in 2023, the story travelled far beyond our usual readership. The discussion threads on [Hacker News](https://news.ycombinator.com/item?id=38294569) and [Reddit](https://www.reddit.com/r/sysadmin/comments/17y6zbi/moving_from_aws_to_baremetal_saved_us_230000_yr/) were packed with sharp questions: did we skip Reserved Instances, how do we fail over a single rack, what about the people cost, and when is cloud still the better answer? This follow-up is our long-form reply.
 
 Over the last twenty-four months we:
 
@@ -16,6 +16,10 @@ Over the last twenty-four months we:
 - Reinvested the savings into buying bare metal AI servers to expand LLM-based alert / incident summarisation and auto code fixes based on log / traces and metrics in OneUptime. 
 
 Below we tackle the recurring themes from the community feedback, complete with the numbers we use internally.
+
+## $230,000 / yr savings? That is just an engineers salary. 
+
+In the US, it is. In the rest of the world. That's 2-5x engineers salary. We *used* to save $230,000 / yr but now the savings have exponentially grown. We now save over $1.2M / yr and we expect this to grow, as we grow as a business.
 
 ## “Why not just buy Savings Plans or Reserved Instances?”
 
@@ -130,7 +134,7 @@ Cloud-first was the right call for our first five years. Bare metal became the r
 - We are working on a detailed runbook + Terraform module to help teams do *capex forecasting* for colo moves. Expect that on the blog later this year.
 - A deep dive on Talos is in the queue, as requested by multiple folks in the HN thread.
 
-Questions we did not cover? Send them to `hello@oneuptime.com` or reply in the discussion threads—we are happy to keep sharing the gritty details.
+Questions we did not cover? Let us know in the discussion threads—we are happy to keep sharing the gritty details.
 
 **Related Reading:**
 

@@ -802,7 +802,7 @@
   }
   ,
   {
-    "title": "Bare Metal Two Years Later: Answering Your Toughest Questions About Leaving AWS",
+    "title": "AWS to Bare Metal Two Years Later: Answering Your Toughest Questions About Leaving AWS",
     "description": "Two years after leaving AWS we revisit the numbers, share what changed, and address the biggest questions from Hacker News and r/sysadmin.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
@@ -811,6 +811,6 @@
       "Infrastructure",
       "Cost Optimization"
     ],
-    "post": "2025-10-29-bare-metal-two-years-later"
+    "post": "2025-10-29-aws-to-bare-metal-two-years-later"
   }
 ]
