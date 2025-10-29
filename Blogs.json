@@ -735,4 +735,82 @@
     ],
     "post": "2025-10-27-integrate-microsoft-teams-with-oneuptime"
   }
+  ,
+  {
+    "title": "Why You Need a Status Page (Long Before Your Next Incident)",
+    "description": "Learn why proactive communication beats silence, how status pages reduce ticket volume, and the signals that tell you it is time to launch one.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Status Page",
+      "Customer Experience",
+      "Reliability",
+      "Incident Management"
+    ],
+    "post": "2025-10-27-why-you-need-a-status-page"
+  }
+  ,
+  {
+    "title": "Create a Public Status Page with OneUptime",
+    "description": "Step-by-step instructions to brand, automate, and launch a customer-facing status page that keeps everyone informed during incidents and maintenance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Status Page",
+      "Customer Experience",
+      "Incident Management",
+      "Reliability"
+    ],
+    "post": "2025-10-27-create-a-public-status-page-with-oneuptime"
+  }
+  ,
+  {
+    "title": "Create a Private Status Page with OneUptime",
+    "description": "Configure access controls, SSO, and tailored messaging for internal or premium audiences using OneUptime private status pages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Status Page",
+      "Incident Management",
+      "Reliability",
+      "Security"
+    ],
+    "post": "2025-10-27-create-a-private-status-page-with-oneuptime"
+  }
+  ,
+  {
+    "title": "Plan Scheduled Maintenance with OneUptime",
+    "description": "Plan, approve, and communicate scheduled maintenance without surprising customers or internal teams.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Scheduled Maintenance",
+      "Status Page",
+      "Incident Management",
+      "Customer Experience"
+    ],
+    "post": "2025-10-27-manage-scheduled-maintenance-with-oneuptime"
+  }
+  ,
+  {
+    "title": "Organize Your Service Catalog with OneUptime",
+    "description": "Build a living inventory of services, owners, monitors, and dependencies using OneUptime’s Service Catalog.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Service Catalog",
+      "Reliability",
+      "Ownership",
+      "Dependencies"
+    ],
+    "post": "2025-10-27-service-catalog-with-oneuptime"
+  }
+  ,
+  {
+    "title": "Bare Metal Two Years Later: Answering Your Toughest Questions About Leaving AWS",
+    "description": "Two years after leaving AWS we revisit the numbers, share what changed, and address the biggest questions from Hacker News and r/sysadmin.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": [
+      "AWS",
+      "Cloud",
+      "Infrastructure",
+      "Cost Optimization"
+    ],
+    "post": "2025-10-29-bare-metal-two-years-later"
+  }
 ]

@@ -45,6 +45,7 @@
 - Logging
 - Logs
 - Maintenance
+- Scheduled Maintenance
 - MCP
 - Metrics
 - Microk8s
@@ -89,6 +90,7 @@
 - Standards
 - Startups
 - Status Page
+- Service Catalog
 - Structured Logging
 - Supply Chain
 - Team Management
