@@ -20,6 +20,8 @@ Kubernetes turns infrastructure into a declarative bill of materials. You descri
 - **Uniform control plane** – RBAC, CRDs, service mesh, ingress—once you harden the platform, you can stamp the same control plane anywhere without rewriting supporting systems.
 - **Pluggable ecosystem** – CSI, CNI, and GPU operators let you swap vendor implementations without touching workloads. In practice this neutralizes the unique-value wedge hyperscalers rely on.
 
+Most services can be migrated to Kubernetes if you are not coupled to proprietary cloud APIs. That single design decision—sticking to open interfaces instead of provider-specific glue—turns "we should move" from a quarter-long project into an engineering sprint.
+
 Kubernetes broke the hyperscaler stranglehold on compute the moment it turned the orchestrator itself into an open standard. But workloads are more than pods—they are data, and data gravity is what keeps migration plans on whiteboards. That is where Ceph steps in.
 
 ## Ceph: Portable Storage that Travels with You
@@ -31,6 +33,17 @@ Workload portability dies the minute stateful services stick to a vendor-specifi
 - **Self-healing, horizontally scalable** – CRUSH maps and erasure coding keep data durable without the "storage tax" margins cloud vendors love.
 
 Ceph keeps data gravity under *your* control. That makes every migration option real—not theoretical.
+
+
+## Kubernetes Is Freedom (and Why We Love the Project)
+
+Kubernetes is the rare piece of infrastructure that hands power back to operators instead of corralling them into a vendor's business model. It is freedom because it lets us:
+
+- Run the same workloads everywhere—from quick experiments on a laptop to revenue-critical clusters in multiple clouds.
+- Express infrastructure intent in plain, declarative resources that any team member can read, diff, and roll forward.
+- Extend the platform through CRDs and controllers without asking permission from a hyperscaler roadmap.
+
+We love Kubernetes because it embodies the open-source ethos: opinionated defaults, pluggable layers, and a community that keeps pushing for portability over lock-in. Pairing it with Ceph turns that philosophy into a complete stack.
 
 
 ## The Declouding Movement Gains Momentum
