@@ -35,6 +35,9 @@ Workload portability dies the minute stateful services stick to a vendor-specifi
 Ceph keeps data gravity under *your* control. That makes every migration option real—not theoretical.
 
 
+We proved that portability ourselves when we [moved from AWS to bare metal](https://oneuptime.com/blog/post/2023-10-30-moving-from-aws-to-bare-metal/view) and later documented the compounding benefits in [our two-year retrospective](https://oneuptime.com/blog/post/2025-10-29-aws-to-bare-metal-two-years-later/view).
+
+
 ## Kubernetes Is Freedom (and Why We Love the Project)
 
 Kubernetes is the rare piece of infrastructure that hands power back to operators instead of corralling them into a vendor's business model. It is freedom because it lets us:
