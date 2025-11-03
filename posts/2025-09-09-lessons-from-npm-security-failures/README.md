@@ -57,7 +57,7 @@ release_policy:
   approval_timeout: 48h
 ```
 
-This mirrors how financial institutions handle large transactions—multiple approvals for high-impact changes.
+This mirrors how financial institutions handle large transactions- multiple approvals for high-impact changes.
 
 ### 3. Phishing-Resistant Authentication
 

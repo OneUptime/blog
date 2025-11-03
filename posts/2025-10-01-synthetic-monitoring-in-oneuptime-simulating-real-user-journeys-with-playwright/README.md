@@ -10,7 +10,7 @@ Description: How OneUptime implements synthetic monitoring using real browsers, 
 
 When customers say “the checkout button doesn’t work on mobile,” you need proof, not guesses. Synthetic monitoring makes this proactive: it runs scripted user flows on a schedule (and from your probes/regions), capturing screenshots, logs, and timings across different browsers and screen sizes.
 
-This post explains how synthetic monitoring works in OneUptime — under the hood and in practice — so you can simulate real user experiences with confidence.
+This post explains how synthetic monitoring works in OneUptime -  under the hood and in practice -  so you can simulate real user experiences with confidence.
 
 ## What “synthetic” means here
 
@@ -149,4 +149,4 @@ They’re complementary. For deeper end-to-end tracing of real journeys, see: ht
 - Keep secrets out of scripts; use non-production accounts and data.
 - Add alerts on failures and rising execution times.
 
-Proactive reliability means testing what matters most: the user’s experience. With OneUptime’s synthetic monitoring, you’ll know when critical flows break—before your customers do.
+Proactive reliability means testing what matters most: the user’s experience. With OneUptime’s synthetic monitoring, you’ll know when critical flows break- before your customers do.

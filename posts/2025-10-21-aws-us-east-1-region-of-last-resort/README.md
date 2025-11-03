@@ -16,7 +16,7 @@ The repeated lesson is simple: **us-east-1 is the wrong place to anchor anything
 
 ## 1. Control Planes and Global Services Still Live There
 
-IAM, Identity Center, parts of Route 53, CloudFront certificate issuance, Lambda@Edge deployments, and billing are all materially tied to us-east-1. Those systems replicate data outward, but write paths and break-glass credentials originate in Virginia. When a DNS subsystem or auth stack chokes there, the rest of the world inherits the outage—even if your application stack is happily running in eu-west-1 or ap-southeast-2.
+IAM, Identity Center, parts of Route 53, CloudFront certificate issuance, Lambda@Edge deployments, and billing are all materially tied to us-east-1. Those systems replicate data outward, but write paths and break-glass credentials originate in Virginia. When a DNS subsystem or auth stack chokes there, the rest of the world inherits the outage- even if your application stack is happily running in eu-west-1 or ap-southeast-2.
 
 During the latest incident:
 
@@ -84,7 +84,7 @@ Escaping us-east-1 is not a weekend refactor, but it is also not optional anymor
 
 - Promote another region as primary for production traffic. Treat us-east-1 as cold standby, not active-active.
 - For DynamoDB or Aurora, enable global tables or read replicas where the write region is *not* us-east-1, then cut over during a planned maintenance window.
-- Rebuild S3 buckets with cross-region replication in the opposite direction—you will discover hardcoded ARNs and event targets the first time you try.
+- Rebuild S3 buckets with cross-region replication in the opposite direction- you will discover hardcoded ARNs and event targets the first time you try.
 
 ### 3. Test Runbooks, Not Just Architecture Diagrams
 

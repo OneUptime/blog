@@ -33,7 +33,7 @@ A few clarifications:
 
 ## “How much did migration and ongoing ops really cost?”
 
-We spent a week of engineers time (and that is the worst case estimate) on the initial migration, spread across SRE, platform, and database owners. Most of that time was work we needed anyway—formalising infrastructure-as-code, smoke testing charts, tightening backup policies. The incremental work that existed purely *because* of bare metal was roughly one week.
+We spent a week of engineers time (and that is the worst case estimate) on the initial migration, spread across SRE, platform, and database owners. Most of that time was work we needed anyway- formalising infrastructure-as-code, smoke testing charts, tightening backup policies. The incremental work that existed purely *because* of bare metal was roughly one week.
 
 Ongoing run-cost looks like this:
 
@@ -41,7 +41,7 @@ Ongoing run-cost looks like this:
 - **Remote hands:** 2 interventions in 24 months (mainly disks). Mean response time: 27 minutes. We do not staff an on-site team. We rely on co-location provider to physically manage our rack. This means no traditional hardware admins. 
 - **Automation:** We're now moving to Talos. We PXE boot with Tinkerbell, image with Talos, manage configs through Flux and Terraform, and run conformance suites before each Kubernetes upgrade. All of those tools also hardened our AWS estate, so they were not net-new effort.
 
-The opportunity cost question from is fair. We track it the same way we track feature velocity: did the infra team ship less? The answer was “no”—our release cadence increased because we reclaimed few hours/month we used to spend in AWS “cost council” meetings.
+The opportunity cost question from is fair. We track it the same way we track feature velocity: did the infra team ship less? The answer was “no”- our release cadence increased because we reclaimed few hours/month we used to spend in AWS “cost council” meetings.
 
 ## “Isn’t a single rack a single point of failure?”
 
@@ -87,7 +87,7 @@ We stayed SOC 2 Type II and ISO 27001 certified through the transition. The bigg
 - Change management: Terraform plans, and now Talos machine configs give us immutable evidence of change. Auditors liked that more than AWS Console screenshots.
 - Business continuity: We prove failover by moving workload to other DC.
 
-If you are in a regulated space (HIPAA for instance), expect the paperwork to grow a little. We worked it in by leaning on the colo providers’ standard compliance packets—they slotted straight into our risk register.
+If you are in a regulated space (HIPAA for instance), expect the paperwork to grow a little. We worked it in by leaning on the colo providers’ standard compliance packets- they slotted straight into our risk register.
 
 ## “Why not stay in the cloud but switch providers?”
 
@@ -134,7 +134,7 @@ Cloud-first was the right call for our first five years. Bare metal became the r
 - We are working on a detailed runbook + Terraform module to help teams do *capex forecasting* for colo moves. Expect that on the blog later this year.
 - A deep dive on Talos is in the queue, as requested by multiple folks in the HN thread.
 
-Questions we did not cover? Let us know in the discussion threads—we are happy to keep sharing the gritty details.
+Questions we did not cover? Let us know in the discussion threads- we are happy to keep sharing the gritty details.
 
 **Related Reading:**
 

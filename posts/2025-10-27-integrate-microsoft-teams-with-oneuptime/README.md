@@ -14,7 +14,7 @@ Microsoft Teams is where responders already coordinate. OneUptime’s native Wor
 
 ## What you get with the native integration
 
-- Interactive cards for incidents, alerts, on-call escalations, and maintenance updates—acknowledge, resolve, add notes, or trigger on-call from Teams.
+- Interactive cards for incidents, alerts, on-call escalations, and maintenance updates- acknowledge, resolve, add notes, or trigger on-call from Teams.
 - Tenant-aware delivery: OneUptime refreshes Microsoft Graph tokens and keeps your available teams and channels current.
 - Bot-powered updates: adaptive cards post directly into Teams channels and respond instantly when someone takes action.
 - One workspace to manage routing rules across engineering, support, and leadership channels.
@@ -26,7 +26,7 @@ Microsoft Teams is where responders already coordinate. OneUptime’s native Wor
 - A OneUptime project role that can manage workspace connections and notification rules.
 - A Microsoft 365 admin account that can grant tenant-wide consent for the OneUptime app.
 - Microsoft Teams desktop or web app access to upload the OneUptime bot to the teams you will target.
-- (Self-hosted only) Ensure the global Microsoft Teams app registration is configured—see the checklist below.
+- (Self-hosted only) Ensure the global Microsoft Teams app registration is configured- see the checklist below.
 
 ---
 
@@ -59,7 +59,7 @@ Microsoft Teams is where responders already coordinate. OneUptime’s native Wor
 
 1. Use **View Available Teams** to verify which teams OneUptime can address. If you recently added a team, use **Refresh** to pull the latest list from Microsoft Graph.
 2. Open the functional area you want to automate (for example **Incidents → Workspace Connections → Microsoft Teams**).
-3. Create workspace notification rules for each event type—incidents, alerts, monitors, on-call rotations, or scheduled maintenance. Pick the team and channel, set filters (severity, labels, affected monitors), and save.
+3. Create workspace notification rules for each event type- incidents, alerts, monitors, on-call rotations, or scheduled maintenance. Pick the team and channel, set filters (severity, labels, affected monitors), and save.
 4. Each rule delivers an adaptive card with quick actions such as *View Incident*, *Execute On-Call Policy*, *Acknowledge Alert*, *Resolve*, and *Add Note*. Responders can stay in Teams while keeping OneUptime updated.
 
 ---
@@ -84,7 +84,7 @@ Microsoft Teams is where responders already coordinate. OneUptime’s native Wor
 ## Next steps
 
 - Expand your automation with targeted notification rules for monitors, scheduled maintenance, and on-call policy escalations.
-- Invite other teams—support, success, leadership—to connect their user accounts so they can take action from the same cards.
+- Invite other teams- support, success, leadership- to connect their user accounts so they can take action from the same cards.
 - Periodically review the Workspace Notification Log in OneUptime to confirm delivery health and fine-tune rule filters.
 
-With Workspace Connections, OneUptime and Microsoft Teams stay in lockstep—your responders see every change in context and act without leaving the conversation.
+With Workspace Connections, OneUptime and Microsoft Teams stay in lockstep- your responders see every change in context and act without leaving the conversation.

@@ -6,7 +6,7 @@ Tags: DevOps, Site Reliability Engineering, Reliability, AWS
 
 Description: A short thank-you to every DevOps and SRE team who keep the internet steady, even when hyperscalers stumble.
 
-When AWS was down yesterday, it felt like half the internet held its breath. Dashboards went red, executives went wide-eyed, and a million "is it us?" questions fired across chat threads. Yet the moment the lights flickered, DevOps teams were already in motion—rerouting traffic, flipping failovers, nursing clusters back to health.
+When AWS was down yesterday, it felt like half the internet held its breath. Dashboards went red, executives went wide-eyed, and a million "is it us?" questions fired across chat threads. Yet the moment the lights flickered, DevOps teams were already in motion- rerouting traffic, flipping failovers, nursing clusters back to health.
 
 This is a love letter to the humans in the war rooms and on-call rotations. The ones who rehearse disaster so users never feel calamity. The ones who patch quietly at midnight, automate so others can sleep, and keep calm while a status page turns orange.
 

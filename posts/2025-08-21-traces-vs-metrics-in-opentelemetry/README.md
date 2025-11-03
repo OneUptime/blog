@@ -9,7 +9,7 @@ Description: Metrics tell you what changed. Traces tell you where. Logs tell you
 ---
 
 > Metrics shout “Something drifted.”  
-> Traces answer “Here — inside this span boundary.”  
+> Traces answer “Here -  inside this span boundary.”  
 > Logs explain “Because this exact code path / parameter / error.”
 
 Most teams intellectually “know” the three pillars, yet still misuse them: metrics overloaded with dimensions, traces turned into verbose call graphs, logs sprayed unstructured everywhere. The result: spend grows, clarity shrinks.
@@ -114,7 +114,7 @@ Plese note logs are often linked to traces via `trace_id` and `span_id`, allowin
 
 > Metrics = WHAT changed. Traces = WHERE it happened. Logs = WHY. Design for questions, correlate for speed, sample for value density. 
 
-OpenTelemetry gives the neutral contract; OneUptime unifies the view. Pay for insight—not guesswork.
+OpenTelemetry gives the neutral contract; OneUptime unifies the view. Pay for insight- not guesswork.
 
 **Related Reading:**
 

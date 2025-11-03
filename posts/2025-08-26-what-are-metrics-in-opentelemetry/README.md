@@ -141,7 +141,7 @@ memoryGauge.addCallback((result) => {
 
 #### Anti-Patterns
 1. Using a Gauge to represent a cumulative total (you'll lose historical increments). Use a Counter / UpDownCounter instead.
-2. Using an UpDownCounter when you cannot observe all change events—your value will drift and become wrong; prefer a Gauge snapshot.
+2. Using an UpDownCounter when you cannot observe all change events- your value will drift and become wrong; prefer a Gauge snapshot.
 3. Emitting high-cardinality labels on Gauges each collection cycle (same caution as any metric type).
 
 #### Quick Decision Cheat Sheet
@@ -645,9 +645,9 @@ Remember:
 - **Follow naming conventions** for consistency
 - **Test your metrics** to ensure they work as expected
 
-Start with the basics—request counts, error rates, and response times—then expand to business metrics and more sophisticated patterns as your observability needs grow.
+Start with the basics- request counts, error rates, and response times- then expand to business metrics and more sophisticated patterns as your observability needs grow.
 
-> Metrics are not just about monitoring system performance—they're about understanding your users, your business, and the health of your entire application ecosystem.
+> Metrics are not just about monitoring system performance- they're about understanding your users, your business, and the health of your entire application ecosystem.
 
 ---
 

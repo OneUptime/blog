@@ -10,7 +10,7 @@ Description: A practical guide to continuous profiling. What it is, why you need
 
 > Traces tell you *where* a request spent time. **Profiles tell you *why* the code was slow or resource hungry.**
 >
-> Tracing answers: "Request latency is high—inside `checkout.calculateTotals`." Profiling answers: "Because 63% of CPU time was doing JSON parsing and 18% was waiting on a mutex." Together they cut MTTR dramatically.
+> Tracing answers: "Request latency is high- inside `checkout.calculateTotals`." Profiling answers: "Because 63% of CPU time was doing JSON parsing and 18% was waiting on a mutex." Together they cut MTTR dramatically.
 
 Traditional observability = **Logs + Metrics + Traces**. That’s great, until you ask questions like:
 
@@ -58,7 +58,7 @@ Profiling captures different aspects of your application's runtime behavior. Thi
 
 **CPU (Time) Profile**: This is your go-to for finding where your code spends the most processing time. It samples the call stack at regular intervals (like every 10ms) to show which functions are actively running. If a single function takes up more than 50% of CPU time, or you see excessive JSON parsing/string manipulation, it's a clear sign of inefficiency.
 
-**Wall Time Profile**: Unlike CPU time, wall time includes everything—processing, waiting for I/O, locks, etc. It's perfect for spotting bottlenecks where your code isn't actually doing work but waiting. A big difference between wall time and CPU time often points to I/O issues or lock contention.
+**Wall Time Profile**: Unlike CPU time, wall time includes everything- processing, waiting for I/O, locks, etc. It's perfect for spotting bottlenecks where your code isn't actually doing work but waiting. A big difference between wall time and CPU time often points to I/O issues or lock contention.
 
 **Allocations Profile**: This tracks where memory is being allocated in your code. It helps identify memory churn (creating and discarding many objects quickly), which can cause frequent garbage collection pauses. Look for patterns like allocating many small objects in tight loops.
 
@@ -129,7 +129,7 @@ Skim rule: A profile is a **statistical view** of where time/bytes went across *
 ---
 
 ## Summary
-Continuous profiling closes the *why* gap left after traces point you to *where*. Start small (periodic CPU + heap), correlate with traces, and focus on high-impact hotspots rather than premature micro‑tuning. Structure your pipeline now so adopting OpenTelemetry’s profile signal later is a drop-in upgrade—not a migration.
+Continuous profiling closes the *why* gap left after traces point you to *where*. Start small (periodic CPU + heap), correlate with traces, and focus on high-impact hotspots rather than premature micro‑tuning. Structure your pipeline now so adopting OpenTelemetry’s profile signal later is a drop-in upgrade- not a migration.
 
 > Optimize what users experience: latency, reliability, cost. Profiles give you the factual heat map of where engineering effort pays off.
 

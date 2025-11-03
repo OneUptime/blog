@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Observability, OpenTelemetry, Logs, Metrics, Traces, Sampling, SLOs, Cardinality, Alerting, Cost Optimization
 
-Description: A practical guide to reducing telemetry noise with OpenTelemetry—cutting cost & alert fatigue while surfacing the 5% of data that drives 95% of incident resolution.
+Description: A practical guide to reducing telemetry noise with OpenTelemetry- cutting cost & alert fatigue while surfacing the 5% of data that drives 95% of incident resolution.
 
 > You don't need **more** telemetry. You need **relational, value‑dense** telemetry.
 
@@ -380,7 +380,7 @@ Time to confident root cause: 6 minutes. Noise produced: minimal. Data cost: bou
 - Correlate before you accumulate. Relationships beat volume.
 - Treat telemetry like code: review, diff, prune.
 
-> The goal isn’t “observe everything.” It’s “answer real questions fast—portably and economically.”
+> The goal isn’t “observe everything.” It’s “answer real questions fast- portably and economically.”
 
 Own your signal density. Let tools (OneUptime included) *amplify* it, not drown it.
 

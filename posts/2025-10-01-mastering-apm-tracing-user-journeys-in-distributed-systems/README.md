@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, APM, Tracing, Trace Context, Baggage, Sampling, OpenTelemetry Collector, Distributed Systems
 
-Description: A practical, end-to-end guide to propagating OpenTelemetry context (traceparent + baggage) across microservices—HTTP, gRPC, queues, and background jobs—so you can reconstruct real user journeys. We’ll use the OTel API/SDK, W3C Trace Context, semantic conventions, and head/tail sampling via the OpenTelemetry Collector.
+Description: A practical, end-to-end guide to propagating OpenTelemetry context (traceparent + baggage) across microservices- HTTP, gRPC, queues, and background jobs- so you can reconstruct real user journeys. We’ll use the OTel API/SDK, W3C Trace Context, semantic conventions, and head/tail sampling via the OpenTelemetry Collector.
 
-Modern systems are made of many moving parts: APIs, services, queues, workers, caches, databases, and third-party calls. When a customer says “checkout is slow,” you don’t want to chase logs across five repos — you want a single trace that shows the user’s journey hop-by-hop. OpenTelemetry tracing gives you that.
+Modern systems are made of many moving parts: APIs, services, queues, workers, caches, databases, and third-party calls. When a customer says “checkout is slow,” you don’t want to chase logs across five repos -  you want a single trace that shows the user’s journey hop-by-hop. OpenTelemetry tracing gives you that.
 
-This post focuses on the most critical part teams get wrong: how OpenTelemetry context (trace + baggage) propagates across service boundaries—sync, async, and everything between—so your traces actually represent real user journeys.
+This post focuses on the most critical part teams get wrong: how OpenTelemetry context (trace + baggage) propagates across service boundaries- sync, async, and everything between- so your traces actually represent real user journeys.
 
 ## What OpenTelemetry pieces you’ll use
 
@@ -307,4 +307,4 @@ sequenceDiagram
 - Configure head sampling in SDK; use the Collector for tail sampling of errors/slow/VIP journeys.
 - Correlate logs/metrics by including trace_id/span_id and exemplars.
 
-End-to-end tracing isn’t magic — it’s disciplined OpenTelemetry context propagation. Get that right, wire in the Collector, and turn vague “it’s slow” reports into precise, debuggable user journeys.
+End-to-end tracing isn’t magic -  it’s disciplined OpenTelemetry context propagation. Get that right, wire in the Collector, and turn vague “it’s slow” reports into precise, debuggable user journeys.

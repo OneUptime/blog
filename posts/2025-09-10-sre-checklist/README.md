@@ -151,7 +151,7 @@ Keep it lean to start: 2–3 user journeys, each with availability + latency.
 **User Journey SLIs**: Real user flows (login, purchase) not raw host stats.  
 **SLO vs SLA Buffer**: Internal SLO stricter than contractual SLA.  
 **Automated Budget Tracking**: No spreadsheets; platform surfaces remaining % + burn velocity.  
-**Dual-Window Burn Rate Alerts**: Use two SLO burn rate evaluations—a short window (~1h) to catch sudden spikes and a longer window (6–24h) to spot slow budget leakage—so you detect both fast failures and quiet degradation without excess paging.
+**Dual-Window Burn Rate Alerts**: Use two SLO burn rate evaluations- a short window (~1h) to catch sudden spikes and a longer window (6–24h) to spot slow budget leakage- so you detect both fast failures and quiet degradation without excess paging.
 **Quarterly SLO Review**: Adjust only with justification (not to “look green”).  
 **Roadmap Influence**: Breached budget → triggers backlog reshuffle / freeze rules.  
 **SLO Changelog**: Version changes; helps post-incident context.  
@@ -170,7 +170,7 @@ Goal: Fewer pivot steps from “alert” to “probable cause.”
 **Structured Logs + Correlation IDs**: Standard request ID flows through all tiers.  
 **Span Naming Consistency**: Pattern like `service.operation.resource`.  
 **Metrics Hygiene**: Use histograms, limit freeform labels.  
-**Synthetic Probes**: Critical flows tested continuously—feed into SLOs if representative.  
+**Synthetic Probes**: Critical flows tested continuously- feed into SLOs if representative.  
 **Tiered Retention**: Hot (fast query) vs warm vs cold archival; saves cost.  
 **PII Redaction**: Avoid leaking user data into logs.  
 **Maturity Scorecard**: Track improvements; fuels budget conversations.
@@ -360,7 +360,7 @@ Reliability maturity compounds: each practice reduces future chaos tax. Keep mom
 
 Anchor everything in user impact. Your future on-call self will sleep better.
 
-If you want a platform that unifies SLOs, error budgets, incidents, logging, tracing, and correlation—OneUptime accelerates exactly this journey.
+If you want a platform that unifies SLOs, error budgets, incidents, logging, tracing, and correlation- OneUptime accelerates exactly this journey.
 
 Revisit the checklist quarterly. Trim, refine, automate.
 

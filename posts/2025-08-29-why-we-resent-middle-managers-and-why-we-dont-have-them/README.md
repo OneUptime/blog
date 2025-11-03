@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Team Management, Engineering Culture, Leadership, Organizational Design, Startups
 
-Description: Middle managers have become the organizational equivalent of technical debt—layers that slow everything down without adding clear value. At OneUptime, we've intentionally eliminated middle management in favor of direct leadership and autonomous teams. Here's why this approach drives better results, happier engineers, and faster innovation.
+Description: Middle managers have become the organizational equivalent of technical debt- layers that slow everything down without adding clear value. At OneUptime, we've intentionally eliminated middle management in favor of direct leadership and autonomous teams. Here's why this approach drives better results, happier engineers, and faster innovation.
 
-Middle managers have become the organizational equivalent of technical debt—layers that slow everything down without adding clear value. They sit between frontline workers and senior leadership, often becoming bottlenecks rather than accelerators. At OneUptime, we've intentionally eliminated middle management in favor of **direct leadership and autonomous teams**. Here's why this approach drives better results, happier engineers, and faster innovation.
+Middle managers have become the organizational equivalent of technical debt- layers that slow everything down without adding clear value. They sit between frontline workers and senior leadership, often becoming bottlenecks rather than accelerators. At OneUptime, we've intentionally eliminated middle management in favor of **direct leadership and autonomous teams**. Here's why this approach drives better results, happier engineers, and faster innovation.
 
 ## The Middle Manager Problem: Where Good Intentions Go Wrong
 
@@ -104,7 +104,7 @@ Contrary to conventional wisdom, flat organizations scale well when designed pro
 
 This is the most common objection to flat organizations, but it's based on outdated assumptions about how software teams work.
 
-**The Product Team Reality:** Most software products only need small teams to build and maintain them effectively. A team of three can handle the full stack—frontend, backend, and DevOps—for most product initiatives. When you want to build multiple products or expand into new areas, **spinning up additional small teams is relatively easy** and doesn't require management infrastructure.
+**The Product Team Reality:** Most software products only need small teams to build and maintain them effectively. A team of three can handle the full stack- frontend, backend, and DevOps- for most product initiatives. When you want to build multiple products or expand into new areas, **spinning up additional small teams is relatively easy** and doesn't require management infrastructure.
 
 Here's how scaling actually works in practice:
 
@@ -150,7 +150,7 @@ The most successful engineering organizations of the next decade will be those t
 
 Middle management shouldn't be the default solution to organizational complexity. It should be a conscious choice made only when the benefits clearly outweigh the costs.
 
-For most software organizations, **the costs are too high and the benefits too unclear**. Engineers don't need managers—they need clear objectives, autonomous authority, and direct access to leadership.
+For most software organizations, **the costs are too high and the benefits too unclear**. Engineers don't need managers- they need clear objectives, autonomous authority, and direct access to leadership.
 
 **About OneUptime:** We're building the next generation of observability and incident management tools with a flat, autonomous organization that proves great software doesn't require management overhead. Learn more at [OneUptime.com](https://oneuptime.com).
 

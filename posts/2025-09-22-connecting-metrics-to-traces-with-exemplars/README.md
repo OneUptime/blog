@@ -8,7 +8,7 @@ Description: A hands-on guide to exemplars, how they connect metric points to th
 
 ---
 
-You’ve got metrics for fast dashboards and traces for deep debugging—but how do you jump from a painful P99 spike to the one slow request that caused it? That’s what exemplars are for.
+You’ve got metrics for fast dashboards and traces for deep debugging- but how do you jump from a painful P99 spike to the one slow request that caused it? That’s what exemplars are for.
 
 Exemplars attach a trace reference (trace_id, span_id) to selected metric data points - typically histogram buckets, so you can click a metric and land directly on a representative trace of that behavior.
 
@@ -27,7 +27,7 @@ This post shows what exemplars are, how they work in OpenTelemetry, and how to w
 
 ## What is an Exemplar?
 
-An exemplar is a sample data point stored alongside a metric data point that includes reference metadata—most commonly the trace_id/span_id. In practice: when a histogram bucket count increases (say, the 500–1000ms latency bucket), the SDK may also attach an exemplar pointing to the trace of the request that produced that measurement.
+An exemplar is a sample data point stored alongside a metric data point that includes reference metadata- most commonly the trace_id/span_id. In practice: when a histogram bucket count increases (say, the 500–1000ms latency bucket), the SDK may also attach an exemplar pointing to the trace of the request that produced that measurement.
 
 Why you care:
 - Click from metrics to an actual trace in one step.
@@ -88,7 +88,7 @@ handleRequest(req):
       span.end()
 ```
 
-That’s it—no special API for exemplars in most SDKs; they’re attached automatically when recording within an active span.
+That’s it- no special API for exemplars in most SDKs; they’re attached automatically when recording within an active span.
 
 ---
 
@@ -131,7 +131,7 @@ Notes:
 
 ## Collector: Keep Exemplars Intact
 
-If you route through the OpenTelemetry Collector (recommended for production), you generally don’t need special config—just make sure you’re using OTLP in and out, and avoid processors that strip exemplars.
+If you route through the OpenTelemetry Collector (recommended for production), you generally don’t need special config- just make sure you’re using OTLP in and out, and avoid processors that strip exemplars.
 
 
 Tip: Exemplars are most useful on histograms (latency/size). Prefer histograms over summaries for correlation and SLO math; see also our guide on percentiles and histograms:

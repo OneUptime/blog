@@ -65,4 +65,4 @@ Trace monitors watch the journey of each request through your services. They cou
 
 ---
 
-Trace monitors turn distributed tracing into actionable guardrails. Pair them with log and metric monitors to see the full picture: what happened, where it happened, and how big the impact is—all without writing a single query by hand.
+Trace monitors turn distributed tracing into actionable guardrails. Pair them with log and metric monitors to see the full picture: what happened, where it happened, and how big the impact is- all without writing a single query by hand.

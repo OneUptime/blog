@@ -8,7 +8,7 @@ Description: Step-by-step guidance to launch a branded public status page in One
 
 ---
 
-A public status page is the front door to your reliability program. With OneUptime you can publish live component health, incident timelines, and scheduled maintenance updates in minutes. This guide walks through the entire setup so your customers always know what is happening—and what you are doing about it.
+A public status page is the front door to your reliability program. With OneUptime you can publish live component health, incident timelines, and scheduled maintenance updates in minutes. This guide walks through the entire setup so your customers always know what is happening- and what you are doing about it.
 
 ---
 
@@ -71,7 +71,7 @@ A public status page is the front door to your reliability program. With OneUpti
 
 1. Preview the page to confirm layout, colors, and component order.
 2. Toggle the status page to **Public** once you are ready.
-3. Announce the page to customers—include the link in support macros, status signatures, and product notifications.
+3. Announce the page to customers- include the link in support macros, status signatures, and product notifications.
 4. Add the link to your incident runbooks so responders post updates there by default.
 
 ---
@@ -99,6 +99,6 @@ A public status page is the front door to your reliability program. With OneUpti
 - Schedule quarterly reviews to align components with product changes and retire anything stale.
 - Segment subscriber options (engineering, customer success, partners) to tailor messaging frequency.
 - Pair the status page with Workspace Notification Rules so announcements also hit Microsoft Teams, Slack, or email lists.
-- Use incident retrospectives to check whether updates were timely and clear—and capture lessons for your templates.
+- Use incident retrospectives to check whether updates were timely and clear- and capture lessons for your templates.
 
 A polished status page proves you take transparency seriously. Once it is live, every incident update and maintenance notice becomes a chance to earn more trust.

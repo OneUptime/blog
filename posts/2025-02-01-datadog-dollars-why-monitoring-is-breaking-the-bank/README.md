@@ -94,7 +94,7 @@ These features provide valuable insights but can drastically increase expenses i
 
 #### Over-Reliance on Default Settings
 
-Datadog's default configurations are designed for broad applicability, not cost efficiency. Without fine-tuning, you might be collecting and storing more data than necessary. It's like leaving all the lights on in your house all the time—convenient but expensive.
+Datadog's default configurations are designed for broad applicability, not cost efficiency. Without fine-tuning, you might be collecting and storing more data than necessary. It's like leaving all the lights on in your house all the time- convenient but expensive.
 
 **Example:**
 

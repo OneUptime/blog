@@ -111,7 +111,7 @@
   },
   {
     "title": "The Power of Three: How Small Teams Drive Big Results at OneUptime",
-    "description": "We have found that keeping teams small and focused isnt just efficient — its transformative. Here is how this approach helped us deliver platforms rivaling the scope of Incident.io, StatusPage.io, and more—all with just two tiny teams.",
+    "description": "We have found that keeping teams small and focused isnt just efficient -  its transformative. Here is how this approach helped us deliver platforms rivaling the scope of Incident.io, StatusPage.io, and more- all with just two tiny teams.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "Team Management",
@@ -121,7 +121,7 @@
   },
   {
     "title": "Introducing OneUptime MCP Server: Bringing AI-Native Observability to Your Workflow",
-    "description": "OneUptime now provides a production-ready Model Context Protocol (MCP) server that gives AI assistants direct access to your observability infrastructure. Create incidents, query logs, manage monitors, and automate operations—all through natural language conversations with AI.",
+    "description": "OneUptime now provides a production-ready Model Context Protocol (MCP) server that gives AI assistants direct access to your observability infrastructure. Create incidents, query logs, manage monitors, and automate operations- all through natural language conversations with AI.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "MCP",
@@ -160,7 +160,7 @@
   },
   {
     "title": "Native apps had a good run, but PWA has caught up and is the future.",
-    "description": "Native apps had a good run, but the web has caught up. Here's why PWAs now outperform traditional native app strategies for most SaaS platforms—and why OneUptime intentionally chose a single PWA-first codebase instead of separate iOS and Android apps.",
+    "description": "Native apps had a good run, but the web has caught up. Here's why PWAs now outperform traditional native app strategies for most SaaS platforms- and why OneUptime intentionally chose a single PWA-first codebase instead of separate iOS and Android apps.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "PWA",
@@ -172,7 +172,7 @@
   },
   {
     "title": "Stop Paywalling Security: SSO Is a Basic Right, Not an Enterprise Perk",
-    "description": "Too many SaaS and open-source products still hide SSO behind an enterprise plan. Here's why SSO, SCIM, and 2FA must be baseline security—not monetization levers—and how OneUptime approaches pricing differently.",
+    "description": "Too many SaaS and open-source products still hide SSO behind an enterprise plan. Here's why SSO, SCIM, and 2FA must be baseline security- not monetization levers- and how OneUptime approaches pricing differently.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "Security",
@@ -226,7 +226,7 @@
   },
   {
     "title": "How to reduce noise in OpenTelemetry? Keep What Matters, Drop the Rest.",
-    "description": "A practical guide to reducing telemetry noise with OpenTelemetry—curating metrics, tail sampling traces, structured log policies, and SLO-first alerting to surface only what accelerates MTTR.",
+    "description": "A practical guide to reducing telemetry noise with OpenTelemetry- curating metrics, tail sampling traces, structured log policies, and SLO-first alerting to surface only what accelerates MTTR.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Observability",
@@ -244,7 +244,7 @@
   },
   {
     "title": "What are metrics in OpenTelemetry: A Complete Guide",
-    "description": "A comprehensive guide to understanding metrics in OpenTelemetry—what they are, how they work, and how to implement them effectively in TypeScript/Node.js applications with practical code examples.",
+    "description": "A comprehensive guide to understanding metrics in OpenTelemetry- what they are, how they work, and how to implement them effectively in TypeScript/Node.js applications with practical code examples.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "OpenTelemetry",
@@ -259,7 +259,7 @@
   ,
   {
     "title": "What are Traces and Spans in OpenTelemetry: A Practical Guide",
-    "description": "A comprehensive, code-heavy guide to understanding traces and spans in OpenTelemetry—how they work, how they relate, and how to instrument real Node.js / TypeScript applications effectively for deep insight and faster debugging.",
+    "description": "A comprehensive, code-heavy guide to understanding traces and spans in OpenTelemetry- how they work, how they relate, and how to instrument real Node.js / TypeScript applications effectively for deep insight and faster debugging.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "OpenTelemetry",
@@ -273,7 +273,7 @@
   },
   {
     "title": "How to Structure Logs Properly in OpenTelemetry: A Complete Guide",
-    "description": "A comprehensive guide to structuring logs properly in OpenTelemetry—mastering log correlation with traces, effective attribute usage, and implementing structured logging patterns that enhance debugging and observability.",
+    "description": "A comprehensive guide to structuring logs properly in OpenTelemetry- mastering log correlation with traces, effective attribute usage, and implementing structured logging patterns that enhance debugging and observability.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "OpenTelemetry",
@@ -289,7 +289,7 @@
   },
   {
     "title": "Why We Resent Middle Managers (And Why OneUptime Doesn't Have Any)",
-    "description": "Middle managers have become the organizational equivalent of technical debt—layers that slow everything down without adding clear value. At OneUptime, we've intentionally eliminated middle management in favor of direct leadership and autonomous teams. Here's why this approach drives better results, happier engineers, and faster innovation.",
+    "description": "Middle managers have become the organizational equivalent of technical debt- layers that slow everything down without adding clear value. At OneUptime, we've intentionally eliminated middle management in favor of direct leadership and autonomous teams. Here's why this approach drives better results, happier engineers, and faster innovation.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Team Management",
@@ -302,7 +302,7 @@
   },
   {
     "title": "The Five Stages of SRE Maturity: From Chaos to Operational Excellence",
-    "description": "Site Reliability Engineering (SRE) isn't a destination—it's a journey. Most organizations evolve through predictable stages of maturity, from alert-ignoring chaos to perfectly oiled operations that rarely breach error budgets. This post outlines the five stages of SRE maturity and how to progress through them.",
+    "description": "Site Reliability Engineering (SRE) isn't a destination- it's a journey. Most organizations evolve through predictable stages of maturity, from alert-ignoring chaos to perfectly oiled operations that rarely breach error budgets. This post outlines the five stages of SRE maturity and how to progress through them.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Site Reliability Engineering",
@@ -317,7 +317,7 @@
   },
   {
     "title": "The Hidden Costs of Dependency Bloat in Software Development",
-    "description": "Dependency bloat isn't just about bundle size—it's a hidden tax on your development velocity, security posture, and long-term maintainability. Learn why fewer dependencies often means faster, safer, and more sustainable software.",
+    "description": "Dependency bloat isn't just about bundle size- it's a hidden tax on your development velocity, security posture, and long-term maintainability. Learn why fewer dependencies often means faster, safer, and more sustainable software.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Software Development",
@@ -417,7 +417,7 @@
   ,
   {
     "title": "The Ultimate SRE Reliability Checklist: From Chaos to Consistent Excellence",
-    "description": "A comprehensive, opinionated SRE checklist spanning culture, SLOs, observability, alerting, incidents, change management, resilience, automation, cost and continuous improvement—use it as a maturity roadmap.",
+    "description": "A comprehensive, opinionated SRE checklist spanning culture, SLOs, observability, alerting, incidents, change management, resilience, automation, cost and continuous improvement- use it as a maturity roadmap.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Site Reliability Engineering",
@@ -437,7 +437,7 @@
   ,
   {
     "title": "P50 vs P95 vs P99 Latency: What These Percentiles Actually Mean",
-    "description": "A practical guide to understanding P50, P95, and P99 latency percentiles—why averages lie, what each percentile tells you about user experience, how to set SLOs around them, and how to collect them correctly with histograms.",
+    "description": "A practical guide to understanding P50, P95, and P99 latency percentiles- why averages lie, what each percentile tells you about user experience, how to set SLOs around them, and how to collect them correctly with histograms.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Observability",
@@ -454,7 +454,7 @@
   ,
   {
     "title": "OpenTelemetry Collector: What It Is, When You Need It, and When You Don’t",
-    "description": "A practical guide to understanding the OpenTelemetry Collector—what it does, architecture patterns with and without it, and a decision framework for when to deploy it to improve performance, cost, security, and flexibility.",
+    "description": "A practical guide to understanding the OpenTelemetry Collector- what it does, architecture patterns with and without it, and a decision framework for when to deploy it to improve performance, cost, security, and flexibility.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "OpenTelemetry",
@@ -472,7 +472,7 @@
   ,
   {
     "title": "Connecting Metrics ↔ Traces with Exemplars in OpenTelemetry",
-    "description": "A hands-on guide to exemplars—how they connect metric points to the exact trace that caused them, why they matter for faster debugging and cost efficiency, and how to enable them end-to-end with OpenTelemetry (apps → collector → backend).",
+    "description": "A hands-on guide to exemplars- how they connect metric points to the exact trace that caused them, why they matter for faster debugging and cost efficiency, and how to enable them end-to-end with OpenTelemetry (apps → collector → backend).",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "OpenTelemetry",
@@ -487,7 +487,7 @@
   },
   {
     "title": "How to monitor SSL Certificate with OneUptime: Never Let a Certificate Expire Again",
-    "description": "A comprehensive guide to monitoring SSL certificates with OneUptime—from setup and configuration to advanced monitoring scenarios. Learn how to prevent certificate expiration outages, track certificate health, and set up intelligent alerting for your SSL infrastructure.",
+    "description": "A comprehensive guide to monitoring SSL certificates with OneUptime- from setup and configuration to advanced monitoring scenarios. Learn how to prevent certificate expiration outages, track certificate health, and set up intelligent alerting for your SSL infrastructure.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "SSL",
@@ -556,7 +556,7 @@
   ,
   {
     "title": "Mastering APM: End-to-End User Journey Tracing in Distributed Systems",
-    "description": "A practical, end-to-end guide to propagating trace IDs across microservices—HTTP, gRPC, queues, and background jobs—so you can reconstruct real user journeys with OpenTelemetry, W3C Trace Context, and smart sampling.",
+    "description": "A practical, end-to-end guide to propagating trace IDs across microservices- HTTP, gRPC, queues, and background jobs- so you can reconstruct real user journeys with OpenTelemetry, W3C Trace Context, and smart sampling.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "APM",

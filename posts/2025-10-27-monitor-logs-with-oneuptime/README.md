@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Monitoring, Observability, Logs, Logging, DevOps
 
-Description: Learn how to create, tune, and act on OneUptime log monitors as an end user—no code or internal tooling knowledge required.
+Description: Learn how to create, tune, and act on OneUptime log monitors as an end user- no code or internal tooling knowledge required.
 
 ---
 
-Log monitors keep a constant eye on the messages your applications send. When something unusual happens—errors spike, heartbeats disappear, or partners start failing—you get notified automatically. The experience is fully guided inside the dashboard, so you can set everything up with a few fields and a preview.
+Log monitors keep a constant eye on the messages your applications send. When something unusual happens- errors spike, heartbeats disappear, or partners start failing- you get notified automatically. The experience is fully guided inside the dashboard, so you can set everything up with a few fields and a preview.
 
 ---
 

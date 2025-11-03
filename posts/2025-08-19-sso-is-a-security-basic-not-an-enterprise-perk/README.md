@@ -4,7 +4,7 @@ Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: Security, SaaS, Open Source, Identity
 
-Description: SSO, SCIM, and 2FA are baseline security hygiene — not enterprise upsells. Here’s the short case and how OneUptime prices differently.
+Description: SSO, SCIM, and 2FA are baseline security hygiene -  not enterprise upsells. Here’s the short case and how OneUptime prices differently.
 
 Too many (even “open source”) SaaS products still lock SSO behind an enterprise tier. That’s not clever packaging, it’s pushing smaller teams towards weaker security. Entire sites like [sso.tax](https://sso.tax/) exist because this pattern has worn out its welcome.
 

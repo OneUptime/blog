@@ -24,7 +24,7 @@ This approach stems from a fundamental belief: engineers who understand their cu
 
 ### 1. Engineers Build Empathy for Real Users
 
-Most engineers work in an abstract world of APIs, databases, and algorithms. Customer support puts faces and stories to those abstractions. When Sarah from the engineering team takes a support call about slow dashboard loading, she doesn't just file a ticket—she *feels* the frustration in the customer's voice.
+Most engineers work in an abstract world of APIs, databases, and algorithms. Customer support puts faces and stories to those abstractions. When Sarah from the engineering team takes a support call about slow dashboard loading, she doesn't just file a ticket- she *feels* the frustration in the customer's voice.
 
 This emotional connection drives different decisions:
 
@@ -147,7 +147,7 @@ Quality over quantity always wins in product development.
 
 ## The Cultural Shift
 
-This isn't just about process—it's about culture. When engineers do customer support and sales, several cultural shifts happen:
+This isn't just about process- it's about culture. When engineers do customer support and sales, several cultural shifts happen:
 
 ### Customer-Centricity Becomes Natural
 

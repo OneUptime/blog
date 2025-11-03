@@ -183,7 +183,7 @@ service:
 - You want **tail sampling** (decide after seeing full trace) to keep 100% of errors & rare paths but downsample boring traffic.
 - You need **multi-destination routing** (e.g., traces, metrics, logs → OneUptime, logs → S3/ClickHouse, security events → SIEM).
 - You must **strip sensitive PII** before it leaves your network.
-- You need **cost governance**—drop chatty spans/metrics at the edge.
+- You need **cost governance**- drop chatty spans/metrics at the edge.
 - You want **hot-swappable vendors** without touching app code.
 - You require **network isolation** (no direct internet from app nodes).
 - You need **central retries / buffering** to survive outages gracefully.

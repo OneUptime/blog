@@ -439,7 +439,7 @@ Prioritize your backup monitoring:
 
 ### 2. Implement Backup Verification
 
-Don't just monitor backup execution—verify backup integrity:
+Don't just monitor backup execution- verify backup integrity:
 
 ```python
 def verify_backup(backup_path, expected_hash=None):

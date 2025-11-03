@@ -8,13 +8,13 @@ Description: A no-surprises guide to planning, approving, and communicating sche
 
 ---
 
-Scheduled maintenance should feel routine—not chaotic. OneUptime centralizes planning, approvals, notifications, and customer updates so every maintenance window is documented and predictable. This playbook walks through the workflow from drafting a plan to closing with a clear post-maintenance summary.
+Scheduled maintenance should feel routine- not chaotic. OneUptime centralizes planning, approvals, notifications, and customer updates so every maintenance window is documented and predictable. This playbook walks through the workflow from drafting a plan to closing with a clear post-maintenance summary.
 
 ---
 
 ## Why run maintenance through OneUptime?
 
-- Keep the entire timeline—announcement, reminders, execution, and wrap-up—in one place.
+- Keep the entire timeline- announcement, reminders, execution, and wrap-up- in one place.
 - Notify customers and internal teams across channels (status page, email, SMS, Slack, Microsoft Teams) without duplicating effort.
 - Coordinate owners, runbooks, and dependencies up front to cut downtime and surprises.
 - Capture history to prove compliance and show how often maintenance happens.
@@ -97,4 +97,4 @@ Scheduled maintenance should feel routine—not chaotic. OneUptime centralizes p
 - Link maintenance events to your Service Catalog so owners see dependencies before making changes.
 - Share the calendar internally so product and support teams align other launches around your maintenance timeline.
 
-Planned downtime is still downtime—but with OneUptime, it becomes a well-orchestrated event that keeps customers confident and teams calm.
+Planned downtime is still downtime- but with OneUptime, it becomes a well-orchestrated event that keeps customers confident and teams calm.

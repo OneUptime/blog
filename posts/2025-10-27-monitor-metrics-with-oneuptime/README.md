@@ -63,4 +63,4 @@ Metrics tell you when performance is slipping, capacity is filling up, or succes
 
 ---
 
-Metric monitors help you stay ahead of the numbers that matter. Combine them with log and trace monitors to build incidents that show what went wrong, where it happened, and how big the impact is—all without writing custom scripts.
+Metric monitors help you stay ahead of the numbers that matter. Combine them with log and trace monitors to build incidents that show what went wrong, where it happened, and how big the impact is- all without writing custom scripts.

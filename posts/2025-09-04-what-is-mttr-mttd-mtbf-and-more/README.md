@@ -40,7 +40,7 @@ MTTD formula:
 MTTD = Total Time from Incident Start to Detection / Number of Incidents
 ```
 
-**Why it matters**: You can't fix what you don't know is broken. MTTD is often the hidden bottleneck in incident response—the faster you detect issues, the faster you can begin recovery.
+**Why it matters**: You can't fix what you don't know is broken. MTTD is often the hidden bottleneck in incident response- the faster you detect issues, the faster you can begin recovery.
 
 **Optimization strategies**:
 - Implement comprehensive [observability](https://oneuptime.com/blog/post/2025-08-21-logs-traces-metrics-before-and-after/view) with metrics, logs, and traces
@@ -84,7 +84,7 @@ Error budgets bridge the gap between reliability and feature velocity. They're c
 Error Budget = 100% - SLO
 ```
 
-For example, a 99.9% availability SLO means you have a 0.1% error budget—roughly 43 minutes of downtime per month.
+For example, a 99.9% availability SLO means you have a 0.1% error budget- roughly 43 minutes of downtime per month.
 
 **Learn more**: Check out our detailed guide on [what are error budgets](https://oneuptime.com/blog/post/2025-09-03-what-are-error-budgets/view) for comprehensive coverage of this crucial concept.
 
@@ -191,7 +191,7 @@ Understanding this distinction helps prioritize incident response efforts and po
 
 ## Conclusion: Beyond MTTR to Holistic Reliability
 
-While MTTR remains an important metric, modern SRE practices require a holistic approach to reliability measurement. The most successful teams don't just track individual metrics—they build comprehensive observability into their systems and use data-driven approaches to continuously improve reliability.
+While MTTR remains an important metric, modern SRE practices require a holistic approach to reliability measurement. The most successful teams don't just track individual metrics- they build comprehensive observability into their systems and use data-driven approaches to continuously improve reliability.
 
 The key is starting with metrics that matter most to your users and business, then gradually expanding your measurement capabilities as your SRE practice matures. Remember that metrics are tools for improvement, not goals in themselves.
 

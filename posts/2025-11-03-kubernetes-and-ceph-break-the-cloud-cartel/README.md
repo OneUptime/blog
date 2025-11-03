@@ -10,19 +10,19 @@ Description: Kubernetes gives you portable compute, Ceph gives you portable stor
 
 The cloud era promised freedom from hardware. Instead, the Big Three locked us into proprietary services, premium egress bills, and chaotic outages. Teams now ask a very different question: *How do we take back control without losing the convenience we gained?*
 
-The answer we see play out with customers and in our own infrastructure journey is simple: **pair Kubernetes with Ceph**. Kubernetes abstracts compute, Ceph abstracts storage, and together they make your platform mobile—across clouds, across colo facilities, and eventually onto racks and machines you own.
+The answer we see play out with customers and in our own infrastructure journey is simple: **pair Kubernetes with Ceph**. Kubernetes abstracts compute, Ceph abstracts storage, and together they make your platform mobile- across clouds, across colo facilities, and eventually onto racks and machines you own.
 
 ## Kubernetes: Portability by Default
 
 Kubernetes turns infrastructure into a declarative bill of materials. You describe the system in YAML, the scheduler does the rest. That abstraction becomes a lever the hyperscalers cannot price-gouge.
 
 - **Infrastructure as code that travels** – Your manifests, Helm charts, and operators follow you whether the control plane lives in AWS, GCP, Azure, or a bare-metal cluster.
-- **Uniform control plane** – RBAC, CRDs, service mesh, ingress—once you harden the platform, you can stamp the same control plane anywhere without rewriting supporting systems.
+- **Uniform control plane** – RBAC, CRDs, service mesh, ingress- once you harden the platform, you can stamp the same control plane anywhere without rewriting supporting systems.
 - **Pluggable ecosystem** – CSI, CNI, and GPU operators let you swap vendor implementations without touching workloads. In practice this neutralizes the unique-value wedge hyperscalers rely on.
 
-Most services can be migrated to Kubernetes if you are not coupled to proprietary cloud APIs. That single design decision—sticking to open interfaces instead of provider-specific glue—turns "we should move" from a quarter-long project into an engineering sprint.
+Most services can be migrated to Kubernetes if you are not coupled to proprietary cloud APIs. That single design decision- sticking to open interfaces instead of provider-specific glue- turns "we should move" from a quarter-long project into an engineering sprint.
 
-Kubernetes broke the hyperscaler stranglehold on compute the moment it turned the orchestrator itself into an open standard. But workloads are more than pods—they are data, and data gravity is what keeps migration plans on whiteboards. That is where Ceph steps in.
+Kubernetes broke the hyperscaler stranglehold on compute the moment it turned the orchestrator itself into an open standard. But workloads are more than pods- they are data, and data gravity is what keeps migration plans on whiteboards. That is where Ceph steps in.
 
 ## Ceph: Portable Storage that Travels with You
 
@@ -32,7 +32,7 @@ Workload portability dies the minute stateful services stick to a vendor-specifi
 - **Block storage for databases** – RBD volumes perform on par with EBS or Persistent Disks when tuned correctly, and they replicate across racks or availability zones you control.
 - **Self-healing, horizontally scalable** – CRUSH maps and erasure coding keep data durable without the "storage tax" margins cloud vendors love.
 
-Ceph keeps data gravity under *your* control. That makes every migration option real—not theoretical.
+Ceph keeps data gravity under *your* control. That makes every migration option real- not theoretical.
 
 
 We proved that portability ourselves when we [moved from AWS to bare metal](https://oneuptime.com/blog/post/2023-10-30-moving-from-aws-to-bare-metal/view) and later documented the compounding benefits in [our two-year retrospective](https://oneuptime.com/blog/post/2025-10-29-aws-to-bare-metal-two-years-later/view).
@@ -42,7 +42,7 @@ We proved that portability ourselves when we [moved from AWS to bare metal](http
 
 Kubernetes is the rare piece of infrastructure that hands power back to operators instead of corralling them into a vendor's business model. It is freedom because it lets us:
 
-- Run the same workloads everywhere—from quick experiments on a laptop to revenue-critical clusters in multiple clouds.
+- Run the same workloads everywhere- from quick experiments on a laptop to revenue-critical clusters in multiple clouds.
 - Express infrastructure intent in plain, declarative resources that any team member can read, diff, and roll forward.
 - Extend the platform through CRDs and controllers without asking permission from a hyperscaler roadmap.
 
@@ -51,7 +51,7 @@ We love Kubernetes because it embodies the open-source ethos: opinionated defaul
 
 ## The Declouding Movement Gains Momentum
 
-The monopoly-era cloud mindset—"everything must live on a hyperscaler"—is fading. Teams want leverage, not lock-in. The declouding movement is not about going backwards. It is about **choosing the best execution venue for each workload** without paying an exit penalty.
+The monopoly-era cloud mindset- "everything must live on a hyperscaler"- is fading. Teams want leverage, not lock-in. The declouding movement is not about going backwards. It is about **choosing the best execution venue for each workload** without paying an exit penalty.
 
 - **Compliance & sovereignty** – Keep regulated data on-prem, run compute bursts in the public cloud, manage both environments with one control plane.
 - **Cost sanity** – Replace runaway egress and storage bills with predictable rack-level economics. Reserve hyperscaler spend for services that differentiate, not table stakes.
@@ -67,9 +67,9 @@ You do not need to forklift your stack tomorrow. Start with incremental wins:
 - Migrate one **test environment** to Kubernetes and back it with Ceph for object storage. Validate performance envelopes, observe the operational model.
 - Layer in **GitOps** (Flux, Argo CD) so your declarative state lives in version control. That is the missing piece that makes repeatable cluster builds trivial.
 
-The combination of Kubernetes and Ceph keeps the "hard parts"—networking, storage, secrets—consistent the whole way.
+The combination of Kubernetes and Ceph keeps the "hard parts"- networking, storage, secrets- consistent the whole way.
 
-## Freedom Is Optional — Until It Isn't
+## Freedom Is Optional -  Until It Isn't
 
 Vendor lock-in feels fine right up until it does not. Maybe a region fails. Maybe a pricing "adjustment" obliterates your margins. 
 

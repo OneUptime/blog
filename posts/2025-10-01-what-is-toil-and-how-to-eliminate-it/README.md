@@ -133,7 +133,7 @@ Aim to push “reactive toil” under 15–20% of team time within a quarter.
 - Keep steps atomic and verifiable; include safety checks.
 - Script what you can; the runbook orchestrates, it doesn’t copy/paste commands.
 - Add rollbacks for every action.
-- After each use, update it—runbooks are living documents.
+- After each use, update it- runbooks are living documents.
 
 ---
 
@@ -151,7 +151,7 @@ For a broader reliability foundation, read: [The Ultimate SRE Reliability Checkl
 
 Use one integrated platform for telemetry, incidents, SLOs, and automation. Correlated traces, logs, and metrics remove hunt-the-context toil; opinionated incident flows remove paste-the-timeline toil.
 
-OneUptime brings these together so your team can spend time improving systems—not running them.
+OneUptime brings these together so your team can spend time improving systems- not running them.
 
 ---
 

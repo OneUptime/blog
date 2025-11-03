@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Observability, Performance, Metrics, Latency, SLOs, Site Reliability Engineering, SRE, Reliability
 
-Description: A practical guide to understanding P50, P95, and P99 latency percentiles—why averages lie, what each percentile tells you about user experience, how to set SLOs around them, and how to collect them correctly with histograms.
+Description: A practical guide to understanding P50, P95, and P99 latency percentiles- why averages lie, what each percentile tells you about user experience, how to set SLOs around them, and how to collect them correctly with histograms.
 
 If you're new to SLOs and reliability metrics, you may also want to read: 
 - What are Error Budgets? (https://oneuptime.com/blog/post/2025-09-03-what-are-error-budgets/view)
@@ -17,7 +17,7 @@ If you're new to SLOs and reliability metrics, you may also want to read:
 
 - P50 (median): What a “typical” user sees. Half of requests are faster, half slower.
 - P95: Tail latency early warning. 5% of requests are worse than this.
-- P99: Critical tail. The worst 1% of requests—often where high-value traffic lives (checkout, admin, APIs under load).
+- P99: Critical tail. The worst 1% of requests- often where high-value traffic lives (checkout, admin, APIs under load).
 - Mean (average): Misleading in skewed distributions. Don’t use as your primary latency SLI.
 - Use P50 to detect broad regressions, P95 to tune system performance, P99 to expose architectural bottlenecks & outliers.
 - Never chase P100. The single slowest request is noise.
@@ -75,7 +75,7 @@ Guidelines:
 - Highly interactive UI (perceived responsiveness): P75 for paint/interaction + P95 for completion (e.g. search results).
 - Streaming / background: Focus on throughput & success rates before latency percentiles.
 
-Avoid putting both P95 and P99 in hard SLO error budget policies early on—you’ll cause alert fatigue. Track first, promote later if stable.
+Avoid putting both P95 and P99 in hard SLO error budget policies early on- you’ll cause alert fatigue. Track first, promote later if stable.
 
 ---
 
@@ -186,7 +186,7 @@ More on SLOs & budgets: https://oneuptime.com/blog/post/2023-06-12-sli-sla-slo/v
 - Use one platform (e.g. OneUptime) so traces, metrics, logs, and SLO burn are correlated.
 - Store latency as a histogram, not a counter of rolled-up percentiles.
 - Tag latency metrics with stable dimensions only (method, route template, status_code, region). Avoid user-specific labels.
-- Track request volume alongside percentiles—P99 with 20 requests means little.
+- Track request volume alongside percentiles- P99 with 20 requests means little.
 - Add deploy markers to correlate shifts.
 
 ---
@@ -208,6 +208,6 @@ This layout reduces “time to probable cause.”
 
 Percentiles are about distribution clarity, not pedantic math. Use P50 to represent typical experience, P95 to manage general tail performance, and P99 to expose structural inefficiencies. Instrument with histograms, alert on SLO burn not raw spikes, and iterate based on real user impact.
 
-Reliability is earned by designing for the long tail—not just the median.
+Reliability is earned by designing for the long tail- not just the median.
 
 ---

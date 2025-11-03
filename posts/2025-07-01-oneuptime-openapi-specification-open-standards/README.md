@@ -6,18 +6,18 @@ Tags: OpenAPI, Open Source, Standards, Interoperability, API
 
 Description: OneUptime now provides a comprehensive OpenAPI 3.0 specification covering our entire API surface. This commitment to open standards enables seamless integrations, third-party tool development, and demonstrates our dedication to interoperability in the open source ecosystem.
 
-Today, we're excited to announce that **OneUptime now provides a complete OpenAPI 3.0 specification** for our entire API surface. This isn't just about documentation—it's a fundamental commitment to open standards, interoperability, and empowering the developer community to build on top of our platform.
+Today, we're excited to announce that **OneUptime now provides a complete OpenAPI 3.0 specification** for our entire API surface. This isn't just about documentation- it's a fundamental commitment to open standards, interoperability, and empowering the developer community to build on top of our platform.
 
 ## Why OpenAPI Matters for Open Source
 
-OpenAPI (formerly Swagger) represents more than just API documentation—it's a **universal language for APIs**. By adopting this open standard, OneUptime joins the ranks of forward-thinking companies that believe in:
+OpenAPI (formerly Swagger) represents more than just API documentation- it's a **universal language for APIs**. By adopting this open standard, OneUptime joins the ranks of forward-thinking companies that believe in:
 
 - **Transparency**: Every endpoint, parameter, and response is clearly documented
 - **Interoperability**: Standard formats enable seamless integration with any tool or platform
 - **Developer Experience**: Auto-generated SDKs, interactive documentation, and code samples
 - **Community Empowerment**: Third-party developers can build tools, integrations, and extensions
 
-As an open source observability platform, providing an OpenAPI specification isn't just good practice—it's essential for fostering an ecosystem where developers can innovate without barriers.
+As an open source observability platform, providing an OpenAPI specification isn't just good practice- it's essential for fostering an ecosystem where developers can innovate without barriers.
 
 ## Comprehensive Coverage Across 100+ Resources
 
@@ -197,7 +197,7 @@ Our commitment to open standards continues with planned enhancements:
 
 OneUptime's OpenAPI specification represents our commitment to the principles that make open source software powerful: **transparency, interoperability, and community collaboration**.
 
-By embracing open standards, we're not just making our API easier to use—we're contributing to an ecosystem where:
+By embracing open standards, we're not just making our API easier to use- we're contributing to an ecosystem where:
 
 - **Innovation is unrestricted** by proprietary barriers
 - **Integration is simplified** through standard protocols

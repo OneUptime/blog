@@ -50,7 +50,7 @@ A clear service catalog is the backbone of reliable operations. OneUptime turns 
 
 ## Step 3: Connect monitors, incidents, and runbooks
 
-1. Attach the monitors that track the service’s health—uptime, metrics, logs, traces, and synthetic checks.
+1. Attach the monitors that track the service’s health- uptime, metrics, logs, traces, and synthetic checks.
 2. Link existing incidents so responders can review past outages and remediation work.
 3. Add runbooks, dashboards, repositories, or design docs for quick reference.
 4. If the service has public or private status page components, connect them so customers see aligned updates.
@@ -62,7 +62,7 @@ A clear service catalog is the backbone of reliable operations. OneUptime turns 
 1. Use **Dependencies** to declare upstream services this service relies on (databases, APIs, third-party platforms).
 2. Add downstream consumers to understand who will feel the impact if this service fails.
 3. Review the dependency graph before maintenance or large releases to ensure all stakeholders are notified.
-4. Keep third-party services in the catalog too—document their SLAs, contacts, and escalation paths.
+4. Keep third-party services in the catalog too- document their SLAs, contacts, and escalation paths.
 
 ---
 
@@ -87,7 +87,7 @@ A clear service catalog is the backbone of reliable operations. OneUptime turns 
 ## Tips for a high-signal catalog
 
 - Use consistent naming (for example `svc-billing-api`) and add human-friendly descriptions for new team members.
-- Prefer fewer, more meaningful tags—think `Customer Facing`, `Revenue Critical`, `Vendor Managed`.
+- Prefer fewer, more meaningful tags- think `Customer Facing`, `Revenue Critical`, `Vendor Managed`.
 - Link SLOs or error budgets so teams know what “good” looks like for each service.
 - Regularly compare the catalog against infrastructure inventories to catch untracked systems.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Monitoring, Infrastructure, Port Monitoring, Reliability, Uptime Monitoring, DevOps
 
-Description: Learn how to configure port monitors in OneUptime so anyone can spot service outages quickly—without reading source code or writing scripts.
+Description: Learn how to configure port monitors in OneUptime so anyone can spot service outages quickly- without reading source code or writing scripts.
 
 ---
 
@@ -52,4 +52,4 @@ Databases, message brokers, SMTP servers, and custom apps all listen on specific
 
 ---
 
-Port monitors close the gap between infrastructure checks and high-level user journeys. Set them up for every service whose downtime hurts, layer on your automations, and let OneUptime keep watch around the clock—no low-level debugging required.
+Port monitors close the gap between infrastructure checks and high-level user journeys. Set them up for every service whose downtime hurts, layer on your automations, and let OneUptime keep watch around the clock- no low-level debugging required.

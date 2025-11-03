@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Tracing, Traces, Observability, TypeScript, NodeJS
 
-Description: A comprehensive, practical guide to understanding traces and spans in OpenTelemetry—how they work, how they relate, and how to instrument real Node.js / TypeScript applications effectively for deep insight and faster debugging.
+Description: A comprehensive, practical guide to understanding traces and spans in OpenTelemetry- how they work, how they relate, and how to instrument real Node.js / TypeScript applications effectively for deep insight and faster debugging.
 
 ---
 
@@ -540,7 +540,7 @@ function startSpanWithRecoveredContext(recovered: Partial<SpanContext>) {
 
 Metrics impact: links do not create additional timing branches, so they are cheaper than extra spans while still preserving relationship.
 
-Warning: Overusing links to approximate parenting makes traces harder to understand—use them intentionally, not as a default.
+Warning: Overusing links to approximate parenting makes traces harder to understand- use them intentionally, not as a default.
 
 ---
 
@@ -731,8 +731,8 @@ Traces + spans give you high-resolution *causal context*. Model them thoughtfull
 
 ### See Also
 
-- [What are metrics in OpenTelemetry: A Complete Guide](/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/) — Understand the quantitative side (counts, rates, percentiles) to pair with your tracing data.
-- [How to name spans in OpenTelemetry](/blog/post/2024-11-04-how-to-name-spans-in-opentelemetry/) — Apply consistent naming so traces remain searchable and comparable over time.
+- [What are metrics in OpenTelemetry: A Complete Guide](/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/) -  Understand the quantitative side (counts, rates, percentiles) to pair with your tracing data.
+- [How to name spans in OpenTelemetry](/blog/post/2024-11-04-how-to-name-spans-in-opentelemetry/) -  Apply consistent naming so traces remain searchable and comparable over time.
 
 **Related Reading:**
 

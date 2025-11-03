@@ -8,9 +8,9 @@ Description: OpenTelemetry standardizes instrumentation and pipelines so you can
 
 > Instrument once, observe anywhere. OpenTelemetry turns observability back into your choice, not your vendor's revenue strategy.
 
-The observability market matured into a comfortable oligopoly. A few cloud-first players own your agents, your data format, and the only exporter the CFO thinks is "safe." Switching costs stay high by design—proprietary protocols, pricing lock-ins, and closed dashboards keep teams from demanding better value.
+The observability market matured into a comfortable oligopoly. A few cloud-first players own your agents, your data format, and the only exporter the CFO thinks is "safe." Switching costs stay high by design- proprietary protocols, pricing lock-ins, and closed dashboards keep teams from demanding better value.
 
-OpenTelemetry (OTel) changes the power balance. By standardizing how signals are collected, described, and routed, OTel makes it trivial to move your telemetry wherever you want — self-hosted backends, new vendors, or a mix of both. That portability is the only real antidote to the observability cartel.
+OpenTelemetry (OTel) changes the power balance. By standardizing how signals are collected, described, and routed, OTel makes it trivial to move your telemetry wherever you want -  self-hosted backends, new vendors, or a mix of both. That portability is the only real antidote to the observability cartel.
 
 ## Instrument Once, Reuse Everywhere
 
@@ -27,7 +27,7 @@ Once you go all-in on OTel, the instrumentation burden stops being vendor-specif
 Vendor agents usually stream data straight to the mothership. OTel Collector puts you back in the driver's seat:
 
 - **Any-to-any pipelines** – Scrape Prometheus, ingest OTLP, tail files, accept StatsD, and ship to Loki, OneUptime, or the paid vendor of the week.
-- **Routing and sampling on your terms** – Split traffic to multiple destinations, apply tail-based sampling, drop noisy attributes, redact secrets—all before costs accrue.
+- **Routing and sampling on your terms** – Split traffic to multiple destinations, apply tail-based sampling, drop noisy attributes, redact secrets- all before costs accrue.
 - **Deploy anywhere** – Sidecars, DaemonSets, bare metal servers, or central clusters. Same binary, same config language.
 
 If you have not explored the collector yet, start with our [collector deep dive](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view). It is the difference between owning your telemetry and renting it.

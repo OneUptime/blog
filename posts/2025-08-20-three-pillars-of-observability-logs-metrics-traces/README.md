@@ -4,7 +4,7 @@ Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: Observability, OpenTelemetry, Logs, Metrics, Traces, Open Source
 
-Description: A practical, story-driven guide to weaving logs, metrics, and traces into one observability fabric with OpenTelemetry—while avoiding Datadog / New Relic lock‑in and cutting costs using OneUptime.
+Description: A practical, story-driven guide to weaving logs, metrics, and traces into one observability fabric with OpenTelemetry- while avoiding Datadog / New Relic lock‑in and cutting costs using OneUptime.
 
 It’s 2:07 AM. Your latency alert fires. Dashboard p99 is spiking. CPU looks fine. Error rate is… suspiciously normal. You pivot tabs like a casino dealer shuffling cards. Five minutes feel like fifty.
 
@@ -16,9 +16,9 @@ What you *wanted*:
 
 What you *got*: a dashboard scavenger hunt.
 
-Modern systems fail in nonlinear ways: partial outages, latent dependencies, retry storms, cold starts, noisy neighbors, thundering herds, region flaps—you name it. You don’t need *more dashboards* or another passive ping check; you need *connected signals*. That’s the promise of the three pillars of observability: **logs, metrics, and traces**. Alone they’re raw ingredients. Together they’re a narrative.
+Modern systems fail in nonlinear ways: partial outages, latent dependencies, retry storms, cold starts, noisy neighbors, thundering herds, region flaps- you name it. You don’t need *more dashboards* or another passive ping check; you need *connected signals*. That’s the promise of the three pillars of observability: **logs, metrics, and traces**. Alone they’re raw ingredients. Together they’re a narrative.
 
-This post shows you how to make them *sing together*—without mortgaging your runway to proprietary pricing.
+This post shows you how to make them *sing together*- without mortgaging your runway to proprietary pricing.
 
 
 ## Pillar 1: Metrics – Fast Answers, Slow Stories
@@ -40,11 +40,11 @@ Misuses (a greatest hits reel):
 Design Tips:
 - Define a bounded **cardinality budget** (e.g., env, region, service, endpoint)
 - Keep **SLI metrics** minimal and intentional
-- Derive *rates / percentiles* at ingest—don’t recompute everywhere
+- Derive *rates / percentiles* at ingest- don’t recompute everywhere
 
 ## Pillar 2: Logs – Infinite Detail, Zero Structure (Unless You Add It)
 
-Logs are the unstructured (or semi-structured) breadcrumbs. They answer: *What exactly happened?* They’re flexible—but that flexibility kills budgets if unmanaged.
+Logs are the unstructured (or semi-structured) breadcrumbs. They answer: *What exactly happened?* They’re flexible- but that flexibility kills budgets if unmanaged.
 
 > Logs are your system’s *raw history*. They capture everything from debug statements to error traces. They answer: *What happened at this point in time?*
 
@@ -64,7 +64,7 @@ Cost Levers (your bill control panel):
 
 - **Sampling:** Keep 100% of `ERROR`, sample `INFO` 1–5%, drop `DEBUG` unless temporarily enabled
 - **Tiering:** Hot (24–72h), Warm (7–30d), Cold (archival / object store)
-- **Normalization:** Emit structured JSON early—don’t pay to parse later
+- **Normalization:** Emit structured JSON early- don’t pay to parse later
 
 ## Pillar 3: Traces – The Causal Spine
 
@@ -241,7 +241,7 @@ Observability isn’t collecting “more stuff.” It’s **designing correlated
 
 Own your telemetry. Don’t rent your visibility.
 
-If you're spending heavily on Datadog or New Relic just to get the basics—start decoupling today. Instrument once with OTel, point it at OneUptime, and keep your options (and runway) open.
+If you're spending heavily on Datadog or New Relic just to get the basics- start decoupling today. Instrument once with OTel, point it at OneUptime, and keep your options (and runway) open.
 
 ---
 

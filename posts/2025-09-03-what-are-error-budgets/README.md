@@ -12,7 +12,7 @@ But what exactly are error budgets? How do you manage them? And how do they diff
 
 ## What Are Error Budgets?
 
-An error budget is the acceptable amount of downtime or errors your service can experience before it violates your Service Level Objectives (SLOs). It's essentially permission to fail—within limits.
+An error budget is the acceptable amount of downtime or errors your service can experience before it violates your Service Level Objectives (SLOs). It's essentially permission to fail- within limits.
 
 Think of it this way: If your SLO is 99.9% uptime (allowing for about 8.77 hours of downtime per year), your error budget is that 8.77 hours. As long as you stay within that budget, you're meeting your reliability targets.
 
@@ -157,7 +157,7 @@ Ready to implement error budgets? Start small:
 
 Remember, error budgets are a tool, not a goal. The real objective is delivering reliable software that delights users while enabling your business to grow.
 
-> "Error budgets don't eliminate failures—they make failures productive."
+> "Error budgets don't eliminate failures- they make failures productive."
 
 **About OneUptime:** We're building the next generation of observability tools to make SRE practices like error budgets accessible to every engineering team. Learn more about how we can help you implement error budgets and SLOs at [OneUptime.com](https://oneuptime.com).
 

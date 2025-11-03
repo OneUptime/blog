@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Logs, Logging, Observability, TypeScript, NodeJS, Structured Logging, Correlation
 
-Description: A comprehensive guide to structuring logs properly in OpenTelemetry—mastering log correlation with traces, effective attribute usage, and implementing structured logging patterns that enhance debugging and observability.
+Description: A comprehensive guide to structuring logs properly in OpenTelemetry- mastering log correlation with traces, effective attribute usage, and implementing structured logging patterns that enhance debugging and observability.
 
 ---
 
 > Logs are the detailed story of what happened in your application. When structured properly with OpenTelemetry, they become a powerful debugging tool that connects seamlessly with traces and metrics to give you complete observability.
 
-The key to effective logging in OpenTelemetry isn't just about capturing events—it's about capturing them in a way that tells a coherent story, correlates with other telemetry data, and provides actionable insights when things go wrong.
+The key to effective logging in OpenTelemetry isn't just about capturing events- it's about capturing them in a way that tells a coherent story, correlates with other telemetry data, and provides actionable insights when things go wrong.
 
 ---
 
@@ -33,7 +33,7 @@ console.log("Database query took 150ms for user lookup");
 console.log("Payment processing failed - card declined");
 ```
 
-These logs lack context, correlation, and structure—making them nearly impossible to analyze effectively in distributed systems.
+These logs lack context, correlation, and structure- making them nearly impossible to analyze effectively in distributed systems.
 
 ### The OpenTelemetry Solution
 
@@ -980,7 +980,7 @@ Remember:
 
 Start with basic correlation and semantic attributes, then gradually add more sophisticated patterns like contextual enrichment and smart sampling as your observability needs grow.
 
-> Great logging isn't about capturing everything—it's about capturing the right things in the right way, so when problems occur, you have the context you need to solve them quickly.
+> Great logging isn't about capturing everything- it's about capturing the right things in the right way, so when problems occur, you have the context you need to solve them quickly.
 
 ---
 

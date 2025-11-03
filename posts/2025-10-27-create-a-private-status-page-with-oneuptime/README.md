@@ -49,7 +49,7 @@ Not every update belongs in public. Private status pages let you brief employees
 
 ## Step 3: Model components and automation
 
-1. Under **Resources**, mirror the services and monitors you show on public pages—or create more granular ones for internal-only signals.
+1. Under **Resources**, mirror the services and monitors you show on public pages- or create more granular ones for internal-only signals.
 2. Enable automatic publication of incidents, scheduled maintenance, and announcements that are marked as “internal” in OneUptime.
 3. Review your incident templates and add any sensitive investigation fields that you would not post publicly.
 4. Set ownership so the same responders who manage public communication can also update the private timeline.
@@ -68,7 +68,7 @@ Not every update belongs in public. Private status pages let you brief employees
 ## Step 5: Tailor notifications
 
 1. From **Subscribers**, decide whether private page members receive email, SMS, or workspace notifications.
-2. Configure message templates specifically for the private audience—include remediation detail, internal ticket links, or runbook IDs when helpful.
+2. Configure message templates specifically for the private audience- include remediation detail, internal ticket links, or runbook IDs when helpful.
 3. If you maintain a private Slack or Microsoft Teams channel, connect Workspace Notification Rules to echo every status page post there.
 
 ---
@@ -78,7 +78,7 @@ Not every update belongs in public. Private status pages let you brief employees
 1. Share the access instructions with your internal audience and remind them the page is confidential.
 2. Bookmark the link in incident response runbooks so command staff knows where to post updates first.
 3. If you also run a public page, clarify when responders should cross-post versus keep updates private.
-4. Monitor the access logs inside OneUptime to ensure the right people are signing in—and remove any stale accounts.
+4. Monitor the access logs inside OneUptime to ensure the right people are signing in- and remove any stale accounts.
 
 ---
 

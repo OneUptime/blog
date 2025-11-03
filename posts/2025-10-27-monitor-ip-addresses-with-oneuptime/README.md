@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Monitoring, Infrastructure, IP Monitoring, Reliability, Uptime Monitoring, DevOps
 
-Description: Learn how to configure IP monitors in OneUptime so anyone on your team can spot network issues quickly—no code or deep networking knowledge required.
+Description: Learn how to configure IP monitors in OneUptime so anyone on your team can spot network issues quickly- no code or deep networking knowledge required.
 
 ---
 
@@ -51,4 +51,4 @@ On OneUptime Dashboard,
 
 ---
 
-IP monitors give you a dependable early warning when critical infrastructure goes dark. Pair them with port, website, and telemetry monitors to build a full incident picture—all without touching any code.
+IP monitors give you a dependable early warning when critical infrastructure goes dark. Pair them with port, website, and telemetry monitors to build a full incident picture- all without touching any code.

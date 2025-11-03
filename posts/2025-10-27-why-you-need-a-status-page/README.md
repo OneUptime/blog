@@ -35,7 +35,7 @@ Customers forgive downtime faster than silence. A status page gives you a public
 
 - **Service components** broken into logical groups (API, Dashboard, Customer Webhooks, etc.) so readers see what’s impacted at a glance.
 - **Historical uptime** charts to show trends over the last 30, 90, or 365 days.
-- **Incident and maintenance timelines** that are easy to skim—updates, ownership, and next checkpoints.
+- **Incident and maintenance timelines** that are easy to skim- updates, ownership, and next checkpoints.
 - **Subscriber options** for Email, SMS, RSS, Slack, etc so audiences can choose how they stay informed.
 - **Custom branding and domain** (for example `status.yourcompany.com`) so the page feels native to your product.
 
@@ -56,7 +56,7 @@ Customers forgive downtime faster than silence. A status page gives you a public
 - **Do post** scheduled maintenance at least a week in advance, plus reminders the day before and fifteen minutes before start.
 - **Do update** at predictable intervals (for example every 30 minutes) during ongoing incidents, even if the message is “still investigating.”
 - **Don’t post** transient hiccups that self-resolve in seconds unless they breach your SLOs.
-- **Don’t wait** until the fix ships—communicate the moment you recognize customer impact.
+- **Don’t wait** until the fix ships- communicate the moment you recognize customer impact.
 
 ---
 

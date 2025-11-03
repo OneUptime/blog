@@ -69,7 +69,7 @@ This workflow leverages the best of both worlds:
 ## Debunking the Myths
 
 **"AI code is low quality!"**  
-*So is a lot of human code. Quality comes from review, testing, and refinement—not origin.*
+*So is a lot of human code. Quality comes from review, testing, and refinement- not origin.*
 
 **"It makes developers lazy!"**  
 *Calculators didn't make mathematicians lazy. They freed them to solve harder problems.*
