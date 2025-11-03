@@ -828,4 +828,18 @@
     ],
     "post": "2025-11-03-kubernetes-and-ceph-break-the-cloud-cartel"
   }
+  ,
+  {
+    "title": "OpenTelemetry: Your Escape Hatch from the Observability Cartel",
+    "description": "OpenTelemetry standardizes instrumentation and pipelines so you can swap observability vendors, mix open source with commercial tools, and run hybrid data stacks without paying exit taxes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Observability",
+      "Open Source",
+      "Vendor Lock-in",
+      "Telemetry Pipeline"
+    ],
+    "post": "2025-11-03-opentelemetry-escape-from-observability-cartel"
+  }
 ]

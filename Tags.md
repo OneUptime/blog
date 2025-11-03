@@ -97,6 +97,7 @@
 - Supply Chain
 - Team Management
 - Templates
+- Telemetry Pipeline
 - Terraform
 - Tests
 - TLS
@@ -106,6 +107,7 @@
 - Histograms
 - TypeScript
 - Uptime Monitoring
+- Vendor Lock-in
 - Web Architecture
 - Webhooks
 - Workflows
