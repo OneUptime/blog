@@ -7,7 +7,9 @@
 - Automation
 - AWS
 - Backup
+- Bare Metal
 - Certificate Monitoring
+- Ceph
 - Cloud
 - Collector
 - Components

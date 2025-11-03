@@ -813,4 +813,19 @@
     ],
     "post": "2025-10-29-aws-to-bare-metal-two-years-later"
   }
+  ,
+  {
+    "title": "Kubernetes + Ceph: Your Freedom from the Cloud Cartel",
+    "description": "Kubernetes standardizes compute, Ceph standardizes storage. Together they make cloud-to-cloud, hybrid, and bare metal moves routine while weakening the hyperscaler oligopoly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Ceph",
+      "Bare Metal",
+      "Cloud",
+      "Infrastructure",
+      "Self-Hosting"
+    ],
+    "post": "2025-11-03-kubernetes-and-ceph-break-the-cloud-cartel"
+  }
 ]
