@@ -841,5 +841,19 @@
       "Telemetry Pipeline"
     ],
     "post": "2025-11-03-opentelemetry-escape-from-observability-cartel"
+  },
+  {
+    "title": "OneUptime Now Speaks Syslog Natively: Bring Legacy Logs into Modern Observability",
+    "description": "Forward RFC3164 and RFC5424 syslog directly into OneUptime over HTTPS, explore common deployment patterns, and start alerting on the data instantly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Monitoring",
+      "Observability",
+      "Logs",
+      "Logging",
+      "Syslog",
+      "DevOps"
+    ],
+    "post": "2025-11-06-native-syslog-support-in-oneuptime"
   }
 ]

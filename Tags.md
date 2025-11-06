@@ -94,6 +94,7 @@
 - Status Page
 - Service Catalog
 - Structured Logging
+- Syslog
 - Supply Chain
 - Team Management
 - Templates
