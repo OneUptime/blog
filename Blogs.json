@@ -398,6 +398,7 @@
     ],
     "post": "2025-09-09-effective-incident-postmortem-templates-ready-to-use-examples"
   }
+
   ,
   {
     "title": "Basics of profiling: Turning CPU & Memory Hotspots into Action",
@@ -855,5 +856,19 @@
       "DevOps"
     ],
     "post": "2025-11-06-native-syslog-support-in-oneuptime"
+  },
+  {
+    "title": "Kubernetes Is Your Private Cloud: Own Your Stack, Own Your Future",
+    "description": "Kubernetes already delivers every cloud building block—compute, storage, databases, AI—on hardware you control, giving you sovereignty over costs, compliance, and velocity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Self-Hosting",
+      "Bare Metal",
+      "Cloud",
+      "Vendor Lock-in",
+      "Private Cloud"
+    ],
+    "post": "2025-11-12-kubernetes-is-your-private-cloud"
   }
 ]

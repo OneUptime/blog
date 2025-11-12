@@ -68,6 +68,7 @@
 - Package Management
 - Performance
 - Platform Strategy
+- Private Cloud
 - Product
 - Product Development
 - Productivity
