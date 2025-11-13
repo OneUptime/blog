@@ -13,6 +13,7 @@
 - Cloud
 - Collector
 - Components
+- Compliance
 - Correlation
 - Distributed Systems
 - Cost Optimization
@@ -67,6 +68,7 @@
 - Organizational Design
 - Package Management
 - Performance
+- PII
 - Platform Strategy
 - Private Cloud
 - Product

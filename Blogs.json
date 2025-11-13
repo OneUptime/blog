@@ -871,4 +871,21 @@
     ],
     "post": "2025-11-12-kubernetes-is-your-private-cloud"
   }
+  ,
+  {
+    "title": "Keep PII Out of Your Telemetry: Sanitizing Logs, Traces, and Metrics with OpenTelemetry",
+    "description": "A step-by-step playbook for preventing sensitive data from leaking into logs, traces, and metrics using OpenTelemetry SDKs, collector processors, and automated detection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Security",
+      "Data Protection",
+      "Logs",
+      "Metrics",
+      "Traces",
+      "PII",
+      "Compliance"
+    ],
+    "post": "2025-11-13-keep-pii-out-of-observability-telemetry"
+  }
 ]
