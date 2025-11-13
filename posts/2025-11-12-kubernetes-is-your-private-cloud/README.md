@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Self-Hosting, Bare Metal, Cloud, Vendor Lock-in, Private Cloud
 
-Description: Kubernetes lets you run every "cloud" service on hardware you control. From compute and storage to databases and AI workloads, you can ship faster, spend less, and own your destiny by treating Kubernetes as your private cloud.
+Description: Kubernetes lets you run every cloud service on hardware you control. From compute and storage to databases and AI workloads, you can ship faster, spend less, and own your destiny by treating Kubernetes as your private cloud.
 
 We anchored our infrastructure on the public cloud because everyone else seemed to do it. Swipe a credit card, spin up managed everything, ship features. It felt easy—until the bill ballooned, incidents were gated behind opaque support tickets, and our roadmap got blocked by API rate limits we couldn't change. Public cloud made our product possible, but it also made our fate dependent on someone else.
 
