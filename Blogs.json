@@ -888,4 +888,17 @@
     ],
     "post": "2025-11-13-keep-pii-out-of-observability-telemetry"
   }
+  ,
+  {
+    "title": "When performance matters, skip the ORM",
+    "description": "ORMs help teams move fast, but once you're tuning a hot path they add hidden latency, query chatter, and serialization overhead. Here's when to drop the abstraction, how to measure the impact, and how to ship raw SQL safely.",
+    "authorGitHubUsername": "devneelpatel",
+    "tags": [
+      "Performance",
+      "Latency",
+      "Software Development",
+      "DevOps"
+    ],
+    "post": "2025-11-13-when-performance-matters-skip-the-orm"
+  }
 ]
