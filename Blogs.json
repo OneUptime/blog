@@ -901,4 +901,20 @@
     ],
     "post": "2025-11-13-when-performance-matters-skip-the-orm"
   }
+  ,
+  {
+    "title": "How to Monitor Kubernetes Clusters with OpenTelemetry and OneUptime",
+    "description": "Deploy an OpenTelemetry Collector DaemonSet, stream Kubernetes metrics, logs, and traces into OneUptime, and wire dashboards plus alerts that keep clusters healthy.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "OpenTelemetry",
+      "Observability",
+      "Monitoring",
+      "Logs",
+      "Metrics",
+      "Traces"
+    ],
+    "post": "2025-11-14-monitor-kubernetes-clusters-with-opentelemetry-and-oneuptime"
+  }
 ]
