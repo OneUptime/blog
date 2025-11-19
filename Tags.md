@@ -11,6 +11,7 @@
 - Certificate Monitoring
 - Ceph
 - Cloud
+- Cloudflare
 - Collector
 - Components
 - Compliance

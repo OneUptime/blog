@@ -917,4 +917,17 @@
     ],
     "post": "2025-11-14-monitor-kubernetes-clusters-with-opentelemetry-and-oneuptime"
   }
+  ,
+  {
+    "title": "Why our Cloudflare failover failed?",
+    "description": "Cloudflare's Nov 18 outage exposed the flaw in our 'just turn off the proxy' plan. Here's how the lockout happened, what the HN thread taught us, and the automation plus redundancies we're adding so we can really fail over next time.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloudflare",
+      "Reliability",
+      "Incident Management",
+      "Security"
+    ],
+    "post": "2025-11-19-why-our-cloudflare-failover-failed"
+  }
 ]
