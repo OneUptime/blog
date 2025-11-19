@@ -16,6 +16,12 @@ On November 18, that plan met reality. Cloudflare's network melted, the dashboar
 - **Missing automation artifacts.** We use Terraform (OpenTofu), but no pre-generated API token with the `Zone.DNS` scope stored in our password vault. No token means no IaC fallback.
 - **Turnstile lockout.** Even when the dashboard briefly loaded, the captcha endpoint returned `Please unblock challenges.cloudflare.com`, blocking human access.
 
+## When the dashboard *and* API are toast
+
+Never let Cloudflare be both your registrar and DNS provider. If their control plane is nuked, you still need a way to flip nameservers. When both control planes disappear, we run a lightweight "off-Cloudflare" drill that keeps traffic flowing without any fancy tooling:
+
+From a break-glass machine we log into our registrar and swap the nameservers to our secondary DNS provider (we pre-loaded glue records and a 300-second TTL).
+
 ## How we're changing our runbooks
 
 ### 1. Ship an API-first failover switch
