@@ -3,6 +3,7 @@
 - AI
 - APM
 - Alerts
+- Alerting
 - API
 - Automation
 - AWS
@@ -86,6 +87,7 @@
 - Security
 - Site Reliability Engineering
 - Error Budgets
+- Exceptions
 - Exemplars
 - Grafana
 - Slack

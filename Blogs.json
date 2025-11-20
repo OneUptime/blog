@@ -929,5 +929,16 @@
       "Security"
     ],
     "post": "2025-11-19-why-our-cloudflare-failover-failed"
+  },
+  {
+    "title": "How private status pages stay secure: authentication options explained",
+    "description": "Layer username/password accounts, SSO + SCIM, the master password, and IP whitelisting to keep sensitive status pages restricted to trusted people and networks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Status Page",
+      "Security",
+      "Identity"
+    ],
+    "post": "2025-11-20-secure-your-status-page-authentication-options"
   }
 ]
