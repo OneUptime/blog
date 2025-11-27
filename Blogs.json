@@ -956,4 +956,18 @@
     ],
     "post": "2025-11-27-ten-docker-superpowers-youre-probably-not-using"
   }
+
+  ,
+  {
+    "title": "Learn Docker Step by Step: A Hands-On Beginner Guide",
+    "description": "A friendly walkthrough of Docker fundamentals, core terms, and one end-to-end example—from writing a Dockerfile to running a containerized web API locally.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Containers",
+      "Learning Resource",
+      "DevOps"
+    ],
+    "post": "2025-11-27-learn-docker-step-by-step"
+  }
 ]
