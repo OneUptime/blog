@@ -970,4 +970,19 @@
     ],
     "post": "2025-11-27-learn-docker-step-by-step"
   }
+
+  ,
+  {
+    "title": "Learn Kubernetes Step by Step: Cluster Basics Without the Headache",
+    "description": "A beginner-friendly path to Kubernetes—what the core pieces are, how they talk, and one practical Deployment plus Service example you can run today, complete with diagrams.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Containers",
+      "Learning Resource",
+      "DevOps",
+      "Cloud"
+    ],
+    "post": "2025-11-27-learn-kubernetes-step-by-step"
+  }
 ]
