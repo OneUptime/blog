@@ -941,4 +941,19 @@
     ],
     "post": "2025-11-20-secure-your-status-page-authentication-options"
   }
+
+  ,
+  {
+    "title": "10 Docker Superpowers Developers Forget to Use",
+    "description": "Ten field-tested Docker techniques—from BuildKit secrets to Compose profiles—that quietly reduce image size, harden workloads, and save developer hours.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Containers",
+      "DevOps",
+      "Performance",
+      "Security"
+    ],
+    "post": "2025-11-27-ten-docker-superpowers-youre-probably-not-using"
+  }
 ]

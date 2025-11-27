@@ -14,6 +14,7 @@
 - Cloud
 - Cloudflare
 - Collector
+- Containers
 - Components
 - Compliance
 - Correlation
@@ -29,6 +30,7 @@
 - Disaster Recovery
 - DevOps
 - Devices
+- Docker
 - Engineering Culture
 - Identity
 - Incident Management
