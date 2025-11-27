@@ -66,6 +66,7 @@
 - Model Context Protocol
 - Modernization
 - Monitoring
+- Networking
 - MTTD
 - MTTR
 - NodeJS
@@ -89,9 +90,11 @@
 - Profiling
 - PWA
 - Reliability
+- Releases
 - SaaS
 - Sales
 - Sampling
+- Scaling
 - Self-Hosting
 - Security
 - Site Reliability Engineering
@@ -100,6 +103,7 @@
 - Exemplars
 - Grafana
 - GitHub Actions
+- Getting Started
 - Slack
 - SLOs
 - Software Development
@@ -130,6 +134,7 @@
 - Vendor Lock-in
 - Web Architecture
 - Webhooks
+- Workloads
 - Workflows
 - Workspace Connections
 - Synthetic Monitoring

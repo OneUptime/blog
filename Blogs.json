@@ -1134,4 +1134,134 @@
     ],
     "post": "2025-11-27-migrate-legacy-vms-to-docker"
   }
+  ,
+  {
+    "title": "How to Install kubectl, Configure kubeconfig, and Talk to Your First Cluster",
+    "description": "A zero-to-one walkthrough for installing kubectl on macOS/Linux/Windows, wiring up kubeconfig, and validating your first cluster connection in under 15 minutes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Learning Resource",
+      "DevOps",
+      "Getting Started"
+    ],
+    "post": "2025-11-27-install-kubectl-first-cluster"
+  }
+  ,
+  {
+    "title": "How to Create, Scale, and Delete Deployments + Services with kubectl apply",
+    "description": "A practical notebook for the kubectl apply workflow—create a Deployment, expose it with a Service, scale replicas up/down, and clean up safely.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "DevOps",
+      "Learning Resource",
+      "Getting Started"
+    ],
+    "post": "2025-11-27-deploy-scale-delete"
+  }
+  ,
+  {
+    "title": "How to Use Namespaces and RBAC to Keep Dev, Stage, and Prod Isolated",
+    "description": "Practical steps for carving clusters into dev/stage/prod namespaces, applying least-privilege RBAC, and verifying isolation so accidents in testing never spill into production.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "DevOps",
+      "Security",
+      "Environments"
+    ],
+    "post": "2025-11-27-namespaces-rbac-isolation"
+  }
+  ,
+  {
+    "title": "How to Add Liveness, Readiness, and Startup Probes So Kubernetes Auto-Heals Your Apps",
+    "description": "Configure HTTP/TCP/command probes, validate them with kubectl, and wire alerting so the scheduler auto-heals hung Pods before users notice.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Reliability",
+      "DevOps",
+      "Troubleshooting"
+    ],
+    "post": "2025-11-27-probes-auto-healing"
+  }
+  ,
+  {
+    "title": "How to Manage ConfigMaps and Secrets Without Leaking Credentials",
+    "description": "Create, template, and mount ConfigMaps and Secrets the right way—complete with Git workflows, base64 gotchas, and external secret integrations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Configuration",
+      "Security",
+      "DevOps"
+    ],
+    "post": "2025-11-27-configmaps-secrets"
+  }
+  ,
+  {
+    "title": "How to Run Kubernetes Jobs and CronJobs for One-Off or Scheduled Work",
+    "description": "Launch reliable Jobs for migrations, wrap them with CronJobs for schedules, and add safety nets like concurrency policies and TTL controllers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Workloads",
+      "Automation",
+      "DevOps"
+    ],
+    "post": "2025-11-27-jobs-cronjobs"
+  }
+  ,
+  {
+    "title": "How to Roll Out a Change, Watch Health Checks, and Undo a Bad Deploy",
+    "description": "Use Deployment strategies, kubectl rollout, and health probes to ship safely—and revert instantly when something looks wrong.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Releases",
+      "DevOps",
+      "Reliability"
+    ],
+    "post": "2025-11-27-rollouts-health-undo"
+  }
+  ,
+  {
+    "title": "How to Debug Services with kubectl Port-Forward and Inspect Ingress Traffic",
+    "description": "Quickly tunnel into Pods/Services with kubectl port-forward, verify Ingress routing/TLS, and capture the signals you need when traffic misbehaves.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Troubleshooting",
+      "Networking",
+      "DevOps"
+    ],
+    "post": "2025-11-27-port-forward-ingress-debug"
+  }
+  ,
+  {
+    "title": "How to Autoscale Deployments with the Horizontal Pod Autoscaler",
+    "description": "Enable the metrics server, define resource requests, create an HPA, and load-test it so Pods scale up (and back down) automatically.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Scaling",
+      "Performance",
+      "DevOps"
+    ],
+    "post": "2025-11-27-hpa-autoscale"
+  }
+  ,
+  {
+    "title": "How to Build a kubectl Visibility Toolkit for Fast Incident Response",
+    "description": "A curated list of kubectl commands, aliases, and plugins that surface cluster health in seconds so you can answer what broke? without dashboards.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Observability",
+      "Troubleshooting",
+      "DevOps"
+    ],
+    "post": "2025-11-27-kubectl-visibility-toolkit"
+  }
 ]
