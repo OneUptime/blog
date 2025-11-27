@@ -998,5 +998,19 @@
       "Cost Optimization"
     ],
     "post": "2025-11-27-ten-kubernetes-superpowers-developers-overlook"
+  },
+  {
+    "title": "Choosing the Right Kubernetes Distribution: When Each Flavor Wins",
+    "description": "A pragmatic guide to Kubernetes flavors—upstream DIY, managed clouds, opinionated platforms, and lightweight edge distros—with crisp heuristics on when each option is the fastest, cheapest, or safest bet.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Cloud",
+      "Bare Metal",
+      "DevOps",
+      "Self-Hosting",
+      "Infrastructure"
+    ],
+    "post": "2025-11-27-choosing-the-right-kubernetes-distribution"
   }
 ]
