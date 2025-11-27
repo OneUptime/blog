@@ -1040,5 +1040,98 @@
       "Automation"
     ],
     "post": "2025-11-27-kubernetes-edge-flavors"
+  },
+  {
+    "title": "How to Shrink and Harden Docker Images Without Breaking Builds",
+    "description": "A practical playbook for cutting Docker image sizes in half while tightening security—covering multi-stage builds, distroless bases, BuildKit secrets, SBOMs, and automated policy gates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Security",
+      "Performance",
+      "DevOps",
+      "Containers"
+    ],
+    "post": "2025-11-27-shrink-and-harden-docker-images"
+  },
+  {
+    "title": "How to Manage Environment-Specific Configs with Docker Compose Profiles",
+    "description": "Structure Docker Compose files with profiles, overrides, secrets, and env layers so dev, staging, and prod share one manifest without copy/paste drift.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "DevOps",
+      "Automation",
+      "Environments",
+      "Configuration"
+    ],
+    "post": "2025-11-27-manage-docker-compose-profiles"
+  },
+  {
+    "title": "How to Instrument Dockerized Apps with OpenTelemetry Sidecars and Agents",
+    "description": "Step-by-step playbooks for emitting traces, metrics, and logs from containerized services using OpenTelemetry SDKs, sidecars, and node agents wired into OneUptime.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "OpenTelemetry",
+      "Observability",
+      "DevOps",
+      "Monitoring"
+    ],
+    "post": "2025-11-27-instrument-dockerized-apps-with-opentelemetry"
+  },
+  {
+    "title": "How to Run Production-Ready Docker Swarm Stacks",
+    "description": "Design manager quorums, rolling updates, health checks, persistent volumes, and observability pipelines so Docker Swarm stays boring in production.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Swarm",
+      "DevOps",
+      "Reliability",
+      "Monitoring",
+      "Automation"
+    ],
+    "post": "2025-11-27-production-docker-swarm"
+  },
+  {
+    "title": "How to Plug Docker into GitHub Actions for Fast, Secure CI",
+    "description": "Use BuildKit, buildx caches, Trivy scans, provenance metadata, and environment approvals to build and publish Docker images confidently from GitHub Actions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "CI/CD",
+      "GitHub Actions",
+      "Security",
+      "DevOps",
+      "Automation"
+    ],
+    "post": "2025-11-27-docker-github-actions-ci"
+  },
+  {
+    "title": "How to Debug Failing Docker Containers Safely",
+    "description": "A disciplined workflow for investigating broken containers with inspect, logs, cp, and ephemeral shells—capturing evidence without mutating production.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Troubleshooting",
+      "DevOps",
+      "Debugging",
+      "Security"
+    ],
+    "post": "2025-11-27-debug-docker-containers"
+  },
+  {
+    "title": "How to Migrate Legacy VMs to Docker Containers",
+    "description": "A seven-step plan for inventorying virtual machines, extracting dependencies, rebuilding images, migrating data, and cutting over to containers safely.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Migration",
+      "DevOps",
+      "Modernization",
+      "Automation"
+    ],
+    "post": "2025-11-27-migrate-legacy-vms-to-docker"
   }
 ]

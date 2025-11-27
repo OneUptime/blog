@@ -11,6 +11,8 @@
 - Bare Metal
 - Certificate Monitoring
 - Ceph
+- CI/CD
+- Configuration
 - Cloud
 - Cloudflare
 - Collector
@@ -25,6 +27,7 @@
 - DataDog
 - Datadog
 - Data Protection
+- Debugging
 - Dependencies
 - Decentralization
 - Disaster Recovery
@@ -33,6 +36,7 @@
 - Docker
 - Edge
 - Engineering Culture
+- Environments
 - Identity
 - Incident Management
 - Integrations
@@ -57,8 +61,10 @@
 - MCP
 - Metrics
 - Microk8s
+- Migration
 - Microsoft Teams
 - Model Context Protocol
+- Modernization
 - Monitoring
 - MTTD
 - MTTR
@@ -93,11 +99,13 @@
 - Exceptions
 - Exemplars
 - Grafana
+- GitHub Actions
 - Slack
 - SLOs
 - Software Development
 - SRE
 - SSL
+- Swarm
 - Standards
 - Startups
 - Status Page
@@ -114,6 +122,7 @@
 - TLS
 - Tracing
 - Traces
+- Troubleshooting
 - Heartbeat
 - Histograms
 - TypeScript
