@@ -160,4 +160,4 @@ Because syslog runs through the same pipeline as OpenTelemetry logs, you can cor
 - Syslog ingestion is included for every plan that already has log-based telemetry. Usage counts toward existing log retention and billing metrics.
 - Roadmap items include S3-compatible archival exports, field-level masking for sensitive structured data, and UI wizards for the most popular forwarders.
 
-If you have a syslog-forwarding pattern we should cover next, let us know. With native syslog support, OneUptime can finally watch the parts of your infrastructure that never made the jump to modern telemetry—without asking you to maintain another collector.
+If you have a syslog-forwarding pattern we should cover next, let us know. With native syslog support, OneUptime can finally watch the parts of your infrastructure that never made the jump to modern telemetry - without asking you to maintain another collector.

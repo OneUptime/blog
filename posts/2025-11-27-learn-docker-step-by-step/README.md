@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Containers, Learning Resource, DevOps
 
-Description: A friendly walkthrough of Docker fundamentals, core terms, and one end-to-end example—from writing a Dockerfile to running a containerized web API locally.
+Description: A friendly walkthrough of Docker fundamentals, core terms, and one end-to-end example - from writing a Dockerfile to running a containerized web API locally.
 
 Docker looks intimidating until you realize it is just a repeatable recipe for setting up and running software. This guide keeps jargon light, teaches the words you need to understand error messages, and finishes with a complete example you can copy-paste.
 
@@ -39,13 +39,13 @@ Most teams start with containers for day-to-day application deployment and keep 
 
 ## Five Core Terms (No Buzzwords)
 
-- **Image = recipe card.** It lists every ingredient (packages, app files) and the instructions Docker follows. You cannot “run” an image directly—think of it like cookie dough in the freezer.
+- **Image = recipe card.** It lists every ingredient (packages, app files) and the instructions Docker follows. You cannot “run” an image directly - think of it like cookie dough in the freezer.
 - **Container = baked cookie.** When you run the image, Docker creates a container (a live process) from that recipe. Stop it, and the container disappears; the image stays untouched for the next run.
 - **Dockerfile = how the recipe is written.** Each line is a command such as “use Node.js 22” or “copy my code.” Change the Dockerfile, rebuild the image, and every teammate gets the same result.
 - **Registry = shared pantry.** It is simply a server that stores images so other machines can pull them. Docker Hub is the default, but GitHub Container Registry or AWS ECR work the same way.
 - **Volume = labelled Tupperware.** Containers are disposable, so any data you want to keep (databases, uploaded files) should live in a volume that survives restarts.
 
-If an error ever mentions one of these nouns, refer back here—they cover 90% of Docker troubleshooting.
+If an error ever mentions one of these nouns, refer back here - they cover 90% of Docker troubleshooting.
 
 ## Step-by-Step: Build Confidence Before Features
 
@@ -53,7 +53,7 @@ If an error ever mentions one of these nouns, refer back here—they cover 90% o
 2. **Pull your first image.** `docker pull hello-world` proves networking and permissions work.
 3. **List images and containers.** `docker images` and `docker ps -a` help you see what is already on disk.
 4. **Clean up early.** `docker system prune` clears unused layers so experiments do not fill your SSD.
-5. **Use `docker --help`.** Every subcommand ships with readable help text—use it! 
+5. **Use `docker --help`.** Every subcommand ships with readable help text - use it! 
 
 Once you are comfortable with these basics, build something real.
 

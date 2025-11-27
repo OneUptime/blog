@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Status Page, Security, Identity
 
-Description: Hardening a OneUptime status page by choosing the right authentication mode—per-user username/password accounts, SSO + SCIM, or the master password—and pairing it with IP whitelisting that keeps sensitive incidents truly private.
+Description: Hardening a OneUptime status page by choosing the right authentication mode - per-user username/password accounts, SSO + SCIM, or the master password - and pairing it with IP whitelisting that keeps sensitive incidents truly private.
 
 ---
 
 Status pages no longer live only on the public web. Many of us now maintain internal, customer-specific, or NDA-protected pages where we share sensitive recovery notes, customer-specific impact, or compliance artifacts. That means the page itself must be treated like a production system: authenticated, audited, and locked to the networks you trust.
 
-This guide walks through the three distinct authentication modes OneUptime ships for status pages—username/password, SSO with SCIM, and the master password—and shows how to add IP whitelisting so only known networks can even reach the login form.
+This guide walks through the three distinct authentication modes OneUptime ships for status pages - username/password, SSO with SCIM, and the master password - and shows how to add IP whitelisting so only known networks can even reach the login form.
 
 ---
 
@@ -29,7 +29,7 @@ If you are still deciding between public or private pages, start with [Create a 
 
 This is the default for quick pilots or smaller teams.
 
-Each status-page user gets their own credential pair—no shared logins—so you can disable individual access without touching other accounts.
+Each status-page user gets their own credential pair - no shared logins - so you can disable individual access without touching other accounts.
 
 1. In your OneUptime project, open **Status Pages → Private Users**.
 2. Choose **Username & Password** and invite users by email. They receive onboarding links with enforced password complexity.
@@ -42,7 +42,7 @@ Each status-page user gets their own credential pair—no shared logins—so you
 
 ## Option 2: SSO + SCIM (recommended for production)
 
-Single Sign-On brings your page under the same policies as the rest of your stack—MFA, device posture, conditional access. SCIM keeps membership current so offboarding is instant.
+Single Sign-On brings your page under the same policies as the rest of your stack - MFA, device posture, conditional access. SCIM keeps membership current so offboarding is instant.
 
 1. Navigate to **Authentication → SSO** and choose Okta, Azure AD, Google Workspace, or any SAML/OIDC provider.
 2. Enable **SCIM provisioning** so adds/removes in the source directory sync automatically. Dormant emails disappear without manual cleanup.
@@ -59,7 +59,7 @@ Single Sign-On brings your page under the same policies as the rest of your stac
 
 ## Option 3: Master Password for controlled broadcast
 
-The master password is a one-to-many secret meant for deliberate, time-bound sharing—think executive briefings, investor updates, or incident bridges where dozens of people need immediate read-only access.
+The master password is a one-to-many secret meant for deliberate, time-bound sharing - think executive briefings, investor updates, or incident bridges where dozens of people need immediate read-only access.
 
 1. Under **Authentication**, generate a **Master Password**. Treat it like any production secret.
 2. Set an expiration date and reminder to rotate it after major incidents or staff changes.

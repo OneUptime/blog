@@ -859,7 +859,7 @@
   },
   {
     "title": "Kubernetes Is Your Private Cloud: Own Your Stack, Own Your Future",
-    "description": "Kubernetes already delivers every cloud building block—compute, storage, databases, AI—on hardware you control, giving you sovereignty over costs, compliance, and velocity.",
+    "description": "Kubernetes already delivers every cloud building block - compute, storage, databases, AI - on hardware you control, giving you sovereignty over costs, compliance, and velocity.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Kubernetes",
@@ -945,7 +945,7 @@
   ,
   {
     "title": "10 Docker Superpowers Developers Forget to Use",
-    "description": "Ten field-tested Docker techniques—from BuildKit secrets to Compose profiles—that quietly reduce image size, harden workloads, and save developer hours.",
+    "description": "Ten field-tested Docker techniques - from BuildKit secrets to Compose profiles - that quietly reduce image size, harden workloads, and save developer hours.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Docker",
@@ -960,7 +960,7 @@
   ,
   {
     "title": "Learn Docker Step by Step: A Hands-On Beginner Guide",
-    "description": "A friendly walkthrough of Docker fundamentals, core terms, and one end-to-end example—from writing a Dockerfile to running a containerized web API locally.",
+    "description": "A friendly walkthrough of Docker fundamentals, core terms, and one end-to-end example - from writing a Dockerfile to running a containerized web API locally.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Docker",
@@ -974,7 +974,7 @@
   ,
   {
     "title": "Learn Kubernetes Step by Step: Cluster Basics Without the Headache",
-    "description": "A beginner-friendly path to Kubernetes—what the core pieces are, how they talk, and one practical Deployment plus Service example you can run today, complete with diagrams.",
+    "description": "A beginner-friendly path to Kubernetes - what the core pieces are, how they talk, and one practical Deployment plus Service example you can run today, complete with diagrams.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Kubernetes",
@@ -984,5 +984,19 @@
       "Cloud"
     ],
     "post": "2025-11-27-learn-kubernetes-step-by-step"
+  },
+  {
+    "title": "10 Kubernetes Superpowers Developers Overlook (and How to Use Them)",
+    "description": "Ten field-tested Kubernetes capabilities - topology spread, disruption budgets, admission policies, autoscaling guardrails, and more - that instantly boost resilience, velocity, and cost control.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "DevOps",
+      "Observability",
+      "Automation",
+      "Security",
+      "Cost Optimization"
+    ],
+    "post": "2025-11-27-ten-kubernetes-superpowers-developers-overlook"
   }
 ]

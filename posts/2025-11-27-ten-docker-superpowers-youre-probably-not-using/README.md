@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Containers, DevOps, Performance, Security
 
-Description: Ten field-tested Docker techniques—from BuildKit secrets to Compose profiles - that quietly reduce image size, harden workloads, and save developer hours.
+Description: Ten field-tested Docker techniques - from BuildKit secrets to Compose profiles - that quietly reduce image size, harden workloads, and save developer hours.
 
 Docker has been around long enough that most teams treat it as solved tooling, yet I still uncovers the same underused features. Here are ten practical capabilities that rarely make it into day-to-day workflows but pay reliability and velocity dividends immediately.
 
@@ -155,4 +155,4 @@ For long-running hosts, forward critical events into OneUptime (or your incident
 
 ---
 
-Docker still evolves quickly—even seasoned operators miss out when they freeze their knowledge at `docker run`. Pick one or two of these superpowers each sprint, bake them into your Dockerfile or Compose templates, and you will ship leaner, safer containers without adding new tooling.
+Docker still evolves quickly - even seasoned operators miss out when they freeze their knowledge at `docker run`. Pick one or two of these superpowers each sprint, bake them into your Dockerfile or Compose templates, and you will ship leaner, safer containers without adding new tooling.

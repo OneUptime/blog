@@ -8,11 +8,11 @@ Description: ORMs are great when iteration speed matters more than raw throughpu
 
 > Performance is a product choice. If you need every millisecond, choose the data access strategy that lets you shape the query, not the tool that writes one for you.
 
-When teams feel their API is “slow,” the instinct is to profile the code around the database. Typically the slowdown *is* the database—specifically, the overhead introduced by an Object-Relational Mapper (ORM). ORMs are phenomenal for rapid prototyping, but once latency and throughput become hard requirements, they often stand in the way. Here's how we decide when to ditch the ORM and what to do instead.
+When teams feel their API is “slow,” the instinct is to profile the code around the database. Typically the slowdown *is* the database - specifically, the overhead introduced by an Object-Relational Mapper (ORM). ORMs are phenomenal for rapid prototyping, but once latency and throughput become hard requirements, they often stand in the way. Here's how we decide when to ditch the ORM and what to do instead.
 
 ## 1. The Abstraction Tax Adds Up Fast
 
-Every ORM layer has to solve hard problems: mapping relationships, generating SQL safely, tracking entity state, and managing migrations. Those are real features—but they come with a runtime cost.
+Every ORM layer has to solve hard problems: mapping relationships, generating SQL safely, tracking entity state, and managing migrations. Those are real features - but they come with a runtime cost.
 
 Common symptoms we see when profiling ORM-heavy services:
 
@@ -65,7 +65,7 @@ A few guidelines keep this maintainable:
 - **Wrap results** in `zod`/`io-ts` schemas if you need runtime validation.
 - **Instrument at the data layer** so traces still show `db.statement` metadata.
 
-Raw SQL with guardrails still gives you type safety, auditing, and observability—without the heavy abstraction.
+Raw SQL with guardrails still gives you type safety, auditing, and observability - without the heavy abstraction.
 
 ## 4. Keep ORMs for the Right Jobs (Just Not Hot Paths)
 

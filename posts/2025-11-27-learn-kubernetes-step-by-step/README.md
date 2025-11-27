@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Containers, Learning Resource, DevOps, Cloud
 
-Description: A beginner-friendly path to Kubernetes—what the pieces are, how they talk to each other, and one practical Deployment + Service example you can run today.
+Description: A beginner-friendly path to Kubernetes - what the pieces are, how they talk to each other, and one practical Deployment + Service example you can run today.
 
 Think of Kubernetes as a super smart operations teammate. You tell it what you want running, and it handles the boring work: starting containers, restarting them when they crash, and spreading them across machines. Kubernetes feels overwhelming because most explanations start with advanced add-ons. This guide sticks to the building blocks you actually touch on day one: pods, deployments, services, and the simple commands that tie them together.
 
@@ -141,7 +141,7 @@ kubectl apply -f quote-api.yaml
 kubectl get pods -n demo
 ```
 
-`kubectl` replies with the resource names it created. Seconds later, `kubectl get pods -n demo` should show two pods in the `Running` phase. Delete one of them and watch Kubernetes bring it back automatically—that is the Deployment controller doing its job.
+`kubectl` replies with the resource names it created. Seconds later, `kubectl get pods -n demo` should show two pods in the `Running` phase. Delete one of them and watch Kubernetes bring it back automatically - that is the Deployment controller doing its job.
 
 ## Step 4: Expose It with a Service
 
@@ -287,4 +287,4 @@ Also remember: if Kubernetes never created a pod, the issue is probably a typo i
 2. **Ingress or LoadBalancer:** Swap the Service type when you are ready for real customers, and let the cloud create an external IP.
 3. **Resource limits:** Add `resources.requests/limits` so the scheduler knows exactly how to pack pods.
 
-Kubernetes is just a reconciliation loop: you describe the world you want, and the control plane keeps nudging reality to match it. Keep practicing that loop with tiny experiments—declare, apply, observe, tweak—and the platform stops feeling magical and starts feeling dependable.
+Kubernetes is just a reconciliation loop: you describe the world you want, and the control plane keeps nudging reality to match it. Keep practicing that loop with tiny experiments - declare, apply, observe, tweak - and the platform stops feeling magical and starts feeling dependable.
