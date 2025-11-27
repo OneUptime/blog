@@ -31,6 +31,7 @@
 - DevOps
 - Devices
 - Docker
+- Edge
 - Engineering Culture
 - Identity
 - Incident Management
@@ -102,6 +103,7 @@
 - Status Page
 - Service Catalog
 - Structured Logging
+- Storage
 - Syslog
 - Supply Chain
 - Team Management

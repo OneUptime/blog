@@ -47,6 +47,20 @@
       "Open Source"
     ],
     "post": "2024-08-14-why-build-open-source-datadog"
+      },
+      {
+        "title": "Kubernetes Storage Layers: Ceph vs. Longhorn vs. Everything Else",
+        "description": "A decision guide to Ceph/Rook, Longhorn, OpenEBS, Portworx, and cloud-managed volumes—covering architectures, failure drills, and how to match each option to your workloads.",
+        "authorGitHubUsername": "nawazdhandala",
+        "tags": [
+          "Kubernetes",
+          "Storage",
+          "Ceph",
+          "Bare Metal",
+          "Cloud",
+          "DevOps"
+        ],
+        "post": "2025-11-27-choosing-kubernetes-storage-layers"
   },
   {
     "title": "Monitoring LLM Application(s) with Openlit and OneUptime",
@@ -1012,5 +1026,19 @@
       "Infrastructure"
     ],
     "post": "2025-11-27-choosing-the-right-kubernetes-distribution"
+  },
+  {
+    "title": "Choosing the Right Kubernetes Edge Flavor: Minikube vs. Kind vs. MicroK8s vs. K3s vs. KubeEdge",
+    "description": "Compare minikube, Kind, MicroK8s, K3s, and KubeEdge across architecture, hardware footprint, offline behavior, and best-fit scenarios to pick the right edge distribution.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Edge",
+      "DevOps",
+      "Cloud",
+      "Bare Metal",
+      "Automation"
+    ],
+    "post": "2025-11-27-kubernetes-edge-flavors"
   }
 ]
