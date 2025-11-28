@@ -1136,6 +1136,19 @@
   }
   ,
   {
+    "title": "What Are Blue-Green Deployments (and When Should You Use Them)?",
+    "description": "A practical explainer of blue-green deployments—mechanics, Kubernetes examples, guardrails, and when to use another rollout strategy instead.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Releases",
+      "Reliability",
+      "DevOps"
+    ],
+    "post": "2025-11-28-what-are-blue-green-deployments"
+  }
+  ,
+  {
     "title": "How to Install kubectl, Configure kubeconfig, and Talk to Your First Cluster",
     "description": "A zero-to-one walkthrough for installing kubectl on macOS/Linux/Windows, wiring up kubeconfig, and validating your first cluster connection in under 15 minutes.",
     "authorGitHubUsername": "nawazdhandala",
