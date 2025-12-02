@@ -1276,5 +1276,20 @@
       "DevOps"
     ],
     "post": "2025-11-27-kubectl-visibility-toolkit"
+  },
+  {
+    "title": "How to Define and Tune Kubernetes Autoscaling for Bursty Workloads",
+    "description": "A hands-on playbook for combining HPA, VPA, and Karpenter (or Cluster Autoscaler) to keep bursty workloads responsive without melting your cloud bill.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Autoscaling",
+      "HPA",
+      "VPA",
+      "Karpenter",
+      "SRE",
+      "OneUptime"
+    ],
+    "post": "2025-12-02-tune-kubernetes-autoscaling-for-bursty-workloads"
   }
 ]

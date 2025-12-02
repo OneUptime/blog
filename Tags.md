@@ -6,6 +6,7 @@
 - Alerting
 - API
 - Automation
+- Autoscaling
 - AWS
 - Backup
 - Bare Metal
@@ -50,6 +51,7 @@
 - JSON
 - Jobs
 - Kubernetes
+- Karpenter
 - Leadership
 - Learning Resource
 - LLM Observability
@@ -72,6 +74,7 @@
 - NodeJS
 - Observability
 - On-call
+- OneUptime
 - Open Source
 - OpenAPI
 - OpenTelemetry
@@ -84,6 +87,7 @@
 - Platform Strategy
 - Private Cloud
 - Product
+- Product Metrics
 - Product Development
 - Productivity
 - Postmortems
@@ -104,7 +108,10 @@
 - Grafana
 - GitHub Actions
 - Getting Started
+- HPA
 - Slack
+- SLI
+- SLO
 - SLOs
 - Software Development
 - SRE
@@ -132,6 +139,7 @@
 - TypeScript
 - Uptime Monitoring
 - Vendor Lock-in
+- VPA
 - Web Architecture
 - Webhooks
 - Workloads
@@ -141,4 +149,3 @@
 - Playwright
 - Toil
 - Runbooks
-
