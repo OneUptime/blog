@@ -1307,4 +1307,20 @@
     ],
     "post": "2025-12-03-ceph-rook-standard-bare-metal-storage-pools"
   }
+  ,
+  {
+    "title": "How to Upgrade Ceph and Rook with Helm (Without Scaring Your Stateful Sets)",
+    "description": "A practical, battle-tested playbook for upgrading Rook and Ceph with Helm while keeping production PVCs healthy and teams calm.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ceph",
+      "Rook",
+      "Kubernetes",
+      "Helm",
+      "Storage",
+      "Bare Metal",
+      "DevOps"
+    ],
+    "post": "2025-12-03-upgrade-ceph-rook-with-helm"
+  }
 ]

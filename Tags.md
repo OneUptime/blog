@@ -136,6 +136,7 @@
 - Traces
 - Troubleshooting
 - Heartbeat
+- Helm
 - Histograms
 - TypeScript
 - Uptime Monitoring
