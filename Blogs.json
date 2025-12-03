@@ -1291,5 +1291,20 @@
       "OneUptime"
     ],
     "post": "2025-12-02-tune-kubernetes-autoscaling-for-bursty-workloads"
+  },
+  {
+    "title": "Why Ceph + Rook Is the Gold Standard for Bare-Metal Kubernetes Storage Pools",
+    "description": "How Ceph paired with Rook turns commodity disks into a resilient, software-defined storage fabric tailor-made for bare-metal Kubernetes clusters.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Storage",
+      "Ceph",
+      "Rook",
+      "Bare Metal",
+      "Self-Hosting",
+      "Reliability"
+    ],
+    "post": "2025-12-03-ceph-rook-standard-bare-metal-storage-pools"
   }
 ]
