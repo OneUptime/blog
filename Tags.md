@@ -35,6 +35,7 @@
 - DevOps
 - Devices
 - Docker
+- Docker Compose
 - Edge
 - Engineering Culture
 - Environments

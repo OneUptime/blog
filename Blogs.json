@@ -1323,4 +1323,18 @@
     ],
     "post": "2025-12-03-upgrade-ceph-rook-with-helm"
   }
+  ,
+  {
+    "title": "Docker Compose Models Explained: Wire AI Runtimes Like Any Other Dependency",
+    "description": "Docker Compose 2.38+ adds a models section so you can declare OCI-hosted AI models, gate access per service, and ship inference endpoints consistently. Here's why it matters and how to use it effectively.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Docker Compose",
+      "DevOps",
+      "Configuration",
+      "AI"
+    ],
+    "post": "2025-12-03-docker-compose-models-explained"
+  }
 ]
