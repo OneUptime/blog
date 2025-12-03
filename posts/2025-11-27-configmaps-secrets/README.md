@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Configuration, Security, DevOps
 
-Description: Create, template, and mount ConfigMaps and Secrets the right way—complete with Git workflows, base64 gotchas, and external secret integrations.
+Description: Create, template, and mount ConfigMaps and Secrets the right way-complete with Git workflows, base64 gotchas, and external secret integrations.
 
 ---
 
@@ -93,7 +93,7 @@ spec:
                 path: application.yaml
 ```
 
-`envFrom` keeps containers clean—every key becomes an environment variable. Use volumes for structured config files.
+`envFrom` keeps containers clean-every key becomes an environment variable. Use volumes for structured config files.
 
 ## 4. Validate at Runtime
 

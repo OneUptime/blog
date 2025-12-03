@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DevOps, Learning Resource, Getting Started
 
-Description: A practical notebook for the `kubectl apply` workflow—create a Deployment, expose it with a Service, scale replicas up/down, and clean up safely.
+Description: A practical notebook for the `kubectl apply` workflow-create a Deployment, expose it with a Service, scale replicas up/down, and clean up safely.
 
 ---
 
@@ -109,4 +109,4 @@ or `kubectl delete deployment hello-app svc hello-web`.
 
 ---
 
-Mastering this simple loop—write YAML, `kubectl apply`, inspect, scale, delete—unlocks almost every higher-level Kubernetes workflow. Practice until it feels as second nature as `git add && git commit`.
+Mastering this simple loop-write YAML, `kubectl apply`, inspect, scale, delete-unlocks almost every higher-level Kubernetes workflow. Practice until it feels as second nature as `git add && git commit`.

@@ -25,7 +25,7 @@ Description: A practical, battle-tested playbook for upgrading Rook and Ceph wit
 | Quincy (17.2.z)      | rook-ceph `v1.12.x`    | `quay.io/ceph/ceph:v17.2.7` |
 | Pacific (16.2.z)     | rook-ceph `v1.9.x`     | `quay.io/ceph/ceph:v16.2.15` |
 
-Rook releases intentionally lag Ceph so that each operator knows how to orchestrate Mons, Mgrs, and OSDs for that generation. Never bump the Ceph image beyond what the operator chart documents—Helm won’t stop you, but the Mons might.
+Rook releases intentionally lag Ceph so that each operator knows how to orchestrate Mons, Mgrs, and OSDs for that generation. Never bump the Ceph image beyond what the operator chart documents-Helm won’t stop you, but the Mons might.
 
 ---
 

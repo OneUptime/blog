@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Troubleshooting, DevOps, Debugging, Security
 
-Description: A repeatable workflow for diagnosing broken containers using `docker inspect`, `docker logs`, `docker cp`, and ephemeral debug shells—without corrupting running workloads.
+Description: A repeatable workflow for diagnosing broken containers using `docker inspect`, `docker logs`, `docker cp`, and ephemeral debug shells-without corrupting running workloads.
 
 ---
 
@@ -54,7 +54,7 @@ docker exec -it --env COLUMNS=$(tput cols) --env LINES=$(tput lines) api_web_1 s
 ```
 
 - Use `sh` or `bash` depending on the base image.
-- Avoid installing packages—containers should remain immutable.
+- Avoid installing packages-containers should remain immutable.
 
 Enable read-only filesystem in production to discourage edits (`docker run --read-only -v /tmp`).
 

@@ -109,4 +109,4 @@ Each service receives its own credential + endpoint pair, even though a single r
 
 ## Ship it thoughtfully
 
-Compose models are young, but they close an annoying gap: declaring AI dependencies with the same rigor as everything else in your stack. Start small—wrap one LLM-powered endpoint behind the `models` section, version it, and gate access consciously. Once the friction disappears, you can iterate faster on AI features without building bespoke infrastructure each sprint.
+Compose models are young, but they close an annoying gap: declaring AI dependencies with the same rigor as everything else in your stack. Start small-wrap one LLM-powered endpoint behind the `models` section, version it, and gate access consciously. Once the friction disappears, you can iterate faster on AI features without building bespoke infrastructure each sprint.

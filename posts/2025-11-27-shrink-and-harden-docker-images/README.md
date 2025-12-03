@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Security, Performance, DevOps, Containers
 
-Description: A practical playbook for cutting Docker image sizes in half while tightening security—covering multi-stage builds, distroless bases, BuildKit secrets, SBOMs, and automated policy gates.
+Description: A practical playbook for cutting Docker image sizes in half while tightening security-covering multi-stage builds, distroless bases, BuildKit secrets, SBOMs, and automated policy gates.
 
 ---
 
@@ -106,4 +106,4 @@ Feed these into dashboards in OneUptime or your observability stack; celebrate r
 
 ---
 
-Shrinking and hardening is not a one-off sprint—it's the muscle memory of building with intent. Multi-stage builds, minimal bases, secrets hygiene, and automated policy gates make "secure by default" the path of least resistance.
+Shrinking and hardening is not a one-off sprint-it's the muscle memory of building with intent. Multi-stage builds, minimal bases, secrets hygiene, and automated policy gates make "secure by default" the path of least resistance.

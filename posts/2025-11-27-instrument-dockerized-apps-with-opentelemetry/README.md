@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, OpenTelemetry, Observability, DevOps, Monitoring
 
-Description: Step-by-step playbooks for instrumenting containerized services using OpenTelemetry SDKs, sidecars, and collector agents—complete with Compose and Swarm manifests and guidance on shipping data to OneUptime.
+Description: Step-by-step playbooks for instrumenting containerized services using OpenTelemetry SDKs, sidecars, and collector agents-complete with Compose and Swarm manifests and guidance on shipping data to OneUptime.
 
 ---
 

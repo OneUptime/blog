@@ -8,7 +8,7 @@ Description: Practical steps for carving clusters into dev/stage/prod namespaces
 
 ---
 
-A single cluster can safely host dev, stage, and prod—but only if you isolate workloads and permissions. Namespaces give you separate resource scopes, while RBAC enforces who can touch each scope. Follow these steps to stand up a minimal, auditable guardrail system.
+A single cluster can safely host dev, stage, and prod-but only if you isolate workloads and permissions. Namespaces give you separate resource scopes, while RBAC enforces who can touch each scope. Follow these steps to stand up a minimal, auditable guardrail system.
 
 ## 1. Pick a Namespace Strategy
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Site Reliability Engineering, On-Call, Incident Response, Culture, Automation
 
-Description: A blueprint for creating humane, effective SRE on-call rotations—covering staffing models, scheduling math, tooling, and continuous improvement tips.
+Description: A blueprint for creating humane, effective SRE on-call rotations-covering staffing models, scheduling math, tooling, and continuous improvement tips.
 
 ---
 

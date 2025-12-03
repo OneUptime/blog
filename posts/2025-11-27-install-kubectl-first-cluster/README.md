@@ -99,7 +99,7 @@ This proves RBAC + scheduling work with your credentials.
 
 - Use descriptive context names: `kubectl config rename-context gke_project_us-central1-prod prod-usc1`.
 - Set a default namespace per context: `kubectl config set-context prod-usc1 --namespace=payments`.
-- Store kubeconfigs securely—treat them like SSH keys.
+- Store kubeconfigs securely-treat them like SSH keys.
 
 ---
 

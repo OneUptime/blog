@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Site Reliability Engineering, SRE, Reliability, Operations, Observability, OpenTelemetry
 
-Description: A plain-language explainer for Site Reliability Engineering—why it exists, the core principles, and how to start applying SRE practices without a 500-person team.
+Description: A plain-language explainer for Site Reliability Engineering-why it exists, the core principles, and how to start applying SRE practices without a 500-person team.
 
 ---
 
@@ -53,7 +53,7 @@ SRE gives teams a data-backed contract between product velocity and user experie
 4. **Create a simple on-call rotation** with primary/secondary, paging via Slack/Teams.
 5. **Adopt a postmortem template** that captures detection, mitigation, and follow-up actions.
 
-Each quarter, review what still feels painful—alerts, deploys, toil—and turn the highest pain into the next SRE goal.
+Each quarter, review what still feels painful-alerts, deploys, toil-and turn the highest pain into the next SRE goal.
 
 ## Tooling Stack
 

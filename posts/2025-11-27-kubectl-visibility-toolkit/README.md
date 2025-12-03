@@ -124,4 +124,4 @@ Run `./scripts/pod-health prod` during on-call to get a quick snapshot.
 
 ---
 
-Master these `kubectl` patterns and you have a portable observability toolkit—perfect for SREs jumping between clusters, CI systems, and air-gapped environments.
+Master these `kubectl` patterns and you have a portable observability toolkit-perfect for SREs jumping between clusters, CI systems, and air-gapped environments.

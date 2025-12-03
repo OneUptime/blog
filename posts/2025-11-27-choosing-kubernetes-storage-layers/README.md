@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, Ceph, Bare Metal, Cloud, DevOps
 
-Description: A decision guide to the most common Kubernetes storage layers—Ceph/Rook, Longhorn, OpenEBS, Portworx, and cloud block/file services—covering architecture, failure modes, performance profiles, and how to match them to your workloads.
+Description: A decision guide to the most common Kubernetes storage layers-Ceph/Rook, Longhorn, OpenEBS, Portworx, and cloud block/file services-covering architecture, failure modes, performance profiles, and how to match them to your workloads.
 
 ---
 
@@ -26,7 +26,7 @@ Ceph pairs a battle-tested distributed storage system with Kubernetes-native man
 
 - **You own hardware:** Combine NVMe + large HDD pools and run both compute + storage on the same racks.
 - **You need multiple protocols:** Block (RBD) for databases, filesystem (CephFS) for shared workloads, and S3-compatible object (RGW) without deploying three products.
-- **You care about rack-level failure domains:** CRUSH maps let you define rules like "never place replicas on the same chassis"—critical for compliance and uptime.
+- **You care about rack-level failure domains:** CRUSH maps let you define rules like "never place replicas on the same chassis"-critical for compliance and uptime.
 
 Key design tips:
 
@@ -66,7 +66,7 @@ It shines when different teams need different storage guarantees inside the same
 Watch-outs:
 
 - You become the integrator; upgrading engines and keeping CRDs in sync is your job.
-- Observability is on you—export metrics to Prometheus/OneUptime or you will debug blind.
+- Observability is on you-export metrics to Prometheus/OneUptime or you will debug blind.
 
 Pick OpenEBS if you want **flexibility above all else** and are comfortable standardizing on one engine per workload.
 

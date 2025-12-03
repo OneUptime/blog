@@ -8,7 +8,7 @@ Description: Configure HTTP/TCP/command probes, validate them with kubectl, and 
 
 ---
 
-Kubernetes will happily restart unhealthy containers—as long as you teach it how to detect them. Probes answer three questions:
+Kubernetes will happily restart unhealthy containers-as long as you teach it how to detect them. Probes answer three questions:
 
 - **Startup:** Has the app finished booting yet?
 - **Readiness:** Can this Pod receive traffic right now?

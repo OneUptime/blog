@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Migration, DevOps, Modernization, Automation
 
-Description: A step-by-step plan for lifting applications out of virtual machines and into Docker—covering dependency discovery, data migration, image builds, smoke tests, and rollout strategies.
+Description: A step-by-step plan for lifting applications out of virtual machines and into Docker-covering dependency discovery, data migration, image builds, smoke tests, and rollout strategies.
 
 ---
 
-Every company has that VM running critical code from 2014. Containerizing it buys you reproducibility, faster deploys, and easier scaling—but only if you migrate methodically. Here’s the seven-step blueprint we follow.
+Every company has that VM running critical code from 2014. Containerizing it buys you reproducibility, faster deploys, and easier scaling-but only if you migrate methodically. Here’s the seven-step blueprint we follow.
 
 ## 1. Inventory and Baseline
 
@@ -29,7 +29,7 @@ Use `osquery`, `ansible setup`, or `chef-ohai` to collect facts automatically. C
 ## 2. Extract Application Code and Configs
 
 - Pull the latest git commit if it exists; otherwise, rsync `/opt/app`.
-- Copy configs and secrets, but never bake secrets into images—store them in Vault/Secrets Manager.
+- Copy configs and secrets, but never bake secrets into images-store them in Vault/Secrets Manager.
 - Document environment variables from `/etc/environment`, service unit files, or `.bashrc`.
 
 ## 3. Design the Container Boundary

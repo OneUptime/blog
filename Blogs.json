@@ -50,7 +50,7 @@
       },
       {
         "title": "Kubernetes Storage Layers: Ceph vs. Longhorn vs. Everything Else",
-        "description": "A decision guide to Ceph/Rook, Longhorn, OpenEBS, Portworx, and cloud-managed volumes—covering architectures, failure drills, and how to match each option to your workloads.",
+        "description": "A decision guide to Ceph/Rook, Longhorn, OpenEBS, Portworx, and cloud-managed volumes-covering architectures, failure drills, and how to match each option to your workloads.",
         "authorGitHubUsername": "nawazdhandala",
         "tags": [
           "Kubernetes",
@@ -1015,7 +1015,7 @@
   },
   {
     "title": "Choosing the Right Kubernetes Distribution: When Each Flavor Wins",
-    "description": "A pragmatic guide to Kubernetes flavors—upstream DIY, managed clouds, opinionated platforms, and lightweight edge distros—with crisp heuristics on when each option is the fastest, cheapest, or safest bet.",
+    "description": "A pragmatic guide to Kubernetes flavors-upstream DIY, managed clouds, opinionated platforms, and lightweight edge distros-with crisp heuristics on when each option is the fastest, cheapest, or safest bet.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Kubernetes",
@@ -1043,7 +1043,7 @@
   },
   {
     "title": "How to Shrink and Harden Docker Images Without Breaking Builds",
-    "description": "A practical playbook for cutting Docker image sizes in half while tightening security—covering multi-stage builds, distroless bases, BuildKit secrets, SBOMs, and automated policy gates.",
+    "description": "A practical playbook for cutting Docker image sizes in half while tightening security-covering multi-stage builds, distroless bases, BuildKit secrets, SBOMs, and automated policy gates.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Docker",
@@ -1110,7 +1110,7 @@
   },
   {
     "title": "How to Debug Failing Docker Containers Safely",
-    "description": "A disciplined workflow for investigating broken containers with inspect, logs, cp, and ephemeral shells—capturing evidence without mutating production.",
+    "description": "A disciplined workflow for investigating broken containers with inspect, logs, cp, and ephemeral shells-capturing evidence without mutating production.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Docker",
@@ -1137,7 +1137,7 @@
   ,
   {
     "title": "What Are Blue-Green Deployments (and When Should You Use Them)?",
-    "description": "A practical explainer of blue-green deployments—mechanics, Kubernetes examples, guardrails, and when to use another rollout strategy instead.",
+    "description": "A practical explainer of blue-green deployments-mechanics, Kubernetes examples, guardrails, and when to use another rollout strategy instead.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Kubernetes",
@@ -1163,7 +1163,7 @@
   ,
   {
     "title": "How to Create, Scale, and Delete Deployments + Services with kubectl apply",
-    "description": "A practical notebook for the kubectl apply workflow—create a Deployment, expose it with a Service, scale replicas up/down, and clean up safely.",
+    "description": "A practical notebook for the kubectl apply workflow-create a Deployment, expose it with a Service, scale replicas up/down, and clean up safely.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Kubernetes",
@@ -1202,7 +1202,7 @@
   ,
   {
     "title": "How to Manage ConfigMaps and Secrets Without Leaking Credentials",
-    "description": "Create, template, and mount ConfigMaps and Secrets the right way—complete with Git workflows, base64 gotchas, and external secret integrations.",
+    "description": "Create, template, and mount ConfigMaps and Secrets the right way-complete with Git workflows, base64 gotchas, and external secret integrations.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Kubernetes",
@@ -1228,7 +1228,7 @@
   ,
   {
     "title": "How to Roll Out a Change, Watch Health Checks, and Undo a Bad Deploy",
-    "description": "Use Deployment strategies, kubectl rollout, and health probes to ship safely—and revert instantly when something looks wrong.",
+    "description": "Use Deployment strategies, kubectl rollout, and health probes to ship safely-and revert instantly when something looks wrong.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Kubernetes",

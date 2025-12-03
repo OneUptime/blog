@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Releases, DevOps, Reliability
 
-Description: Use Deployment strategies, `kubectl rollout`, and health probes to ship safely—and revert instantly when something looks wrong.
+Description: Use Deployment strategies, `kubectl rollout`, and health probes to ship safely-and revert instantly when something looks wrong.
 
 ---
 
@@ -26,7 +26,7 @@ spec:
 - `maxSurge: 1` allows one extra Pod during rollout, keeping capacity safe.
 - `maxUnavailable: 0` guarantees zero downtime.
 
-Ensure Pods have readiness/liveness probes—rollouts rely on them to decide when to advance.
+Ensure Pods have readiness/liveness probes-rollouts rely on them to decide when to advance.
 
 ## 2. Kick Off the Rollout
 
@@ -91,7 +91,7 @@ kubectl annotate deploy/api kubernetes.io/change-cause="Release 2.1.0 adds cachi
 - Run smoke tests: `kubectl exec` or hit health endpoints through the ingress.
 - Monitor metrics/dashboards for error spikes.
 
-If anything looks off, undo immediately—rollbacks are just another rollout.
+If anything looks off, undo immediately-rollbacks are just another rollout.
 
 ## 7. Automate in CI/CD
 

@@ -60,4 +60,4 @@ You can run DevOps without SRE (but risk vague reliability goals) and SRE withou
 
 ## Bottom Line
 
-Think of DevOps as the *why* and SRE as the *how*. Culture without tooling fails quietly; tooling without culture burns people out. Marry both, keep the telemetry flowing, and your users—and on-call engineers—will actually feel the difference.
+Think of DevOps as the *why* and SRE as the *how*. Culture without tooling fails quietly; tooling without culture burns people out. Marry both, keep the telemetry flowing, and your users-and on-call engineers-will actually feel the difference.

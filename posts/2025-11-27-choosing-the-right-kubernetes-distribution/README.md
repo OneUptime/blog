@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Cloud, Bare Metal, DevOps, Self-Hosting, Infrastructure
 
-Description: A pragmatic guide to Kubernetes flavors—upstream DIY, managed clouds, opinionated platforms, and lightweight edge distros—with crisp heuristics on when each option is the fastest, cheapest, or safest bet.
+Description: A pragmatic guide to Kubernetes flavors-upstream DIY, managed clouds, opinionated platforms, and lightweight edge distros-with crisp heuristics on when each option is the fastest, cheapest, or safest bet.
 
 ---
 
-The Kubernetes logo hides more forks than a data center cafeteria. Between upstream `kubeadm`, EKS/GKE/AKS, OpenShift, Rancher, Talos, K3s, MicroK8s, and every vendor acronym, teams burn quarters debating which distro to back. The trick is to map business constraints (compliance, team size, latency, cost) to the *operational promises* each flavor actually makes—and the work it offloads to you.
+The Kubernetes logo hides more forks than a data center cafeteria. Between upstream `kubeadm`, EKS/GKE/AKS, OpenShift, Rancher, Talos, K3s, MicroK8s, and every vendor acronym, teams burn quarters debating which distro to back. The trick is to map business constraints (compliance, team size, latency, cost) to the *operational promises* each flavor actually makes-and the work it offloads to you.
 
 If you need a control-plane refresher before comparing distros, start with [Learn Kubernetes Step by Step](https://oneuptime.com/blog/post/2025-11-27-learn-kubernetes-step-by-step/view). Once the pieces click, this guide helps you pick the stack that matches your runway.
 
@@ -54,7 +54,7 @@ What you get automatically:
 Key differences:
 
 - **GKE:** Fastest access to upstream features, multi-cluster services, built-in cost controls.
-- **EKS:** Deep AWS integration, but you still manage worker AMIs—make sure Bottlerocket or EKS-optimized images fit your security model.
+- **EKS:** Deep AWS integration, but you still manage worker AMIs-make sure Bottlerocket or EKS-optimized images fit your security model.
 - **AKS:** Simplified node auto-upgrades, Windows node support is strongest here.
 
 Choose managed services if:
@@ -140,7 +140,7 @@ Use this flowchart as a pre-read before platform councils. It keeps discussions 
 
 - **Small team, all-in on AWS/GCP/Azure:** Start with managed services, enable cluster autoscaler or Karpenter, and reinvest the freed time into observability.
 - **Regulated org or multi-cloud SRE team:** OpenShift / Rancher give you policy + fleet management with support contracts when auditors knock.
-- **Cost-driven infra, hardware already paid for:** Upstream kubeadm or Talos with Ceph keeps opex low and sovereignty high—see [Kubernetes Is Your Private Cloud](https://oneuptime.com/blog/post/2025-11-12-kubernetes-is-your-private-cloud/view).
+- **Cost-driven infra, hardware already paid for:** Upstream kubeadm or Talos with Ceph keeps opex low and sovereignty high-see [Kubernetes Is Your Private Cloud](https://oneuptime.com/blog/post/2025-11-12-kubernetes-is-your-private-cloud/view).
 - **Retail/edge/IoT fleet:** K3s or MicroK8s with GitOps pull agents prevents manual drift and tolerates offline periods.
 
-The right Kubernetes flavor is the one whose failure modes you understand and whose upgrade rhythm matches your team’s capacity. Anchor the conversation on ownership lines—who patches what, who responds to incidents, who pays the bill—and the right distro almost picks itself.
+The right Kubernetes flavor is the one whose failure modes you understand and whose upgrade rhythm matches your team’s capacity. Anchor the conversation on ownership lines-who patches what, who responds to incidents, who pays the bill-and the right distro almost picks itself.

@@ -8,7 +8,7 @@ Description: Learn how to build, cache, scan, and publish Docker images inside G
 
 ---
 
-GitHub Actions plus Docker gives you a portable CI pipeline—if you tame caching, secrets, and scans. Here’s an end-to-end workflow you can copy.
+GitHub Actions plus Docker gives you a portable CI pipeline-if you tame caching, secrets, and scans. Here’s an end-to-end workflow you can copy.
 
 ## 1. Reusable Workflow Layout
 

@@ -155,7 +155,7 @@ spec:
 
 - `kubectl describe hpa web -n dev` to see events.
 - If metrics read `unknown`, run `kubectl get apiservice v1beta1.metrics.k8s.io`.
-- Verify Pods actually request CPU—no requests means utilization is always 0%.
+- Verify Pods actually request CPU-no requests means utilization is always 0%.
 - Ensure PodDisruptionBudgets and minimum replica constraints align (HPAs cannot scale below PDB `minAvailable`).
 
 ## 8. GitOps & Observability

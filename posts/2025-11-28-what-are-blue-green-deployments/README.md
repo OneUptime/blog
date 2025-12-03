@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Releases, Reliability, DevOps
 
-Description: A practical explainer of blue-green deployments—how they work, how to run them with Kubernetes Services/Ingress, the operational guardrails to keep them safe, and when another strategy makes more sense.
+Description: A practical explainer of blue-green deployments-how they work, how to run them with Kubernetes Services/Ingress, the operational guardrails to keep them safe, and when another strategy makes more sense.
 
 ---
 
@@ -136,4 +136,4 @@ Changing `color` from `blue` to `green` (via `kubectl apply`) instantly sends tr
 
 ---
 
-Blue-green deployments are essentially insurance: pay for parallel infrastructure to buy instant rollbacks and predictable releases. Use them when uptime stakes are high or when you need deterministic, binary cutovers. Combine them with good telemetry and automation, and production pushes get boring—in the best way.
+Blue-green deployments are essentially insurance: pay for parallel infrastructure to buy instant rollbacks and predictable releases. Use them when uptime stakes are high or when you need deterministic, binary cutovers. Combine them with good telemetry and automation, and production pushes get boring-in the best way.

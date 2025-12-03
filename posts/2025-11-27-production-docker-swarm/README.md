@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Swarm, DevOps, Reliability, Monitoring, Automation
 
-Description: A field guide to operating Docker Swarm in production—covering cluster design, rolling updates, health checks, persistent volumes, secrets, and observability.
+Description: A field guide to operating Docker Swarm in production-covering cluster design, rolling updates, health checks, persistent volumes, secrets, and observability.
 
 ---
 
@@ -116,4 +116,4 @@ Secrets mount as tmpfs, automatically scoped per service.
 
 ---
 
-Docker Swarm remains a pragmatic orchestrator when you couple it with disciplined deploys, secrets, health checks, and monitoring. Treat managers as control-plane nodes, automate stack rollouts, and bake observability in from day zero to keep Swarm boring in production—the highest compliment an ops team can give.
+Docker Swarm remains a pragmatic orchestrator when you couple it with disciplined deploys, secrets, health checks, and monitoring. Treat managers as control-plane nodes, automate stack rollouts, and bake observability in from day zero to keep Swarm boring in production-the highest compliment an ops team can give.

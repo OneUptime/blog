@@ -200,4 +200,4 @@ Ceph wins when you need one platform for many storage personalities without payi
 
 ## Final Word
 
-Bare-metal Kubernetes needs storage that scales like the control plane itself. Ceph brings the battle-tested distributed storage engine; Rook turns it into Kubernetes-native building blocks. Together they eliminate the last excuse for keeping old SANs around, while giving developers block, file, and object snapshots on demand. If you own your hardware, Ceph with Rook is no longer an experiment—it is the baseline for serious, multi-tenant storage pools.
+Bare-metal Kubernetes needs storage that scales like the control plane itself. Ceph brings the battle-tested distributed storage engine; Rook turns it into Kubernetes-native building blocks. Together they eliminate the last excuse for keeping old SANs around, while giving developers block, file, and object snapshots on demand. If you own your hardware, Ceph with Rook is no longer an experiment-it is the baseline for serious, multi-tenant storage pools.

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Edge, DevOps, Cloud, Bare Metal, Automation
 
-Description: A practical buyer's guide to Kubernetes edge distributions—minikube, Kind, MicroK8s, K3s, and KubeEdge—covering their architectures, hardware footprints, online/offline behavior, and the decision criteria that actually matter when you deploy beyond the data center.
+Description: A practical buyer's guide to Kubernetes edge distributions-minikube, Kind, MicroK8s, K3s, and KubeEdge-covering their architectures, hardware footprints, online/offline behavior, and the decision criteria that actually matter when you deploy beyond the data center.
 
 ---
 
@@ -28,7 +28,7 @@ minikube is the right answer when the goal is a **developer sandbox** that mimic
 
 - **Drivers:** Runs on HyperKit, Docker, QEMU, or bare metal. `minikube addons enable ingress` gives you NGINX, registry, metrics-server, etc.
 - **Profiles:** Keep multiple clusters on one laptop (`minikube profile list`). Great for testing version upgrades locally.
-- **Local mirror:** `minikube image load` avoids pulling images from the internet repeatedly—perfect for airplane Wi-Fi coding sessions.
+- **Local mirror:** `minikube image load` avoids pulling images from the internet repeatedly-perfect for airplane Wi-Fi coding sessions.
 
 Not for:
 
@@ -74,7 +74,7 @@ Choose MicroK8s when you need **turnkey edge clusters with optional HA** and you
 
 - **Single binary:** Includes kubelet, apiserver, controller-manager, scheduler, flannel (default CNI), and a minimal containerd.
 - **Storage flexibility:** Uses SQLite for single-node control planes and embedded etcd (or external DB) for HA. Works with Longhorn, NFS, or local-path provisioner.
-- **Built-in extras:** Helm CRD, Traefik ingress, servicelb—all optional but handy.
+- **Built-in extras:** Helm CRD, Traefik ingress, servicelb-all optional but handy.
 
 Why teams deploy it:
 
@@ -133,4 +133,4 @@ flowchart TD
 - **Large fleets, mixed hardware:** K3s, optionally managed via Rancher Fleet. Lowest footprint, most flexible.
 - **IoT / offline ops:** KubeEdge when you need device twins, protocol adapters, and offline autonomy.
 
-Whichever flavor you pick, script the install, bake guardrails (PodDisruptionBudgets, resource requests), and monitor it like production—the moment customers depend on it, it is production.
+Whichever flavor you pick, script the install, bake guardrails (PodDisruptionBudgets, resource requests), and monitor it like production-the moment customers depend on it, it is production.
