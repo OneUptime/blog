@@ -78,15 +78,15 @@ In short, the models section is an application-level contract: define the AI ass
 
 ```mermaid
 flowchart LR
-  subgraph Compose Application
-    serviceA[API service]
-    serviceB[Background worker]
-    modelRunner[Model runner (OCI inference)]
+  subgraph "Compose Application"
+    serviceA["API service"]
+    serviceB["Background worker"]
+    modelRunner["Model runner (OCI inference)"]
   end
-  serviceA -->|AI_LLM_SMALL_URL| modelRunner
-  serviceB -->|SUMMARIZER_URL| modelRunner
-  modelRunner -->|HTTP/gRPC tokens| serviceA
-  modelRunner -->|Batch inferences| serviceB
+  serviceA -- AI_LLM_SMALL_URL --> modelRunner
+  serviceB -- SUMMARIZER_URL --> modelRunner
+  modelRunner -- "HTTP/gRPC tokens" --> serviceA
+  modelRunner -- "Batch inferences" --> serviceB
 ```
 
 Each service receives its own credential + endpoint pair, even though a single runner hosts the artifact.
