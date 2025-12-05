@@ -63,6 +63,7 @@
 - Scheduled Maintenance
 - MCP
 - Metrics
+- MetalLB
 - Microk8s
 - Migration
 - Microsoft Teams

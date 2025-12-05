@@ -1336,5 +1336,19 @@
       "AI"
     ],
     "post": "2025-12-03-docker-compose-models-explained"
+  },
+  {
+    "title": "Install MetalLB with Helm on Bare-Metal Kubernetes",
+    "description": "Install MetalLB with Helm, carve out safe IP pools, flip on Layer 2 or BGP advertisements, and verify LoadBalancer Services on bare-metal clusters without waiting on cloud hardware.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Bare Metal",
+      "Helm",
+      "Networking",
+      "MetalLB",
+      "DevOps"
+    ],
+    "post": "2025-12-06-install-metallb-with-helm-bare-metal"
   }
 ]
