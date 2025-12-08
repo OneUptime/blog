@@ -1354,7 +1354,7 @@
   ,
   {
     "title": "How Docker Actually Works",
-    "description": "A technical-yet-friendly tour of Docker internals—OCI images, overlayfs layers, namespaces, cgroups, networking, and security hardening tips.",
+    "description": "A technical-yet-friendly tour of Docker internals- OCI images, overlayfs layers, namespaces, cgroups, networking, and security hardening tips.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Docker",
