@@ -6,7 +6,7 @@ Tags: Kubernetes, Bare Metal, Helm, Networking, MetalLB, DevOps
 
 Description: A hands-on playbook for installing MetalLB via Helm, carving out safe IP pools on bare-metal networks, and proving it works by exposing real services with both Layer 2 and BGP announcements.
 
-> Bare-metal clusters do not magically grow load balancers—MetalLB is the missing control plane that turns your own subnets into cloud-style `LoadBalancer` services.
+> Bare-metal clusters do not magically grow load balancers- MetalLB is the missing control plane that turns your own subnets into cloud-style `LoadBalancer` services.
 
 ## Why MetalLB is table stakes for bare metal
 
@@ -203,4 +203,4 @@ Feed those metrics into your existing observability stack (OneUptime, Prometheus
 
 ## Wrap-up
 
-MetalLB brings cloud-style load balancers to hardware you already own. Installing it with Helm keeps every knob—address pools, advertisements, chart versions—in source control. Start with a tiny Layer 2 pool, prove the automation with a demo Service, and only then graduate to BGP and multiple subnets. Once it is in place, every `type: LoadBalancer` manifest your teams already ship will “just work” on bare metal.
+MetalLB brings cloud-style load balancers to hardware you already own. Installing it with Helm keeps every knob- address pools, advertisements, chart versions- in source control. Start with a tiny Layer 2 pool, prove the automation with a demo Service, and only then graduate to BGP and multiple subnets. Once it is in place, every `type: LoadBalancer` manifest your teams already ship will “just work” on bare metal.

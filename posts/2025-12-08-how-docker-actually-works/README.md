@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Containers, DevOps, Security, Performance
 
-Description: A deep-yet-friendly walkthrough of Docker internals—OCI images, overlayfs layers, namespaces, cgroups, networking, and the low-level runtimes that translate `docker run` into real Linux syscalls.
+Description: A deep-yet-friendly walkthrough of Docker internals- OCI images, overlayfs layers, namespaces, cgroups, networking, and the low-level runtimes that translate `docker run` into real Linux syscalls.
 
 Docker looks effortless: one CLI command builds an image or spawns a container in seconds. Underneath, it is orchestrating half a dozen Linux kernel features plus the Open Container Initiative (OCI) runtime stack. This post peels back every layer, so you can reason about performance, debugging, and security instead of treating Docker as a black box.
 
@@ -107,7 +107,7 @@ The kernel meters every page fault, CPU slice, and fork against these numbers. T
 By default Docker creates:
 
 1. `docker0` bridge on the host.
-2. A veth pair per container—one end lives in the host namespace, the other inside the container.
+2. A veth pair per container- one end lives in the host namespace, the other inside the container.
 3. iptables rules for SNAT/DNAT so containers reach the internet and exposed ports route inward.
 
 Advanced scenarios:
