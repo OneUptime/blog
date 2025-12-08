@@ -1351,4 +1351,18 @@
     ],
     "post": "2025-12-06-install-metallb-with-helm-bare-metal"
   }
+  ,
+  {
+    "title": "How Docker Actually Works",
+    "description": "A technical-yet-friendly tour of Docker internals—OCI images, overlayfs layers, namespaces, cgroups, networking, and security hardening tips.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Containers",
+      "DevOps",
+      "Security",
+      "Performance"
+    ],
+    "post": "2025-12-08-how-docker-actually-works"
+  }
 ]
