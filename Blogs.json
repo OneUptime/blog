@@ -1365,4 +1365,18 @@
     ],
     "post": "2025-12-08-how-docker-actually-works"
   }
+  ,
+  {
+    "title": "OCI Artifacts Explained: Beyond Container Images",
+    "description": "OCI artifacts extend registry plumbing to Helm charts, SBOMs, signatures, AI models, and anything else that needs digests, provenance, and promotion workflows.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Containers",
+      "DevOps",
+      "Supply Chain",
+      "Security",
+      "OCI"
+    ],
+    "post": "2025-12-08-oci-artifacts-explained"
+  }
 ]

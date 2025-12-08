@@ -75,6 +75,7 @@
 - MTTR
 - NodeJS
 - Observability
+- OCI
 - On-call
 - OneUptime
 - Open Source
