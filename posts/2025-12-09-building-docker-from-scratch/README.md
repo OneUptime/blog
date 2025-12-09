@@ -6,7 +6,7 @@ Tags: Docker, Containers, Linux, DevOps, Learning Resource
 
 Description: Learn how containers actually work under the hood by building a basic container engine from scratch. This hands-on guide demystifies Docker by walking through namespaces, cgroups, and filesystem isolation.
 
-Docker revolutionized how we build, ship, and run applications. But have you ever wondered what's actually happening when you run `docker run`? Behind the friendly CLI lies a fascinating combination of Linux kernel features that have existed for years. Understanding these fundamentals doesn't just satisfy curiosity—it makes you a better engineer when debugging container issues, optimizing performance, or designing secure systems.
+Docker revolutionized how we build, ship, and run applications. But have you ever wondered what's actually happening when you run `docker run`? Behind the friendly CLI lies a fascinating combination of Linux kernel features that have existed for years. Understanding these fundamentals doesn't just satisfy curiosity- it makes you a better engineer when debugging container issues, optimizing performance, or designing secure systems.
 
 In this guide, we'll build a basic container engine from scratch using Go. By the end, you'll understand the core Linux primitives that power Docker and every other container runtime.
 
@@ -445,7 +445,7 @@ If you want to go deeper:
 
 ## Conclusion
 
-Containers aren't magic—they're a clever combination of Linux kernel features that have existed for years. By building a basic container engine, you've seen firsthand how namespaces provide isolation, cgroups limit resources, and filesystem tools like chroot create separate environments.
+Containers aren't magic- they're a clever combination of Linux kernel features that have existed for years. By building a basic container engine, you've seen firsthand how namespaces provide isolation, cgroups limit resources, and filesystem tools like chroot create separate environments.
 
 The next time you run `docker run`, you'll know exactly what's happening under the hood. And when things go wrong, you'll have the mental model to debug effectively.
 
