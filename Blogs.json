@@ -1379,4 +1379,18 @@
     ],
     "post": "2025-12-08-oci-artifacts-explained"
   }
+  ,
+  {
+    "title": "Building Your Own Container Engine in Go: A Step-by-Step Guide to Understanding Docker Internals",
+    "description": "Learn how containers actually work under the hood by building a basic container engine from scratch. This hands-on guide demystifies Docker by walking through namespaces, cgroups, and filesystem isolation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Containers",
+      "Linux",
+      "DevOps",
+      "Learning Resource"
+    ],
+    "post": "2025-12-09-building-docker-from-scratch"
+  }
 ]

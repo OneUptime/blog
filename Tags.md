@@ -56,6 +56,7 @@
 - Leadership
 - Learning Resource
 - LLM Observability
+- Linux
 - Latency
 - Logging
 - Logs
