@@ -36,6 +36,7 @@
 - Devices
 - Docker
 - Docker Compose
+- eBPF
 - Edge
 - Engineering Culture
 - Environments
@@ -51,6 +52,7 @@
 - IoT
 - JSON
 - Jobs
+- Kernel
 - Kubernetes
 - Karpenter
 - Leadership
