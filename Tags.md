@@ -6,6 +6,7 @@
 - Alerting
 - API
 - Automation
+- Auto-Instrumentation
 - Autoscaling
 - AWS
 - Backup

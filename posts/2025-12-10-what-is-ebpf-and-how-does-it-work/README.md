@@ -1,4 +1,4 @@
-# eBPF: The Technology Revolutionizing Linux Observability and Security
+# What is eBPF and How Does It Work?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

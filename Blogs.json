@@ -1,20 +1,5 @@
 [
-  {
-    "title": "eBPF: The Technology Revolutionizing Linux Observability and Security",
-    "description": "A comprehensive guide to eBPF (extended Berkeley Packet Filter)- what it is, how it works, why it's transforming observability and security, and how modern tools like Cilium, Falco, and continuous profilers leverage it for unprecedented system visibility.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "eBPF",
-      "Linux",
-      "Observability",
-      "Security",
-      "Networking",
-      "Tracing",
-      "Performance",
-      "Kernel"
-    ],
-    "post": "2025-12-10-what-is-ebpf-and-how-does-it-work"
-  },
+
   {
     "title": "What is SLA, SLI and SLO's?",
     "description": "Here's the difference between SLI, SLO, and SLA.",
@@ -1408,5 +1393,37 @@
       "Learning Resource"
     ],
     "post": "2025-12-09-building-docker-from-scratch"
+  },
+    {
+    "title": "Using eBPF with OpenTelemetry: Zero-Code Auto-Instrumentation for Any Application",
+    "description": "A practical guide to combining eBPF with OpenTelemetry for automatic, zero-code distributed tracing and observability. Learn how tools like Odigos, Beyla, and OpenTelemetry eBPF work, when to use them, and how to set them up in production.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "eBPF",
+      "OpenTelemetry",
+      "Observability",
+      "Tracing",
+      "Auto-Instrumentation",
+      "Kubernetes",
+      "Linux",
+      "Performance"
+    ],
+    "post": "2025-12-10-ebpf-with-opentelemetry-auto-instrumentation"
+  },
+  {
+    "title": "What is eBPF and how does it work?",
+    "description": "A comprehensive guide to eBPF (extended Berkeley Packet Filter)- what it is, how it works, why it's transforming observability and security, and how modern tools like Cilium, Falco, and continuous profilers leverage it for unprecedented system visibility.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "eBPF",
+      "Linux",
+      "Observability",
+      "Security",
+      "Networking",
+      "Tracing",
+      "Performance",
+      "Kernel"
+    ],
+    "post": "2025-12-10-what-is-ebpf-and-how-does-it-work"
   }
 ]
