@@ -1425,5 +1425,19 @@
       "Kernel"
     ],
     "post": "2025-12-10-what-is-ebpf-and-how-does-it-work"
+  },
+  {
+    "title": "Why a lot of software engineers don't understand networking",
+    "description": "A candid look at why networking knowledge is surprisingly rare among software engineers, how this knowledge gap manifests in production systems, and why understanding the basics could make you significantly more effective.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Networking",
+      "Software Development",
+      "Engineering Culture",
+      "Learning Resource",
+      "DevOps",
+      "Distributed Systems"
+    ],
+    "post": "2025-12-12-why-software-engineers-dont-understand-networking"
   }
 ]
