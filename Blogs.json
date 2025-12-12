@@ -1439,5 +1439,22 @@
       "Distributed Systems"
     ],
     "post": "2025-12-12-why-software-engineers-dont-understand-networking"
+  },
+  {
+    "title": "One Big Server Is Probably Enough: Why You Don't Need the Cloud for Most Things",
+    "description": "Modern servers are incredibly powerful and reliable. For most workloads, a single well-configured server with Docker Compose or single-node Kubernetes can get you 99.99% of the way there—at a fraction of the cloud cost.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Infrastructure",
+      "Cloud",
+      "Cost Optimization",
+      "Bare Metal",
+      "Docker",
+      "Kubernetes",
+      "DevOps",
+      "Scaling",
+      "Self-Hosting"
+    ],
+    "post": "2025-12-12-one-big-server-is-enough"
   }
 ]
