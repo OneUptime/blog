@@ -10,7 +10,7 @@ Description: A candid look at why networking knowledge is surprisingly rare amon
 
 Here's an uncomfortable truth: most software engineers don't understand networking. Not really. They know enough to call an API, configure a database connection string, and maybe set up CORS headers after the tenth Stack Overflow attempt. But ask them to explain what happens between typing a URL and seeing a webpage, and you'll get hand-waving about "packets" and "the cloud."
 
-This isn't a criticism — it's an observation. And understanding *why* this gap exists might be the first step toward fixing it.
+This isn't a criticism  -  it's an observation. And understanding *why* this gap exists might be the first step toward fixing it.
 
 ---
 
@@ -18,9 +18,9 @@ This isn't a criticism — it's an observation. And understanding *why* this gap
 
 Modern software development is built on abstractions. Frameworks handle HTTP for you. ORMs hide database connections. Cloud providers give you a VPC with a few clicks. Kubernetes promises to "just work."
 
-These abstractions are wonderful—until they're not.
+These abstractions are wonderful - until they're not.
 
-When a service times out, when latency spikes mysteriously, when connections pool and leak, when that microservice can't talk to another microservice for no apparent reason—suddenly the abstractions fail you. And if you don't understand what's happening underneath, you're debugging blind.
+When a service times out, when latency spikes mysteriously, when connections pool and leak, when that microservice can't talk to another microservice for no apparent reason - suddenly the abstractions fail you. And if you don't understand what's happening underneath, you're debugging blind.
 
 **The problem isn't the abstractions. It's that we've stopped teaching what lies beneath them.**
 
@@ -36,7 +36,7 @@ This knowledge gap isn't academic. It has real consequences:
 
 **Security suffers.** Engineers who don't understand network boundaries create attack surfaces. They expose services that shouldn't be exposed. They trust networks that shouldn't be trusted.
 
-**Performance is left on the table.** Connection pooling, keep-alives, compression, caching—all require networking knowledge to implement correctly.
+**Performance is left on the table.** Connection pooling, keep-alives, compression, caching - all require networking knowledge to implement correctly.
 
 ---
 
@@ -73,7 +73,7 @@ The industry is slowly recognizing this gap. Service meshes like Istio and Linke
 
 But abstractions that hide complexity also hide opportunities to learn.
 
-The engineers who understand networking—really understand it—have a superpower. They debug faster. They design more resilient systems. They ask better questions.
+The engineers who understand networking - really understand it - have a superpower. They debug faster. They design more resilient systems. They ask better questions.
 
 You don't have to know everything. But knowing *something* puts you ahead of most of your peers.
 

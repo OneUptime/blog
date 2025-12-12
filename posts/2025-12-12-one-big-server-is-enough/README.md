@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Infrastructure, Cloud, Cost Optimization, Bare Metal, Docker, Kubernetes, DevOps, Scaling, Self-Hosting
 
-Description: Modern servers are incredibly powerful and reliable. For most workloads, a single well-configured server with Docker Compose or single-node Kubernetes can get you 99.99% of the way there—at a fraction of the cloud cost.
+Description: Modern servers are incredibly powerful and reliable. For most workloads, a single well-configured server with Docker Compose or single-node Kubernetes can get you 99.99% of the way there - at a fraction of the cloud cost.
 
 ---
 
@@ -14,7 +14,7 @@ But here's the thing: **most of us don't need any of that**.
 
 The servers available today are so powerful, so reliable, and so affordable that a single well-configured machine can handle workloads that would have required an entire data center just 15 years ago. Yet we've been conditioned by cloud marketing and industry trends to over-engineer our infrastructure from day one.
 
-Let's talk about why one big server is probably enough for your application—and how you can save thousands of dollars while keeping things simple.
+Let's talk about why one big server is probably enough for your application - and how you can save thousands of dollars while keeping things simple.
 
 ---
 
@@ -43,7 +43,7 @@ The benchmarks speak for themselves:
 | Video encoding (x264) | 75 FPS at 4K |
 | Linux kernel compilation | Under 20 seconds |
 
-For most web applications serving under 10,000 queries per second, one server is more than enough. For simpler services, you could push that to millions of QPS. Very few web services get traffic at that scale—and if you have one, you already know it.
+For most web applications serving under 10,000 queries per second, one server is more than enough. For simpler services, you could push that to millions of QPS. Very few web services get traffic at that scale - and if you have one, you already know it.
 
 ---
 
@@ -130,7 +130,7 @@ This is simpler to understand, debug, and maintain than any Kubernetes cluster. 
 
 ## Single-Node Kubernetes: When You Want More
 
-If you need more orchestration capabilities—like rolling updates, better secrets management, or you're planning to scale horizontally someday—a single-node Kubernetes setup is remarkably effective.
+If you need more orchestration capabilities - like rolling updates, better secrets management, or you're planning to scale horizontally someday - a single-node Kubernetes setup is remarkably effective.
 
 ### MicroK8s or K3s
 
@@ -145,7 +145,7 @@ microk8s enable dns storage ingress
 curl -sfL https://get.k3s.io | sh -
 ```
 
-You get all the benefits of Kubernetes—declarative configuration, rolling updates, service discovery, secrets management—without the complexity of managing a multi-node cluster.
+You get all the benefits of Kubernetes - declarative configuration, rolling updates, service discovery, secrets management - without the complexity of managing a multi-node cluster.
 
 ### What Single-Node K8s Gives You
 
@@ -156,7 +156,7 @@ You get all the benefits of Kubernetes—declarative configuration, rolling upda
 - **Helm charts** for easy deployment of complex applications
 - **Future-proofing** if you ever need to scale out
 
-The key insight is that Kubernetes was designed to manage distributed systems, but it works perfectly well on a single node. You can run OneUptime's entire stack—Postgres, Redis, Clickhouse, and all our services—on a single MicroK8s node.
+The key insight is that Kubernetes was designed to manage distributed systems, but it works perfectly well on a single node. You can run OneUptime's entire stack - Postgres, Redis, Clickhouse, and all our services - on a single MicroK8s node.
 
 ---
 
@@ -193,7 +193,7 @@ The honest answer: very few.
 
 ### Serverless: The Most Expensive Option
 
-Serverless computing seems attractive—pay only for what you use! But the math doesn't work out:
+Serverless computing seems attractive - pay only for what you use! But the math doesn't work out:
 
 AWS Lambda pricing: $0.20 per 1M requests + $0.0000166667 per GB-second
 
@@ -276,7 +276,7 @@ To be fair, cloud infrastructure has legitimate use cases:
 
 ### "But I don't want to hire sysadmins"
 
-You're going to hire them anyway — they're just called "Cloud Ops" or "DevOps" now, and they're more expensive. Modern servers require far less maintenance than you think, and colocation facilities handle most hardware issues.
+You're going to hire them anyway  -  they're just called "Cloud Ops" or "DevOps" now, and they're more expensive. Modern servers require far less maintenance than you think, and colocation facilities handle most hardware issues.
 
 ### "Cloud is more secure"
 
@@ -288,7 +288,7 @@ Services like Cloudflare work just as well in front of dedicated servers as they
 
 ### "We need to be able to scale instantly"
 
-Do you? Really? How often does your traffic 10x overnight? If you're expecting rapid growth, have a plan for adding a second server. If you're getting genuinely massive traffic, congratulations—you have a good problem, and you can solve it then.
+Do you? Really? How often does your traffic 10x overnight? If you're expecting rapid growth, have a plan for adding a second server. If you're getting genuinely massive traffic, congratulations - you have a good problem, and you can solve it then.
 
 ---
 

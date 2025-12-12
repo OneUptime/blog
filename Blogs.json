@@ -1442,7 +1442,7 @@
   },
   {
     "title": "One Big Server Is Probably Enough: Why You Don't Need the Cloud for Most Things",
-    "description": "Modern servers are incredibly powerful and reliable. For most workloads, a single well-configured server with Docker Compose or single-node Kubernetes can get you 99.99% of the way there—at a fraction of the cloud cost.",
+    "description": "Modern servers are incredibly powerful and reliable. For most workloads, a single well-configured server with Docker Compose or single-node Kubernetes can get you 99.99% of the way there - at a fraction of the cloud cost.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Infrastructure",
