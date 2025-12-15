@@ -1,137 +1,93 @@
 [
-
   {
     "title": "What is SLA, SLI and SLO's?",
     "description": "Here's the difference between SLI, SLO, and SLA.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "Learning Resource",
-  "Site Reliability Engineering"
-    ],
+    "tags": ["Learning Resource", "Site Reliability Engineering"],
     "post": "2023-06-12-sli-sla-slo"
   },
   {
     "title": "Why we dont like TDD: A Developer’s Perspective",
     "description": "Test-Driven Development (TDD) is a software practice emphasizing writing tests before code. Many find drawbacks in committing to an API prematurely and hindering exploration during early development. ",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "Tests"
-    ],
+    "tags": ["Tests"],
     "post": "2023-11-21-why-we-dont-like-tdd"
   },
   {
     "title": "How to configure MetalLB with Kubernetes (Microk8s).",
     "description": "MetalLB is a load-balancer implementation for bare metal Kubernetes clusters, using standard routing protocols. Learn how to configure MetalLB with Kubernetes (Microk8s).",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "Kubernetes",
-      "Microk8s"
-    ],
+    "tags": ["Kubernetes", "Microk8s"],
     "post": "2023-11-06-configure-metallb-with-kubernetes-microk8s"
   },
   {
     "title": "How moving from AWS to Bare-Metal saved us $230,000 /yr.",
     "description": "How technologies like Docker, Kubernetes, Helm, Microk8s, Ceph and more make transitioning to bare-metal infrastructure significantly easier than it was just a few years ago.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "Cloud",
-      "AWS"
-    ],
+    "tags": ["Cloud", "AWS"],
     "post": "2023-10-30-moving-from-aws-to-bare-metal"
   },
   {
     "title": "Why build open-source DataDog?",
     "description": "Building an open-source alternative to Datadog enhances cost-efficiency, observability, and data privacy, offering a net-positive impact on the software world.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "DataDog",
-      "Open Source"
-    ],
+    "tags": ["DataDog", "Open Source"],
     "post": "2024-08-14-why-build-open-source-datadog"
-      },
-      {
-        "title": "Kubernetes Storage Layers: Ceph vs. Longhorn vs. Everything Else",
-        "description": "A decision guide to Ceph/Rook, Longhorn, OpenEBS, Portworx, and cloud-managed volumes-covering architectures, failure drills, and how to match each option to your workloads.",
-        "authorGitHubUsername": "nawazdhandala",
-        "tags": [
-          "Kubernetes",
-          "Storage",
-          "Ceph",
-          "Bare Metal",
-          "Cloud",
-          "DevOps"
-        ],
-        "post": "2025-11-27-choosing-kubernetes-storage-layers"
+  },
+  {
+    "title": "Kubernetes Storage Layers: Ceph vs. Longhorn vs. Everything Else",
+    "description": "A decision guide to Ceph/Rook, Longhorn, OpenEBS, Portworx, and cloud-managed volumes-covering architectures, failure drills, and how to match each option to your workloads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": ["Kubernetes", "Storage", "Ceph", "Bare Metal", "Cloud", "DevOps"],
+    "post": "2025-11-27-choosing-kubernetes-storage-layers"
   },
   {
     "title": "Monitoring LLM Application(s) with Openlit and OneUptime",
     "description": "How to monitor LLMs using tools like Openlit & OpenTelemetry to ensure accurate outputs, improve data retrieval, and optimize costs, with OneUptime for visualizing performance metrics.",
     "authorGitHubUsername": "AmanAgarwal041",
-    "tags": [
-      "LLM Observability",
-      "Openlit",
-      "OpenTelemetry"
-    ],
+    "tags": ["LLM Observability", "Openlit", "OpenTelemetry"],
     "post": "2024-09-13-monitoring-llm-with-openlit-and-oneuptime"
   },
   {
     "title": "How to name spans in OpenTelemetry?",
     "description": "Here's how to craft meaningful span names that enhance your observability efforts, making debugging and performance tuning a breeze. From best practices to advanced strategies, this guide covers it all. ",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "Tracing",
-      "OpenTelemetry"
-    ],
+    "tags": ["Tracing", "OpenTelemetry"],
     "post": "2024-11-04-how-to-name-spans-in-opentelemetry"
   },
   {
     "title": "How to increase the size of the sending queue in OpenTelemetry Collector?",
     "description": "Sometimes your OpenTelemetry Collector might not be able to send all the data to the backend. This is because the sending queue is full. This post will help you increase the size of the sending queue.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "OpenTelemetry"
-    ],
+    "tags": ["OpenTelemetry"],
     "post": "2025-01-20-increase-size-of-open-telemetry-collector-queue"
   },
   {
     "title": "How to collect internal metrics from OpenTelemetry Collector?",
     "description": "Sometimes your OpenTelemetry Collector might not be able to send all the data to the backend. This is because the sending queue is full. This post will help you increase the size of the sending queue.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "OpenTelemetry"
-    ],
+    "tags": ["OpenTelemetry"],
     "post": "2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics"
   },
   {
     "title": "Integrating OneUptime and Slack (and probably Teams)",
     "description": "Learn how to use workflows to send messages to Slack when incidents are created or updated.",
     "authorGitHubUsername": "mikepearce",
-    "tags": [
-      "Workflows",
-      "Slack",
-      "Components",
-      "JSON"
-    ],
+    "tags": ["Workflows", "Slack", "Components", "JSON"],
     "post": "2025-01-31-integrating-oneuptime-and-slack-and-probably-teams"
   },
   {
     "title": "Datadog Dollars: Why Your Monitoring Bill Is Breaking the Bank",
     "description": "Have you ever opened your monitoring bill and felt your heart skip a beat? You're not alone. In the world of digital infrastructure, many companies are experiencing sticker shock when they see their Datadog invoices. Let's unpack why your monitoring bill might be breaking the bank and explore how you can rein it back in.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "Observability",
-      "Datadog"
-    ],
+    "tags": ["Observability", "Datadog"],
     "post": "2025-02-01-datadog-dollars-why-monitoring-is-breaking-the-bank"
   },
   {
     "title": "The Power of Three: How Small Teams Drive Big Results at OneUptime",
     "description": "We have found that keeping teams small and focused isnt just efficient -  its transformative. Here is how this approach helped us deliver platforms rivaling the scope of Incident.io, StatusPage.io, and more- all with just two tiny teams.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "Team Management",
-      "Startups"
-    ],
+    "tags": ["Team Management", "Startups"],
     "post": "2025-03-13-power-of-three-how-small-teams-drive-big-results"
   },
   {
@@ -152,49 +108,28 @@
     "title": "OneUptime Embraces Open Standards: Complete OpenAPI 3.0 Specification Now Available",
     "description": "OneUptime now provides a comprehensive OpenAPI 3.0 specification covering our entire API surface. This commitment to open standards enables seamless integrations, third-party tool development, and demonstrates our dedication to interoperability in the open source ecosystem.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "OpenAPI",
-      "Open Source",
-      "Standards",
-      "Interoperability",
-      "API"
-    ],
+    "tags": ["OpenAPI", "Open Source", "Standards", "Interoperability", "API"],
     "post": "2025-07-01-oneuptime-openapi-specification-open-standards"
   },
   {
     "title": "Introducing the OneUptime Terraform Provider: Infrastructure as Code for Complete Observability",
     "description": "We're excited to announce the release of the official OneUptime Terraform provider! Now you can manage your entire observability infrastructure as code, from uptime monitors and status pages to incident management workflows and on-call schedules.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "Infrastructure as Code",
-      "Terraform",
-      "DevOps",
-      "Automation"
-    ],
+    "tags": ["Infrastructure as Code", "Terraform", "DevOps", "Automation"],
     "post": "2025-07-01-introducing-terraform-provider-for-oneuptime"
   },
   {
     "title": "Native apps had a good run, but PWA has caught up and is the future.",
     "description": "Native apps had a good run, but the web has caught up. Here's why PWAs now outperform traditional native app strategies for most SaaS platforms- and why OneUptime intentionally chose a single PWA-first codebase instead of separate iOS and Android apps.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "PWA",
-      "Web Architecture",
-      "Product",
-      "Platform Strategy"
-    ],
+    "tags": ["PWA", "Web Architecture", "Product", "Platform Strategy"],
     "post": "2025-08-19-native-apps-had-a-good-run-but-pwa-has-caught-up-and-is-the-future"
   },
   {
     "title": "Stop Paywalling Security: SSO Is a Basic Right, Not an Enterprise Perk",
     "description": "Too many SaaS and open-source products still hide SSO behind an enterprise plan. Here's why SSO, SCIM, and 2FA must be baseline security- not monetization levers- and how OneUptime approaches pricing differently.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "Security",
-      "SaaS",
-      "Open Source",
-      "Identity"
-    ],
+    "tags": ["Security", "SaaS", "Open Source", "Identity"],
     "post": "2025-08-19-sso-is-a-security-basic-not-an-enterprise-perk"
   },
   {
@@ -270,8 +205,7 @@
       "Monitoring"
     ],
     "post": "2025-08-26-what-are-metrics-in-opentelemetry"
-  }
-  ,
+  },
   {
     "title": "What are Traces and Spans in OpenTelemetry: A Practical Guide",
     "description": "A comprehensive, code-heavy guide to understanding traces and spans in OpenTelemetry- how they work, how they relate, and how to instrument real Node.js / TypeScript applications effectively for deep insight and faster debugging.",
@@ -334,12 +268,7 @@
     "title": "The Hidden Costs of Dependency Bloat in Software Development",
     "description": "Dependency bloat isn't just about bundle size- it's a hidden tax on your development velocity, security posture, and long-term maintainability. Learn why fewer dependencies often means faster, safer, and more sustainable software.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Software Development",
-      "Dependencies",
-      "Maintenance",
-      "Security"
-    ],
+    "tags": ["Software Development", "Dependencies", "Maintenance", "Security"],
     "post": "2025-09-02-the-hidden-costs-of-dependency-bloat-in-software-development"
   },
   {
@@ -405,16 +334,10 @@
     "title": "Effective Incident Postmortem Templates: Ready-to-Use Examples",
     "description": "Master incident postmortems with these ready-to-use templates. Learn how to structure effective postmortems to improve reliability and prevent future incidents.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "Incident Management",
-      "Postmortems",
-      "Templates",
-      "Reliability"
-    ],
+    "tags": ["Incident Management", "Postmortems", "Templates", "Reliability"],
     "post": "2025-09-09-effective-incident-postmortem-templates-ready-to-use-examples"
-  }
+  },
 
-  ,
   {
     "title": "Basics of profiling: Turning CPU & Memory Hotspots into Action",
     "description": "A practical guide to continuous profiling, why you need it beyond logs/metrics/traces, core profile types, how to collect CPU & heap profiles in Node.js, and how to correlate them with traces for faster performance debugging.",
@@ -429,8 +352,7 @@
       "Tracing"
     ],
     "post": "2025-09-09-basics-of-profiling"
-  }
-  ,
+  },
   {
     "title": "The Ultimate SRE Reliability Checklist: From Chaos to Consistent Excellence",
     "description": "A comprehensive, opinionated SRE checklist spanning culture, SLOs, observability, alerting, incidents, change management, resilience, automation, cost and continuous improvement- use it as a maturity roadmap.",
@@ -449,8 +371,7 @@
       "Postmortems"
     ],
     "post": "2025-09-10-sre-checklist"
-  }
-  ,
+  },
   {
     "title": "P50 vs P95 vs P99 Latency: What These Percentiles Actually Mean",
     "description": "A practical guide to understanding P50, P95, and P99 latency percentiles- why averages lie, what each percentile tells you about user experience, how to set SLOs around them, and how to collect them correctly with histograms.",
@@ -466,8 +387,7 @@
       "Reliability"
     ],
     "post": "2025-09-15-p50-vs-p95-vs-p99-latency-percentiles"
-  }
-  ,
+  },
   {
     "title": "OpenTelemetry Collector: What It Is, When You Need It, and When You Don’t",
     "description": "A practical guide to understanding the OpenTelemetry Collector- what it does, architecture patterns with and without it, and a decision framework for when to deploy it to improve performance, cost, security, and flexibility.",
@@ -484,8 +404,7 @@
       "Sampling"
     ],
     "post": "2025-09-18-what-is-opentelemetry-collector-and-why-use-one"
-  }
-  ,
+  },
   {
     "title": "Connecting Metrics ↔ Traces with Exemplars in OpenTelemetry",
     "description": "A hands-on guide to exemplars- how they connect metric points to the exact trace that caused them, why they matter for faster debugging and cost efficiency, and how to enable them end-to-end with OpenTelemetry (apps → collector → backend).",
@@ -568,8 +487,7 @@
       "Automation"
     ],
     "post": "2025-09-26-integrating-grafana-alerts-with-oneuptime"
-  }
-  ,
+  },
   {
     "title": "Mastering APM: End-to-End User Journey Tracing in Distributed Systems",
     "description": "A practical, end-to-end guide to propagating trace IDs across microservices- HTTP, gRPC, queues, and background jobs- so you can reconstruct real user journeys with OpenTelemetry, W3C Trace Context, and smart sampling.",
@@ -586,8 +504,7 @@
       "Correlation"
     ],
     "post": "2025-10-01-mastering-apm-tracing-user-journeys-in-distributed-systems"
-  }
-  ,
+  },
   {
     "title": "Synthetic Monitoring in OneUptime: Simulating Real User Journeys with Playwright",
     "description": "How OneUptime implements synthetic monitoring using real browsers, sandboxed user scripts, multi-device/multi-browser matrices, and rich artifacts (logs, screenshots) to proactively validate user journeys before your customers do.",
@@ -603,8 +520,7 @@
       "DevOps"
     ],
     "post": "2025-10-01-synthetic-monitoring-in-oneuptime-simulating-real-user-journeys-with-playwright"
-  }
-  ,
+  },
   {
     "title": "Eliminating Toil: A Practical SRE Playbook",
     "description": "What toil really is (and isn’t), how to find and measure it, and pragmatic steps to eliminate it with automation, guardrails, and culture.",
@@ -620,24 +536,17 @@
       "Runbooks"
     ],
     "post": "2025-10-01-what-is-toil-and-how-to-eliminate-it"
-  }
-  ,
+  },
   {
     "title": "DevOps - Here's a brief ode to the unsung heroes",
     "description": "A brief thank-you to the DevOps teams who helped us keep systems steady when hyperscalers like AWS stumble.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "DevOps",
-      "Site Reliability Engineering",
-      "Reliability",
-      "AWS"
-    ],
+    "tags": ["DevOps", "Site Reliability Engineering", "Reliability", "AWS"],
     "post": "2025-10-21-ode-to-devops-heroes"
-  }
-  ,
+  },
   {
     "title": "Why AWS us-east-1 Should Be Your Region of Last Resort",
-  "description": "us-east-1 keeps reminding us that \"default\" is not the same as resilient. This post explains why the region fails so loudly, how its control planes and vendor ecosystem amplify outages, and the practical steps to escape the blast radius.",
+    "description": "us-east-1 keeps reminding us that \"default\" is not the same as resilient. This post explains why the region fails so loudly, how its control planes and vendor ecosystem amplify outages, and the practical steps to escape the blast radius.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "AWS",
@@ -647,22 +556,14 @@
       "Disaster Recovery"
     ],
     "post": "2025-10-21-aws-us-east-1-region-of-last-resort"
-  }
-  ,
+  },
   {
     "title": "The Internet Must Decentralize",
     "description": "Yesterday's AWS outage reminded us that resilience starts at the edges. Here is why decentralizing and self-hosting your core services matters.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Cloud",
-      "AWS",
-      "Decentralization",
-      "Self-Hosting",
-      "Reliability"
-    ],
+    "tags": ["Cloud", "AWS", "Decentralization", "Self-Hosting", "Reliability"],
     "post": "2025-10-21-the-internet-must-decentralize"
-  }
-  ,
+  },
   {
     "title": "Monitor Every IP Address with OneUptime",
     "description": "A practical guide to configuring IP monitors in OneUptime, including IPv4/IPv6 validation, smart probe fallbacks, and alert automation.",
@@ -676,8 +577,7 @@
       "DevOps"
     ],
     "post": "2025-10-27-monitor-ip-addresses-with-oneuptime"
-  }
-  ,
+  },
   {
     "title": "Keep Critical Ports Alive with OneUptime",
     "description": "How OneUptime's port monitors validate configuration, time TCP handshakes, and automate incidents when service ports stop responding.",
@@ -691,22 +591,14 @@
       "DevOps"
     ],
     "post": "2025-10-27-monitor-service-ports-with-oneuptime"
-  }
-  ,
+  },
   {
     "title": "Monitor Logs with OneUptime",
     "description": "Turn log queries into automated guardrails with OneUptime's log monitors, complete with live previews, scheduled counts, and incident automation.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Monitoring",
-      "Observability",
-      "Logs",
-      "Logging",
-      "DevOps"
-    ],
+    "tags": ["Monitoring", "Observability", "Logs", "Logging", "DevOps"],
     "post": "2025-10-27-monitor-logs-with-oneuptime"
-  }
-  ,
+  },
   {
     "title": "Monitor Traces with OneUptime",
     "description": "A deep dive into OneUptime's trace monitors - span queries, rolling windows, status filters, and automated incidents for distributed systems.",
@@ -720,8 +612,7 @@
       "OpenTelemetry"
     ],
     "post": "2025-10-27-monitor-traces-with-oneuptime"
-  }
-  ,
+  },
   {
     "title": "Monitor Metrics with OneUptime",
     "description": "Use OneUptime's metric monitors to run rolling aggregations, apply formulas, and trigger automated incidents when telemetry drifts.",
@@ -734,8 +625,7 @@
       "OpenTelemetry"
     ],
     "post": "2025-10-27-monitor-metrics-with-oneuptime"
-  }
-  ,
+  },
   {
     "title": "Connect OneUptime to Microsoft Teams",
     "description": "Set up the OneUptime integration for Microsoft Teams so incidents, alerts, and status updates reach the right channel instantly.",
@@ -750,8 +640,7 @@
       "Automation"
     ],
     "post": "2025-10-27-integrate-microsoft-teams-with-oneuptime"
-  }
-  ,
+  },
   {
     "title": "Why You Need a Status Page (Long Before Your Next Incident)",
     "description": "Learn why proactive communication beats silence, how status pages reduce ticket volume, and the signals that tell you it is time to launch one.",
@@ -763,8 +652,7 @@
       "Incident Management"
     ],
     "post": "2025-10-27-why-you-need-a-status-page"
-  }
-  ,
+  },
   {
     "title": "Create a Public Status Page with OneUptime",
     "description": "Step-by-step instructions to brand, automate, and launch a customer-facing status page that keeps everyone informed during incidents and maintenance.",
@@ -776,21 +664,14 @@
       "Reliability"
     ],
     "post": "2025-10-27-create-a-public-status-page-with-oneuptime"
-  }
-  ,
+  },
   {
     "title": "Create a Private Status Page with OneUptime",
     "description": "Configure access controls, SSO, and tailored messaging for internal or premium audiences using OneUptime private status pages.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Status Page",
-      "Incident Management",
-      "Reliability",
-      "Security"
-    ],
+    "tags": ["Status Page", "Incident Management", "Reliability", "Security"],
     "post": "2025-10-27-create-a-private-status-page-with-oneuptime"
-  }
-  ,
+  },
   {
     "title": "Plan Scheduled Maintenance with OneUptime",
     "description": "Plan, approve, and communicate scheduled maintenance without surprising customers or internal teams.",
@@ -802,34 +683,21 @@
       "Customer Experience"
     ],
     "post": "2025-10-27-manage-scheduled-maintenance-with-oneuptime"
-  }
-  ,
+  },
   {
     "title": "Organize Your Service Catalog with OneUptime",
     "description": "Build a living inventory of services, owners, monitors, and dependencies using OneUptime’s Service Catalog.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Service Catalog",
-      "Reliability",
-      "Ownership",
-      "Dependencies"
-    ],
+    "tags": ["Service Catalog", "Reliability", "Ownership", "Dependencies"],
     "post": "2025-10-27-service-catalog-with-oneuptime"
-  }
-  ,
+  },
   {
     "title": "AWS to Bare Metal Two Years Later: Answering Your Toughest Questions About Leaving AWS",
     "description": "Two years after leaving AWS we revisit the numbers, share what changed, and address the biggest questions from Hacker News and r/sysadmin.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "AWS",
-      "Cloud",
-      "Infrastructure",
-      "Cost Optimization"
-    ],
+    "tags": ["AWS", "Cloud", "Infrastructure", "Cost Optimization"],
     "post": "2025-10-29-aws-to-bare-metal-two-years-later"
-  }
-  ,
+  },
   {
     "title": "Kubernetes + Ceph: Your Freedom from the Cloud Cartel",
     "description": "Kubernetes standardizes compute, Ceph standardizes storage. Together they make cloud-to-cloud, hybrid, and bare metal moves routine while weakening the hyperscaler oligopoly.",
@@ -843,8 +711,7 @@
       "Self-Hosting"
     ],
     "post": "2025-11-03-kubernetes-and-ceph-break-the-cloud-cartel"
-  }
-  ,
+  },
   {
     "title": "OpenTelemetry: Your Escape Hatch from the Observability Cartel",
     "description": "OpenTelemetry standardizes instrumentation and pipelines so you can swap observability vendors, mix open source with commercial tools, and run hybrid data stacks without paying exit taxes.",
@@ -885,8 +752,7 @@
       "Private Cloud"
     ],
     "post": "2025-11-12-kubernetes-is-your-private-cloud"
-  }
-  ,
+  },
   {
     "title": "Keep PII Out of Your Telemetry: Sanitizing Logs, Traces, and Metrics with OpenTelemetry",
     "description": "A step-by-step playbook for preventing sensitive data from leaking into logs, traces, and metrics using OpenTelemetry SDKs, collector processors, and automated detection.",
@@ -902,21 +768,14 @@
       "Compliance"
     ],
     "post": "2025-11-13-keep-pii-out-of-observability-telemetry"
-  }
-  ,
+  },
   {
     "title": "When performance matters, skip the ORM",
     "description": "ORMs help teams move fast, but once you're tuning a hot path they add hidden latency, query chatter, and serialization overhead. Here's when to drop the abstraction, how to measure the impact, and how to ship raw SQL safely.",
     "authorGitHubUsername": "devneelpatel",
-    "tags": [
-      "Performance",
-      "Latency",
-      "Software Development",
-      "DevOps"
-    ],
+    "tags": ["Performance", "Latency", "Software Development", "DevOps"],
     "post": "2025-11-13-when-performance-matters-skip-the-orm"
-  }
-  ,
+  },
   {
     "title": "How to Monitor Kubernetes Clusters with OpenTelemetry and OneUptime",
     "description": "Deploy an OpenTelemetry Collector DaemonSet, stream Kubernetes metrics, logs, and traces into OneUptime, and wire dashboards plus alerts that keep clusters healthy.",
@@ -931,62 +790,38 @@
       "Traces"
     ],
     "post": "2025-11-14-monitor-kubernetes-clusters-with-opentelemetry-and-oneuptime"
-  }
-  ,
+  },
   {
     "title": "Why our Cloudflare failover failed?",
     "description": "Cloudflare's Nov 18 outage exposed the flaw in our 'just turn off the proxy' plan. Here's how the lockout happened, what the HN thread taught us, and the automation plus redundancies we're adding so we can really fail over next time.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Cloudflare",
-      "Reliability",
-      "Incident Management",
-      "Security"
-    ],
+    "tags": ["Cloudflare", "Reliability", "Incident Management", "Security"],
     "post": "2025-11-19-why-our-cloudflare-failover-failed"
   },
   {
     "title": "How private status pages stay secure: authentication options explained",
     "description": "Layer username/password accounts, SSO + SCIM, the master password, and IP whitelisting to keep sensitive status pages restricted to trusted people and networks.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Status Page",
-      "Security",
-      "Identity"
-    ],
+    "tags": ["Status Page", "Security", "Identity"],
     "post": "2025-11-20-secure-your-status-page-authentication-options"
-  }
+  },
 
-  ,
   {
     "title": "10 Docker Superpowers Developers Forget to Use",
     "description": "Ten field-tested Docker techniques - from BuildKit secrets to Compose profiles - that quietly reduce image size, harden workloads, and save developer hours.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Docker",
-      "Containers",
-      "DevOps",
-      "Performance",
-      "Security"
-    ],
+    "tags": ["Docker", "Containers", "DevOps", "Performance", "Security"],
     "post": "2025-11-27-ten-docker-superpowers-youre-probably-not-using"
-  }
+  },
 
-  ,
   {
     "title": "Learn Docker Step by Step: A Hands-On Beginner Guide",
     "description": "A friendly walkthrough of Docker fundamentals, core terms, and one end-to-end example - from writing a Dockerfile to running a containerized web API locally.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Docker",
-      "Containers",
-      "Learning Resource",
-      "DevOps"
-    ],
+    "tags": ["Docker", "Containers", "Learning Resource", "DevOps"],
     "post": "2025-11-27-learn-docker-step-by-step"
-  }
+  },
 
-  ,
   {
     "title": "Learn Kubernetes Step by Step: Cluster Basics Without the Headache",
     "description": "A beginner-friendly path to Kubernetes - what the core pieces are, how they talk, and one practical Deployment plus Service example you can run today, complete with diagrams.",
@@ -1046,26 +881,14 @@
     "title": "How to Shrink and Harden Docker Images Without Breaking Builds",
     "description": "A practical playbook for cutting Docker image sizes in half while tightening security-covering multi-stage builds, distroless bases, BuildKit secrets, SBOMs, and automated policy gates.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Docker",
-      "Security",
-      "Performance",
-      "DevOps",
-      "Containers"
-    ],
+    "tags": ["Docker", "Security", "Performance", "DevOps", "Containers"],
     "post": "2025-11-27-shrink-and-harden-docker-images"
   },
   {
     "title": "How to Manage Environment-Specific Configs with Docker Compose Profiles",
     "description": "Structure Docker Compose files with profiles, overrides, secrets, and env layers so dev, staging, and prod share one manifest without copy/paste drift.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Docker",
-      "DevOps",
-      "Automation",
-      "Environments",
-      "Configuration"
-    ],
+    "tags": ["Docker", "DevOps", "Automation", "Environments", "Configuration"],
     "post": "2025-11-27-manage-docker-compose-profiles"
   },
   {
@@ -1113,169 +936,91 @@
     "title": "How to Debug Failing Docker Containers Safely",
     "description": "A disciplined workflow for investigating broken containers with inspect, logs, cp, and ephemeral shells-capturing evidence without mutating production.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Docker",
-      "Troubleshooting",
-      "DevOps",
-      "Debugging",
-      "Security"
-    ],
+    "tags": ["Docker", "Troubleshooting", "DevOps", "Debugging", "Security"],
     "post": "2025-11-27-debug-docker-containers"
   },
   {
     "title": "How to Migrate Legacy VMs to Docker Containers",
     "description": "A seven-step plan for inventorying virtual machines, extracting dependencies, rebuilding images, migrating data, and cutting over to containers safely.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Docker",
-      "Migration",
-      "DevOps",
-      "Modernization",
-      "Automation"
-    ],
+    "tags": ["Docker", "Migration", "DevOps", "Modernization", "Automation"],
     "post": "2025-11-27-migrate-legacy-vms-to-docker"
-  }
-  ,
+  },
   {
     "title": "What Are Blue-Green Deployments (and When Should You Use Them)?",
     "description": "A practical explainer of blue-green deployments-mechanics, Kubernetes examples, guardrails, and when to use another rollout strategy instead.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Kubernetes",
-      "Releases",
-      "Reliability",
-      "DevOps"
-    ],
+    "tags": ["Kubernetes", "Releases", "Reliability", "DevOps"],
     "post": "2025-11-28-what-are-blue-green-deployments"
-  }
-  ,
+  },
   {
     "title": "How to Install kubectl, Configure kubeconfig, and Talk to Your First Cluster",
     "description": "A zero-to-one walkthrough for installing kubectl on macOS/Linux/Windows, wiring up kubeconfig, and validating your first cluster connection in under 15 minutes.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Kubernetes",
-      "Learning Resource",
-      "DevOps",
-      "Getting Started"
-    ],
+    "tags": ["Kubernetes", "Learning Resource", "DevOps", "Getting Started"],
     "post": "2025-11-27-install-kubectl-first-cluster"
-  }
-  ,
+  },
   {
     "title": "How to Create, Scale, and Delete Deployments + Services with kubectl apply",
     "description": "A practical notebook for the kubectl apply workflow-create a Deployment, expose it with a Service, scale replicas up/down, and clean up safely.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Kubernetes",
-      "DevOps",
-      "Learning Resource",
-      "Getting Started"
-    ],
+    "tags": ["Kubernetes", "DevOps", "Learning Resource", "Getting Started"],
     "post": "2025-11-27-deploy-scale-delete"
-  }
-  ,
+  },
   {
     "title": "How to Use Namespaces and RBAC to Keep Dev, Stage, and Prod Isolated",
     "description": "Practical steps for carving clusters into dev/stage/prod namespaces, applying least-privilege RBAC, and verifying isolation so accidents in testing never spill into production.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Kubernetes",
-      "DevOps",
-      "Security",
-      "Environments"
-    ],
+    "tags": ["Kubernetes", "DevOps", "Security", "Environments"],
     "post": "2025-11-27-namespaces-rbac-isolation"
-  }
-  ,
+  },
   {
     "title": "How to Add Liveness, Readiness, and Startup Probes So Kubernetes Auto-Heals Your Apps",
     "description": "Configure HTTP/TCP/command probes, validate them with kubectl, and wire alerting so the scheduler auto-heals hung Pods before users notice.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Kubernetes",
-      "Reliability",
-      "DevOps",
-      "Troubleshooting"
-    ],
+    "tags": ["Kubernetes", "Reliability", "DevOps", "Troubleshooting"],
     "post": "2025-11-27-probes-auto-healing"
-  }
-  ,
+  },
   {
     "title": "How to Manage ConfigMaps and Secrets Without Leaking Credentials",
     "description": "Create, template, and mount ConfigMaps and Secrets the right way-complete with Git workflows, base64 gotchas, and external secret integrations.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Kubernetes",
-      "Configuration",
-      "Security",
-      "DevOps"
-    ],
+    "tags": ["Kubernetes", "Configuration", "Security", "DevOps"],
     "post": "2025-11-27-configmaps-secrets"
-  }
-  ,
+  },
   {
     "title": "How to Run Kubernetes Jobs and CronJobs for One-Off or Scheduled Work",
     "description": "Launch reliable Jobs for migrations, wrap them with CronJobs for schedules, and add safety nets like concurrency policies and TTL controllers.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Kubernetes",
-      "Workloads",
-      "Automation",
-      "DevOps"
-    ],
+    "tags": ["Kubernetes", "Workloads", "Automation", "DevOps"],
     "post": "2025-11-27-jobs-cronjobs"
-  }
-  ,
+  },
   {
     "title": "How to Roll Out a Change, Watch Health Checks, and Undo a Bad Deploy",
     "description": "Use Deployment strategies, kubectl rollout, and health probes to ship safely-and revert instantly when something looks wrong.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Kubernetes",
-      "Releases",
-      "DevOps",
-      "Reliability"
-    ],
+    "tags": ["Kubernetes", "Releases", "DevOps", "Reliability"],
     "post": "2025-11-27-rollouts-health-undo"
-  }
-  ,
+  },
   {
     "title": "How to Debug Services with kubectl Port-Forward and Inspect Ingress Traffic",
     "description": "Quickly tunnel into Pods/Services with kubectl port-forward, verify Ingress routing/TLS, and capture the signals you need when traffic misbehaves.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Kubernetes",
-      "Troubleshooting",
-      "Networking",
-      "DevOps"
-    ],
+    "tags": ["Kubernetes", "Troubleshooting", "Networking", "DevOps"],
     "post": "2025-11-27-port-forward-ingress-debug"
-  }
-  ,
+  },
   {
     "title": "How to Autoscale Deployments with the Horizontal Pod Autoscaler",
     "description": "Enable the metrics server, define resource requests, create an HPA, and load-test it so Pods scale up (and back down) automatically.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Kubernetes",
-      "Scaling",
-      "Performance",
-      "DevOps"
-    ],
+    "tags": ["Kubernetes", "Scaling", "Performance", "DevOps"],
     "post": "2025-11-27-hpa-autoscale"
-  }
-  ,
+  },
   {
     "title": "How to Build a kubectl Visibility Toolkit for Fast Incident Response",
     "description": "A curated list of kubectl commands, aliases, and plugins that surface cluster health in seconds so you can answer what broke? without dashboards.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Kubernetes",
-      "Observability",
-      "Troubleshooting",
-      "DevOps"
-    ],
+    "tags": ["Kubernetes", "Observability", "Troubleshooting", "DevOps"],
     "post": "2025-11-27-kubectl-visibility-toolkit"
   },
   {
@@ -1307,8 +1052,7 @@
       "Reliability"
     ],
     "post": "2025-12-03-ceph-rook-standard-bare-metal-storage-pools"
-  }
-  ,
+  },
   {
     "title": "How to Upgrade Ceph and Rook with Helm (Without Scaring Your Stateful Sets)",
     "description": "A practical, battle-tested playbook for upgrading Rook and Ceph with Helm while keeping production PVCs healthy and teams calm.",
@@ -1323,19 +1067,12 @@
       "DevOps"
     ],
     "post": "2025-12-03-upgrade-ceph-rook-with-helm"
-  }
-  ,
+  },
   {
     "title": "Docker Compose Models Explained: Wire AI Runtimes Like Any Other Dependency",
     "description": "Docker Compose 2.38+ adds a models section so you can declare OCI-hosted AI models, gate access per service, and ship inference endpoints consistently. Here's why it matters and how to use it effectively.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Docker",
-      "Docker Compose",
-      "DevOps",
-      "Configuration",
-      "AI"
-    ],
+    "tags": ["Docker", "Docker Compose", "DevOps", "Configuration", "AI"],
     "post": "2025-12-03-docker-compose-models-explained"
   },
   {
@@ -1351,50 +1088,29 @@
       "DevOps"
     ],
     "post": "2025-12-06-install-metallb-with-helm-bare-metal"
-  }
-  ,
+  },
   {
     "title": "How Docker Actually Works",
     "description": "A technical-yet-friendly tour of Docker internals- OCI images, overlayfs layers, namespaces, cgroups, networking, and security hardening tips.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Docker",
-      "Containers",
-      "DevOps",
-      "Security",
-      "Performance"
-    ],
+    "tags": ["Docker", "Containers", "DevOps", "Security", "Performance"],
     "post": "2025-12-08-how-docker-actually-works"
-  }
-  ,
+  },
   {
     "title": "OCI Artifacts Explained: Beyond Container Images",
     "description": "OCI artifacts extend registry plumbing to Helm charts, SBOMs, signatures, AI models, and anything else that needs digests, provenance, and promotion workflows.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Containers",
-      "DevOps",
-      "Supply Chain",
-      "Security",
-      "OCI"
-    ],
+    "tags": ["Containers", "DevOps", "Supply Chain", "Security", "OCI"],
     "post": "2025-12-08-oci-artifacts-explained"
-  }
-  ,
+  },
   {
     "title": "Building Your Own Container Engine in Go: A Step-by-Step Guide to Understanding Docker Internals",
     "description": "Learn how containers actually work under the hood by building a basic container engine from scratch. This hands-on guide demystifies Docker by walking through namespaces, cgroups, and filesystem isolation.",
     "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Docker",
-      "Containers",
-      "Linux",
-      "DevOps",
-      "Learning Resource"
-    ],
+    "tags": ["Docker", "Containers", "Linux", "DevOps", "Learning Resource"],
     "post": "2025-12-09-building-docker-from-scratch"
   },
-    {
+  {
     "title": "Using eBPF with OpenTelemetry: Zero-Code Auto-Instrumentation for Any Application",
     "description": "A practical guide to combining eBPF with OpenTelemetry for automatic, zero-code distributed tracing and observability. Learn how tools like Odigos, Beyla, and OpenTelemetry eBPF work, when to use them, and how to set them up in production.",
     "authorGitHubUsername": "nawazdhandala",
@@ -1484,5 +1200,12 @@
       "Self-Hosting"
     ],
     "post": "2025-12-15-how-to-use-nas-storage-with-docker-compose"
+  },
+  {
+    "title": "What is KEDA and How to Implement It in Kubernetes",
+    "description": "Learn what KEDA (Kubernetes Event-Driven Autoscaling) is, why it matters, and how to implement it in your Kubernetes cluster for event-driven, production-grade autoscaling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": ["Kubernetes", "KEDA", "Autoscaling", "DevOps", "Cloud Native"],
+    "post": "2025-12-15-what-is-keda-and-how-to-implement-in-kubernetes"
   }
 ]

@@ -7,16 +7,18 @@
 - API
 - Automation
 - Auto-Instrumentation
-- Autoscaling
-- AWS
+ - Autoscaling
+ - KEDA
+ - AWS
 - Backup
 - Bare Metal
 - Certificate Monitoring
 - Ceph
 - CI/CD
 - Configuration
-- Cloud
-- Cloudflare
+ - Cloud
+ - Cloud Native
+ - Cloudflare
 - Collector
 - Containers
 - Components
