@@ -1456,5 +1456,19 @@
       "Self-Hosting"
     ],
     "post": "2025-12-12-one-big-server-is-enough"
+  },
+  {
+    "title": "How to Use NAS Storage with Kubernetes: NFS, SMB, and iSCSI Volumes",
+    "description": "A practical guide to connecting your NAS (Synology, QNAP, TrueNAS, or any NFS/SMB/iSCSI server) to Kubernetes clusters. Learn how to provision persistent volumes, set up dynamic provisioning with CSI drivers, and avoid common pitfalls.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Storage",
+      "NFS",
+      "DevOps",
+      "Bare Metal",
+      "Self-Hosting"
+    ],
+    "post": "2025-12-15-how-to-use-nas-storage-with-kubernetes"
   }
 ]
