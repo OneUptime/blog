@@ -1223,5 +1223,19 @@
         "Security"
       ],
       "post": "2025-12-15-what-is-istio-in-kubernetes-and-why-do-we-need-it"
+    },
+    {
+      "title": "What is Canary Deployment and How to Implement It in Kubernetes",
+      "description": "Learn what canary deployments are, why they're essential for safe releases, and how to implement them in Kubernetes using native features and Istio for traffic splitting.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": [
+        "Kubernetes",
+        "Canary Deployment",
+        "Releases",
+        "DevOps",
+        "Reliability",
+        "Cloud Native"
+      ],
+      "post": "2025-12-15-what-is-canary-deployment-and-how-to-implement-it"
     }
 ]

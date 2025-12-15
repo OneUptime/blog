@@ -12,6 +12,7 @@
  - AWS
 - Backup
 - Bare Metal
+- Canary Deployment
 - Certificate Monitoring
 - Ceph
 - CI/CD
