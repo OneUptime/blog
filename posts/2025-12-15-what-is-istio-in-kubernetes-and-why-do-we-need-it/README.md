@@ -8,7 +8,7 @@ Description: Discover what Istio is, how it works in Kubernetes, and why modern 
 
 ---
 
-Kubernetes makes it easy to deploy and scale microservices, but managing their communication, security, and observability at scale is a challenge. Enter **Istio**—the most popular open-source service mesh for Kubernetes.
+Kubernetes makes it easy to deploy and scale microservices, but managing their communication, security, and observability at scale is a challenge. Enter **Istio** - the most popular open-source service mesh for Kubernetes.
 
 ## What is Istio?
 
@@ -27,7 +27,7 @@ As microservices grow, so do the challenges:
 - **Traffic Control:** How do you roll out new versions safely?
 - **Reliability:** How do you handle failures gracefully?
 
-Istio solves these by providing a consistent, platform-agnostic way to manage, secure, and observe all service communication—without modifying your apps.
+Istio solves these by providing a consistent, platform-agnostic way to manage, secure, and observe all service communication - without modifying your apps.
 
 ## How Does Istio Work?
 
@@ -181,7 +181,7 @@ spec:
 
 - **Start with the demo profile** for learning, then move to minimal/production profiles.
 - **Label only needed namespaces** for injection to avoid overhead.
-- **Monitor resource usage**—Envoy sidecars add CPU/memory overhead.
+- **Monitor resource usage** - Envoy sidecars add CPU/memory overhead.
 - **Use Istio’s built-in dashboards** (Kiali, Jaeger, Grafana) for visibility.
 - **Keep Istio updated** for security and new features.
 

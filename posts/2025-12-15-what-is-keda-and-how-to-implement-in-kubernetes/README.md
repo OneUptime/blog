@@ -8,7 +8,7 @@ Description: Learn what KEDA (Kubernetes Event-Driven Autoscaling) is, why it ma
 
 ---
 
-Kubernetes Horizontal Pod Autoscaler (HPA) is great for scaling workloads based on CPU and memory. But what if you want to scale based on queue length, database records, or custom metrics? Enter **KEDA**—Kubernetes Event-Driven Autoscaling.
+Kubernetes Horizontal Pod Autoscaler (HPA) is great for scaling workloads based on CPU and memory. But what if you want to scale based on queue length, database records, or custom metrics? Enter **KEDA** - Kubernetes Event-Driven Autoscaling.
 
 KEDA lets you scale any container in Kubernetes based on the number of events needing to be processed, not just resource usage. It supports dozens of event sources (Kafka, RabbitMQ, AWS SQS, Azure Queue, Prometheus, HTTP, and more) and is production-ready for both cloud and on-prem clusters.
 

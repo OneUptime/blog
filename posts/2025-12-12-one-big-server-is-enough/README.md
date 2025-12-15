@@ -177,7 +177,7 @@ That's a **40x price difference** between AWS and Hetzner for a capable server. 
 
 ### AWS vs. Colocation (Owning Your Hardware)
 
-Renting dedicated servers is one option, but colocation—where you buy your own hardware and pay a facility to rack and power it—can be even more economical for long-term deployments.
+Renting dedicated servers is one option, but colocation - where you buy your own hardware and pay a facility to rack and power it - can be even more economical for long-term deployments.
 
 | Cost Factor | AWS (m6a.metal) | Colocation |
 |-------------|-----------------|------------|
@@ -199,7 +199,7 @@ Yes, buying servers has drawbacks:
 - Need to plan capacity ahead of time
 - Hardware depreciation
 
-But for stable, predictable workloads, the savings are enormous. At OneUptime, we moved to colocation and [saved over $230,000 per year](https://oneuptime.com/blog/post/2023-10-30-moving-from-aws-to-bare-metal/view)—and that's with a conservative calculation.
+But for stable, predictable workloads, the savings are enormous. At OneUptime, we moved to colocation and [saved over $230,000 per year](https://oneuptime.com/blog/post/2023-10-30-moving-from-aws-to-bare-metal/view) - and that's with a conservative calculation.
 
 ### The Cloud Premium
 
