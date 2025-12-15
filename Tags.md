@@ -43,8 +43,9 @@
 - Edge
 - Engineering Culture
 - Environments
-- Identity
-- Incident Management
+ - Identity
+ - Istio
+ - Incident Management
 - Integrations
 - Infrastructure
 - IP Monitoring
@@ -109,8 +110,9 @@
 - SaaS
 - Sales
 - Sampling
-- Scaling
-- Self-Hosting
+ - Scaling
+ - Service Mesh
+ - Self-Hosting
 - Security
 - Site Reliability Engineering
 - Error Budgets
