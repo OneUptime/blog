@@ -1470,5 +1470,19 @@
       "Self-Hosting"
     ],
     "post": "2025-12-15-how-to-use-nas-storage-with-kubernetes"
+  },
+  {
+    "title": "How to Use NAS Storage with Docker Compose: NFS, SMB, and Local Volumes",
+    "description": "A practical guide to connecting your NAS (Synology, QNAP, TrueNAS, or any NFS/SMB server) to Docker Compose stacks. Learn how to mount network shares as volumes, configure permissions, and avoid common pitfalls.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Docker Compose",
+      "Storage",
+      "NFS",
+      "DevOps",
+      "Self-Hosting"
+    ],
+    "post": "2025-12-15-how-to-use-nas-storage-with-docker-compose"
   }
 ]
