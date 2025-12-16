@@ -1251,5 +1251,18 @@
         "Container Runtime"
       ],
       "post": "2025-12-15-what-is-containerd-and-why-do-we-need-it"
+    },
+    {
+      "title": "What is PKCE and Why You Need It?",
+      "description": "Learn what PKCE (Proof Key for Code Exchange) is, how it protects OAuth 2.0 authorization flows from interception attacks, and why modern applications should implement it.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": [
+        "Security",
+        "OAuth",
+        "Authentication",
+        "PKCE",
+        "API"
+      ],
+      "post": "2025-12-16-what-is-pkce-and-why-you-need-it"
     }
 ]

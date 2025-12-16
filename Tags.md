@@ -7,9 +7,10 @@
 - API
 - Automation
 - Auto-Instrumentation
- - Autoscaling
- - KEDA
- - AWS
+- Authentication
+- Autoscaling
+- KEDA
+- AWS
 - Backup
 - Bare Metal
 - Canary Deployment
@@ -17,9 +18,9 @@
 - Ceph
 - CI/CD
 - Configuration
- - Cloud
- - Cloud Native
- - Cloudflare
+- Cloud
+- Cloud Native
+- Cloudflare
 - Collector
 - Containers
 - Container Runtime
@@ -46,9 +47,9 @@
 - Edge
 - Engineering Culture
 - Environments
- - Identity
- - Istio
- - Incident Management
+- Identity
+- Istio
+- Incident Management
 - Integrations
 - Infrastructure
 - IP Monitoring
@@ -85,6 +86,7 @@
 - MTTD
 - MTTR
 - NodeJS
+- OAuth
 - Observability
 - OCI
 - On-call
@@ -98,6 +100,7 @@
 - Package Management
 - Performance
 - PII
+- PKCE
 - Platform Strategy
 - Private Cloud
 - Product
@@ -113,9 +116,9 @@
 - SaaS
 - Sales
 - Sampling
- - Scaling
- - Service Mesh
- - Self-Hosting
+- Scaling
+- Service Mesh
+- Self-Hosting
 - Security
 - Site Reliability Engineering
 - Error Budgets
