@@ -90,8 +90,6 @@ sequenceDiagram
     Auth->>Attacker: 6. Access Token issued!
 
     Note over Attacker: Attacker now has full access
-
-    style Attacker fill:#8b0000,color:#fff
 ```
 
 Common interception vectors include:
@@ -334,8 +332,6 @@ sequenceDiagram
     Note over App: App still has code_verifier
     App->>Auth: 7. Token Request + code_verifier
     Auth->>App: 8. Access Token (verified!)
-
-    style Attacker fill:#8b0000,color:#fff
 ```
 
 ### Why This Works
