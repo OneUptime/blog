@@ -1264,5 +1264,18 @@
         "API"
       ],
       "post": "2025-12-16-what-is-pkce-and-why-you-need-it"
+    },
+    {
+      "title": "What is OAuth and How Does It Work?",
+      "description": "Learn what OAuth 2.0 is, how it works under the hood, and how to implement it in a Node.js application with a practical example.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": [
+        "OAuth",
+        "Authentication",
+        "Security",
+        "NodeJS",
+        "API"
+      ],
+      "post": "2025-12-16-what-is-oauth-and-how-does-it-work"
     }
 ]
