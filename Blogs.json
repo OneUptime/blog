@@ -1277,5 +1277,208 @@
         "API"
       ],
       "post": "2025-12-16-what-is-oauth-and-how-does-it-work"
+    },
+    {
+      "title": "OpenTelemetry for Python Applications: Django, FastAPI, and Flask",
+      "description": "Complete guide to instrumenting Python applications with OpenTelemetry, covering Django, FastAPI, Flask, and async frameworks with practical code examples.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Python", "Django", "FastAPI", "Flask", "Distributed Tracing"],
+      "post": "2025-12-17-opentelemetry-python-instrumentation"
+    },
+    {
+      "title": "OpenTelemetry for Go Services: A Complete Instrumentation Guide",
+      "description": "Learn how to instrument Go applications with OpenTelemetry, covering HTTP servers, gRPC services, database operations, and custom spans with idiomatic Go patterns.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Go", "Golang", "Distributed Tracing", "Observability"],
+      "post": "2025-12-17-opentelemetry-go-instrumentation"
+    },
+    {
+      "title": "OpenTelemetry for Java and Spring Boot Applications",
+      "description": "Comprehensive guide to instrumenting Java and Spring Boot applications with OpenTelemetry, covering auto-instrumentation, manual spans, and production configuration.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Java", "Spring Boot", "Distributed Tracing", "Observability"],
+      "post": "2025-12-17-opentelemetry-java-spring-boot"
+    },
+    {
+      "title": "OpenTelemetry for .NET Applications: ASP.NET Core and Beyond",
+      "description": "Complete guide to instrumenting .NET and ASP.NET Core applications with OpenTelemetry, covering automatic and manual instrumentation, configuration, and best practices.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", ".NET", "ASP.NET Core", "C#", "Distributed Tracing"],
+      "post": "2025-12-17-opentelemetry-dotnet-instrumentation"
+    },
+    {
+      "title": "OTLP Protocol Explained: The Wire Format Behind OpenTelemetry",
+      "description": "Deep dive into OTLP (OpenTelemetry Protocol), understanding the wire format, transport options, protobuf schemas, and how to optimize data transmission.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "OTLP", "Protocol", "Distributed Tracing", "Observability"],
+      "post": "2025-12-17-opentelemetry-otlp-protocol-explained"
+    },
+    {
+      "title": "OpenTelemetry Semantic Conventions: Standardizing Your Telemetry",
+      "description": "Master OpenTelemetry semantic conventions for consistent, interoperable telemetry data across your entire stack, including HTTP, database, messaging, and custom conventions.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Semantic Conventions", "Standards", "Observability"],
+      "post": "2025-12-17-opentelemetry-semantic-conventions"
+    },
+    {
+      "title": "Resource Detection in OpenTelemetry: Automatic Environment Discovery",
+      "description": "Learn how OpenTelemetry resource detection automatically discovers cloud environments, Kubernetes metadata, and infrastructure details to enrich your telemetry.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Resource Detection", "Kubernetes", "Cloud", "AWS", "GCP", "Azure"],
+      "post": "2025-12-17-opentelemetry-resource-detection"
+    },
+    {
+      "title": "Baggage Propagation in OpenTelemetry: Passing Context Across Services",
+      "description": "Master OpenTelemetry baggage for propagating business context across service boundaries, enabling powerful debugging and request correlation capabilities.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Baggage", "Context Propagation", "Distributed Tracing"],
+      "post": "2025-12-17-opentelemetry-baggage-propagation"
+    },
+    {
+      "title": "OpenTelemetry for Serverless: AWS Lambda, Azure Functions, and Cloud Functions",
+      "description": "Comprehensive guide to instrumenting serverless functions with OpenTelemetry, covering AWS Lambda, Azure Functions, and Google Cloud Functions with cold start optimization.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Serverless", "AWS Lambda", "Azure Functions", "Cloud Functions"],
+      "post": "2025-12-17-opentelemetry-serverless"
+    },
+    {
+      "title": "Database Tracing with OpenTelemetry: SQL, NoSQL, and ORM Instrumentation",
+      "description": "Learn how to instrument database operations with OpenTelemetry, covering PostgreSQL, MySQL, MongoDB, Redis, and popular ORMs like Prisma and TypeORM.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Database", "SQL", "MongoDB", "PostgreSQL", "Distributed Tracing"],
+      "post": "2025-12-17-opentelemetry-database-tracing"
+    },
+    {
+      "title": "gRPC Tracing with OpenTelemetry: Complete Instrumentation Guide",
+      "description": "Master gRPC distributed tracing with OpenTelemetry across Node.js, Go, Python, and Java, including interceptors, metadata propagation, and streaming RPCs.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "gRPC", "Distributed Tracing", "Microservices"],
+      "post": "2025-12-17-opentelemetry-grpc-tracing"
+    },
+    {
+      "title": "OpenTelemetry with Service Mesh: Istio, Linkerd, and Beyond",
+      "description": "Learn how to integrate OpenTelemetry with service meshes like Istio and Linkerd for comprehensive distributed tracing in microservices architectures.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Service Mesh", "Istio", "Linkerd", "Distributed Tracing", "Kubernetes"],
+      "post": "2025-12-17-opentelemetry-service-mesh"
+    },
+    {
+      "title": "OpenTelemetry Operator for Kubernetes: Automated Instrumentation at Scale",
+      "description": "Master the OpenTelemetry Operator for Kubernetes to achieve zero-code instrumentation, automatic sidecar injection, and scalable observability management.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Kubernetes", "Operator", "Auto-instrumentation", "Cloud Native"],
+      "post": "2025-12-17-opentelemetry-operator-kubernetes"
+    },
+    {
+      "title": "Browser and Frontend Instrumentation with OpenTelemetry",
+      "description": "Implement end-to-end distributed tracing from browser to backend using OpenTelemetry Web SDK, including Real User Monitoring and Core Web Vitals.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Browser", "Frontend", "JavaScript", "RUM", "Web Vitals"],
+      "post": "2025-12-17-opentelemetry-browser-frontend"
+    },
+    {
+      "title": "Message Queue Tracing with OpenTelemetry: Kafka, RabbitMQ, and SQS",
+      "description": "Implement distributed tracing for message queues and event-driven architectures using OpenTelemetry, covering Kafka, RabbitMQ, AWS SQS, and more.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Message Queues", "Kafka", "RabbitMQ", "SQS", "Event-Driven"],
+      "post": "2025-12-17-opentelemetry-message-queue-tracing"
+    },
+    {
+      "title": "Redis and Cache Instrumentation with OpenTelemetry",
+      "description": "Learn how to instrument Redis, Memcached, and other caching systems with OpenTelemetry for complete visibility into cache performance and hit rates.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Redis", "Caching", "Memcached", "Performance"],
+      "post": "2025-12-17-opentelemetry-redis-cache-instrumentation"
+    },
+    {
+      "title": "Span Links vs Parent-Child Relationships in OpenTelemetry",
+      "description": "Understand when to use span links versus parent-child relationships in OpenTelemetry for accurate trace modeling in complex distributed systems.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Distributed Tracing", "Span Links", "Trace Context"],
+      "post": "2025-12-17-opentelemetry-span-links-vs-parent-child"
+    },
+    {
+      "title": "Trace-Based Testing with OpenTelemetry",
+      "description": "Learn how to use OpenTelemetry traces for automated testing, validating distributed system behavior, and ensuring observability in your CI/CD pipeline.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Testing", "Tracetest", "Quality Assurance", "CI/CD"],
+      "post": "2025-12-17-opentelemetry-trace-based-testing"
+    },
+    {
+      "title": "OpenTelemetry for GraphQL APIs: Complete Instrumentation Guide",
+      "description": "Learn how to instrument GraphQL APIs with OpenTelemetry, including resolver tracing, query complexity monitoring, and N+1 detection across Apollo Server and GraphQL Yoga.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "GraphQL", "Apollo", "Distributed Tracing", "API Observability"],
+      "post": "2025-12-17-opentelemetry-graphql-apis"
+    },
+    {
+      "title": "Continuous Profiling with OpenTelemetry: Linking Profiles to Traces",
+      "description": "Learn how to implement continuous profiling with OpenTelemetry, correlate profiles with traces, and identify performance bottlenecks at the code level.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Continuous Profiling", "Performance", "CPU Profiling", "Memory Profiling"],
+      "post": "2025-12-17-opentelemetry-continuous-profiling"
+    },
+    {
+      "title": "CI/CD Pipeline Observability with OpenTelemetry",
+      "description": "Implement observability for your CI/CD pipelines using OpenTelemetry, tracking build times, test results, deployment status, and correlating pipeline runs with production traces.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "CI/CD", "DevOps", "GitHub Actions", "Jenkins", "Pipeline Observability"],
+      "post": "2025-12-17-opentelemetry-cicd-observability"
+    },
+    {
+      "title": "Multi-Cluster Tracing with OpenTelemetry",
+      "description": "Implement distributed tracing across multiple Kubernetes clusters using OpenTelemetry, handling cross-cluster context propagation, collector federation, and unified observability.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Kubernetes", "Multi-Cluster", "Distributed Tracing", "Federation"],
+      "post": "2025-12-17-opentelemetry-multi-cluster-tracing"
+    },
+    {
+      "title": "Migrating from Jaeger to OpenTelemetry",
+      "description": "A complete guide to migrating from Jaeger client libraries to OpenTelemetry SDKs while maintaining backward compatibility and minimizing disruption.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Jaeger", "Migration", "Distributed Tracing"],
+      "post": "2025-12-17-migrating-jaeger-to-opentelemetry"
+    },
+    {
+      "title": "Migrating from Zipkin to OpenTelemetry",
+      "description": "Step-by-step guide to migrating from Zipkin tracing to OpenTelemetry, covering Brave instrumentation replacement, collector setup, and backward compatibility.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Zipkin", "Migration", "Distributed Tracing"],
+      "post": "2025-12-17-migrating-zipkin-to-opentelemetry"
+    },
+    {
+      "title": "OpenTelemetry vs Proprietary APM: A Comprehensive Comparison",
+      "description": "Compare OpenTelemetry with proprietary APM solutions like Datadog, New Relic, and Dynatrace. Understand the trade-offs in cost, flexibility, features, and long-term strategy.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "APM", "Vendor Lock-in", "Observability", "Comparison"],
+      "post": "2025-12-17-opentelemetry-vs-proprietary-apm"
+    },
+    {
+      "title": "Security Considerations in OpenTelemetry: Protecting Your Telemetry Data",
+      "description": "Learn how to secure your OpenTelemetry implementation. Cover PII scrubbing, data encryption, authentication, authorization, and security best practices for telemetry pipelines.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Security", "Data Privacy", "PII", "Encryption", "Best Practices"],
+      "post": "2025-12-17-opentelemetry-security-considerations"
+    },
+    {
+      "title": "Performance Impact of OpenTelemetry: Benchmarks and Optimization",
+      "description": "Understand the real performance impact of OpenTelemetry instrumentation. Learn benchmarking techniques, optimization strategies, and how to minimize overhead in production.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Performance", "Benchmarking", "Optimization", "CPU", "Memory"],
+      "post": "2025-12-17-opentelemetry-performance-impact"
+    },
+    {
+      "title": "OpenTelemetry in High-Throughput Systems: Scaling to Millions of Spans",
+      "description": "Learn how to implement OpenTelemetry in high-throughput systems processing millions of requests. Covers sampling strategies, collector scaling, backpressure handling, and architecture patterns.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "High-Throughput", "Scaling", "Performance", "Architecture", "Sampling"],
+      "post": "2025-12-17-opentelemetry-high-throughput-systems"
+    },
+    {
+      "title": "OpenTelemetry Collector Pipelines Deep Dive: Architecture and Configuration",
+      "description": "Master OpenTelemetry Collector pipelines with this deep dive into receivers, processors, exporters, and connectors. Learn advanced configuration patterns and best practices.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Collector", "Pipelines", "Configuration", "Architecture", "Processors"],
+      "post": "2025-12-17-opentelemetry-collector-pipelines"
     }
 ]
