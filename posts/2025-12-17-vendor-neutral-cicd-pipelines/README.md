@@ -1,4 +1,4 @@
-# Vendor-Neutral CI/CD: Why Bash Scripts Beat Platform Lock-In
+# Why Vendor-Neutral CI/CD matters: Why Bash Scripts Beat Platform Lock-In
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
