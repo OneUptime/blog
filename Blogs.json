@@ -1480,5 +1480,21 @@
       "authorGitHubUsername": "nawazdhandala",
       "tags": ["OpenTelemetry", "Collector", "Pipelines", "Configuration", "Architecture", "Processors"],
       "post": "2025-12-17-opentelemetry-collector-pipelines"
+    },
+    {
+      "title": "Why Vendor-Neutral CI/CD matters: Why Bash Scripts Beat Platform Lock-In",
+      "description": "Build portable CI/CD pipelines by putting your logic in bash scripts instead of vendor-specific syntax. When platforms change pricing, policies, or disappear entirely, migrate in hours instead of weeks.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": [
+        "CI/CD",
+        "DevOps",
+        "Bash",
+        "Vendor Lock-in",
+        "Automation",
+        "GitHub Actions",
+        "GitLab CI",
+        "Jenkins"
+      ],
+      "post": "2025-12-17-vendor-neutral-cicd-pipelines"
     }
 ]

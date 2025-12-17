@@ -13,6 +13,7 @@
 - AWS
 - Backup
 - Bare Metal
+- Bash
 - Canary Deployment
 - Certificate Monitoring
 - Ceph
@@ -50,6 +51,7 @@
 - Identity
 - Istio
 - Incident Management
+- Jenkins
 - Integrations
 - Infrastructure
 - IP Monitoring
@@ -126,6 +128,7 @@
 - Exemplars
 - Grafana
 - GitHub Actions
+- GitLab CI
 - Getting Started
 - HPA
 - Slack
