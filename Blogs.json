@@ -1293,5 +1293,20 @@
         "Jenkins"
       ],
       "post": "2025-12-17-vendor-neutral-cicd-pipelines"
+    },
+    {
+      "title": "How to Build an MCP Server in Node.js: A Complete Guide with Best Practices",
+      "description": "Learn how to build a production-ready Model Context Protocol (MCP) server in Node.js from scratch. This comprehensive guide covers everything from basic setup to advanced patterns, with extensive code examples and best practices for building robust AI tool integrations.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": [
+        "MCP",
+        "Model Context Protocol",
+        "NodeJS",
+        "TypeScript",
+        "AI",
+        "Open Source",
+        "Tutorial"
+      ],
+      "post": "2025-12-17-build-mcp-server-nodejs"
     }
 ]

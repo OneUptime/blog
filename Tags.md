@@ -156,6 +156,7 @@
 - Tracing
 - Traces
 - Troubleshooting
+- Tutorial
 - Heartbeat
 - Helm
 - Histograms
