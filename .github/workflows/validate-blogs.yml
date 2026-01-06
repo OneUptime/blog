@@ -21,6 +21,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
 
       - name: Run blog validation
         run: npm run validate
@@ -42,6 +46,7 @@ jobs:
           echo "  4. Missing social-media.png image"
           echo ""
           echo "To debug locally, run:"
+          echo "  npm install"
           echo "  npm run validate"
           echo ""
           echo "See README.md for the expected blog post format."

@@ -4,9 +4,16 @@
   "description": "OneUptime Blog utilities",
   "scripts": {
     "generate-social-image": "node generate-social-image.js",
-    "validate": "node validate-blogs.js"
+    "validate": "npx ts-node src/scripts/validate-blogs.ts",
+    "build": "tsc",
+    "validate:js": "node dist/scripts/validate-blogs.js"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.65"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
   }
 }
