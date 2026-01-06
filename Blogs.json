@@ -1770,5 +1770,68 @@
       "authorGitHubUsername": "nawazdhandala",
       "tags": ["NodeJS", "Kubernetes", "Reliability", "DevOps", "Monitoring"],
       "post": "2026-01-06-nodejs-health-checks-kubernetes"
+    },
+    {
+      "title": "Logs, Metrics & Traces: Turning Three Noisy Streams into One Story",
+      "description": "A practical, story-driven guide to weaving logs, metrics, and traces into one observability fabric with OpenTelemetry- while avoiding Datadog / New Relic lock‑in and cutting costs using OneUptime.",
+      "authorGitHubUsername": "devneelpatel",
+      "tags": ["Observability", "OpenTelemetry", "Logs", "Metrics", "Traces", "Open Source"],
+      "post": "2025-08-20-three-pillars-of-observability-logs-metrics-traces"
+    },
+    {
+      "title": "Monitoring vs Observability: What SREs Actually Need",
+      "description": "A pragmatic comparison of monitoring and observability for SRE teams, plus a roadmap for evolving your stack without wasting budget.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Site Reliability Engineering", "Monitoring", "Observability", "Telemetry", "OpenTelemetry", "OneUptime"],
+      "post": "2025-11-28-monitoring-vs-observability-sre"
+    },
+    {
+      "title": "12 SRE Best Practices That Actually Move the Needle",
+      "description": "A prioritized list of SRE practices that deliver outsized reliability gains, with concrete steps and tools to help you start today.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Site Reliability Engineering", "SRE", "Best Practices", "Reliability", "Observability", "Automation", "OpenTelemetry"],
+      "post": "2025-11-28-sre-best-practices"
+    },
+    {
+      "title": "18 SRE Metrics Worth Tracking (And Why)",
+      "description": "A concise guide to the metrics every SRE team should monitor, grouped by outcome, with notes on instrumentation and decision triggers.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Site Reliability Engineering", "Metrics", "Observability", "SLOs", "OpenTelemetry", "OneUptime"],
+      "post": "2025-11-28-sre-metrics-to-track"
+    },
+    {
+      "title": "Designing an SRE On-Call Rotation Without Burning Out Your Team",
+      "description": "A blueprint for creating humane, effective SRE on-call rotations-covering staffing models, scheduling math, tooling, and continuous improvement tips.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Site Reliability Engineering", "On-Call", "Incident Response", "Culture", "Automation"],
+      "post": "2025-11-28-sre-on-call-rotation-design"
+    },
+    {
+      "title": "SRE Tools Comparison: Build a Cohesive Reliability Stack",
+      "description": "A vendor-neutral comparison of the must-have tools in an SRE stack, plus guidance on when to consolidate versus specialize.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Site Reliability Engineering", "Tooling", "Observability", "Incident Response", "Automation", "OneUptime"],
+      "post": "2025-11-28-sre-tools-comparison"
+    },
+    {
+      "title": "SRE vs DevOps: Complementary, Not Competitive",
+      "description": "A practical guide that clarifies how SRE and DevOps align, where they differ, and how to intentionally design workflows that borrow the best of both worlds.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Site Reliability Engineering", "DevOps", "Reliability", "Culture", "Automation"],
+      "post": "2025-11-28-sre-vs-devops"
+    },
+    {
+      "title": "What Is Site Reliability Engineering?",
+      "description": "A plain-language explainer for Site Reliability Engineering-why it exists, the core principles, and how to start applying SRE practices without a 500-person team.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Site Reliability Engineering", "SRE", "Reliability", "Operations", "Observability", "OpenTelemetry"],
+      "post": "2025-11-28-what-is-site-reliability-engineering"
+    },
+    {
+      "title": "Migrating from Jaeger to OpenTelemetry",
+      "description": "A complete guide to migrating from Jaeger client libraries to OpenTelemetry SDKs while maintaining backward compatibility and minimizing disruption.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["OpenTelemetry", "Jaeger", "Migration", "Distributed Tracing", "Observability"],
+      "post": "2025-12-17-migrating-jaeger-to-opentelemetry"
     }
 ]

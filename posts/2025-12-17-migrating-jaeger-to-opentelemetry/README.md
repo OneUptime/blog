@@ -1,10 +1,10 @@
 # Migrating from Jaeger to OpenTelemetry
 
-[Nawaz Dhandala](https://github.com/nicksocial129)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-**Tags:** OpenTelemetry, Jaeger, Migration, Distributed Tracing, Observability
+Tags: OpenTelemetry, Jaeger, Migration, Distributed Tracing, Observability
 
-**Description:** A complete guide to migrating from Jaeger client libraries to OpenTelemetry SDKs while maintaining backward compatibility and minimizing disruption.
+Description: A complete guide to migrating from Jaeger client libraries to OpenTelemetry SDKs while maintaining backward compatibility and minimizing disruption.
 
 ---
 
