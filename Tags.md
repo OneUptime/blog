@@ -5,6 +5,7 @@
 - Alerts
 - Alerting
 - API
+- ARM64
 - Automation
 - Auto-Instrumentation
 - Authentication
@@ -14,12 +15,14 @@
 - Backup
 - Bare Metal
 - Bash
+- BuildKit
 - Canary Deployment
 - Certificate Monitoring
 - Ceph
 - CI/CD
 - Configuration
 - Cloud
+- Cron
 - Cloud Native
 - Cloudflare
 - Collector
@@ -41,7 +44,9 @@
 - Decentralization
 - Disaster Recovery
 - DevOps
+- Development
 - Devices
+- DNS
 - Docker
 - Docker Compose
 - eBPF
@@ -112,13 +117,16 @@
 - Postmortems
 - Profiling
 - PWA
+- Python
 - Reliability
 - Rook
 - Releases
+- Reverse Proxy
 - SaaS
 - Sales
 - Sampling
 - Scaling
+- Scheduling
 - Service Mesh
 - Self-Hosting
 - Security
@@ -130,6 +138,7 @@
 - GitHub Actions
 - GitLab CI
 - Getting Started
+- Go
 - HPA
 - Slack
 - SLI
@@ -164,6 +173,7 @@
 - Uptime Monitoring
 - Vendor Lock-in
 - VPA
+- VS Code
 - Web Architecture
 - Webhooks
 - Workloads

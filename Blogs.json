@@ -1308,5 +1308,110 @@
         "Tutorial"
       ],
       "post": "2025-12-17-build-mcp-server-nodejs"
+    },
+    {
+      "title": "How to Copy Files In and Out of Running Docker Containers",
+      "description": "Master docker cp, volume mounts, and when to use each approach for moving files between your host and running containers.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Containers", "DevOps", "Learning Resource"],
+      "post": "2026-01-06-docker-copy-files-in-out-containers"
+    },
+    {
+      "title": "How to Inspect and Clean Up Docker Disk Usage",
+      "description": "Master docker system df, prune commands, dangling images, build cache, and reclaiming space safely without breaking running workloads.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Containers", "DevOps", "Maintenance", "Storage"],
+      "post": "2026-01-06-docker-disk-usage-cleanup"
+    },
+    {
+      "title": "How to Pass Build Arguments and Environment Variables in Docker",
+      "description": "Understand ARG vs ENV, .env files, Compose interpolation, and secret injection patterns to configure Docker builds and containers correctly.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Containers", "DevOps", "Configuration", "Security"],
+      "post": "2026-01-06-docker-build-args-env-variables"
+    },
+    {
+      "title": "How to Run Docker Without Root (Rootless Mode)",
+      "description": "Set up Docker rootless mode on Linux, understand the trade-offs, work around networking limitations, and know when rootless containers matter.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Containers", "Security", "Linux", "DevOps"],
+      "post": "2026-01-06-docker-rootless-mode"
+    },
+    {
+      "title": "How to Connect Docker Containers Across Multiple Hosts",
+      "description": "Implement overlay networks, WireGuard tunnels, and Tailscale sidecars for secure multi-host container communication without Kubernetes.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Networking", "DevOps", "Distributed Systems", "Security"],
+      "post": "2026-01-06-docker-containers-across-multiple-hosts"
+    },
+    {
+      "title": "How to Expose Docker Containers to the Internet Safely",
+      "description": "Set up Traefik or Nginx reverse proxies with TLS termination, rate limiting, and fail2ban patterns to safely expose containerized services to the internet.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Security", "Networking", "DevOps", "Reverse Proxy"],
+      "post": "2026-01-06-docker-expose-containers-safely"
+    },
+    {
+      "title": "How to Debug Docker DNS and Container Name Resolution Issues",
+      "description": "Master Docker's embedded DNS, configure custom resolvers, use --dns flags effectively, and troubleshoot name resolution issues with nslookup and dig.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Networking", "DevOps", "Troubleshooting", "DNS"],
+      "post": "2026-01-06-docker-dns-troubleshooting"
+    },
+    {
+      "title": "How to Set Up Hot Reloading in Docker for Node.js, Python, and Go",
+      "description": "Configure bind mounts with nodemon, watchdog, air, and other file watchers to keep development loops fast inside containers.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Containers", "DevOps", "Development", "NodeJS", "Python", "Go"],
+      "post": "2026-01-06-docker-hot-reloading"
+    },
+    {
+      "title": "How to Use Docker Dev Containers in VS Code",
+      "description": "Configure .devcontainer.json, sync extensions and dotfiles, and create team-wide reproducible development environments in VS Code.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Containers", "DevOps", "Development", "VS Code"],
+      "post": "2026-01-06-docker-dev-containers-vscode"
+    },
+    {
+      "title": "How to Build Multi-Architecture Docker Images (ARM64 + AMD64)",
+      "description": "Master docker buildx, QEMU emulation, manifest lists, and CI integration to build images that run on both Intel and Apple Silicon machines.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Containers", "DevOps", "CI/CD", "ARM64", "BuildKit"],
+      "post": "2026-01-06-docker-multi-architecture-images"
+    },
+    {
+      "title": "How to Set Up Docker Health Checks That Actually Work",
+      "description": "Implement HEALTHCHECK instructions using curl, custom scripts, and proper thresholds so Docker, Swarm, and Compose can auto-heal your services.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Containers", "DevOps", "Reliability", "Monitoring"],
+      "post": "2026-01-06-docker-health-checks"
+    },
+    {
+      "title": "How to Back Up and Restore Docker Volumes",
+      "description": "Implement volume snapshots using tar, restic, and borg integrations with scheduled backup patterns to protect your containerized data.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Containers", "DevOps", "Backup", "Storage", "Reliability"],
+      "post": "2026-01-06-docker-volume-backup-restore"
+    },
+    {
+      "title": "How to Rotate and Manage Docker Container Logs",
+      "description": "Configure JSON-file driver limits, syslog and fluentd drivers, and implement log rotation to prevent disk exhaustion from runaway container logs.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Containers", "DevOps", "Logging", "Monitoring", "Storage"],
+      "post": "2026-01-06-docker-log-rotation"
+    },
+    {
+      "title": "How to Update Running Containers Without Downtime",
+      "description": "Implement rolling updates with Compose, blue-green deployments with Traefik, and handle graceful shutdown signals to update containers without dropping requests.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Containers", "DevOps", "Reliability", "Releases", "Reverse Proxy"],
+      "post": "2026-01-06-docker-update-without-downtime"
+    },
+    {
+      "title": "How to Run Cron Jobs Inside Docker Containers (The Right Way)",
+      "description": "Implement reliable scheduled tasks using Supercronic, Ofelia, or host cron with docker exec, and understand why traditional cron fails in containers.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Docker", "Containers", "DevOps", "Automation", "Cron", "Scheduling"],
+      "post": "2026-01-06-docker-cron-jobs"
     }
 ]
