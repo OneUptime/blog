@@ -234,3 +234,34 @@
 - Runbooks
 - Zero Downtime
 - Zero Trust
+- Flask
+- FastAPI
+- Django
+- Distributed Tracing
+- Microservices
+- Error Handling
+- Resilience
+- tenacity
+- Graceful Shutdown
+- Connection Pooling
+- Memory
+- asyncio
+- Async
+- Concurrency
+- OWASP
+- Rate Limiting
+- JWT
+- Health Checks
+- Celery
+- Job Queue
+- Background Tasks
+- Multiprocessing
+- CPU
+- Parallel Processing
+- WebSocket
+- Real-time
+- Testing
+- Testcontainers
+- Integration Tests
+- Mocking
+- pytest

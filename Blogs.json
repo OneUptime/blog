@@ -1833,5 +1833,159 @@
       "authorGitHubUsername": "nawazdhandala",
       "tags": ["OpenTelemetry", "Jaeger", "Migration", "Distributed Tracing", "Observability"],
       "post": "2025-12-17-migrating-jaeger-to-opentelemetry"
+    },
+    {
+      "title": "How to Instrument Python Applications with OpenTelemetry",
+      "description": "Learn how to add OpenTelemetry instrumentation to Flask, FastAPI, and Django applications with auto-instrumentation and manual spans for complete observability.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "OpenTelemetry", "Tracing", "Observability", "Flask", "FastAPI", "Django"],
+      "post": "2025-01-06-instrument-python-opentelemetry"
+    },
+    {
+      "title": "How to Create Custom Metrics in Python with Prometheus",
+      "description": "Learn how to create and expose custom metrics in Python applications using prometheus_client for counters, gauges, histograms, and summaries.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Prometheus", "Metrics", "Monitoring", "Observability"],
+      "post": "2025-01-06-python-custom-metrics-prometheus"
+    },
+    {
+      "title": "How to Implement Distributed Tracing in Python Microservices",
+      "description": "Learn how to implement distributed tracing across Python microservices with OpenTelemetry context propagation for HTTP, gRPC, and message queues.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "OpenTelemetry", "Distributed Tracing", "Microservices", "Observability"],
+      "post": "2025-01-06-python-distributed-tracing-microservices"
+    },
+    {
+      "title": "How to Set Up Structured Logging in Python with OpenTelemetry",
+      "description": "Learn how to implement structured JSON logging in Python with trace correlation using OpenTelemetry for unified observability.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Logging", "OpenTelemetry", "Structured Logging", "Observability"],
+      "post": "2025-01-06-python-structured-logging-opentelemetry"
+    },
+    {
+      "title": "How to Profile Python Applications with cProfile and py-spy",
+      "description": "Learn how to profile Python applications using cProfile, py-spy, and tracemalloc to identify CPU bottlenecks and memory leaks in production.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Profiling", "Performance", "Debugging", "Observability"],
+      "post": "2025-01-06-profile-python-cprofile-pyspy"
+    },
+    {
+      "title": "How to Implement Retry Logic in Python with Exponential Backoff",
+      "description": "Learn how to implement robust retry logic in Python using the tenacity library with exponential backoff, jitter, and circuit breaker patterns.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Reliability", "Error Handling", "Resilience", "tenacity"],
+      "post": "2025-01-06-python-retry-exponential-backoff"
+    },
+    {
+      "title": "How to Implement Graceful Shutdown in Python for Kubernetes",
+      "description": "Learn how to handle SIGTERM signals and implement graceful shutdown in Python applications for Kubernetes deployments.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Kubernetes", "Reliability", "Graceful Shutdown", "DevOps"],
+      "post": "2025-01-06-python-graceful-shutdown-kubernetes"
+    },
+    {
+      "title": "How to Implement Connection Pooling in Python for PostgreSQL",
+      "description": "Learn how to implement connection pooling in Python for PostgreSQL using psycopg2 and asyncpg for better performance and resource management.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "PostgreSQL", "Database", "Performance", "Connection Pooling"],
+      "post": "2025-01-06-python-connection-pooling-postgresql"
+    },
+    {
+      "title": "How to Debug Memory Leaks in Python Applications",
+      "description": "Learn how to debug memory leaks in Python applications using tracemalloc, objgraph, and gc module for production troubleshooting.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Debugging", "Memory", "Performance", "Troubleshooting"],
+      "post": "2025-01-06-python-memory-leak-debugging"
+    },
+    {
+      "title": "How to Use asyncio for I/O-Bound Tasks in Python",
+      "description": "Learn how to use Python's asyncio for I/O-bound operations including HTTP requests, database queries, and file operations with proper patterns.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "asyncio", "Async", "Performance", "Concurrency"],
+      "post": "2025-01-06-python-asyncio-io-bound"
+    },
+    {
+      "title": "How to Secure FastAPI Applications Against OWASP Top 10",
+      "description": "Learn how to protect FastAPI applications against OWASP Top 10 vulnerabilities including injection, broken authentication, and security misconfigurations.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "FastAPI", "Security", "OWASP", "API"],
+      "post": "2025-01-06-fastapi-owasp-security"
+    },
+    {
+      "title": "How to Implement Rate Limiting in FastAPI Without External Services",
+      "description": "Learn how to implement rate limiting in FastAPI using in-memory and Redis-based approaches with fixed window, sliding window, and token bucket algorithms.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "FastAPI", "Rate Limiting", "API", "Security"],
+      "post": "2025-01-06-fastapi-rate-limiting"
+    },
+    {
+      "title": "How to Implement JWT Authentication in Python with Refresh Token Rotation",
+      "description": "Learn how to implement secure JWT authentication in Python with access tokens, refresh token rotation, and token revocation patterns.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "JWT", "Authentication", "Security", "FastAPI"],
+      "post": "2025-01-06-python-jwt-authentication"
+    },
+    {
+      "title": "How to Implement Health Checks in Python for Kubernetes",
+      "description": "Learn how to implement health checks and readiness probes in Python applications for Kubernetes with dependency checking and graceful degradation.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Kubernetes", "Health Checks", "Reliability", "DevOps"],
+      "post": "2025-01-06-python-health-checks-kubernetes"
+    },
+    {
+      "title": "How to Build a Job Queue in Python with Celery and Redis",
+      "description": "Learn how to build a robust job queue in Python using Celery and Redis with delayed jobs, retries, dead letter queues, and production best practices.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Celery", "Redis", "Job Queue", "Background Tasks"],
+      "post": "2025-01-06-python-celery-redis-job-queue"
+    },
+    {
+      "title": "How to Use Python's multiprocessing for CPU-Intensive Tasks",
+      "description": "Learn how to use Python's multiprocessing module for CPU-intensive tasks with ProcessPoolExecutor, shared memory, and patterns for parallel processing.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Multiprocessing", "Performance", "CPU", "Parallel Processing"],
+      "post": "2025-01-06-python-multiprocessing-cpu-tasks"
+    },
+    {
+      "title": "How to Implement WebSocket Connections in Python with FastAPI",
+      "description": "Learn how to implement WebSocket connections in Python using FastAPI and Starlette with connection management, broadcasting, and authentication.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "WebSocket", "FastAPI", "Real-time", "Async"],
+      "post": "2025-01-06-python-websocket-fastapi"
+    },
+    {
+      "title": "How to Write Integration Tests for Python APIs with Testcontainers",
+      "description": "Learn how to write reliable integration tests for Python APIs using Testcontainers with real PostgreSQL, Redis, and other services in Docker.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Testing", "Testcontainers", "Docker", "Integration Tests"],
+      "post": "2025-01-06-python-testcontainers-integration"
+    },
+    {
+      "title": "How to Mock External APIs in Python Tests with responses and pytest",
+      "description": "Learn how to mock external API calls in Python tests using the responses library and pytest to eliminate flaky tests and test error scenarios.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Testing", "Mocking", "pytest", "API"],
+      "post": "2025-01-06-python-mock-external-apis"
+    },
+    {
+      "title": "How to Containerize Python Apps with Multi-Stage Dockerfiles",
+      "description": "Learn how to create minimal, secure Docker images for Python applications using multi-stage builds with pip, Poetry, and uv.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Docker", "Containers", "DevOps", "Security"],
+      "post": "2025-01-06-python-docker-multi-stage"
+    },
+    {
+      "title": "How to Send Python Application Logs to OneUptime",
+      "description": "Learn how to send Python application logs to OneUptime for centralized log management with structured logging and trace correlation.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Logging", "OneUptime", "Observability", "OpenTelemetry"],
+      "post": "2025-01-06-python-logs-oneuptime"
+    },
+    {
+      "title": "How to Monitor Celery Workers with OpenTelemetry and OneUptime",
+      "description": "Learn how to monitor Celery workers with OpenTelemetry and OneUptime including distributed tracing, task metrics, and alerting.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Python", "Celery", "OpenTelemetry", "Monitoring", "OneUptime"],
+      "post": "2025-01-06-celery-opentelemetry-oneuptime"
     }
 ]
