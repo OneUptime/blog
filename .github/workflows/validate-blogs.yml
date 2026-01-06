@@ -1,0 +1,49 @@
+name: Validate Blog Posts
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  validate:
+    name: Validate Blog Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run blog validation
+        run: npm run validate
+
+      - name: Validation failed
+        if: failure()
+        run: |
+          echo ""
+          echo "=============================================="
+          echo "BLOG VALIDATION FAILED"
+          echo "=============================================="
+          echo ""
+          echo "One or more blog posts have formatting issues."
+          echo ""
+          echo "Common issues:"
+          echo "  1. Directory in posts/ not listed in Blogs.json"
+          echo "  2. Blogs.json entry has no corresponding directory"
+          echo "  3. README.md missing required fields (Title, Author, Tags, Description)"
+          echo "  4. Missing social-media.png image"
+          echo ""
+          echo "To debug locally, run:"
+          echo "  npm run validate"
+          echo ""
+          echo "See README.md for the expected blog post format."
+          echo "=============================================="
+          exit 1

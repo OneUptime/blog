@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "OneUptime Blog utilities",
   "scripts": {
-    "generate-social-image": "node generate-social-image.js"
+    "generate-social-image": "node generate-social-image.js",
+    "validate": "node validate-blogs.js"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.65"
