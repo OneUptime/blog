@@ -48,11 +48,61 @@ Please make sure to add the tags to the `Tags.md` file in the root of the reposi
 }
 ```
 
-**Step 6**: Create and add a social media image and place it under the `posts/YYYY-MM-DD-title-of-the-post` directory. The image should be named `social-media.png` and should be 1280x720 pixels. This image will be used when sharing the post on social media like Twitter, LinkedIn, etc.
+**Step 6**: Generate a social media image. You can either:
+
+- **Option A (Recommended)**: Use the built-in script to auto-generate the image from your post title:
+  ```bash
+  npm install
+  npm run generate-social-image -- posts/YYYY-MM-DD-title-of-the-post
+  ```
+
+- **Option B**: Create a custom image manually and place it under the `posts/YYYY-MM-DD-title-of-the-post` directory. The image should be named `social-media.png` and should be 1280x720 pixels.
+
+This image will be used when sharing the post on social media like Twitter, LinkedIn, etc.
 
 **Step 7**: Create a new branch and submit a pull request
 
 **Step 8**: Once the pull request is approved, it will be merged and your blog post will be live on the OneUptime blog.
+
+### Development Scripts
+
+This repository includes helpful scripts for managing blog posts:
+
+```bash
+# Install dependencies first
+npm install
+```
+
+#### Generate Social Media Images
+
+Generate social media images (1280x720) automatically from post titles:
+
+```bash
+# Generate for a specific post
+npm run generate-social-image -- posts/2025-01-01-my-post
+
+# Generate for all posts missing social-media.png
+npm run generate-social-image
+
+# Show help
+npm run generate-social-image -- --help
+```
+
+#### Validate Blog Posts
+
+Validate that all blog posts follow the correct format:
+
+```bash
+npm run validate
+```
+
+This script checks:
+- All directories in `posts/` have entries in `Blogs.json`
+- All `Blogs.json` entries have corresponding directories
+- All `README.md` files have correct format (Title, Author, Tags, Description)
+- All posts have `social-media.png` images
+
+The validation runs automatically on every push via GitHub Actions.
 
 ### Content Policy
 
