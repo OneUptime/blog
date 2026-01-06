@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "description": "OneUptime Blog utilities",
   "scripts": {
-    "generate-social-image": "node generate-social-image.js",
+    "generate-social-image": "npx ts-node src/scripts/generate-social-image.ts",
     "validate": "npx ts-node src/scripts/validate-blogs.ts",
     "build": "tsc",
+    "generate-social-image:js": "node dist/scripts/generate-social-image.js",
     "validate:js": "node dist/scripts/validate-blogs.js"
   },
   "dependencies": {
