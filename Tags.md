@@ -6,10 +6,12 @@
 - Alerting
 - API
 - ARM64
+- ArgoCD
 - Automation
 - Auto-Instrumentation
 - Authentication
 - Autoscaling
+- Azure
 - KEDA
 - AWS
 - Backup
@@ -17,11 +19,17 @@
 - Bash
 - BuildKit
 - Canary Deployment
+- Capacity Planning
 - Certificate Monitoring
 - Ceph
 - CI/CD
+- CIS Benchmark
+- Cluster Autoscaler
 - Configuration
 - Cloud
+- CoreDNS
+- CrashLoopBackOff
+- CRD
 - Cron
 - Cloud Native
 - Cloudflare
@@ -32,6 +40,9 @@
 - Components
 - Compliance
 - Correlation
+- Custom Controllers
+- Database
+- Deep Learning
 - Distributed Systems
 - Cost Optimization
 - Customer Experience
@@ -53,7 +64,14 @@
 - Edge
 - Engineering Culture
 - Environments
+- etcd
+- FinOps
+- FluxCD
+- GCP
+- GitOps
+- GPU
 - Identity
+- Ingress
 - Istio
 - Incident Management
 - Jenkins
@@ -67,16 +85,23 @@
 - IoT
 - JSON
 - Jobs
+- Kafka
 - Kernel
+- kube-bench
+- Kubebuilder
+- Kubecost
+- kubectl
 - Kubernetes
 - Karpenter
 - Leadership
 - Learning Resource
+- Linkerd
 - LLM Observability
 - Linux
 - Latency
 - Logging
 - Logs
+- Machine Learning
 - Maintenance
 - Scheduled Maintenance
 - MCP
@@ -88,8 +113,12 @@
 - Model Context Protocol
 - Modernization
 - Monitoring
+- Multi-Cluster
+- Network Policies
 - Networking
 - NFS
+- NGINX
+- NVIDIA
 - MTTD
 - MTTR
 - NodeJS
@@ -98,17 +127,23 @@
 - OCI
 - On-call
 - OneUptime
+- OOMKilled
 - Open Source
 - OpenAPI
 - OpenTelemetry
+- Operators
 - Trace Context
 - Openlit
 - Organizational Design
 - Package Management
 - Performance
+- Persistent Volumes
 - PII
 - PKCE
 - Platform Strategy
+- Pod Disruption Budget
+- Pod Security
+- PostgreSQL
 - Private Cloud
 - Product
 - Product Metrics
@@ -116,9 +151,13 @@
 - Productivity
 - Postmortems
 - Profiling
+- PSS
 - PWA
 - Python
+- RBAC
+- Redis
 - Reliability
+- Resource Management
 - Rook
 - Releases
 - Reverse Proxy
@@ -127,10 +166,14 @@
 - Sampling
 - Scaling
 - Scheduling
+- Sealed Secrets
+- Secrets Management
 - Service Mesh
 - Self-Hosting
 - Security
 - Site Reliability Engineering
+- Spot Instances
+- StatefulSet
 - Error Budgets
 - Exceptions
 - Exemplars
@@ -139,6 +182,9 @@
 - GitLab CI
 - Getting Started
 - Go
+- HAProxy
+- HashiCorp Vault
+- High Availability
 - HPA
 - Slack
 - SLI
@@ -164,6 +210,7 @@
 - TLS
 - Tracing
 - Traces
+- Traefik
 - Troubleshooting
 - Tutorial
 - Heartbeat
@@ -171,6 +218,7 @@
 - Histograms
 - TypeScript
 - Uptime Monitoring
+- Velero
 - Vendor Lock-in
 - VPA
 - VS Code
@@ -183,3 +231,5 @@
 - Playwright
 - Toil
 - Runbooks
+- Zero Downtime
+- Zero Trust
