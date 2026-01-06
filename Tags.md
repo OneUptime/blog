@@ -144,6 +144,7 @@
 - Pod Disruption Budget
 - Pod Security
 - PostgreSQL
+- Prometheus
 - Private Cloud
 - Product
 - Product Metrics

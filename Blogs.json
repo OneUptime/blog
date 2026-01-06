@@ -1630,5 +1630,145 @@
       "authorGitHubUsername": "nawazdhandala",
       "tags": ["Kubernetes", "Operators", "Custom Controllers", "CRD", "Go", "Kubebuilder", "DevOps"],
       "post": "2026-01-06-kubernetes-custom-controllers-operators"
+    },
+    {
+      "title": "How to Profile Node.js Applications with V8 Inspector and Chrome DevTools",
+      "description": "Master CPU profiling, heap snapshots, and flame graphs in Node.js using the V8 Inspector and Chrome DevTools to identify and fix performance bottlenecks.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Performance", "Profiling", "Debugging", "DevOps"],
+      "post": "2026-01-06-nodejs-profiling-v8-inspector-chrome-devtools"
+    },
+    {
+      "title": "How to Optimize Node.js Memory Usage and Prevent Memory Leaks",
+      "description": "Learn heap analysis, weak references, garbage collection tuning, and proven patterns to optimize Node.js memory usage and prevent memory leaks in production.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Performance", "Debugging", "DevOps", "Reliability"],
+      "post": "2026-01-06-nodejs-memory-optimization-prevent-leaks"
+    },
+    {
+      "title": "How to Use Worker Threads in Node.js for CPU-Intensive Tasks",
+      "description": "Learn to use Node.js worker threads for parallel processing of CPU-intensive tasks without blocking the event loop, including thread pools and real-world patterns.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Performance", "Scaling", "DevOps"],
+      "post": "2026-01-06-nodejs-worker-threads-cpu-intensive"
+    },
+    {
+      "title": "How to Implement Connection Pooling in Node.js for PostgreSQL/MySQL",
+      "description": "Learn to implement efficient database connection pooling in Node.js for PostgreSQL and MySQL, including pool sizing, health checks, and handling connection failures at scale.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "PostgreSQL", "Database", "Performance", "DevOps"],
+      "post": "2026-01-06-nodejs-connection-pooling-postgresql-mysql"
+    },
+    {
+      "title": "How to Secure Node.js APIs Against Common Vulnerabilities (OWASP Top 10)",
+      "description": "A comprehensive guide to securing Node.js APIs against OWASP Top 10 vulnerabilities including input validation, SQL injection prevention, XSS protection, and authentication hardening.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Security", "API", "DevOps", "Authentication"],
+      "post": "2026-01-06-nodejs-api-security-owasp-top-10"
+    },
+    {
+      "title": "How to Implement Rate Limiting in Node.js Without External Services",
+      "description": "Learn to implement rate limiting in Node.js using sliding window and token bucket algorithms without Redis or external dependencies.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Security", "API", "Performance", "DevOps"],
+      "post": "2026-01-06-nodejs-rate-limiting-no-external-services"
+    },
+    {
+      "title": "How to Handle JWT Authentication Securely in Node.js",
+      "description": "Learn secure JWT authentication patterns in Node.js including refresh token rotation, token revocation, and protection against common attacks.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Security", "Authentication", "API", "DevOps"],
+      "post": "2026-01-06-nodejs-jwt-authentication-secure"
+    },
+    {
+      "title": "How to Instrument Express.js Applications with OpenTelemetry",
+      "description": "Learn to instrument Express.js applications with OpenTelemetry for distributed tracing, including middleware instrumentation, route tracing, and error correlation.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "OpenTelemetry", "Observability", "Tracing", "Monitoring", "DevOps"],
+      "post": "2026-01-06-nodejs-express-opentelemetry-instrumentation"
+    },
+    {
+      "title": "How to Add Custom Metrics to Node.js Applications with Prometheus",
+      "description": "Learn to implement custom business metrics in Node.js applications using Prometheus client libraries, including histograms, gauges, and best practices for metric design.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Metrics", "Monitoring", "Observability", "Prometheus", "DevOps"],
+      "post": "2026-01-06-nodejs-custom-metrics-prometheus"
+    },
+    {
+      "title": "How to Implement Distributed Tracing in Node.js Microservices",
+      "description": "Learn to implement distributed tracing across Node.js microservices with context propagation for HTTP, gRPC, and message queues using OpenTelemetry.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "OpenTelemetry", "Tracing", "Distributed Systems", "Observability", "DevOps"],
+      "post": "2026-01-06-nodejs-distributed-tracing-microservices"
+    },
+    {
+      "title": "How to Build a Graceful Shutdown Handler in Node.js",
+      "description": "Learn to implement graceful shutdown in Node.js applications with SIGTERM handling, connection draining, and health check transitions for zero-downtime deployments.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Reliability", "DevOps", "Kubernetes"],
+      "post": "2026-01-06-nodejs-graceful-shutdown-handler"
+    },
+    {
+      "title": "How to Implement Retry Logic with Exponential Backoff in Node.js",
+      "description": "Learn to implement retry logic with exponential backoff, circuit breakers, jitter, and idempotency in Node.js for resilient distributed systems.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Reliability", "API", "Distributed Systems", "DevOps"],
+      "post": "2026-01-06-nodejs-retry-exponential-backoff"
+    },
+    {
+      "title": "How to Handle File Uploads in Node.js at Scale",
+      "description": "Learn to handle file uploads at scale in Node.js with streaming, chunked uploads, S3 multipart uploads, and memory-efficient processing patterns.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Performance", "API", "Storage", "DevOps"],
+      "post": "2026-01-06-nodejs-file-uploads-scale"
+    },
+    {
+      "title": "How to Build a Job Queue in Node.js with BullMQ and Redis",
+      "description": "Learn to build production-ready job queues in Node.js using BullMQ and Redis, including delayed jobs, priorities, retries, and dead letter queues.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Redis", "Performance", "Scaling", "DevOps"],
+      "post": "2026-01-06-nodejs-job-queue-bullmq-redis"
+    },
+    {
+      "title": "How to Implement WebSocket Connections in Node.js with Socket.io and Scaling",
+      "description": "Learn to implement WebSocket connections in Node.js using Socket.io with Redis adapter for horizontal scaling, rooms, authentication, and production best practices.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Scaling", "Performance", "Redis", "DevOps"],
+      "post": "2026-01-06-nodejs-websocket-socketio-scaling"
+    },
+    {
+      "title": "How to Write Integration Tests for Node.js APIs with Testcontainers",
+      "description": "Learn to write reliable integration tests for Node.js APIs using Testcontainers to spin up real databases, Redis, and other services in isolated Docker containers.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Tests", "Database", "Docker", "DevOps"],
+      "post": "2026-01-06-nodejs-integration-tests-testcontainers"
+    },
+    {
+      "title": "How to Mock External APIs in Node.js Tests Without Flaky Network Calls",
+      "description": "Learn to mock external APIs in Node.js tests using nock and MSW patterns to eliminate flaky network calls while maintaining realistic test scenarios.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Tests", "API", "DevOps"],
+      "post": "2026-01-06-nodejs-mock-external-apis-tests"
+    },
+    {
+      "title": "How to Containerize Node.js Apps with Multi-Stage Dockerfiles",
+      "description": "Learn to create minimal, secure Docker images for Node.js applications using multi-stage builds, layer caching optimization, and security scanning.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Docker", "DevOps", "Security", "Performance"],
+      "post": "2026-01-06-nodejs-multi-stage-dockerfile"
+    },
+    {
+      "title": "How to Configure Node.js for Production with Environment Variables",
+      "description": "Learn best practices for managing Node.js environment variables in production, including dotenv patterns, validation, secret management, and secure configuration loading.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "DevOps", "Configuration", "Security", "Kubernetes"],
+      "post": "2026-01-06-nodejs-production-environment-variables"
+    },
+    {
+      "title": "How to Implement Health Checks and Readiness Probes in Node.js for Kubernetes",
+      "description": "Learn to implement health checks and readiness probes in Node.js applications for Kubernetes, including dependency checking, graceful degradation, and proper probe configuration.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["NodeJS", "Kubernetes", "Reliability", "DevOps", "Monitoring"],
+      "post": "2026-01-06-nodejs-health-checks-kubernetes"
     }
 ]
