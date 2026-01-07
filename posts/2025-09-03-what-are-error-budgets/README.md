@@ -51,15 +51,29 @@ For example, at OneUptime, our SLOs focus on incident detection time and resolut
 
 Once you have SLOs, calculating the error budget is straightforward. The formula below shows how to derive your acceptable failure threshold from your reliability target. This calculation is fundamental because it transforms your aspirational SLO into a concrete, measurable budget that your team can track and manage.
 
-```
+```python
 # Error Budget Formula
+# ====================
 # This calculates the maximum allowable downtime or failure rate
+# that your service can experience while still meeting your SLO.
 
-Error Budget = 100% - SLO Target
-# Where:
-#   100% represents perfect reliability (the theoretical maximum)
-#   SLO Target is your defined service level objective (e.g., 99.9%)
-#   The result is your "budget" for acceptable failures
+# Formula:
+Error_Budget = 100% - SLO_Target
+
+# Example calculation for a 99.9% availability SLO:
+# -------------------------------------------------
+SLO_Target = 99.9  # Your service level objective (percentage)
+Error_Budget = 100 - SLO_Target  # = 0.1%
+
+# Convert to time (assuming 30-day month):
+minutes_per_month = 30 * 24 * 60  # = 43,200 minutes
+allowed_downtime_minutes = minutes_per_month * (Error_Budget / 100)
+# Result: 43.2 minutes of allowed downtime per month
+
+# Key insight: The higher your SLO, the smaller your error budget
+# 99% SLO    -> 1%     budget -> ~7.2 hours/month
+# 99.9% SLO  -> 0.1%   budget -> ~43 minutes/month
+# 99.99% SLO -> 0.01%  budget -> ~4.3 minutes/month
 ```
 
 For a 99.9% SLO:
@@ -70,20 +84,43 @@ For a 99.9% SLO:
 
 Burn rate is how quickly you're consuming your error budget. It's calculated as shown below. Understanding burn rate is critical because it tells you not just whether you're failing, but how fast you're approaching your reliability limits. A high burn rate is an early warning signal that demands immediate attention before your error budget is fully exhausted.
 
-```
+```python
 # Burn Rate Formula
-# This measures how fast you're consuming your error budget
+# =================
+# This measures how fast you're consuming your error budget.
+# It's the ratio of actual failure rate to your allowed failure rate.
 
-Burn Rate = (Actual Errors / Total Requests) / (Error Budget / 100)
-# Where:
-#   Actual Errors = the number of failed requests in your measurement period
-#   Total Requests = the total number of requests in the same period
-#   Error Budget = your allowable failure percentage (e.g., 0.1 for 99.9% SLO)
+# Formula:
+Burn_Rate = Actual_Error_Rate / Allowed_Error_Rate
+
+# Expanded formula:
+Burn_Rate = (Actual_Errors / Total_Requests) / (Error_Budget / 100)
+
+# Example calculation:
+# --------------------
+# Given: 99.9% SLO (0.1% error budget), 1,000,000 requests, 1,500 errors
+total_requests = 1_000_000
+actual_errors = 1_500
+error_budget_percent = 0.1  # From our 99.9% SLO
+
+actual_error_rate = actual_errors / total_requests  # = 0.0015 = 0.15%
+allowed_error_rate = error_budget_percent / 100      # = 0.001 = 0.1%
+
+burn_rate = actual_error_rate / allowed_error_rate   # = 1.5
+
+# Interpretation Guide:
+# ---------------------
+# Burn Rate = 1.0  -> Sustainable: consuming budget at expected rate
+# Burn Rate > 1.0  -> Warning: consuming budget faster than planned
+# Burn Rate < 1.0  -> Healthy: room for innovation and experimentation
 #
-# Interpretation:
-#   Burn Rate = 1  -> consuming budget at the expected sustainable rate
-#   Burn Rate > 1  -> consuming budget faster than planned (risk of exhaustion)
-#   Burn Rate < 1  -> consuming budget slower than expected (room to innovate)
+# In our example (burn_rate = 1.5):
+# We're consuming budget 50% faster than sustainable.
+# At this rate, a 30-day budget would be exhausted in 20 days.
+
+# Alert thresholds (common practice):
+# - Burn Rate > 2.0 for 1 hour   -> Critical alert (fast burn)
+# - Burn Rate > 1.0 for 6 hours  -> Warning alert (slow burn)
 ```
 
 A burn rate of 1 means you're consuming your error budget at the expected rate. Anything above 1 means you're on track to exhaust it early.

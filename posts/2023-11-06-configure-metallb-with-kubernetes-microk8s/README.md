@@ -19,7 +19,11 @@ Before we start, make sure you have the following:
 
 To enable MetalLB, you need to run the following command:
 
+This command activates the MetalLB addon in your Microk8s cluster, allowing it to handle LoadBalancer-type services.
+
 ```bash
+# Enable the MetalLB addon in Microk8s
+# This sets up MetalLB as the load balancer implementation for your cluster
 microk8s enable metallb
 ```
 
@@ -27,42 +31,62 @@ microk8s enable metallb
 
 Create a file address-pool.yaml and add these contents to it:
 
+This YAML configuration defines a pool of IP addresses that MetalLB can assign to LoadBalancer services. Replace the placeholder IPs with your actual public IP addresses.
+
 ```yaml
+# MetalLB IP Address Pool Configuration
+# This defines the range of IP addresses MetalLB can allocate to services
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
+  # Name used to reference this pool in service annotations
   name: "metallb-address-pool"
+  # MetalLB resources must be in the metallb-system namespace
   namespace: metallb-system
-spec: 
+spec:
+  # List of IP addresses or CIDR ranges available for allocation
   addresses:
-    - PUBLIC_IP_ADDRESS_1 # Please replace this. Please also include CIDR. Ex: 51.568.145.125/32
-    - PUBLIC_IP_ADDRESS_2 # Please replace this. Please also include CIDR. Ex: 51.568.145.125/32
-    - MORE_IP_IF_YOU_HAVE_THEM # Please replace this. Please also include CIDR. Ex: 51.568.145.125/32
+    - PUBLIC_IP_ADDRESS_1 # Replace with your IP + CIDR (e.g., 51.568.145.125/32)
+    - PUBLIC_IP_ADDRESS_2 # Replace with your IP + CIDR (e.g., 51.568.145.126/32)
+    - MORE_IP_IF_YOU_HAVE_THEM # Add additional IPs as needed
 ```
 
 And apply it with:
 
+This command creates the IPAddressPool resource in your cluster, making the IP addresses available for MetalLB to use.
+
 ```bash
+# Apply the address pool configuration to the cluster
+# MetalLB will now be able to allocate IPs from this pool
 kubectl apply -f address-pool.yaml
 ```
 
 ### Add this address pool to your Kubernetes LoadBalancer Service
 
+This Service configuration creates a LoadBalancer that uses MetalLB to expose your application externally. The annotation tells MetalLB which IP pool to allocate from.
+
 ```yaml
+# Kubernetes Service with MetalLB LoadBalancer configuration
 apiVersion: v1
 kind: Service
 metadata:
+  # Give your service a descriptive name
   name: "service-name"
   annotations:
-    metallb.universe.tf/address-pool: metallb-address-pool # Refer to address pool previously created. 
+    # This annotation tells MetalLB to use the address pool we created earlier
+    metallb.universe.tf/address-pool: metallb-address-pool
 spec:
-  # loadBalancerIP: a.b.c.d # (optional) you can hard code the IP here if you like
+  # Uncomment the line below to request a specific IP from your pool
+  # loadBalancerIP: a.b.c.d
   ports:
     - protocol: TCP
-      port: 80
-      targetPort: 80
-  selector: 
-     # <YOUR_SELECTORS>
+      port: 80          # Port exposed externally
+      targetPort: 80    # Port your application listens on
+  selector:
+    # Add your pod selector labels here to route traffic to the correct pods
+    # Example: app: my-application
+    # <YOUR_SELECTORS>
+  # LoadBalancer type triggers MetalLB to assign an external IP
   type: LoadBalancer
 ```
 

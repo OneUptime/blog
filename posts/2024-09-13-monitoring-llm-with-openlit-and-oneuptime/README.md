@@ -42,9 +42,13 @@ For LLMs, tracking operation sequences (traces) is vital, especially when using 
 
 OpenLIT automates telemetry data capture, simplifying the process for developers. Here’s a step-by-step guide to setting it up:
 1. Install the OpenLIT SDK:
-    First, you must install the following package: 
+    First, you must install the following package:
+
+    This command installs the OpenLIT SDK, which provides automatic instrumentation for LLM applications.
 
     ```shell
+    # Install the OpenLIT SDK for automatic LLM instrumentation
+    # This package captures telemetry data from popular AI/ML libraries
     pip install openlit
     ```
 
@@ -62,8 +66,15 @@ OpenLIT automates telemetry data capture, simplifying the process for developers
 3. Set Environment Variables:
     OpenTelemetry Environment variables for OneUptime can be set as follows in linux.
 
+    These environment variables configure where your telemetry data is sent and authenticate your requests with OneUptime.
+
     ```shell
+    # Set the OpenTelemetry collector endpoint for OneUptime
+    # This is where all traces and metrics will be sent
     export OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp.oneuptime.com"
+
+    # Set the authentication header with your OneUptime service token
+    # Replace YOUR_ONEUPTIME_SERVICE_TOKEN with the token from step 2
     export OTEL_EXPORTER_OTLP_HEADERS="x-oneuptime-token=YOUR_ONEUPTIME_SERVICE_TOKEN"
     ```
 
@@ -72,35 +83,65 @@ OpenLIT automates telemetry data capture, simplifying the process for developers
 4. Initialize the SDK:
     You will need to add the following to the LLM Application code.
 
+    This minimal initialization enables automatic instrumentation for all supported LLM libraries in your application.
+
     ```python
+    # Import the OpenLIT SDK
     import openlit
+
+    # Initialize OpenLIT - this automatically instruments LLM calls
+    # Must be called before any LLM library imports for best results
     openlit.init()
     ```
 
     Optionally, you can customize the application name and environment by setting the `application_name` and `environment` attributes when initializing OpenLIT in your application. These variables configure the OTel attributes `service.name` and `deployment.environment`, respectively. For more details on other configuration settings, check out the OpenLIT GitHub Repository.
 
+    This customization helps identify your service in the OneUptime dashboard and distinguishes between deployment environments.
+
     ```python
-    openlit.init(application_name="YourAppName",environment="Production")
+    # Initialize with custom service name and environment
+    # application_name: Sets the service.name attribute in traces
+    # environment: Sets the deployment.environment attribute (e.g., Production, Staging)
+    openlit.init(application_name="YourAppName", environment="Production")
     ```
 
     The most popular libraries in GenAI are OpenAI (for accessing LLMs) and Langchain (for orchestrating steps). An example instrumentation of a Langchain and OpenAI based LLM Application will look like:
 
+    This complete example demonstrates how to instrument a LangChain application with OpenLIT for full observability of LLM interactions.
+
     ```python
+    # Standard library imports for secure credential handling
     import getpass
     import os
+
+    # LangChain imports for chat model and message types
     from langchain_openai import ChatOpenAI
     from langchain_core.messages import HumanMessage, SystemMessage
-    import openlit 
 
-    # Auto-instruments LLM and VectorDB calls, sending OTel traces and metrics to the configured endpoint
+    # Import OpenLIT for automatic instrumentation
+    import openlit
+
+    # Initialize OpenLIT BEFORE making any LLM calls
+    # This auto-instruments LLM and VectorDB calls, sending OTel traces
+    # and metrics to the configured endpoint (set via environment variables)
     openlit.init()
 
+    # Securely prompt for OpenAI API key (won't echo to terminal)
     os.environ["OPENAI_API_KEY"] = getpass.getpass()
+
+    # Initialize the ChatOpenAI model with GPT-4
     model = ChatOpenAI(model="gpt-4")
+
+    # Create a list of messages for the chat model
+    # SystemMessage: Sets the context/behavior for the AI
+    # HumanMessage: The user's input to be processed
     messages = [
         SystemMessage(content="Translate the following from English into Italian"),
         HumanMessage(content="hi!"),
     ]
+
+    # Invoke the model - OpenLIT automatically captures this call as a trace
+    # including latency, token usage, and model parameters
     model.invoke(messages)
     ```
 

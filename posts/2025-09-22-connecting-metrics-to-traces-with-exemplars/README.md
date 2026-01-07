@@ -70,22 +70,36 @@ Conceptually, you need just three things:
 
 ### Pseudocode
 
+This pseudocode illustrates the core pattern for exemplar attachment. The key insight is that recording a histogram measurement while a span is active automatically attaches trace context as an exemplar. This enables clicking from a metric spike directly to a representative trace.
+
 ```pseudo
+# Initialize OpenTelemetry tracer and meter providers
 tracer = getTracer()
 meter = getMeter()
+
+# Create a histogram for latency - histograms are ideal for exemplars
+# because they capture distribution across buckets
 latency = meter.createHistogram("http.server.duration", unit="ms")
 
 handleRequest(req):
+  # Start a span for this request - this creates the trace context
   span = tracer.startSpan("HTTP GET /checkout")
+
+  # Execute within the span's context - CRITICAL for exemplar attachment
   with context(span):
-    t0 = now()
+    t0 = now()  # Capture start time for duration calculation
     try:
-      result = doWork()
+      result = doWork()  # Your actual business logic
       return result
     finally:
-      ms = now() - t0
+      ms = now() - t0  # Calculate request duration in milliseconds
+
+      # Record the metric while span is active
+      # The SDK automatically attaches trace_id/span_id as an exemplar
+      # This creates the link from metric → trace
       latency.record(ms)   # recorded while span is active → exemplar attached
-      span.end()
+
+      span.end()  # End the span after recording the metric
 ```
 
 That’s it- no special API for exemplars in most SDKs; they’re attached automatically when recording within an active span.
@@ -94,29 +108,52 @@ That’s it- no special API for exemplars in most SDKs; they’re attached autom
 
 ## Example: Node.js (TypeScript)
 
+This TypeScript example shows a complete implementation of exemplar-enabled metrics in a Node.js web handler. The histogram records request duration within the span context, automatically linking metric data points to their corresponding traces.
+
 ```ts
+// Import OpenTelemetry API for tracing and metrics
 import { context, trace } from '@opentelemetry/api'
 import { MeterProvider } from '@opentelemetry/sdk-metrics'
 
+// Initialize the meter provider for creating metric instruments
 const meterProvider = new MeterProvider()
+
+// Get a meter instance - the name helps identify metrics source in backends
 const meter = meterProvider.getMeter('web')
+
+// Create a histogram for tracking request latency
+// Histograms are the best choice for exemplars because:
+// 1. They capture distribution across buckets
+// 2. Each bucket can have an exemplar pointing to a representative trace
 const latency = meter.createHistogram('http.server.duration', {
-  description: 'Server request duration',
-  unit: 'ms',
+  description: 'Server request duration',  // Shown in metric documentation
+  unit: 'ms',  // Important for proper display in dashboards
 })
 
+// Get a tracer for creating spans
 const tracer = trace.getTracer('web')
 
 async function handle(req: Request) {
+  // Start a new span for this request
   const span = tracer.startSpan('GET /checkout')
+
+  // IMPORTANT: Execute handler within the span's context
+  // This is what enables automatic exemplar attachment
   return await context.with(trace.setSpan(context.active(), span), async () => {
-    const start = // start time
+    const start = Date.now()  // Record start time for duration calculation
     try {
-      // ... your handler logic ...
+      // ... your handler logic goes here ...
       return new Response('ok')
     } finally {
-      const total_time = // start time - now.
+      // Calculate total request duration in milliseconds
+      const total_time = Date.now() - start
+
+      // Record the metric BEFORE ending the span
+      // The SDK automatically attaches trace_id/span_id as exemplar
+      // because we're inside context.with() with an active span
       latency.record(total_time)
+
+      // End the span after recording metrics
       span.end()
     }
   })

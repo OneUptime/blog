@@ -16,9 +16,35 @@ This comprehensive guide will decode the essential SRE terminology that every en
 
 **Definition**: The average time it takes to restore a system or service to full functionality after a failure occurs.
 
-MTTR is calculated as:
-```
-MTTR = Total Downtime / Number of Incidents
+MTTR is calculated using the formula below. This metric helps you understand your team's average recovery speed across all incidents, guiding investments in automation and runbooks.
+
+```python
+# MTTR (Mean Time To Recovery) Formula
+# =====================================
+# Measures average time to restore service after failures
+
+MTTR = Total_Downtime / Number_of_Incidents
+
+# Example calculation:
+# --------------------
+# Over the past month, your service had 5 incidents:
+# - Incident 1: 45 minutes downtime
+# - Incident 2: 15 minutes downtime
+# - Incident 3: 30 minutes downtime
+# - Incident 4: 60 minutes downtime
+# - Incident 5: 20 minutes downtime
+
+total_downtime_minutes = 45 + 15 + 30 + 60 + 20  # = 170 minutes
+number_of_incidents = 5
+
+MTTR = total_downtime_minutes / number_of_incidents
+# MTTR = 170 / 5 = 34 minutes average recovery time
+
+# Industry benchmarks:
+# - Elite teams:    < 1 hour
+# - High performers: 1-4 hours
+# - Medium:         4-24 hours
+# - Low performers:  > 24 hours
 ```
 
 **Why it matters**: MTTR directly impacts customer experience and business outcomes. A lower MTTR means faster recovery from outages, reducing the blast radius of incidents.
@@ -35,9 +61,38 @@ MTTR = Total Downtime / Number of Incidents
 
 **Definition**: The average time between when an incident occurs and when it's first detected by your monitoring systems or team.
 
-MTTD formula:
-```
-MTTD = Total Time from Incident Start to Detection / Number of Incidents
+MTTD is calculated using the formula below. This metric reveals how quickly your monitoring and alerting systems catch problems, directly impacting your overall incident response time.
+
+```python
+# MTTD (Mean Time To Detection) Formula
+# ======================================
+# Measures how long it takes to discover that an incident has occurred
+
+MTTD = Total_Detection_Delay / Number_of_Incidents
+
+# Example calculation:
+# --------------------
+# Detection delays for recent incidents:
+# - Incident 1: Issue started at 10:00, alert fired at 10:05 -> 5 min delay
+# - Incident 2: Issue started at 14:30, alert fired at 14:32 -> 2 min delay
+# - Incident 3: Issue started at 03:00, alert fired at 03:15 -> 15 min delay
+# - Incident 4: Issue started at 09:45, alert fired at 09:48 -> 3 min delay
+
+detection_delays = [5, 2, 15, 3]  # minutes
+total_detection_delay = sum(detection_delays)  # = 25 minutes
+number_of_incidents = 4
+
+MTTD = total_detection_delay / number_of_incidents
+# MTTD = 25 / 4 = 6.25 minutes average detection time
+
+# Why MTTD matters:
+# - Total incident duration = MTTD + MTTR (roughly)
+# - Reducing MTTD is often easier than reducing MTTR
+# - Poor MTTD often indicates gaps in monitoring coverage
+
+# Target benchmarks:
+# - Critical services: < 5 minutes
+# - Standard services: < 15 minutes
 ```
 
 **Why it matters**: You can't fix what you don't know is broken. MTTD is often the hidden bottleneck in incident response- the faster you detect issues, the faster you can begin recovery.
@@ -66,9 +121,41 @@ MTTD = Total Time from Incident Start to Detection / Number of Incidents
 
 **Definition**: The average time between system failures, including both operational time and repair time.
 
-MTBF calculation:
-```
-MTBF = (Total Operational Time) / (Number of Failures)
+MTBF is calculated using the formula below. This metric helps you predict system reliability and plan maintenance schedules proactively.
+
+```python
+# MTBF (Mean Time Between Failures) Formula
+# ==========================================
+# Measures the average operational time between system failures
+
+MTBF = Total_Operational_Time / Number_of_Failures
+
+# Example calculation:
+# --------------------
+# Your database cluster ran for 30 days (720 hours) and experienced 3 failures
+
+total_operational_hours = 720  # 30 days
+number_of_failures = 3
+
+MTBF = total_operational_hours / number_of_failures
+# MTBF = 720 / 3 = 240 hours (10 days) average between failures
+
+# Important relationship:
+# MTBF = MTTF + MTTR
+# Where:
+#   MTTF = Mean Time To Failure (operational time before failure)
+#   MTTR = Mean Time To Recovery (repair/restore time)
+
+# Using MTBF for reliability planning:
+# - Predict when maintenance should be scheduled
+# - Identify components that fail too frequently
+# - Calculate expected availability: Availability = MTBF / (MTBF + MTTR)
+
+# Example availability calculation:
+MTBF_hours = 240
+MTTR_hours = 1  # 1 hour average recovery
+availability = MTBF_hours / (MTBF_hours + MTTR_hours)
+# availability = 240 / 241 = 0.9959 = 99.59%
 ```
 
 **Distinction from MTTF**: While MTTF measures time to first failure, MTBF includes the full cycle of operation, failure, repair, and return to operation.
@@ -78,10 +165,29 @@ MTBF = (Total Operational Time) / (Number of Failures)
 
 **Definition**: The amount of unreliability your service can tolerate before it impacts user experience, typically expressed as a percentage of allowed downtime.
 
-Error budgets bridge the gap between reliability and feature velocity. They're calculated based on your Service Level Objectives (SLOs):
+Error budgets bridge the gap between reliability and feature velocity. They're calculated based on your Service Level Objectives (SLOs). The formula below shows how to derive your error budget and convert it to actionable time or request limits.
 
-```
-Error Budget = 100% - SLO
+```python
+# Error Budget Formula
+# ====================
+# Calculates the amount of unreliability you can tolerate
+
+Error_Budget = 100% - SLO
+
+# Example calculation for 99.9% availability SLO:
+# -----------------------------------------------
+SLO_percent = 99.9
+Error_Budget_percent = 100 - SLO_percent  # = 0.1%
+
+# Convert to allowed downtime per month:
+minutes_per_month = 30 * 24 * 60  # = 43,200 minutes
+allowed_downtime = minutes_per_month * (Error_Budget_percent / 100)
+# allowed_downtime = 43,200 * 0.001 = 43.2 minutes per month
+
+# Convert to allowed failed requests:
+requests_per_month = 10_000_000  # Example: 10 million requests
+allowed_failures = requests_per_month * (Error_Budget_percent / 100)
+# allowed_failures = 10,000,000 * 0.001 = 10,000 failed requests allowed
 ```
 
 For example, a 99.9% availability SLO means you have a 0.1% error budget- roughly 43 minutes of downtime per month.
@@ -121,8 +227,33 @@ SLAs are external-facing commitments to customers, while SLOs are internal targe
 
 **Definition**: The percentage of deployments that result in degraded service requiring immediate remediation.
 
-```
-Change Failure Rate = (Failed Changes / Total Changes) × 100
+```python
+# Change Failure Rate Formula
+# ===========================
+# Measures the reliability of your deployment process
+
+Change_Failure_Rate = (Failed_Changes / Total_Changes) * 100
+
+# Example calculation:
+# --------------------
+# Over the past quarter:
+total_deployments = 200
+failed_deployments = 12  # Deployments requiring rollback or hotfix
+
+Change_Failure_Rate = (12 / 200) * 100
+# Change_Failure_Rate = 6%
+
+# DORA metrics benchmarks:
+# - Elite:   0-15% failure rate
+# - High:   16-30% failure rate
+# - Medium: 31-45% failure rate
+# - Low:    > 45% failure rate
+
+# A "failed change" includes:
+# - Rollbacks
+# - Hotfixes deployed within 24 hours
+# - Changes causing incidents
+# - Changes requiring manual intervention
 ```
 
 **Industry targets**: High-performing teams maintain change failure rates below 15%, with elite performers achieving rates below 5%.
@@ -143,8 +274,32 @@ Shorter lead times enable faster feedback loops and reduce the risk of large, co
 
 **Definition**: The success rate of recovery attempts during incidents.
 
-```
-Recovery Rate = (Successful Recoveries / Total Recovery Attempts) × 100
+```python
+# Recovery Rate Formula
+# =====================
+# Measures how reliably your team can restore service during incidents
+
+Recovery_Rate = (Successful_Recoveries / Total_Recovery_Attempts) * 100
+
+# Example calculation:
+# --------------------
+# During last month's incidents:
+total_recovery_attempts = 25  # Total times team tried to restore service
+successful_recoveries = 22    # Attempts that actually fixed the issue
+
+Recovery_Rate = (22 / 25) * 100
+# Recovery_Rate = 88%
+
+# Why recovery rate matters:
+# - Low rate (< 80%) suggests inadequate runbooks or training
+# - Multiple failed attempts extend incident duration
+# - Failed recoveries often make incidents worse
+
+# Improving recovery rate:
+# - Document proven recovery steps in runbooks
+# - Practice recoveries in staging environments
+# - Automate common recovery actions
+# - Implement proper rollback mechanisms
 ```
 
 A low recovery rate might indicate inadequate runbooks, insufficient automation, or system design issues.

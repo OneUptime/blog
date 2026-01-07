@@ -89,19 +89,32 @@ Logs are **not** about aggregated metrics or high-level summaries. They are **de
 
 For example, a log entry might look like:
 
+This structured log entry demonstrates the key elements of effective logging. Notice how the `trace_id` and `span_id` fields enable correlation with distributed traces, while the `details` object provides queryable context without embedding values in the message string.
+
 ```json
 {
+  // ISO 8601 timestamp for consistent parsing across systems
   "timestamp": "2025-08-21T12:00:00.210Z",
+
+  // Log severity level - enables filtering (ERROR, WARN, INFO, DEBUG)
   "level": "ERROR",
+
+  // Human-readable message - keep it stable for log aggregation
   "message": "Payment service timeout",
-  "span_id": "pspErr01",
-  "trace_id": "1234abcd",
+
+  // Correlation IDs - these link logs to distributed traces
+  "span_id": "pspErr01",      // Links to the specific operation/span
+  "trace_id": "1234abcd",     // Links to the entire request journey
+
+  // Service identification for multi-service environments
   "service": "payment-service",
+
+  // Structured details - queryable fields instead of free-form text
   "details": {
-    "retry_count": 1,
-    "http_method": "POST",
-    "endpoint": "/psp/charge",
-    "amount": "42.00 USD"
+    "retry_count": 1,         // How many retries were attempted
+    "http_method": "POST",    // HTTP method for filtering
+    "endpoint": "/psp/charge", // API endpoint that failed
+    "amount": "42.00 USD"     // Business context (be careful with PII)
   }
 }
 ```

@@ -115,42 +115,79 @@ Then your backend (e.g., OneUptime) computes quantiles over histogram buckets.
 
 ### Example (OpenTelemetry Metrics - TypeScript)
 
+This example shows how to properly instrument HTTP request latency using OpenTelemetry histograms. Histograms automatically bucket your data, allowing backends like OneUptime to calculate accurate P50, P95, and P99 values without storing every individual measurement.
+
 ```ts
+// OpenTelemetry Latency Instrumentation Example
+// ==============================================
+// This setup enables accurate percentile calculations on your metrics backend
+
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
 
+// Enable diagnostic logging for debugging instrumentation issues
+// Set to DiagLogLevel.DEBUG during development, INFO or WARN in production
 diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
 
-const exporter = new OTLPMetricExporter({ url: 'https://telemetry.your-backend.example/v1/metrics' });
-const meterProvider = new MeterProvider({});
-meterProvider.addMetricReader(new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 60000 }));
-
-const meter = meterProvider.getMeter('checkout-service');
-
-// Histogram for request latency in milliseconds
-const requestLatency = meter.createHistogram('http.server.request.duration', {
-  description: 'Inbound request processing duration',
-  unit: 'ms'
+// Configure the OTLP exporter to send metrics to your observability backend
+// Replace the URL with your actual telemetry endpoint (e.g., OneUptime, Jaeger)
+const exporter = new OTLPMetricExporter({
+  url: 'https://telemetry.your-backend.example/v1/metrics'
 });
 
-// Example instrumentation in a request handler
+// Set up the meter provider - this is the entry point for creating metrics
+const meterProvider = new MeterProvider({});
+
+// Add a periodic reader that exports metrics every 60 seconds
+// Adjust exportIntervalMillis based on your needs:
+// - Lower (10-30s): More granular data, higher cost
+// - Higher (60-120s): Less granular, lower cost
+meterProvider.addMetricReader(
+  new PeriodicExportingMetricReader({
+    exporter,
+    exportIntervalMillis: 60000  // Export every 60 seconds
+  })
+);
+
+// Get a meter for your service - use a descriptive name matching your service
+const meter = meterProvider.getMeter('checkout-service');
+
+// Create a histogram instrument for tracking request latency
+// Histograms are ESSENTIAL for percentile calculations (P50, P95, P99)
+// Do NOT use counters or gauges for latency - they lose distribution info
+const requestLatency = meter.createHistogram('http.server.request.duration', {
+  description: 'Inbound request processing duration',
+  unit: 'ms'  // Always specify units for clarity
+});
+
+// Example: Instrumenting an HTTP request handler
 async function handleRequest(req, res) {
-  const start = // time now.
+  // Capture start time with high precision
+  const start = performance.now();  // More accurate than Date.now()
+
   try {
-    // ... business logic ...
+    // ... your business logic goes here ...
     res.statusCode = 200;
     res.end('ok');
   } catch (err) {
+    // Record errors but don't let instrumentation fail the request
     res.statusCode = 500;
     res.end('error');
   } finally {
-    const duration = // time now - start.
+    // ALWAYS record duration in finally block to capture all requests
+    // This ensures failed requests are measured too (important for P99!)
+    const duration = performance.now() - start;
+
+    // Record the latency with dimensional attributes
+    // These attributes enable filtering: P99 by route, by method, etc.
     requestLatency.record(duration, {
-      route: req.route?.path || 'unknown',
-      method: req.method,
-      status_code: res.statusCode
+      route: req.route?.path || 'unknown',  // e.g., '/api/checkout'
+      method: req.method,                    // e.g., 'POST'
+      status_code: res.statusCode            // e.g., 200, 500
     });
+    // WARNING: Avoid high-cardinality attributes like user_id or request_id
+    // They will explode your metrics storage costs
   }
 }
 ```

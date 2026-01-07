@@ -31,11 +31,27 @@ Based on lessons from both successful and failed package management systems, her
 
 **Every package must be cryptographically signed.** This isn't optional - it's table stakes for any serious package management system.
 
+The following commands demonstrate how package signing should work in a secure package management system. Signing creates a cryptographic proof that a package came from the expected publisher.
+
 ```bash
-# Package publishers maintain signing keys
+# Package Signing Workflow
+# ========================
+# Publishers cryptographically sign packages before uploading to the registry
+
+# Step 1: Publisher signs the package during publish
+# The --sign flag creates a digital signature using the publisher's private key
 npm publish --sign
-# Consumers verify signatures automatically
+# This generates a signature file that proves:
+# - The package contents haven't been tampered with
+# - The package was published by someone with the private key
+
+# Step 2: Consumers verify signatures during install
+# The --verify-signatures flag checks that packages are properly signed
 npm install --verify-signatures
+# This ensures:
+# - The package signature matches the package contents
+# - The signature was created by a trusted key
+# - No one has modified the package since it was signed
 ```
 
 Linux distributions have required package signing for decades. There's no technical reason why npm, PyPI, or Cargo can't do the same. The argument that "it adds friction" is exactly backwards, friction during publishing prevents friction during incident response.
@@ -47,14 +63,31 @@ Even if an attacker compromises a maintainer's account, they can't sign packages
 
 **Popular packages should require multiple signatures for releases.** If a package has millions of weekly downloads, it's critical infrastructure and should be treated as such.
 
+This package configuration file demonstrates a multi-signature release policy for critical packages. Requiring multiple approvals prevents any single compromised account from publishing malicious code.
+
 ```yaml
-# Package configuration
+# Package Multi-Signature Configuration
+# ======================================
+# Defines the release policy for high-impact packages
+
 maintainers:
-  - alice@example.com (signing key: ABC123)
-  - bob@example.com (signing key: DEF456)
+  # List of authorized maintainers with their signing keys
+  - alice@example.com (signing key: ABC123)  # Primary maintainer
+  - bob@example.com (signing key: DEF456)    # Secondary maintainer
+  # Each maintainer has a unique cryptographic key
+  # Private keys should never leave the maintainer's local machine
+
 release_policy:
-  signatures_required: 2
-  approval_timeout: 48h
+  # Number of unique signatures required to publish a release
+  signatures_required: 2  # Requires both Alice AND Bob to approve
+
+  # Time window for collecting signatures before release expires
+  approval_timeout: 48h   # Gives maintainers time to review across timezones
+
+  # Benefits of multi-signature releases:
+  # - Compromised single account cannot publish alone
+  # - Forces code review by multiple people
+  # - Creates audit trail of who approved what
 ```
 
 This mirrors how financial institutions handle large transactions- multiple approvals for high-impact changes.
@@ -94,14 +127,32 @@ GitHub's Sigstore integration is a step in the right direction, but it should be
 
 **Packages should declare their required permissions.** A string manipulation library doesn't need network access or file system permissions.
 
+This package.json excerpt shows a permission manifest that declares what system capabilities a package needs. Installing packages with declared permissions allows package managers to sandbox untrusted code.
+
 ```json
 {
   "name": "string-utils",
   "permissions": {
+    // Network access permission
+    // A string utility library should NEVER need to make HTTP requests
     "network": false,
+
+    // Filesystem access permission
+    // "read-only" allows reading config files but prevents writing malware
+    // Options: false (no access), "read-only", "write" (specific paths)
     "filesystem": "read-only",
+
+    // Cryptographic operations permission
+    // Prevents packages from generating keys or signing (malware behavior)
     "crypto": false,
+
+    // Environment variable access
+    // Explicitly list which env vars the package can read
+    // Blocks access to secrets like AWS_SECRET_KEY, DATABASE_URL
     "environment": ["NODE_ENV"]
+
+    // If a package tries to use a capability it didn't declare,
+    // the runtime should block it and alert the developer
   }
 }
 ```
