@@ -45,6 +45,23 @@ Not every update belongs in public. Private status pages let you brief employees
 3. Decide whether invitees must log in with OneUptime accounts, an IdP, or a one-time access token.
 4. Customize the invitation email so recipients know why they are receiving access and how updates will arrive.
 
+For bulk user imports, prepare a CSV file with the required fields. This format allows you to onboard entire teams or partner organizations in a single operation.
+
+```csv
+# CSV format for bulk importing private status page users
+# Required columns: email
+# Optional columns: name, role, group
+
+email,name,role,group
+alice@acme.com,Alice Johnson,viewer,Engineering
+bob@acme.com,Bob Smith,viewer,Engineering
+carol@partner.com,Carol Williams,viewer,Partners
+dave@acme.com,Dave Brown,admin,Leadership
+# Add additional users following the same format
+# The 'role' field determines access level: viewer (read-only) or admin (can post updates)
+# The 'group' field helps organize users for targeted notifications
+```
+
 ---
 
 ## Step 3: Model components and automation
@@ -63,6 +80,62 @@ Not every update belongs in public. Private status pages let you brief employees
 3. Enable SCIM to keep memberships synchronized as people join or leave the company.
 4. Test the entire flow with a pilot group before rolling it out broadly.
 
+The following SAML configuration example shows the metadata structure needed to integrate with your identity provider. This enables single sign-on so users authenticate with their corporate credentials.
+
+```xml
+<!-- SAML 2.0 Service Provider Metadata for OneUptime Private Status Page -->
+<!-- Import this into your Identity Provider (Okta, Azure AD, etc.) -->
+
+<?xml version="1.0" encoding="UTF-8"?>
+<md:EntityDescriptor
+    xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata"
+    entityID="https://oneuptime.com/saml/your-status-page-id">
+
+    <!-- Service Provider configuration for SAML authentication -->
+    <md:SPSSODescriptor
+        AuthnRequestsSigned="true"
+        WantAssertionsSigned="true"
+        protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+
+        <!-- Certificate used for signing authentication requests -->
+        <md:KeyDescriptor use="signing">
+            <ds:KeyInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+                <ds:X509Data>
+                    <ds:X509Certificate>YOUR_CERTIFICATE_HERE</ds:X509Certificate>
+                </ds:X509Data>
+            </ds:KeyInfo>
+        </md:KeyDescriptor>
+
+        <!-- Assertion Consumer Service - where IdP sends SAML responses -->
+        <md:AssertionConsumerService
+            Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+            Location="https://oneuptime.com/saml/your-status-page-id/acs"
+            index="0"
+            isDefault="true"/>
+
+    </md:SPSSODescriptor>
+</md:EntityDescriptor>
+```
+
+For SCIM provisioning, configure your identity provider to use the following endpoint. This enables automatic user synchronization when employees join or leave your organization.
+
+```json
+{
+    "scim": {
+        "baseUrl": "https://oneuptime.com/scim/v2/your-status-page-id",
+        "authMethod": "bearer",
+        "token": "your-scim-token-here",
+        "supportedResources": ["Users", "Groups"],
+        "features": {
+            "createUsers": true,
+            "updateUsers": true,
+            "deleteUsers": true,
+            "syncGroups": true
+        }
+    }
+}
+```
+
 ---
 
 ## Step 5: Tailor notifications
@@ -70,6 +143,52 @@ Not every update belongs in public. Private status pages let you brief employees
 1. From **Subscribers**, decide whether private page members receive email, SMS, or workspace notifications.
 2. Configure message templates specifically for the private audience- include remediation detail, internal ticket links, or runbook IDs when helpful.
 3. If you maintain a private Slack or Microsoft Teams channel, connect Workspace Notification Rules to echo every status page post there.
+
+The following webhook configuration sends private status updates to your internal Slack channel. This ensures your team receives real-time notifications without leaving their primary communication tool.
+
+```json
+{
+    "webhook": {
+        "url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+        "method": "POST",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "payload": {
+            "channel": "#incident-internal",
+            "username": "OneUptime Status",
+            "icon_emoji": ":rotating_light:",
+            "attachments": [
+                {
+                    "color": "{{incident.severity_color}}",
+                    "title": "{{incident.title}}",
+                    "title_link": "{{statusPage.url}}",
+                    "text": "{{incident.latest_update}}",
+                    "fields": [
+                        {
+                            "title": "Severity",
+                            "value": "{{incident.severity}}",
+                            "short": true
+                        },
+                        {
+                            "title": "State",
+                            "value": "{{incident.state}}",
+                            "short": true
+                        },
+                        {
+                            "title": "Affected Components",
+                            "value": "{{incident.components}}",
+                            "short": false
+                        }
+                    ],
+                    "footer": "Internal Status Page | Confidential",
+                    "ts": "{{incident.timestamp}}"
+                }
+            ]
+        }
+    }
+}
+```
 
 ---
 

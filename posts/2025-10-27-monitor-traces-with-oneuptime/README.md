@@ -37,6 +37,77 @@ Trace monitors watch the journey of each request through your services. They cou
 7. **Connect the incident workflow** to your on-call rotation, notification channels, or automated runbooks.
 8. **Save** and monitor activity in the chart and incident timeline.
 
+The following query examples show how to filter spans in your trace monitor. These patterns help you target specific operations, services, or performance thresholds.
+
+```sql
+-- Trace filter query examples for OneUptime trace monitors
+-- Use these patterns to target specific spans and operations
+
+-- Monitor a specific API endpoint by span name
+span.name = 'GET /api/v1/checkout' AND span.kind = 'server'
+
+-- Filter by service and status: catch failed requests
+service.name = 'checkout-service' AND span.status = 'ERROR'
+
+-- Latency threshold: only spans slower than 2 seconds
+span.duration > 2000 AND span.name CONTAINS '/checkout'
+
+-- Monitor external dependencies: database calls
+span.kind = 'client'
+    AND span.name CONTAINS 'postgresql'
+    AND span.duration > 500
+
+-- Track specific user flows across services
+attributes.user_flow = 'purchase'
+    AND span.status = 'ERROR'
+
+-- Regional monitoring: spans from specific deployment
+attributes.region = 'us-east-1'
+    AND service.name = 'payment-gateway'
+    AND span.duration > 1000
+
+-- Missing spans detection: use with count = 0 alert
+span.name = 'scheduled-job-heartbeat'
+    AND service.name = 'scheduler-service'
+```
+
+Here is an example of a properly instrumented span that works well with trace monitors. Following OpenTelemetry conventions ensures your traces are easy to filter and analyze.
+
+```json
+{
+    "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "spanId": "00f067aa0ba902b7",
+    "parentSpanId": "a3ce929d0e0e4736",
+    "name": "POST /api/v1/checkout",
+    "kind": "SPAN_KIND_SERVER",
+    "startTimeUnixNano": "1698415800123456789",
+    "endTimeUnixNano": "1698415802456789012",
+    "status": {
+        "code": "STATUS_CODE_OK",
+        "message": ""
+    },
+    "attributes": [
+        { "key": "http.method", "value": { "stringValue": "POST" } },
+        { "key": "http.url", "value": { "stringValue": "/api/v1/checkout" } },
+        { "key": "http.status_code", "value": { "intValue": 200 } },
+        { "key": "service.name", "value": { "stringValue": "checkout-service" } },
+        { "key": "deployment.environment", "value": { "stringValue": "production" } },
+        { "key": "cloud.region", "value": { "stringValue": "us-east-1" } },
+        { "key": "user.id", "value": { "stringValue": "user_12345" } }
+    ],
+    "events": [
+        {
+            "name": "cart_validated",
+            "timeUnixNano": "1698415800500000000"
+        },
+        {
+            "name": "payment_processed",
+            "timeUnixNano": "1698415801800000000"
+        }
+    ]
+}
+```
+
 ---
 
 ## Common scenarios
@@ -45,6 +116,64 @@ Trace monitors watch the journey of each request through your services. They cou
 - **Error burst**: Monitor spans with status "Error" and signal when the count spikes.
 - **Missing telemetry**: Raise an incident if a key span does not appear for several intervals.
 - **Regional watch**: Filter by a region attribute to keep each deployment healthy.
+
+The following complete trace monitor configuration demonstrates a latency guardrail setup. This monitor watches checkout API performance and escalates when response times degrade.
+
+```json
+{
+    "monitor": {
+        "name": "Checkout API Latency Guardrail",
+        "type": "traces",
+        "description": "Alerts when checkout latency exceeds acceptable thresholds",
+
+        "filter": {
+            "spanName": "POST /api/v1/checkout",
+            "spanKind": "server",
+            "serviceName": "checkout-service",
+            "attributes": {
+                "deployment.environment": "production"
+            },
+            "durationThreshold": {
+                "operator": ">",
+                "value": 2000,
+                "unit": "ms"
+            },
+            "timeWindow": "5m"
+        },
+
+        "schedule": {
+            "interval": "1m"
+        },
+
+        "alertRules": [
+            {
+                "name": "Latency Warning",
+                "condition": "count >= 5",
+                "severity": "warning",
+                "message": "Multiple slow checkout requests detected (>2s)"
+            },
+            {
+                "name": "Latency Critical",
+                "condition": "count >= 20",
+                "severity": "critical",
+                "message": "Checkout latency severely degraded - immediate investigation required"
+            },
+            {
+                "name": "P95 Threshold",
+                "condition": "p95(duration) > 3000",
+                "severity": "critical",
+                "message": "95th percentile checkout latency exceeds 3 seconds"
+            }
+        ],
+
+        "notifications": {
+            "onCall": "checkout-team",
+            "slack": "#checkout-alerts",
+            "statusPage": "checkout-api"
+        }
+    }
+}
+```
 
 ---
 

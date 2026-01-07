@@ -52,21 +52,23 @@ pip install tenacity
 
 ### Basic Retry
 
+This example shows the core tenacity pattern: a decorator that automatically retries the function on failure. The exponential backoff starts at 1 second and doubles each retry, capped at 10 seconds.
+
 ```python
 from tenacity import retry, stop_after_attempt, wait_exponential
 import requests
 
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=10)
+    stop=stop_after_attempt(3),  # Give up after 3 attempts
+    wait=wait_exponential(multiplier=1, min=1, max=10)  # Wait 1s, 2s, 4s... up to 10s
 )
 def fetch_data(url: str):
-    """Fetch data with automatic retry"""
+    """Fetch data with automatic retry on failure"""
     response = requests.get(url, timeout=5)
-    response.raise_for_status()
+    response.raise_for_status()  # Raises exception on 4xx/5xx
     return response.json()
 
-# Usage
+# Usage - retries happen automatically
 try:
     data = fetch_data("https://api.example.com/data")
 except Exception as e:
@@ -74,6 +76,8 @@ except Exception as e:
 ```
 
 ### Understanding Wait Strategies
+
+Tenacity provides multiple wait strategies for different use cases. Choose based on your service's characteristics and the type of failures you expect.
 
 ```python
 from tenacity import (
@@ -85,36 +89,36 @@ from tenacity import (
     wait_random_exponential
 )
 
-# Fixed wait: Always wait 2 seconds
+# Fixed wait: Always wait 2 seconds between retries
 @retry(wait=wait_fixed(2))
 def fixed_wait():
     pass
 
-# Random wait: Wait between 1-3 seconds
+# Random wait: Wait between 1-3 seconds (adds unpredictability)
 @retry(wait=wait_random(min=1, max=3))
 def random_wait():
     pass
 
-# Exponential: 2^x seconds (1, 2, 4, 8, ...)
+# Exponential: 2^x seconds (1, 2, 4, 8, ...) with cap at 60s
 @retry(wait=wait_exponential(multiplier=1, min=1, max=60))
 def exponential_wait():
     pass
 
-# Exponential with jitter (recommended)
+# Exponential with jitter (recommended) - adds randomness to prevent thundering herd
 @retry(wait=wait_exponential_jitter(initial=1, max=60))
 def exponential_jitter_wait():
     pass
 
-# Random exponential (full jitter)
+# Random exponential (full jitter) - most distributed retry pattern
 @retry(wait=wait_random_exponential(multiplier=1, max=60))
 def full_jitter_wait():
     pass
 
-# Chained: Different waits for different attempts
+# Chained: Different waits for different attempts (escalating response)
 @retry(wait=wait_chain(
-    wait_fixed(1),  # First retry: 1 second
+    wait_fixed(1),  # First retry: 1 second (quick retry for transient issues)
     wait_fixed(2),  # Second retry: 2 seconds
-    wait_fixed(5),  # Third+ retry: 5 seconds
+    wait_fixed(5),  # Third+ retry: 5 seconds (give service time to recover)
 ))
 def chained_wait():
     pass
@@ -125,6 +129,8 @@ def chained_wait():
 ## Stop Conditions
 
 ### When to Stop Retrying
+
+Stop conditions determine when to give up retrying. Combining multiple conditions helps balance persistence with resource efficiency.
 
 ```python
 from tenacity import (
@@ -137,12 +143,12 @@ from tenacity import (
 )
 from datetime import timedelta
 
-# Stop after 3 attempts
+# Stop after 3 attempts (including initial attempt)
 @retry(stop=stop_after_attempt(3))
 def limited_attempts():
     pass
 
-# Stop after 30 seconds total
+# Stop after 30 seconds total elapsed time
 @retry(stop=stop_after_delay(30))
 def time_limited():
     pass
@@ -152,12 +158,12 @@ def time_limited():
 def combined_stop():
     pass
 
-# Stop only after BOTH conditions (3 attempts AND 30 seconds)
+# Stop only after BOTH conditions (3 attempts AND 30 seconds passed)
 @retry(stop=stop_all(stop_after_attempt(3), stop_after_delay(30)))
 def strict_combined():
     pass
 
-# Never stop (be careful!)
+# Never stop (be careful! Use with circuit breakers)
 @retry(stop=stop_never)
 def infinite_retry():
     pass
@@ -169,30 +175,33 @@ def infinite_retry():
 
 ### Retry Only on Specific Exceptions
 
+Not all errors should trigger retries. Client errors (4xx) indicate bad requests that will always fail, while server errors (5xx) and network issues are often transient.
+
 ```python
 from tenacity import retry, retry_if_exception_type, retry_if_not_exception_type
 import requests
 
-# Only retry on network errors
+# Only retry on network errors, not application errors
 @retry(retry=retry_if_exception_type(requests.RequestException))
 def fetch_with_specific_retry():
     response = requests.get("https://api.example.com/data")
     response.raise_for_status()
     return response.json()
 
-# Retry on everything EXCEPT ValueError
+# Retry on everything EXCEPT ValueError (validation errors shouldn't retry)
 @retry(retry=retry_if_not_exception_type(ValueError))
 def validate_and_fetch():
     pass
 
-# Custom retry condition
+# Custom retry condition for fine-grained control
 from tenacity import retry_if_exception
 
 def is_retryable_error(exception):
     """Determine if an exception should trigger a retry"""
     if isinstance(exception, requests.HTTPError):
-        # Retry on 5xx errors, not 4xx
+        # Retry on 5xx errors (server issues), not 4xx (client errors)
         return 500 <= exception.response.status_code < 600
+    # Also retry on connection and timeout errors
     return isinstance(exception, (requests.ConnectionError, requests.Timeout))
 
 @retry(retry=retry_if_exception(is_retryable_error))
@@ -204,11 +213,13 @@ def smart_retry():
 
 ### Retry Based on Return Value
 
+Sometimes a function succeeds but returns an unexpected result. You can retry until you get a valid response.
+
 ```python
 from tenacity import retry, retry_if_result
 
 def is_empty_result(result):
-    """Retry if result is empty"""
+    """Retry if result is empty - API might be lagging"""
     return result is None or result == [] or result == {}
 
 @retry(retry=retry_if_result(is_empty_result))
@@ -217,13 +228,13 @@ def fetch_until_data():
     response = requests.get("https://api.example.com/data")
     return response.json()
 
-# Combine exception and result conditions
+# Combine exception and result conditions for comprehensive retry logic
 from tenacity import retry_any
 
 @retry(
     retry=retry_any(
-        retry_if_exception_type(requests.RequestException),
-        retry_if_result(is_empty_result)
+        retry_if_exception_type(requests.RequestException),  # Retry on network errors
+        retry_if_result(is_empty_result)  # Also retry on empty results
     )
 )
 def robust_fetch():
@@ -238,6 +249,8 @@ def robust_fetch():
 
 ### Before and After Callbacks
 
+Callbacks provide visibility into retry behavior. Logging retries helps with debugging and alerting on problematic services.
+
 ```python
 from tenacity import (
     retry,
@@ -251,26 +264,26 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Log before each attempt
+# Built-in logging callbacks - log before and after each attempt
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, max=10),
-    before=before_log(logger, logging.INFO),
-    after=after_log(logger, logging.INFO)
+    before=before_log(logger, logging.INFO),  # Log each attempt start
+    after=after_log(logger, logging.INFO)  # Log each attempt result
 )
 def logged_operation():
     pass
 
-# Log before sleeping
+# Log before sleeping (between retries) - useful for warning on retries
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, max=10),
-    before_sleep=before_sleep_log(logger, logging.WARNING)
+    before_sleep=before_sleep_log(logger, logging.WARNING)  # Warn on retries
 )
 def sleep_logged_operation():
     pass
 
-# Custom callback
+# Custom callback for structured logging or metrics
 def custom_before_callback(retry_state: RetryCallState):
     """Called before each retry attempt"""
     logger.info(
@@ -297,15 +310,17 @@ def custom_logged_operation():
 
 ### Metrics and Monitoring
 
+Integrating retry metrics with Prometheus or similar systems helps identify flaky dependencies and measure resilience.
+
 ```python
 from tenacity import retry, RetryCallState
 from prometheus_client import Counter, Histogram
 
-# Metrics
+# Define Prometheus metrics for retry monitoring
 retry_attempts = Counter(
     'retry_attempts_total',
     'Total retry attempts',
-    ['function', 'outcome']
+    ['function', 'outcome']  # Labels for filtering
 )
 
 retry_duration = Histogram(
@@ -315,9 +330,10 @@ retry_duration = Histogram(
 )
 
 def metrics_callback(retry_state: RetryCallState):
-    """Record retry metrics"""
+    """Record retry metrics for observability"""
     func_name = retry_state.fn.__name__
 
+    # Increment counter based on outcome
     if retry_state.outcome.failed:
         retry_attempts.labels(function=func_name, outcome='failure').inc()
     else:
@@ -326,7 +342,7 @@ def metrics_callback(retry_state: RetryCallState):
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, max=10),
-    after=metrics_callback
+    after=metrics_callback  # Record metrics after each attempt
 )
 def monitored_operation():
     pass
@@ -337,6 +353,8 @@ def monitored_operation():
 ## Async Support
 
 ### Async Retry with Tenacity
+
+Tenacity works seamlessly with async functions. The same decorators work with async/await, making it easy to add retry logic to async HTTP clients.
 
 ```python
 import asyncio
@@ -354,7 +372,7 @@ from tenacity import (
     retry=retry_if_exception_type((httpx.HTTPError, asyncio.TimeoutError))
 )
 async def async_fetch(url: str):
-    """Async fetch with retry"""
+    """Async fetch with retry - tenacity handles the async context"""
     async with httpx.AsyncClient() as client:
         response = await client.get(url, timeout=10)
         response.raise_for_status()
@@ -372,6 +390,8 @@ asyncio.run(main())
 
 ### Concurrent Async Retries
 
+Each async task gets its own retry logic, allowing concurrent requests to independently handle failures.
+
 ```python
 import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential_jitter
@@ -381,6 +401,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential_jitter
     wait=wait_exponential_jitter(initial=1, max=10)
 )
 async def fetch_item(item_id: str):
+    """Fetch single item with its own retry logic"""
     async with httpx.AsyncClient() as client:
         response = await client.get(f"https://api.example.com/items/{item_id}")
         response.raise_for_status()
@@ -388,9 +409,11 @@ async def fetch_item(item_id: str):
 
 async def fetch_all_items(item_ids: list[str]):
     """Fetch multiple items concurrently with individual retry logic"""
+    # Each task has independent retries - one failure doesn't affect others
     tasks = [fetch_item(item_id) for item_id in item_ids]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
+    # Separate successful from failed fetches
     successful = [r for r in results if not isinstance(r, Exception)]
     failed = [r for r in results if isinstance(r, Exception)]
 
@@ -403,6 +426,8 @@ async def fetch_all_items(item_ids: list[str]):
 
 ### Combining Retry with Circuit Breaker
 
+Circuit breakers prevent retry storms when a service is completely down. After too many failures, the circuit "opens" and requests fail immediately, giving the service time to recover.
+
 ```python
 from tenacity import retry, stop_after_attempt, wait_exponential_jitter
 from datetime import datetime, timedelta
@@ -410,8 +435,8 @@ from threading import Lock
 from enum import Enum
 
 class CircuitState(Enum):
-    CLOSED = "closed"  # Normal operation
-    OPEN = "open"      # Failing, reject requests
+    CLOSED = "closed"      # Normal operation - requests pass through
+    OPEN = "open"          # Failing - reject requests immediately
     HALF_OPEN = "half_open"  # Testing if service recovered
 
 class CircuitBreaker:
@@ -419,34 +444,36 @@ class CircuitBreaker:
 
     def __init__(
         self,
-        failure_threshold: int = 5,
-        recovery_timeout: int = 30,
-        half_open_requests: int = 3
+        failure_threshold: int = 5,      # Failures before opening
+        recovery_timeout: int = 30,      # Seconds before testing recovery
+        half_open_requests: int = 3      # Successful requests to close circuit
     ):
         self.failure_threshold = failure_threshold
         self.recovery_timeout = timedelta(seconds=recovery_timeout)
         self.half_open_requests = half_open_requests
 
+        # State tracking
         self.state = CircuitState.CLOSED
         self.failures = 0
         self.last_failure_time = None
         self.half_open_successes = 0
-        self._lock = Lock()
+        self._lock = Lock()  # Thread-safe state updates
 
     def can_execute(self) -> bool:
-        """Check if request should be allowed"""
+        """Check if request should be allowed through"""
         with self._lock:
             if self.state == CircuitState.CLOSED:
-                return True
+                return True  # Normal operation
 
             if self.state == CircuitState.OPEN:
+                # Check if recovery timeout has passed
                 if datetime.now() - self.last_failure_time > self.recovery_timeout:
-                    self.state = CircuitState.HALF_OPEN
+                    self.state = CircuitState.HALF_OPEN  # Try recovery
                     self.half_open_successes = 0
                     return True
-                return False
+                return False  # Still open, reject request
 
-            # HALF_OPEN
+            # HALF_OPEN - allow request to test recovery
             return True
 
     def record_success(self):
@@ -454,12 +481,13 @@ class CircuitBreaker:
         with self._lock:
             if self.state == CircuitState.HALF_OPEN:
                 self.half_open_successes += 1
+                # Enough successes - close the circuit
                 if self.half_open_successes >= self.half_open_requests:
                     self.state = CircuitState.CLOSED
                     self.failures = 0
 
             elif self.state == CircuitState.CLOSED:
-                self.failures = 0
+                self.failures = 0  # Reset failure count on success
 
     def record_failure(self):
         """Record a failed request"""
@@ -468,10 +496,10 @@ class CircuitBreaker:
             self.last_failure_time = datetime.now()
 
             if self.state == CircuitState.HALF_OPEN:
-                self.state = CircuitState.OPEN
+                self.state = CircuitState.OPEN  # Recovery failed
 
             elif self.failures >= self.failure_threshold:
-                self.state = CircuitState.OPEN
+                self.state = CircuitState.OPEN  # Too many failures
 
 class CircuitOpenError(Exception):
     """Raised when circuit breaker is open"""
@@ -485,6 +513,7 @@ def with_circuit_breaker(circuit: CircuitBreaker):
             wait=wait_exponential_jitter(initial=1, max=10)
         )
         def wrapper(*args, **kwargs):
+            # Check circuit before attempting request
             if not circuit.can_execute():
                 raise CircuitOpenError(
                     f"Circuit breaker is {circuit.state.value}"
@@ -492,20 +521,21 @@ def with_circuit_breaker(circuit: CircuitBreaker):
 
             try:
                 result = func(*args, **kwargs)
-                circuit.record_success()
+                circuit.record_success()  # Mark success
                 return result
             except Exception as e:
-                circuit.record_failure()
+                circuit.record_failure()  # Mark failure
                 raise
 
         return wrapper
     return decorator
 
-# Usage
+# Usage - create circuit breaker for payment service
 payment_circuit = CircuitBreaker(failure_threshold=5, recovery_timeout=60)
 
 @with_circuit_breaker(payment_circuit)
 def process_payment(amount: float):
+    """Payment processing with circuit breaker protection"""
     response = requests.post(
         "https://payment-api.example.com/charge",
         json={"amount": amount}
@@ -519,6 +549,8 @@ def process_payment(amount: float):
 ## Production-Ready Patterns
 
 ### HTTP Client with Retry
+
+This production-ready HTTP client combines multiple retry strategies: urllib3's built-in retry for connection issues, plus tenacity for application-level retries with full control over behavior.
 
 ```python
 from tenacity import (
@@ -550,21 +582,21 @@ class RetryableHTTPClient:
         self.timeout = timeout
         self.backoff_max = backoff_max
 
-        # Session with connection pooling
+        # Session with connection pooling for performance
         self.session = requests.Session()
 
-        # Built-in urllib3 retry for connection errors
+        # Built-in urllib3 retry for connection-level errors
         retry_strategy = Retry(
             total=max_retries,
             backoff_factor=1,
-            status_forcelist=[502, 503, 504],
+            status_forcelist=[502, 503, 504],  # Retry on gateway errors
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
 
     def _log_retry(self, retry_state: RetryCallState):
-        """Log retry attempts"""
+        """Log retry attempts for debugging"""
         if retry_state.attempt_number > 1:
             logger.warning(
                 f"Retry attempt {retry_state.attempt_number} for "
@@ -582,7 +614,7 @@ class RetryableHTTPClient:
                 requests.HTTPError
             )),
             before_sleep=self._log_retry,
-            reraise=True
+            reraise=True  # Re-raise final exception after all retries
         )
 
     def get(self, path: str, **kwargs):
@@ -616,9 +648,9 @@ class RetryableHTTPClient:
     def _check_response(self, response: requests.Response):
         """Check response and raise for retryable errors"""
         if response.status_code >= 500:
-            response.raise_for_status()
+            response.raise_for_status()  # Retry on server errors
         elif response.status_code >= 400:
-            # Don't retry client errors
+            # Don't retry client errors - they'll always fail
             raise requests.HTTPError(
                 f"Client error: {response.status_code}",
                 response=response
@@ -640,6 +672,8 @@ except requests.HTTPError as e:
 
 ### Database Operations with Retry
 
+Database connections are prone to transient failures like connection resets and deadlocks. Retry logic should only activate on operational errors, not query syntax errors.
+
 ```python
 from tenacity import (
     retry,
@@ -653,10 +687,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Retry only on connection/operational errors, not query errors
+# Only retry on connection/operational errors, not query errors
 RETRYABLE_ERRORS = (
-    OperationalError,
-    InterfaceError,
+    OperationalError,  # Connection issues, server gone away
+    InterfaceError,    # Connection pool issues
 )
 
 def retry_database_operation(max_attempts: int = 3):
@@ -671,7 +705,7 @@ def retry_database_operation(max_attempts: int = 3):
     )
 
 class DatabaseClient:
-    """Database client with retry logic"""
+    """Database client with retry logic for transient failures"""
 
     def __init__(self, connection_string: str):
         self.connection_string = connection_string
@@ -685,7 +719,7 @@ class DatabaseClient:
 
     @retry_database_operation(max_attempts=3)
     def execute(self, query: str, params: tuple = None):
-        """Execute a query with retry"""
+        """Execute a query with retry on connection errors"""
         conn = self._get_connection()
         try:
             with conn.cursor() as cursor:
@@ -693,7 +727,7 @@ class DatabaseClient:
                 conn.commit()
                 return cursor.rowcount
         except RETRYABLE_ERRORS:
-            # Reset connection on operational errors
+            # Reset connection on operational errors for next retry
             self._connection = None
             raise
 
@@ -728,15 +762,19 @@ class DatabaseClient:
 
 ### 1. Use Jitter
 
+Jitter prevents multiple clients from retrying at the same moment, which would overload the recovering service.
+
 ```python
 # Always add jitter to prevent thundering herd
 wait=wait_exponential_jitter(initial=1, max=60)
 
-# Or full jitter
+# Or full jitter for maximum distribution
 wait=wait_random_exponential(multiplier=1, max=60)
 ```
 
 ### 2. Set Reasonable Limits
+
+Never retry forever without protection. Combine attempt and time limits.
 
 ```python
 # Don't retry forever
@@ -748,6 +786,8 @@ stop=stop_any(stop_after_attempt(5), stop_after_delay(120))
 
 ### 3. Only Retry Transient Failures
 
+Client errors indicate bad input that will always fail. Only retry server errors and network issues.
+
 ```python
 # Don't retry client errors (4xx)
 def is_retryable(exception):
@@ -758,6 +798,8 @@ def is_retryable(exception):
 
 ### 4. Log Retries
 
+Retries indicate problems. Logging them helps identify flaky dependencies.
+
 ```python
 # Always log retries for debugging
 before_sleep=lambda rs: logger.warning(
@@ -766,6 +808,8 @@ before_sleep=lambda rs: logger.warning(
 ```
 
 ### 5. Make Retries Idempotent
+
+Ensure operations can safely be retried without side effects. Use idempotency keys for non-idempotent operations.
 
 ```python
 # Ensure operations can safely be retried

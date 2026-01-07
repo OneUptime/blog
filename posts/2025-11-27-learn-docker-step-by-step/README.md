@@ -63,11 +63,13 @@ We will wrap a “quote of the day” API so you can see how the pieces connect.
 
 ### 1. Project Layout
 
+This is the minimal file structure for a containerized Node.js application. The Dockerfile sits alongside your application code so Docker can access everything it needs during the build.
+
 ```
 quote-api/
-├─ package.json
-├─ server.js
-└─ Dockerfile
+├─ package.json      # Node.js project metadata and dependencies
+├─ server.js         # Application entry point
+└─ Dockerfile        # Container build instructions
 ```
 
 `package.json`
@@ -95,9 +97,12 @@ This Express server creates a simple REST API that returns a random quote on eac
 ```javascript
 // Import the Express framework for handling HTTP requests
 const express = require('express');
+
+// Create an Express application instance
 const app = express();
 
 // Sample data - in a real app this might come from a database
+// Using an array allows easy random selection
 const quotes = [
   'Keep shipping. Iterate later.',
   'Logs tell you what happened; metrics tell you when.',
@@ -105,13 +110,19 @@ const quotes = [
 ];
 
 // Define the root endpoint that returns a random quote as JSON
+// _req prefix indicates we don't use the request object
 app.get('/', (_req, res) => {
+  // Math.random() gives 0-1, multiply by length and floor for valid index
   const quote = quotes[Math.floor(Math.random() * quotes.length)];
+  // Send JSON response - Express sets Content-Type automatically
   res.json({ quote });
 });
 
 // Use PORT from environment variable (container-friendly) or default to 8080
+// Environment variables allow the same image to run on any port
 const port = process.env.PORT || 8080;
+
+// Start the server and log the port for debugging
 app.listen(port, () => console.log(`Listening on ${port}`));
 ```
 
@@ -121,22 +132,33 @@ The Dockerfile defines how Docker builds your image layer by layer. Each instruc
 
 ```dockerfile
 # Step 1: Use Alpine-based Node.js for a smaller image (~50MB vs ~350MB)
+# Alpine Linux is a security-focused, lightweight distribution
 FROM node:22-alpine
 
 # Step 2: Set working directory - all subsequent commands run from here
+# Creates the directory if it doesn't exist
 WORKDIR /app
 
 # Step 3: Copy dependency manifests first (enables layer caching)
 # If package.json hasn't changed, Docker reuses the cached npm install layer
+# The wildcard handles both package.json and package-lock.json
 COPY package*.json ./
+
+# Install only production dependencies to keep image size small
+# --only=production excludes devDependencies
 RUN npm install --only=production
 
 # Step 4: Copy application source code
 # This layer rebuilds whenever your code changes, but npm install stays cached
+# Copying after npm install maximizes cache hits during development
 COPY server.js ./
 
 # Step 5: Document the port (informational) and set the startup command
+# EXPOSE is documentation only - actual port mapping happens at runtime
 EXPOSE 8080
+
+# CMD defines the default command when the container starts
+# Using array syntax (exec form) avoids shell wrapping issues
 CMD ["node", "server.js"]
 ```
 
@@ -150,7 +172,9 @@ Run from the project root. The `-t` flag assigns a name and version tag to your 
 
 ```bash
 # Build the image and tag it with name:version
+# -t: Tag the image with a name (quote-api) and version (1.0.0)
 # The dot (.) specifies the build context (current directory)
+# Docker sends all files in this directory to the daemon for building
 docker build -t quote-api:1.0.0 .
 ```
 
@@ -163,7 +187,9 @@ This command starts a container from your image and maps port 8080 from inside t
 ```bash
 # Run the container with port mapping
 # --rm: automatically remove container when it stops (keeps things clean)
+#       Without this, stopped containers accumulate on disk
 # -p 8080:8080: map host port 8080 to container port 8080
+#               Format is HOST:CONTAINER - change left side to use different host port
 docker run --rm -p 8080:8080 quote-api:1.0.0
 ```
 
@@ -183,15 +209,18 @@ Once you understand the single-container flow, Docker Compose lets you describe 
 
 ```yaml
 # docker-compose.yaml - defines multi-container applications
+# version field is optional in Compose V2 but helps with compatibility
 services:
   api:
     build: .                    # Build from Dockerfile in current directory
     ports:
-      - "8080:8080"             # Expose API to host machine
+      - "8080:8080"             # Expose API to host machine (host:container)
+    # depends_on ensures db starts before api, but doesn't wait for readiness
   db:
-    image: postgres:16          # Use official PostgreSQL image
+    image: postgres:16          # Use official PostgreSQL image from Docker Hub
     environment:
-      POSTGRES_PASSWORD: example  # Required for PostgreSQL initialization
+      # Required for PostgreSQL initialization - sets the superuser password
+      POSTGRES_PASSWORD: example  # In production, use secrets instead
 ```
 
 Run `docker compose up` to get both containers in one command. The Compose file becomes shared documentation for teammates.

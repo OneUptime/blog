@@ -161,15 +161,17 @@ Let's trace through the Authorization Code flow:
 
 **Step 1: Initiate Authorization**
 
-Your app redirects the user to the authorization server:
+Your app redirects the user to the authorization server.
+
+This URL initiates the OAuth flow by directing the user to Google's login page. Each parameter serves a specific purpose in identifying your application and securing the flow. The state parameter is particularly important as it prevents cross-site request forgery attacks.
 
 ```
 https://accounts.google.com/o/oauth2/v2/auth?
-  client_id=YOUR_CLIENT_ID&
-  redirect_uri=https://yourapp.com/callback&
-  response_type=code&
-  scope=openid%20email%20profile&
-  state=random_string_for_csrf_protection
+  client_id=YOUR_CLIENT_ID&                         # Identifies your registered application
+  redirect_uri=https://yourapp.com/callback&        # Where Google sends user after auth
+  response_type=code&                               # Requests an authorization code
+  scope=openid%20email%20profile&                   # Permissions being requested (URL encoded)
+  state=random_string_for_csrf_protection           # Random value to prevent CSRF attacks
 ```
 
 **Step 2: User Authenticates**
@@ -178,49 +180,57 @@ The user logs into Google (if not already) and sees a consent screen asking to g
 
 **Step 3: Authorization Code Returned**
 
-After approval, Google redirects back to your app:
+After approval, Google redirects back to your app.
+
+The authorization server sends the user back to your redirect_uri with a short-lived authorization code. Always verify the state parameter matches what you originally sent to prevent CSRF attacks. The code itself is only valid for a few minutes and can only be used once.
 
 ```
 https://yourapp.com/callback?
-  code=AUTHORIZATION_CODE&
-  state=random_string_for_csrf_protection
+  code=AUTHORIZATION_CODE&                    # Short-lived code to exchange for tokens
+  state=random_string_for_csrf_protection     # Must match the state you sent (verify this!)
 ```
 
 **Step 4: Exchange Code for Tokens**
 
-Your server exchanges the code for tokens (this happens server-to-server):
+Your server exchanges the code for tokens (this happens server-to-server).
+
+This critical step happens on your backend server, not in the browser. By making this request server-side, your client_secret remains confidential. The authorization code can only be exchanged once and expires quickly, providing defense against replay attacks.
 
 ```http
 POST https://oauth2.googleapis.com/token
 Content-Type: application/x-www-form-urlencoded
 
-grant_type=authorization_code&
-code=AUTHORIZATION_CODE&
-redirect_uri=https://yourapp.com/callback&
-client_id=YOUR_CLIENT_ID&
-client_secret=YOUR_CLIENT_SECRET
+grant_type=authorization_code&           # Specifies we're exchanging an auth code
+code=AUTHORIZATION_CODE&                 # The code received from the callback
+redirect_uri=https://yourapp.com/callback&  # Must match the original request exactly
+client_id=YOUR_CLIENT_ID&                # Your application's public identifier
+client_secret=YOUR_CLIENT_SECRET         # Secret proving your server's identity (never expose this!)
 ```
 
 **Step 5: Receive Tokens**
 
+The token response contains everything you need to access protected resources and maintain the user's session. Store these tokens securely on your server and never expose them to the client-side.
+
 ```json
 {
-  "access_token": "ya29.a0AfH6SMBx...",
-  "expires_in": 3600,
-  "refresh_token": "1//0g...",
-  "scope": "openid email profile",
-  "token_type": "Bearer",
-  "id_token": "eyJhbGciOiJSUzI1NiIs..."
+  "access_token": "ya29.a0AfH6SMBx...",  // Use this to call Google APIs (short-lived, ~1 hour)
+  "expires_in": 3600,                     // Token lifetime in seconds (3600 = 1 hour)
+  "refresh_token": "1//0g...",            // Use to get new access tokens (long-lived, store securely)
+  "scope": "openid email profile",        // Confirmed permissions granted by the user
+  "token_type": "Bearer",                 // How to use the token (include in Authorization header)
+  "id_token": "eyJhbGciOiJSUzI1NiIs..."   // JWT containing user identity info (OpenID Connect)
 }
 ```
 
 **Step 6: Access Protected Resources**
 
-Use the access token to call APIs:
+Use the access token to call APIs.
+
+Include the access token in the Authorization header using the Bearer scheme. The API will validate the token and return the requested data only if the token is valid and has the necessary scopes.
 
 ```http
 GET https://www.googleapis.com/oauth2/v2/userinfo
-Authorization: Bearer ya29.a0AfH6SMBx...
+Authorization: Bearer ya29.a0AfH6SMBx...   # Include access token with "Bearer " prefix
 ```
 
 ## Node.js Implementation Example
@@ -229,47 +239,56 @@ Let's build a complete OAuth 2.0 implementation with Google. We'll use Express a
 
 ### Project Setup
 
+These commands create a new Node.js project and install the essential dependencies: Express for the web server, Axios for making HTTP requests to OAuth endpoints, and dotenv for managing environment variables securely.
+
 ```bash
-mkdir oauth-demo && cd oauth-demo
-npm init -y
-npm install express axios dotenv
+mkdir oauth-demo && cd oauth-demo   # Create and enter project directory
+npm init -y                          # Initialize package.json with defaults
+npm install express axios dotenv     # Install web framework, HTTP client, and env config
 ```
 
 ### Environment Variables
 
-Create a `.env` file:
+Create a `.env` file.
+
+Store your OAuth credentials in environment variables to keep them out of source control. Never commit this file to git - add it to your .gitignore immediately.
 
 ```env
-GOOGLE_CLIENT_ID=your_client_id_here
-GOOGLE_CLIENT_SECRET=your_client_secret_here
-REDIRECT_URI=http://localhost:3000/callback
-SESSION_SECRET=your_random_session_secret
+GOOGLE_CLIENT_ID=your_client_id_here       # From Google Cloud Console OAuth credentials
+GOOGLE_CLIENT_SECRET=your_client_secret_here   # Keep this secret! Never expose client-side
+REDIRECT_URI=http://localhost:3000/callback    # Must match Google Console configuration
+SESSION_SECRET=your_random_session_secret      # Random string for session encryption
 ```
 
 ### The Complete Implementation
 
+This server demonstrates a complete OAuth 2.0 Authorization Code flow with Google. It handles the entire lifecycle: initiating authorization, handling the callback, exchanging codes for tokens, refreshing expired tokens, and accessing protected user data. In production, replace the in-memory session store with Redis or a database.
+
 ```javascript
-// server.js
-const express = require('express');
-const axios = require('axios');
-const crypto = require('crypto');
-require('dotenv').config();
+// server.js - Complete OAuth 2.0 implementation with Google
+const express = require('express');   // Web framework for handling HTTP requests
+const axios = require('axios');       // HTTP client for making OAuth API calls
+const crypto = require('crypto');     // Node's crypto module for secure random generation
+require('dotenv').config();           // Load environment variables from .env file
 
 const app = express();
 
-// In-memory session store (use Redis in production)
+// In-memory session store - WARNING: Use Redis or database in production
+// This Map stores session data including OAuth state, tokens, and user info
 const sessions = new Map();
 
-// Google OAuth endpoints
-const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
-const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
+// Google OAuth 2.0 endpoint URLs - these are standardized for Google
+const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';  // Authorization endpoint
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';          // Token exchange endpoint
+const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';  // User profile endpoint
 
-// Middleware to parse cookies
+// Custom middleware to parse cookies (lightweight alternative to cookie-parser)
+// Extracts cookies from the Cookie header and attaches them to req.cookies
 app.use((req, res, next) => {
   req.cookies = {};
   const cookieHeader = req.headers.cookie;
   if (cookieHeader) {
+    // Split cookie header by semicolon and parse each name=value pair
     cookieHeader.split(';').forEach(cookie => {
       const [name, value] = cookie.trim().split('=');
       req.cookies[name] = value;
@@ -278,12 +297,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// Home page
+// Home page - displays user info if logged in, or login button if not
 app.get('/', (req, res) => {
+  // Look up session using the session_id cookie
   const sessionId = req.cookies.session_id;
   const session = sessions.get(sessionId);
 
+  // Check if user is authenticated (session exists and has user data)
   if (session && session.user) {
+    // Display personalized welcome with user's profile data from Google
     res.send(`
       <h1>Welcome, ${session.user.name}!</h1>
       <img src="${session.user.picture}" alt="Profile" style="border-radius: 50%; width: 100px;">
@@ -291,6 +313,7 @@ app.get('/', (req, res) => {
       <a href="/logout">Logout</a>
     `);
   } else {
+    // Display login prompt for unauthenticated users
     res.send(`
       <h1>OAuth 2.0 Demo</h1>
       <a href="/login">Login with Google</a>
@@ -298,43 +321,47 @@ app.get('/', (req, res) => {
   }
 });
 
-// Step 1: Initiate OAuth flow
+// Step 1: Initiate OAuth flow - generates state and redirects to Google
 app.get('/login', (req, res) => {
-  // Generate state for CSRF protection
+  // Generate cryptographically secure random state for CSRF protection
+  // This value will be verified when Google redirects back
   const state = crypto.randomBytes(32).toString('hex');
 
-  // Create session to store state
+  // Create new session to store the state before redirect
   const sessionId = crypto.randomBytes(32).toString('hex');
   sessions.set(sessionId, { state, createdAt: Date.now() });
 
-  // Set session cookie
+  // Set HttpOnly cookie to track this session (HttpOnly prevents XSS attacks)
   res.setHeader('Set-Cookie', `session_id=${sessionId}; HttpOnly; Path=/`);
 
-  // Build authorization URL
+  // Build the authorization URL with all required OAuth parameters
   const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID,
-    redirect_uri: process.env.REDIRECT_URI,
-    response_type: 'code',
-    scope: 'openid email profile',
-    state: state,
-    access_type: 'offline',  // Request refresh token
-    prompt: 'consent'        // Force consent screen
+    client_id: process.env.GOOGLE_CLIENT_ID,  // Your app's identifier
+    redirect_uri: process.env.REDIRECT_URI,   // Where Google sends the user back
+    response_type: 'code',                    // Request authorization code (not token)
+    scope: 'openid email profile',            // Permissions to request from user
+    state: state,                             // CSRF protection token
+    access_type: 'offline',                   // Request refresh_token for long-lived access
+    prompt: 'consent'                         // Always show consent screen (ensures refresh token)
   });
 
+  // Redirect user to Google's authorization page
   const authUrl = `${GOOGLE_AUTH_URL}?${params.toString()}`;
   res.redirect(authUrl);
 });
 
-// Step 3 & 4: Handle callback and exchange code for tokens
+// Steps 3 & 4: Handle callback from Google and exchange code for tokens
 app.get('/callback', async (req, res) => {
+  // Extract parameters from the callback URL
   const { code, state, error } = req.query;
 
-  // Handle errors from Google
+  // Handle errors returned by Google (user denied access, etc.)
   if (error) {
     return res.status(400).send(`OAuth error: ${error}`);
   }
 
-  // Validate state to prevent CSRF
+  // CRITICAL: Validate state parameter to prevent CSRF attacks
+  // If state doesn't match, someone may be trying to hijack the flow
   const sessionId = req.cookies.session_id;
   const session = sessions.get(sessionId);
 
@@ -343,73 +370,81 @@ app.get('/callback', async (req, res) => {
   }
 
   try {
-    // Step 4: Exchange authorization code for tokens
+    // Step 4: Exchange the authorization code for access and refresh tokens
+    // This is a server-to-server request - client_secret stays secure
     const tokenResponse = await axios.post(GOOGLE_TOKEN_URL,
       new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: process.env.REDIRECT_URI,
+        grant_type: 'authorization_code',     // Indicate we're exchanging an auth code
+        code: code,                           // The authorization code from callback
+        redirect_uri: process.env.REDIRECT_URI,  // Must match original request
         client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET
+        client_secret: process.env.GOOGLE_CLIENT_SECRET  // Server secret - never expose
       }),
       {
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'Content-Type': 'application/x-www-form-urlencoded'  // OAuth requires form encoding
         }
       }
     );
 
+    // Destructure the tokens from Google's response
     const { access_token, refresh_token, expires_in } = tokenResponse.data;
 
-    // Step 6: Use access token to get user info
+    // Step 6: Use access token to fetch user profile information
     const userResponse = await axios.get(GOOGLE_USERINFO_URL, {
       headers: {
-        Authorization: `Bearer ${access_token}`
+        Authorization: `Bearer ${access_token}`  // Bearer token authentication
       }
     });
 
-    // Store tokens and user info in session
+    // Store all authentication data in the session
     session.accessToken = access_token;
     session.refreshToken = refresh_token;
+    // Calculate absolute expiration time (current time + expires_in seconds)
     session.tokenExpiry = Date.now() + (expires_in * 1000);
-    session.user = userResponse.data;
+    session.user = userResponse.data;  // Store user profile (name, email, picture)
 
-    // Clean up state (one-time use)
+    // Clean up state - it's one-time use and no longer needed
     delete session.state;
 
+    // Redirect to home page where user will see their profile
     res.redirect('/');
 
   } catch (error) {
+    // Log detailed error for debugging (check Google's error response)
     console.error('Token exchange error:', error.response?.data || error.message);
     res.status(500).send('Failed to authenticate with Google');
   }
 });
 
-// Logout
+// Logout endpoint - clears session and removes cookie
 app.get('/logout', (req, res) => {
   const sessionId = req.cookies.session_id;
+  // Delete session data from server
   sessions.delete(sessionId);
+  // Clear the cookie by setting Max-Age=0 (immediate expiration)
   res.setHeader('Set-Cookie', 'session_id=; HttpOnly; Path=/; Max-Age=0');
   res.redirect('/');
 });
 
-// Protected API endpoint example
+// Protected API endpoint - demonstrates token refresh and API access
 app.get('/api/profile', async (req, res) => {
   const sessionId = req.cookies.session_id;
   const session = sessions.get(sessionId);
 
+  // Check if user is authenticated
   if (!session || !session.accessToken) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  // Check if token is expired
+  // Check if access token has expired
   if (Date.now() > session.tokenExpiry) {
-    // Refresh the token
+    // Token expired - use refresh token to get a new access token
     try {
       const refreshResponse = await axios.post(GOOGLE_TOKEN_URL,
         new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: session.refreshToken,
+          grant_type: 'refresh_token',        // Indicate we're using refresh flow
+          refresh_token: session.refreshToken,  // The long-lived refresh token
           client_id: process.env.GOOGLE_CLIENT_ID,
           client_secret: process.env.GOOGLE_CLIENT_SECRET
         }),
@@ -420,16 +455,20 @@ app.get('/api/profile', async (req, res) => {
         }
       );
 
+      // Update session with new access token and expiry time
       session.accessToken = refreshResponse.data.access_token;
       session.tokenExpiry = Date.now() + (refreshResponse.data.expires_in * 1000);
     } catch (error) {
+      // Refresh failed - user needs to re-authenticate
       return res.status(401).json({ error: 'Token refresh failed' });
     }
   }
 
+  // Return the cached user profile data
   res.json(session.user);
 });
 
+// Start the server on configured port (default 3000 for local development)
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
@@ -448,8 +487,10 @@ app.listen(PORT, () => {
 
 ### Running the Example
 
+Start the server and navigate to the URL in your browser to begin testing the OAuth flow.
+
 ```bash
-node server.js
+node server.js   # Starts the Express server on port 3000
 ```
 
 Visit `http://localhost:3000` and click "Login with Google" to test the flow.
@@ -479,25 +520,28 @@ flowchart TD
 | Refresh Token | Get new access tokens | Opaque, long-lived |
 | ID Token | User identity (OIDC) | JWT with user claims |
 
-The ID token is a JWT containing user information:
+The ID token is a JWT containing user information.
+
+This code demonstrates how to decode and inspect the ID token's payload. Note that this is simplified decoding - in production, you must also verify the token's signature using Google's public keys to ensure the token hasn't been tampered with.
 
 ```javascript
-// Decode ID token (header.payload.signature)
+// Decode ID token (header.payload.signature) - a JWT has 3 base64-encoded parts
 const idToken = tokenResponse.data.id_token;
+// Extract the payload (middle part) and decode from base64 to JSON
 const payload = JSON.parse(
   Buffer.from(idToken.split('.')[1], 'base64').toString()
 );
 
 console.log(payload);
 // {
-//   "iss": "https://accounts.google.com",
-//   "sub": "110248495921238986420",
-//   "email": "user@gmail.com",
-//   "email_verified": true,
-//   "name": "John Doe",
-//   "picture": "https://lh3.googleusercontent.com/...",
-//   "iat": 1702723456,
-//   "exp": 1702727056
+//   "iss": "https://accounts.google.com",  // Issuer - who created this token
+//   "sub": "110248495921238986420",         // Subject - unique user ID (stable across logins)
+//   "email": "user@gmail.com",              // User's email address
+//   "email_verified": true,                 // Whether Google has verified this email
+//   "name": "John Doe",                     // User's display name
+//   "picture": "https://lh3.googleusercontent.com/...",  // Profile picture URL
+//   "iat": 1702723456,                      // Issued At - when token was created (Unix timestamp)
+//   "exp": 1702727056                       // Expiration - when token expires (Unix timestamp)
 // }
 ```
 
@@ -509,46 +553,50 @@ OAuth tokens are bearer tokens - anyone with the token can use it. Never transmi
 
 ### 2. Validate the State Parameter
 
-Always generate a random state and validate it on callback to prevent CSRF attacks:
+Always generate a random state and validate it on callback to prevent CSRF attacks.
+
+The state parameter acts as a CSRF token. By storing it before the redirect and comparing it on callback, you ensure that only requests you initiated can complete the OAuth flow. Without this check, an attacker could trick users into authorizing malicious requests.
 
 ```javascript
-// Generate
-const state = crypto.randomBytes(32).toString('hex');
-sessions.set(sessionId, { state });
+// Generate a cryptographically random state before initiating OAuth
+const state = crypto.randomBytes(32).toString('hex');  // 64 hex characters
+sessions.set(sessionId, { state });  // Store in session for later comparison
 
-// Validate
+// Validate on callback - this MUST match or reject the request
 if (session.state !== req.query.state) {
-  throw new Error('State mismatch - possible CSRF');
+  throw new Error('State mismatch - possible CSRF');  // Someone may be attacking
 }
 ```
 
 ### 3. Use PKCE for Public Clients
 
-For mobile apps and SPAs, use PKCE (Proof Key for Code Exchange):
+For mobile apps and SPAs, use PKCE (Proof Key for Code Exchange).
+
+PKCE adds an extra layer of security for applications that cannot securely store a client secret. It works by creating a one-time proof that the same application that started the OAuth flow is the one completing it, preventing authorization code interception attacks.
 
 ```javascript
 const crypto = require('crypto');
 
-// Generate code verifier (43-128 characters)
-const codeVerifier = crypto.randomBytes(32).toString('base64url');
+// Generate code verifier (43-128 characters) - this is your secret
+const codeVerifier = crypto.randomBytes(32).toString('base64url');  // URL-safe random string
 
-// Generate code challenge
+// Generate code challenge by hashing the verifier with SHA-256
 const codeChallenge = crypto
-  .createHash('sha256')
-  .update(codeVerifier)
-  .digest('base64url');
+  .createHash('sha256')        // Use SHA-256 algorithm
+  .update(codeVerifier)        // Hash the verifier
+  .digest('base64url');        // Output as URL-safe base64
 
-// Include in authorization request
+// Include the CHALLENGE (not verifier) in authorization request
 const params = new URLSearchParams({
   // ... other params
-  code_challenge: codeChallenge,
-  code_challenge_method: 'S256'
+  code_challenge: codeChallenge,      // Send the hash to the auth server
+  code_challenge_method: 'S256'       // Indicate SHA-256 was used
 });
 
-// Include verifier in token request
+// Include the original VERIFIER in token exchange request
 const tokenParams = new URLSearchParams({
   // ... other params
-  code_verifier: codeVerifier
+  code_verifier: codeVerifier  // Auth server will hash this and compare to challenge
 });
 ```
 
@@ -560,39 +608,47 @@ const tokenParams = new URLSearchParams({
 
 ### 5. Implement Token Refresh
 
-Access tokens expire quickly (usually 1 hour). Implement refresh token rotation:
+Access tokens expire quickly (usually 1 hour). Implement refresh token rotation.
+
+This helper function ensures you always have a valid access token before making API calls. It proactively refreshes the token 60 seconds before expiration to avoid failed requests. In production, consider adding retry logic for network failures during refresh.
 
 ```javascript
+// Helper function to get a valid access token, refreshing if necessary
 async function getValidAccessToken(session) {
+  // Check if token is still valid (with 60 second buffer for safety)
   if (Date.now() < session.tokenExpiry - 60000) {
-    return session.accessToken;  // Still valid
+    return session.accessToken;  // Token still valid, use it
   }
 
-  // Refresh the token
+  // Token expired or expiring soon - refresh it
   const response = await axios.post(GOOGLE_TOKEN_URL, {
-    grant_type: 'refresh_token',
-    refresh_token: session.refreshToken,
+    grant_type: 'refresh_token',           // Use refresh token flow
+    refresh_token: session.refreshToken,   // The long-lived refresh token
     client_id: process.env.GOOGLE_CLIENT_ID,
-    client_secret: process.env.GOOGLE_CLIENT_SECRET
+    client_secret: process.env.GOOGLE_CLIENT_SECRET  // Required for confidential clients
   });
 
+  // Update session with new access token
   session.accessToken = response.data.access_token;
+  // Calculate new expiry time (expires_in is in seconds, convert to milliseconds)
   session.tokenExpiry = Date.now() + (response.data.expires_in * 1000);
 
-  return session.accessToken;
+  return session.accessToken;  // Return the fresh token
 }
 ```
 
 ### 6. Request Minimal Scopes
 
-Only request the permissions you actually need:
+Only request the permissions you actually need.
+
+Following the principle of least privilege improves security and user trust. Users are more likely to approve OAuth requests that ask for minimal, sensible permissions. Requesting excessive scopes may cause users to deny authorization entirely.
 
 ```javascript
-// Bad - requesting everything
-scope: 'openid email profile calendar drive gmail'
+// Bad - requesting everything (users may reject this, creates security risk)
+scope: 'openid email profile calendar drive gmail'  // Way more access than needed
 
-// Good - minimal permissions
-scope: 'openid email profile'
+// Good - minimal permissions (only what your app actually needs)
+scope: 'openid email profile'  // Just basic identity information
 ```
 
 ## Common Pitfalls
@@ -603,19 +659,25 @@ Client secrets must never be exposed in browser JavaScript or mobile app code. U
 
 ### Pitfall 2: Not Validating Tokens
 
-Always validate tokens server-side. Don't trust token contents without verification:
+Always validate tokens server-side. Don't trust token contents without verification.
+
+ID tokens are JWTs signed by Google. Before trusting the user information in an ID token, you must verify its cryptographic signature to ensure it hasn't been forged or tampered with. Google's library handles fetching the public keys and verification.
 
 ```javascript
-// For ID tokens, verify the signature
+// For ID tokens, verify the signature using Google's official library
 const { OAuth2Client } = require('google-auth-library');
+// Create client with your app's client ID (used for audience verification)
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+// Verify an ID token and extract its payload
 async function verifyIdToken(idToken) {
+  // This verifies: signature, expiration, issuer, and audience
   const ticket = await client.verifyIdToken({
-    idToken: idToken,
-    audience: process.env.GOOGLE_CLIENT_ID
+    idToken: idToken,                        // The JWT to verify
+    audience: process.env.GOOGLE_CLIENT_ID   // Ensure token was issued for your app
   });
-  return ticket.getPayload();
+  // Return the verified user information payload
+  return ticket.getPayload();  // Safe to trust this data now
 }
 ```
 
@@ -625,13 +687,17 @@ The Implicit flow returns tokens directly in the URL fragment, making them vulne
 
 ### Pitfall 4: Ignoring Token Expiration
 
-Access tokens expire. Always check expiration and refresh proactively:
+Access tokens expire. Always check expiration and refresh proactively.
+
+Attempting to use an expired access token will result in 401 Unauthorized errors from the API. Always check token validity before making API calls and refresh when needed.
 
 ```javascript
-// Check expiration before making API calls
+// Check expiration before making API calls - prevents failed requests
 if (Date.now() >= session.tokenExpiry) {
-  await refreshAccessToken(session);
+  // Token has expired, get a new one using the refresh token
+  await refreshAccessToken(session);  // Updates session.accessToken
 }
+// Now safe to make API calls with session.accessToken
 ```
 
 ## Using OAuth Libraries
@@ -640,47 +706,60 @@ While understanding the manual implementation is valuable, use battle-tested lib
 
 ### Passport.js
 
-```javascript
-const passport = require('passport');
-const GoogleStrategy = require('passport-google-oauth20').Strategy;
+Passport.js is a popular authentication middleware for Node.js. It abstracts away the complexity of OAuth flows with a strategy-based architecture. This example shows how to set up Google OAuth with just a few lines of code.
 
+```javascript
+const passport = require('passport');  // Authentication middleware
+const GoogleStrategy = require('passport-google-oauth20').Strategy;  // Google OAuth strategy
+
+// Configure Passport to use Google OAuth 2.0
 passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: "/auth/google/callback"
+    clientID: process.env.GOOGLE_CLIENT_ID,        // Your Google OAuth client ID
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET, // Your client secret
+    callbackURL: "/auth/google/callback"           // Must match Google Console config
   },
+  // Verification callback - called after successful authentication
   function(accessToken, refreshToken, profile, cb) {
-    // Find or create user
-    return cb(null, profile);
+    // Here you would typically find or create user in your database
+    // profile contains the user's Google profile information
+    return cb(null, profile);  // Pass profile to Passport for session serialization
   }
 ));
 
+// Route to initiate Google OAuth flow
 app.get('/auth/google',
-  passport.authenticate('google', { scope: ['profile', 'email'] })
+  passport.authenticate('google', { scope: ['profile', 'email'] })  // Request profile and email
 );
 
+// OAuth callback route - Google redirects here after user authorization
 app.get('/auth/google/callback',
-  passport.authenticate('google', { failureRedirect: '/login' }),
+  passport.authenticate('google', { failureRedirect: '/login' }),  // Handle auth failure
   function(req, res) {
-    res.redirect('/');
+    res.redirect('/');  // Success - redirect to home page
   }
 );
 ```
 
 ### Auth.js (NextAuth.js)
 
-```javascript
-// pages/api/auth/[...nextauth].js
-import NextAuth from 'next-auth';
-import GoogleProvider from 'next-auth/providers/google';
+Auth.js (formerly NextAuth.js) provides the simplest OAuth integration for Next.js applications. With just a few lines of configuration, you get complete authentication with sessions, JWT handling, and multiple provider support built-in.
 
+```javascript
+// pages/api/auth/[...nextauth].js - Catch-all API route for auth endpoints
+import NextAuth from 'next-auth';            // The core auth library
+import GoogleProvider from 'next-auth/providers/google';  // Google-specific provider
+
+// Export configured NextAuth handler - handles all /api/auth/* routes automatically
 export default NextAuth({
   providers: [
+    // Configure Google as an authentication provider
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientId: process.env.GOOGLE_CLIENT_ID,      // From environment variables
       clientSecret: process.env.GOOGLE_CLIENT_SECRET
+      // NextAuth handles all OAuth flow, callbacks, and token management
     })
   ]
+  // Additional options available: session config, callbacks, database adapters, etc.
 });
 ```
 

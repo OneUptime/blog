@@ -56,6 +56,75 @@ A public status page is the front door to your reliability program. With OneUpti
 3. Once DNS propagates, OneUptime automatically provisions SSL certificates so visitors see a secure padlock.
 4. Keep the default `oneuptime.com` link active while DNS changes propagate, then switch communication to the custom domain.
 
+The following DNS record configuration maps your custom domain to OneUptime's servers. A CNAME record is the recommended approach as it automatically handles IP address changes on OneUptime's infrastructure.
+
+```dns
+; DNS Zone file example for status.acmecloud.com
+; This CNAME record points your custom status page domain to OneUptime's servers
+; Replace 'acmecloud.com' with your actual domain name
+
+status.acmecloud.com.   IN   CNAME   statuspage.oneuptime.com.
+; TTL (Time To Live) can be set to 300 seconds (5 minutes) for faster propagation
+; Once verified, increase TTL to 3600 (1 hour) for better caching
+```
+
+If your DNS provider does not support CNAME records at the root domain, use an A record instead. This configuration directly points to OneUptime's IP address for status page hosting.
+
+```dns
+; Alternative A record configuration (use if CNAME is not supported)
+; Note: Check OneUptime documentation for the current IP address
+
+status.acmecloud.com.   IN   A   <oneuptime-ip-address>
+; You may also need to add an AAAA record for IPv6 support
+status.acmecloud.com.   IN   AAAA   <oneuptime-ipv6-address>
+```
+
+---
+
+## Step 5: Embed status widgets (optional)
+
+You can embed a status badge or widget on your website to show real-time system health. This gives users quick visibility without leaving your site.
+
+The following HTML snippet embeds a status badge that automatically updates to reflect your current system status. Place this code anywhere you want the badge to appear, such as your footer or help center.
+
+```html
+<!-- OneUptime Status Badge Embed -->
+<!-- This iframe displays a real-time status indicator from your OneUptime status page -->
+<!-- Replace 'your-status-page-id' with your actual status page identifier -->
+
+<iframe
+    src="https://oneuptime.com/status-page/your-status-page-id/badge"
+    width="250"           <!-- Width of the badge container -->
+    height="50"           <!-- Height of the badge container -->
+    frameborder="0"       <!-- Remove default iframe border -->
+    scrolling="no"        <!-- Disable scrolling since badge is fixed size -->
+    style="border: none;" <!-- Additional styling to ensure clean appearance -->
+></iframe>
+```
+
+For a more customizable approach, use the JavaScript widget. This script dynamically injects the status component and supports custom styling options.
+
+```html
+<!-- OneUptime JavaScript Widget -->
+<!-- This script loads the full status widget with more customization options -->
+
+<div id="oneuptime-status-widget"></div>
+
+<script>
+    // Configuration object for the OneUptime status widget
+    window.oneuptimeStatusWidget = {
+        statusPageId: 'your-status-page-id',  // Your unique status page identifier
+        containerId: 'oneuptime-status-widget', // DOM element to render widget into
+        theme: 'light',  // Options: 'light', 'dark', or 'auto' (follows system preference)
+        showComponents: true,  // Display individual component statuses
+        showIncidents: true    // Show recent incidents and updates
+    };
+</script>
+
+<!-- Load the OneUptime widget script -->
+<script src="https://oneuptime.com/status-page/widget.js" async></script>
+```
+
 ---
 
 ## Step 6: Enable subscriber notifications
@@ -64,6 +133,40 @@ A public status page is the front door to your reliability program. With OneUpti
 2. Customize confirmation and welcome messages so subscribers know what to expect.
 3. Set throttling limits if you want to batch notifications for quieter updates.
 4. Share the self-service subscription link in your help center, onboarding emails, and system banners.
+
+You can also set up webhook notifications to integrate with external systems. This allows automated workflows to react to status changes in real-time.
+
+The following JSON payload shows the structure of webhook notifications sent by OneUptime. Understanding this format helps you build integrations that parse and act on status updates.
+
+```json
+{
+    "event": "incident.created",
+    "timestamp": "2025-10-27T14:30:00Z",
+    "statusPage": {
+        "id": "your-status-page-id",
+        "name": "Acme Cloud Status"
+    },
+    "incident": {
+        "id": "incident-123",
+        "title": "Elevated API Latency",
+        "state": "investigating",
+        "severity": "minor",
+        "affectedComponents": [
+            {
+                "id": "component-api",
+                "name": "Core API",
+                "status": "degraded_performance"
+            }
+        ],
+        "updates": [
+            {
+                "message": "We are investigating reports of slow API responses.",
+                "createdAt": "2025-10-27T14:30:00Z"
+            }
+        ]
+    }
+}
+```
 
 ---
 

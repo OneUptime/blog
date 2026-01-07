@@ -39,23 +39,26 @@ Everything else lives in your repository as shell scripts that run identically o
 
 ### Before: Vendor Lock-In
 
+This example demonstrates a typical GitHub Actions workflow that relies heavily on platform-specific features like marketplace actions and built-in caching. While convenient, this approach creates tight coupling to the platform.
+
 ```yaml
 # GitHub Actions - platform-specific syntax
+# This workflow uses vendor-specific actions that won't work on other CI platforms
 name: Build and Test
-on: [push]
+on: [push]  # Trigger on every push to the repository
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # GitHub-hosted runner
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v4  # GitHub-specific action for cloning
+      - uses: actions/setup-node@v4  # GitHub-specific Node.js setup
         with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run build
-      - run: npm test
-      - uses: actions/upload-artifact@v4
+          node-version: '20'  # Platform manages Node version
+          cache: 'npm'  # GitHub-specific caching mechanism
+      - run: npm ci  # Install dependencies
+      - run: npm run build  # Build the project
+      - run: npm test  # Run tests
+      - uses: actions/upload-artifact@v4  # GitHub-specific artifact storage
         with:
           name: build-output
           path: dist/
@@ -65,31 +68,37 @@ This looks clean until you need to move to GitLab. Every `uses:` action needs a 
 
 ### After: Portable Bash
 
+The portable approach keeps CI configuration minimal by delegating all logic to bash scripts. This GitHub Actions example simply triggers script execution, making platform migration trivial.
+
 ```yaml
 # GitHub Actions - thin wrapper
+# Platform only handles triggering and environment - all logic lives in scripts
 name: Build and Test
-on: [push]
+on: [push]  # Trigger on every push
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: ./scripts/ci/setup.sh
-      - run: ./scripts/ci/build.sh
-      - run: ./scripts/ci/test.sh
+      - uses: actions/checkout@v4  # Only platform-specific action needed
+      - run: ./scripts/ci/setup.sh  # All setup logic in portable script
+      - run: ./scripts/ci/build.sh  # Build logic is platform-agnostic
+      - run: ./scripts/ci/test.sh   # Tests run identically anywhere
 ```
+
+Here is the same pipeline configured for GitLab CI. Notice how the script calls are identical - only the YAML wrapper syntax changes.
 
 ```yaml
 # GitLab CI - same scripts, different wrapper
+# Migrating from GitHub Actions required only writing this simple config
 stages:
-  - build
+  - build  # GitLab uses stages instead of jobs
 
 build:
   stage: build
   script:
-    - ./scripts/ci/setup.sh
-    - ./scripts/ci/build.sh
-    - ./scripts/ci/test.sh
+    - ./scripts/ci/setup.sh  # Exact same script as GitHub Actions
+    - ./scripts/ci/build.sh  # No translation needed
+    - ./scripts/ci/test.sh   # Portable across all CI platforms
 ```
 
 The CI configuration becomes trivial. The real logic lives in `scripts/ci/`, version-controlled and portable.
@@ -98,21 +107,28 @@ The CI configuration becomes trivial. The real logic lives in `scripts/ci/`, ver
 
 ### setup.sh
 
+This setup script handles environment initialization in a platform-agnostic way. It detects whether required tools are installed and handles installation if needed, making the build reproducible on any system.
+
 ```bash
 #!/usr/bin/env bash
+# Enable strict mode: exit on error, undefined variables, and pipe failures
 set -euo pipefail
 
 # Detect and install Node.js if needed
+# This makes the script work on any runner, not just pre-configured ones
 if ! command -v node &> /dev/null; then
     echo "Installing Node.js..."
+    # Install Node.js 20.x from NodeSource repository
     curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
     sudo apt-get install -y nodejs
 fi
 
+# Print versions for debugging and build reproducibility
 echo "Node version: $(node --version)"
 echo "npm version: $(npm --version)"
 
-# Install dependencies
+# Install dependencies using clean install for reproducible builds
+# npm ci is faster and stricter than npm install
 npm ci
 
 echo "Setup complete"
@@ -120,41 +136,54 @@ echo "Setup complete"
 
 ### build.sh
 
+The build script compiles the application and validates the output. Including verification steps ensures builds fail fast if something goes wrong, rather than discovering issues later in the pipeline.
+
 ```bash
 #!/usr/bin/env bash
+# Strict mode ensures script fails immediately on any error
 set -euo pipefail
 
 echo "Starting build..."
 
+# Run the project's build command defined in package.json
 npm run build
 
-# Verify build output exists
+# Verify build output exists - fail fast if build produced nothing
+# This catches silent build failures that might otherwise go unnoticed
 if [[ ! -d "dist" ]]; then
     echo "ERROR: Build failed - dist directory not found"
-    exit 1
+    exit 1  # Non-zero exit code signals failure to CI platform
 fi
 
 echo "Build complete"
+# List build output for visibility in CI logs
 ls -la dist/
 ```
 
 ### test.sh
 
+This test script runs the test suite and checks code coverage. By handling coverage thresholds in the script rather than the CI platform, the same quality gates apply everywhere.
+
 ```bash
 #!/usr/bin/env bash
+# Strict mode for reliable error handling
 set -euo pipefail
 
 echo "Running tests..."
 
-# Run tests with coverage
+# Run tests with coverage report generation
+# The -- passes additional flags to the underlying test runner
 npm test -- --coverage
 
-# Check coverage threshold
+# Extract overall coverage percentage from the coverage report
+# Uses grep with Perl regex to parse the coverage summary JSON
 COVERAGE=$(grep -oP 'All files[^|]*\|\s*\K[\d.]+' coverage/coverage-summary.json 2>/dev/null || echo "0")
-THRESHOLD=80
+THRESHOLD=80  # Minimum acceptable coverage percentage
 
+# Compare coverage against threshold using bc for floating point math
 if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
     echo "WARNING: Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
+    # Note: This warns but doesn't fail - adjust based on your needs
 fi
 
 echo "Tests complete"
@@ -166,11 +195,14 @@ echo "Tests complete"
 
 When CI fails, the feedback loop is brutal: push, wait, read logs, guess, repeat. With bash scripts, you debug locally:
 
+Running a Docker container with your source code mounted lets you reproduce the exact CI environment on your local machine. This eliminates the frustrating cycle of pushing commits just to test CI behavior.
+
 ```bash
-# Reproduce the exact CI environment
+# Reproduce the exact CI environment locally using Docker
+# Mount current directory into the container for access to your code
 docker run -it -v $(pwd):/app -w /app ubuntu:22.04 bash
 
-# Run the failing script
+# Run the failing script directly - same as CI would run it
 ./scripts/ci/build.sh
 ```
 
@@ -180,12 +212,14 @@ No more "works on my machine but fails in CI" mysteries. The script runs identic
 
 Writing vendor-specific YAML means committing and pushing to test every change. With bash scripts:
 
-```bash
-# Edit and test immediately
-vim scripts/ci/test.sh
-./scripts/ci/test.sh
+Bash scripts can be tested immediately without any git operations. Edit the file, run it, and see results in seconds rather than waiting for CI to pick up changes.
 
-# Works? Commit and push
+```bash
+# Edit and test immediately - no git push required
+vim scripts/ci/test.sh
+./scripts/ci/test.sh  # Run locally to verify changes
+
+# Works? Commit and push with confidence
 git add -A && git commit -m "Fix test script" && git push
 ```
 
@@ -195,11 +229,13 @@ You iterate in seconds, not minutes.
 
 Once you have solid CI scripts, they work everywhere:
 
+Copying scripts between projects is trivial because they contain no platform-specific syntax. Minor adjustments for project specifics are usually all that is needed.
+
 ```bash
-# New project? Copy the scripts
+# New project? Copy the scripts from an existing project
 cp -r ../other-project/scripts/ci ./scripts/
 
-# Adjust for project specifics
+# Adjust for project specifics (paths, commands, etc.)
 vim scripts/ci/build.sh
 ```
 
@@ -208,6 +244,8 @@ No need to remember the syntax differences between GitHub Actions, GitLab CI, Je
 ### 4. Version Control Transparency
 
 Bash scripts diff cleanly. You see exactly what changed:
+
+When reviewing changes to your CI logic, bash script diffs are clear and readable. Every change is visible and understandable.
 
 ```diff
 - npm test
@@ -231,17 +269,21 @@ Your bash scripts have no external dependencies beyond standard Unix tools that 
 
 Complex pipelines stay readable when composed from focused scripts:
 
+This deployment script demonstrates composition - each step is a focused script that does one thing well. The orchestration is obvious and easy to modify.
+
 ```bash
 #!/usr/bin/env bash
 # scripts/ci/deploy.sh
+# Orchestrates the full deployment pipeline by calling focused scripts
 set -euo pipefail
 
-./scripts/ci/build.sh
-./scripts/ci/test.sh
-./scripts/ci/security-scan.sh
-./scripts/ci/docker-build.sh
-./scripts/ci/push-to-registry.sh
-./scripts/ci/deploy-to-kubernetes.sh
+# Each script handles one concern - easy to understand and modify
+./scripts/ci/build.sh           # Compile the application
+./scripts/ci/test.sh            # Run the test suite
+./scripts/ci/security-scan.sh   # Check for vulnerabilities
+./scripts/ci/docker-build.sh    # Build the container image
+./scripts/ci/push-to-registry.sh      # Push to container registry
+./scripts/ci/deploy-to-kubernetes.sh  # Deploy to production
 ```
 
 Each script does one thing well. The composition is obvious. Compare this to 200-line YAML files with nested conditionals and matrix strategies.
@@ -252,20 +294,22 @@ Some things genuinely require platform integration: caching, artifacts, secrets.
 
 ### Secrets
 
+Both GitHub Actions and GitLab CI can pass secrets as environment variables. Your scripts read from the environment, remaining platform-agnostic.
+
 ```yaml
-# GitHub Actions
+# GitHub Actions - inject secret as environment variable
 env:
-  DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+  DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}  # GitHub secrets syntax
 steps:
-  - run: ./scripts/ci/deploy.sh
+  - run: ./scripts/ci/deploy.sh  # Script reads $DEPLOY_TOKEN
 ```
 
 ```yaml
-# GitLab CI
+# GitLab CI - same concept, different syntax
 variables:
-  DEPLOY_TOKEN: $DEPLOY_TOKEN
+  DEPLOY_TOKEN: $DEPLOY_TOKEN  # GitLab CI/CD variables
 script:
-  - ./scripts/ci/deploy.sh
+  - ./scripts/ci/deploy.sh  # Script uses the same $DEPLOY_TOKEN
 ```
 
 Your deploy script reads `$DEPLOY_TOKEN` and works on both platforms.
@@ -274,13 +318,15 @@ Your deploy script reads `$DEPLOY_TOKEN` and works on both platforms.
 
 Keep caching in the CI config (it is inherently platform-specific) but make it optional:
 
+Caching is one area where platform-specific configuration is acceptable. The key is ensuring your scripts work with or without the cache being present.
+
 ```yaml
-# GitHub Actions
+# GitHub Actions - platform handles caching
 - uses: actions/cache@v4
   with:
-    path: ~/.npm
-    key: npm-${{ hashFiles('package-lock.json') }}
-- run: ./scripts/ci/build.sh
+    path: ~/.npm  # Cache npm's global cache directory
+    key: npm-${{ hashFiles('package-lock.json') }}  # Cache key based on lockfile
+- run: ./scripts/ci/build.sh  # Script works with or without cache
 ```
 
 Your build script works with or without the cache. The cache just makes it faster.
@@ -289,17 +335,19 @@ Your build script works with or without the cache. The cache just makes it faste
 
 Upload artifacts in the CI config, but let scripts control what gets built:
 
+Scripts create the artifacts in predictable locations. The CI platform configuration simply uploads from those locations.
+
 ```bash
 # scripts/ci/build.sh creates dist/
 # scripts/ci/package.sh creates artifacts/release.tar.gz
 ```
 
 ```yaml
-# GitHub Actions
-- run: ./scripts/ci/package.sh
+# GitHub Actions - upload artifacts created by scripts
+- run: ./scripts/ci/package.sh  # Script creates the artifact
 - uses: actions/upload-artifact@v4
   with:
-    path: artifacts/
+    path: artifacts/  # Upload from the known location
 ```
 
 The platform handles upload. Your scripts handle creation.
@@ -316,33 +364,36 @@ No logic rewrites. No action-to-orb translations. No debugging platform-specific
 
 Here is a real migration from GitHub Actions to GitLab CI:
 
+This complete GitLab CI configuration replaces a GitHub Actions workflow. The same scripts that worked on GitHub run unchanged - only this simple YAML wrapper was needed.
+
 ```yaml
 # .gitlab-ci.yml - complete pipeline
+# Migration from GitHub Actions took an hour, not a week
 stages:
   - build
   - test
   - deploy
 
 variables:
-  DOCKER_HOST: tcp://docker:2375
+  DOCKER_HOST: tcp://docker:2375  # GitLab-specific Docker config
 
 build:
   stage: build
   script:
-    - ./scripts/ci/setup.sh
-    - ./scripts/ci/build.sh
+    - ./scripts/ci/setup.sh  # Same script from GitHub Actions
+    - ./scripts/ci/build.sh  # No changes needed
 
 test:
   stage: test
   script:
-    - ./scripts/ci/test.sh
+    - ./scripts/ci/test.sh  # Runs identically on both platforms
 
 deploy:
   stage: deploy
   script:
-    - ./scripts/ci/deploy.sh
+    - ./scripts/ci/deploy.sh  # Deployment logic unchanged
   only:
-    - main
+    - main  # Only deploy from main branch
 ```
 
 That is it. The same scripts that ran on GitHub Actions now run on GitLab. Migration took an hour, not a week.

@@ -85,6 +85,8 @@ eBPF-based auto-instrumenters work by:
 4. **Correlating** request/response pairs
 5. **Exporting** as standard OpenTelemetry Protocol (OTLP) data
 
+This diagram illustrates how eBPF-based auto-instrumentation works. The key insight is that eBPF programs run in the kernel, observing your application's behavior without any modifications to application code. The data is then converted to OTLP format and sent to your observability backend.
+
 ```mermaid
 flowchart TB
     subgraph "Your Application (Unchanged)"
@@ -92,26 +94,26 @@ flowchart TB
         HTTP[HTTP Handler]
         DB[Database Client]
     end
-    
+
     subgraph "Linux Kernel"
         EBPF[eBPF Programs]
         KPROBE[Kprobes/Uprobes]
         SOCKET[Socket Tracing]
     end
-    
+
     subgraph "eBPF Agent"
         AGENT[Auto-Instrumenter]
         CONVERT[OTLP Converter]
     end
-    
+
     subgraph "Observability Backend"
         OTEL[OTel Collector]
         BACKEND[OneUptime / Jaeger / etc.]
     end
-    
+
     APP --> HTTP
     HTTP --> DB
-    
+
     KPROBE -.->|observes| HTTP
     SOCKET -.->|observes| DB
     EBPF --> AGENT
@@ -137,8 +139,11 @@ A typical production setup looks like this:
 ### Deployment Patterns
 
 **Pattern 1: DaemonSet (Kubernetes)**
+
+This DaemonSet configuration deploys the eBPF agent on every node in your cluster. The `hostPID` and `hostNetwork` settings are required because eBPF needs to observe processes across the entire node, not just within a single pod.
+
 ```yaml
-# eBPF agent runs on every node
+# eBPF agent runs on every node to observe all pods
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -149,15 +154,18 @@ spec:
       app: ebpf-agent
   template:
     spec:
-      hostPID: true      # Required for eBPF
-      hostNetwork: true  # For network tracing
+      hostPID: true      # Required: access to host process namespace for eBPF
+      hostNetwork: true  # Required: access to host network for tracing
       containers:
       - name: agent
         securityContext:
-          privileged: true  # Required for eBPF
+          privileged: true  # Required: eBPF needs elevated privileges
 ```
 
 **Pattern 2: Sidecar (Per-Pod)**
+
+The sidecar pattern offers more isolation but increases resource overhead. Each pod gets its own eBPF agent, which is useful when you need fine-grained control over which applications are instrumented.
+
 ```yaml
 # eBPF agent as sidecar (more isolation, more overhead)
 spec:
@@ -167,12 +175,16 @@ spec:
   - name: ebpf-sidecar
     image: ebpf-agent:latest
     securityContext:
-      privileged: true
+      privileged: true  # eBPF requires privileged access
 ```
 
 **Pattern 3: Standalone (Non-Kubernetes)**
+
+For non-Kubernetes environments, you can run the eBPF agent directly on the host. This is the simplest approach for VM-based or bare-metal deployments.
+
 ```bash
-# Run directly on the host
+# Run directly on the host with root privileges
+# The agent will observe all processes on this machine
 sudo ./beyla --config config.yaml
 ```
 
@@ -217,16 +229,18 @@ Several tools combine eBPF with OpenTelemetry. Here's how they compare:
 
 ### Quick Decision Guide
 
+This decision flowchart helps you choose the right eBPF tool based on your environment and requirements. Kubernetes users needing distributed tracing should prefer Odigos, while simpler setups can use Beyla.
+
 ```mermaid
 flowchart TD
     START[Need eBPF Auto-Instrumentation?] --> K8S{Kubernetes?}
-    
+
     K8S -->|Yes| DIST{Need distributed tracing<br>across services?}
     K8S -->|No| BEYLA[Use Beyla]
-    
+
     DIST -->|Yes| ODIGOS[Use Odigos]
     DIST -->|No, metrics/single service| BEYLA
-    
+
     ODIGOS --> ADHOC{Also need<br>ad-hoc debugging?}
     ADHOC -->|Yes| PIXIE[Add Pixie]
     ADHOC -->|No| DONE[Done]
@@ -246,10 +260,14 @@ Beyla is the simplest way to get started with eBPF-based OpenTelemetry instrumen
 
 ### Installation
 
+These commands download and install the Beyla binary. Beyla is distributed as a standalone executable that requires no additional dependencies beyond a compatible Linux kernel.
+
 ```bash
-# Download the latest release
+# Download the latest release from GitHub
 curl -LO https://github.com/grafana/beyla/releases/latest/download/beyla-linux-amd64.tar.gz
+# Extract the binary
 tar xzf beyla-linux-amd64.tar.gz
+# Move to a directory in PATH for easy access
 sudo mv beyla /usr/local/bin/
 ```
 
@@ -257,48 +275,56 @@ sudo mv beyla /usr/local/bin/
 
 Create `beyla-config.yaml`:
 
+This configuration file tells Beyla which processes to instrument and where to send telemetry. The `open_port` setting is the simplest way to target applications - Beyla will instrument any process listening on that port.
+
 ```yaml
 # beyla-config.yaml
+# Target processes listening on port 8080 for instrumentation
 open_port: 8080  # Instrument processes listening on this port
 
-# Or target by executable name
+# Alternative targeting methods (uncomment one):
+# Target by executable name - useful for specific binaries
 # executable_name: "my-service"
 
-# Or by process ID
+# Target by process ID - useful for debugging specific processes
 # pid: 12345
 
-# OTLP export configuration
+# OTLP export configuration - where to send telemetry data
 otel_traces_export:
-  endpoint: http://localhost:4317  # OTel Collector
+  endpoint: http://localhost:4317  # OTel Collector gRPC endpoint
 
 otel_metrics_export:
   endpoint: http://localhost:4317
-  
-# Optional: Add resource attributes
+
+# Optional: Add resource attributes for better identification
 attributes:
   kubernetes:
-    enable: true  # Auto-detect K8s metadata
-  
-# Sampling (optional)
+    enable: true  # Auto-detect K8s metadata (pod name, namespace, etc.)
+
+# Sampling configuration to control data volume
 traces:
   sampler:
     name: parentbased_traceidratio
-    arg: "0.1"  # 10% sampling
+    arg: "0.1"  # Sample 10% of traces (adjust for production)
 ```
 
 ### Running Beyla
 
+These commands show two ways to run Beyla: with a config file or using environment variables. The environment variable approach is useful for quick testing or when you want to override config file settings.
+
 ```bash
-# Run with config file
+# Run with config file - recommended for production
 sudo beyla --config beyla-config.yaml
 
-# Or with environment variables
+# Or with environment variables - useful for quick testing
 sudo BEYLA_OPEN_PORT=8080 \
      OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
      beyla
 ```
 
 ### Kubernetes Deployment
+
+This DaemonSet configuration deploys Beyla across all nodes in your Kubernetes cluster. It instruments all pods listening on the specified ports and automatically enriches telemetry with Kubernetes metadata like pod names and namespaces.
 
 ```yaml
 apiVersion: apps/v1
@@ -315,22 +341,26 @@ spec:
       labels:
         app: beyla
     spec:
-      hostPID: true
+      hostPID: true  # Required: access host PID namespace
       serviceAccountName: beyla
       containers:
       - name: beyla
         image: grafana/beyla:latest
         securityContext:
-          privileged: true
-          runAsUser: 0
+          privileged: true   # Required for eBPF
+          runAsUser: 0       # Must run as root
         env:
+        # Comma-separated list of ports to instrument
         - name: BEYLA_OPEN_PORT
           value: "8080,3000,9090"  # Ports to instrument
+        # OTel Collector endpoint for sending telemetry
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://otel-collector.observability:4317"
+        # Enable Kubernetes metadata enrichment
         - name: BEYLA_KUBE_METADATA_ENABLE
           value: "true"
         volumeMounts:
+        # Required: access to kernel BTF data
         - name: sys-kernel
           mountPath: /sys/kernel
           readOnly: true
@@ -365,11 +395,13 @@ Odigos provides more comprehensive distributed tracing with automatic context pr
 
 ### Installation
 
+These commands install the Odigos CLI, which manages the Odigos operator in your Kubernetes cluster. You can use Homebrew on macOS or download the binary directly for Linux.
+
 ```bash
-# Install the Odigos CLI
+# Install the Odigos CLI using Homebrew (macOS)
 brew install odigos-io/homebrew-odigos-cli/odigos
 
-# Or download directly
+# Or download directly for Linux
 curl -LO https://github.com/odigos-io/odigos/releases/latest/download/odigos-cli-linux-amd64
 chmod +x odigos-cli-linux-amd64
 sudo mv odigos-cli-linux-amd64 /usr/local/bin/odigos
@@ -377,24 +409,28 @@ sudo mv odigos-cli-linux-amd64 /usr/local/bin/odigos
 
 ### Deploy to Kubernetes
 
+The `odigos install` command deploys the Odigos operator and supporting components to your cluster. This creates the infrastructure needed for automatic instrumentation without requiring changes to your application deployments.
+
 ```bash
 # Install Odigos in your cluster
 odigos install
 
 # This creates:
 # - odigos-system namespace
-# - Odigos operator
-# - Instrumentor DaemonSet
-# - OTel Collector (optional)
+# - Odigos operator (manages instrumentation)
+# - Instrumentor DaemonSet (injects instrumentation)
+# - OTel Collector (optional, for telemetry collection)
 ```
 
 ### Configure a Destination
 
+After installation, configure where Odigos should send telemetry. You can use the web UI or CLI to add backend destinations like OneUptime, Jaeger, or any OTLP-compatible endpoint.
+
 ```bash
-# Add your observability backend
+# Add your observability backend using the web UI
 odigos ui
 
-# Or via CLI
+# Or via CLI for automated setups
 odigos destination add oneuptime \
   --endpoint https://otlp.oneuptime.com \
   --api-key YOUR_API_KEY
@@ -402,11 +438,13 @@ odigos destination add oneuptime \
 
 ### Instrument Namespaces
 
+These commands tell Odigos which workloads to instrument. You can target entire namespaces for broad coverage or specific deployments for surgical precision.
+
 ```bash
-# Instrument all workloads in a namespace
+# Instrument all workloads in a namespace - broadest approach
 odigos instrument namespace my-app-namespace
 
-# Or specific workloads
+# Or specific workloads for more control
 odigos instrument deployment my-service -n my-namespace
 ```
 
@@ -419,6 +457,8 @@ Odigos is smarter than simple eBPF tracing:
 3. **Context Propagation**: Ensures trace context flows across service boundaries
 4. **No Code Changes**: All injection happens at runtime
 
+This sequence diagram shows how Odigos maintains distributed trace context across multiple services written in different languages. The key is automatic injection and extraction of trace headers, ensuring complete end-to-end visibility.
+
 ```mermaid
 sequenceDiagram
     participant Client
@@ -426,9 +466,9 @@ sequenceDiagram
     participant ServiceB as Service B (Python)
     participant ServiceC as Service C (Java)
     participant Collector as OTel Collector
-    
+
     Note over ServiceA,ServiceC: Odigos instruments all services automatically
-    
+
     Client->>ServiceA: HTTP Request
     Note right of ServiceA: eBPF captures request,<br>generates trace_id
     ServiceA->>ServiceB: HTTP with traceparent header
@@ -438,7 +478,7 @@ sequenceDiagram
     ServiceC-->>ServiceB: Response
     ServiceB-->>ServiceA: Response
     ServiceA-->>Client: Response
-    
+
     ServiceA->>Collector: Spans (OTLP)
     ServiceB->>Collector: Spans (OTLP)
     ServiceC->>Collector: Spans (OTLP)
@@ -488,6 +528,8 @@ The best approach is often **hybrid**: eBPF for baseline coverage, manual instru
 
 ### Strategy: Layer Your Instrumentation
 
+This diagram shows the layered instrumentation approach. eBPF provides the foundation (network and system calls), auto-instrumentation libraries add framework context, and manual spans capture business-specific details that only your code understands.
+
 ```mermaid
 graph TB
     subgraph "Layer 1: eBPF (Automatic)"
@@ -495,23 +537,25 @@ graph TB
         L2[Database calls]
         L3[External HTTP calls]
     end
-    
+
     subgraph "Layer 2: Auto-Instrumentation Libraries"
         L4[Framework-specific spans]
         L5[Library instrumentation]
     end
-    
+
     subgraph "Layer 3: Manual (Custom)"
         L6[Business logic spans]
         L7[Custom attributes]
         L8[Error details]
     end
-    
+
     L1 --> L4
     L4 --> L6
 ```
 
 ### Example: Hybrid Setup
+
+This Go example demonstrates hybrid instrumentation. eBPF automatically captures the HTTP handler entry/exit and database calls, while manual instrumentation adds business context (customer ID, order total) that eBPF cannot infer. The key is that both use the same trace context.
 
 ```go
 // Your Go service - eBPF captures the HTTP handler automatically
@@ -519,29 +563,29 @@ graph TB
 
 func (s *OrderService) CreateOrder(ctx context.Context, req *OrderRequest) (*Order, error) {
     // eBPF already captured: HTTP POST /orders, timing, status
-    
-    // Manual span for business logic detail
+
+    // Manual span for business logic detail - eBPF can't see this granularity
     ctx, span := tracer.Start(ctx, "order.validate")
     err := s.validateOrder(ctx, req)
     span.End()
     if err != nil {
-        // Manual: Add error details eBPF can't see
+        // Manual: Add error details eBPF can't see (exception type, message)
         span.RecordError(err)
         span.SetStatus(codes.Error, "validation failed")
         return nil, err
     }
-    
-    // eBPF captures the database call automatically
-    // Manual: Add business context
+
+    // eBPF captures the database call automatically (timing, query)
+    // Manual: Add business context that gives meaning to the data
     ctx, span = tracer.Start(ctx, "order.save")
     span.SetAttributes(
-        attribute.String("order.customer_id", req.CustomerID),
-        attribute.Float64("order.total", req.Total),
-        attribute.Int("order.items_count", len(req.Items)),
+        attribute.String("order.customer_id", req.CustomerID),  // Business context
+        attribute.Float64("order.total", req.Total),            // Domain metric
+        attribute.Int("order.items_count", len(req.Items)),     // Cardinality info
     )
     order, err := s.repo.Save(ctx, req)
     span.End()
-    
+
     return order, err
 }
 ```
@@ -554,26 +598,28 @@ For eBPF spans and manual spans to appear in the same trace:
 2. **Context Propagation**: Your manual spans must use the same context
 3. **Consistent Export**: Both eBPF and manual instrumentation export to the same collector
 
+This OTel Collector configuration merges telemetry from both eBPF agents and manual instrumentation. The resource processor adds consistent attributes across all sources, ensuring proper correlation in your observability backend.
+
 ```yaml
 # OTel Collector config to merge both sources
 receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: 0.0.0.0:4317
+        endpoint: 0.0.0.0:4317  # Receive from eBPF agents
       http:
-        endpoint: 0.0.0.0:4318
+        endpoint: 0.0.0.0:4318  # Receive from manual SDKs
 
 processors:
   batch:
-    timeout: 1s
-    
-  # Add consistent resource attributes
+    timeout: 1s  # Batch for efficient export
+
+  # Add consistent resource attributes across all telemetry
   resource:
     attributes:
       - key: deployment.environment
         value: production
-        action: upsert
+        action: upsert  # Add or update this attribute
 
 exporters:
   otlp:
@@ -616,19 +662,21 @@ A critical question: **What's the cost of running eBPF-based auto-instrumentatio
 
 ### Reducing Overhead
 
+This configuration demonstrates how to reduce eBPF overhead through sampling and endpoint filtering. Excluding high-volume, low-value endpoints like health checks can significantly reduce data volume without losing important observability data.
+
 ```yaml
 # Beyla example: Reduce overhead with sampling
 traces:
   sampler:
     name: parentbased_traceidratio
-    arg: "0.01"  # 1% sampling
+    arg: "0.01"  # 1% sampling for high-traffic production
 
-# Exclude high-volume, low-value endpoints
+# Exclude high-volume, low-value endpoints from tracing
 routes:
   ignored:
-    - /health
-    - /ready
-    - /metrics
+    - /health   # Health checks - high volume, low insight
+    - /ready    # Readiness probes - same
+    - /metrics  # Prometheus scrapes - already have metrics
 ```
 
 ---
@@ -639,20 +687,20 @@ eBPF auto-instrumentation is powerful but not magic. Know when to supplement it.
 
 ### Use eBPF Auto-Instrumentation When:
 
-✅ You need quick baseline observability across many services  
-✅ You can't modify application code (legacy, third-party)  
-✅ You want consistent HTTP/gRPC/DB tracing without per-service setup  
-✅ You need network-level visibility (connections, DNS)  
-✅ You're in a Kubernetes environment with mixed languages  
+- You need quick baseline observability across many services
+- You can't modify application code (legacy, third-party)
+- You want consistent HTTP/gRPC/DB tracing without per-service setup
+- You need network-level visibility (connections, DNS)
+- You're in a Kubernetes environment with mixed languages
 
 ### Use Manual Instrumentation When:
 
-✅ You need custom business attributes (user ID, order ID, feature flags)  
-✅ You want detailed error information with stack traces  
-✅ You need custom [metrics](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view) (business KPIs, counters for specific events)  
-✅ You're tracing non-HTTP protocols without eBPF support  
-✅ You need baggage propagation for cross-service context  
-✅ You want control over span names and structure  
+- You need custom business attributes (user ID, order ID, feature flags)
+- You want detailed error information with stack traces
+- You need custom [metrics](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view) (business KPIs, counters for specific events)
+- You're tracing non-HTTP protocols without eBPF support
+- You need baggage propagation for cross-service context
+- You want control over span names and structure
 
 ### Limitations of eBPF Auto-Instrumentation
 
@@ -673,35 +721,44 @@ eBPF auto-instrumentation is powerful but not magic. Know when to supplement it.
 
 eBPF agents run with elevated privileges. Mitigate risks:
 
+This RBAC configuration limits what the eBPF agent can access in Kubernetes. Following the principle of least privilege, only grant the permissions actually needed for the agent to function.
+
 ```yaml
-# Kubernetes: Use strict RBAC
+# Kubernetes: Use strict RBAC - only grant necessary permissions
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: ebpf-agent-role
 rules:
+# Read-only access to pods and nodes for metadata enrichment
 - apiGroups: [""]
   resources: ["pods", "nodes"]
   verbs: ["get", "list", "watch"]
-# Avoid granting more permissions than needed
+# Avoid granting more permissions than needed - no create/update/delete
 ```
 
+Use seccomp profiles to further restrict system calls the agent can make:
+
 ```yaml
-# Use seccomp profiles where possible
+# Use seccomp profiles where possible to limit syscall surface
 securityContext:
   seccompProfile:
-    type: RuntimeDefault
+    type: RuntimeDefault  # Use container runtime's default profile
 ```
 
 ### Resource Limits
+
+Always set resource limits on eBPF agents to prevent them from consuming excessive node resources during high-traffic periods.
 
 ```yaml
 containers:
 - name: ebpf-agent
   resources:
+    # Guaranteed minimum resources
     requests:
       cpu: 100m
       memory: 128Mi
+    # Hard limits to prevent resource exhaustion
     limits:
       cpu: 500m
       memory: 512Mi
@@ -709,47 +766,55 @@ containers:
 
 ### Filtering and Sampling
 
+This configuration shows production-ready filtering and sampling settings. Focus on tracing API endpoints that provide business value while excluding high-volume infrastructure endpoints.
+
 ```yaml
 # Don't trace everything - focus on what matters
 routes:
+  # Include patterns for business-critical endpoints
   patterns:
     - /api/*        # Trace API calls
     - /graphql      # Trace GraphQL
+  # Exclude high-volume, low-value endpoints
   ignored:
     - /health       # Skip health checks
     - /metrics      # Skip metrics endpoint
     - /favicon.ico  # Skip static assets
 
-# Sample to control volume
+# Sample to control volume in production
 traces:
   sampler:
     name: parentbased_traceidratio
-    arg: "0.1"  # 10% in production
+    arg: "0.1"  # 10% in production - adjust based on traffic
 ```
 
 ### Gradual Rollout
 
+Start with non-production environments to validate overhead and data quality before expanding to production workloads. This approach minimizes risk and allows you to tune configuration.
+
 ```bash
-# Start with non-production
+# Start with non-production to validate behavior
 odigos instrument namespace staging
 
-# Verify overhead and data quality
-# Then expand to production
+# Verify overhead and data quality (check CPU, memory, latency impact)
+# Then expand to production incrementally
 odigos instrument namespace production
 ```
 
 ### Monitoring the Monitoring
 
+Export metrics from your eBPF agents themselves so you can detect and alert on instrumentation issues before they impact observability coverage.
+
 ```yaml
-# Export eBPF agent metrics
+# Export eBPF agent metrics for self-monitoring
 prometheus:
   port: 9090
   path: /metrics
 
-# Alert on agent issues
-# - High CPU usage
-# - Dropped events
-# - Export failures
+# Alert on agent issues:
+# - High CPU usage (agent overhead)
+# - Dropped events (buffer overflow)
+# - Export failures (backend connectivity)
 ```
 
 ---

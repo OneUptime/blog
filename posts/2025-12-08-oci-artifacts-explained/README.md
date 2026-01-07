@@ -25,17 +25,24 @@ The last piece is what most teams mean today when they say "OCI artifact".
 
 ## Anatomy of an Artifact Manifest
 
+This JSON structure shows the core components of an OCI artifact manifest. Understanding this format is essential because it's the standardized way that registries identify and organize non-image artifacts like Helm charts, SBOMs, and policy bundles.
+
 ```json
 {
+  // The manifest's own media type identifies this as an OCI artifact
   "mediaType": "application/vnd.oci.artifact.manifest.v1+json",
+  // artifactType tells consumers how to interpret the blobs (e.g., Helm chart)
   "artifactType": "application/vnd.cncf.helm.chart.v1+json",
+  // The actual content of the artifact as content-addressed blobs
   "blobs": [
     { "mediaType": "application/tar+gzip", "size": 23142, "digest": "sha256:..." }
   ],
+  // Optional: links this artifact to another digest (e.g., signature -> image)
   "subject": {
     "mediaType": "application/vnd.oci.image.manifest.v1+json",
-    "digest": "sha256:image"  
+    "digest": "sha256:image"
   },
+  // Human-readable metadata that stays immutable with the digest
   "annotations": { "org.opencontainers.artifact.created": "2025-12-08T09:00:00Z" }
 }
 ```
@@ -65,6 +72,8 @@ Because registries only see digests and media types, none of these required cust
 
 ## Registry Flow (Build -> Push -> Promote)
 
+This diagram illustrates the complete lifecycle of an OCI artifact from source to deployment. The same registry infrastructure that handles container images can manage any artifact type, providing a unified supply chain.
+
 ```mermaid
 flowchart LR
     Source["Source inputs\n(code, policy, model)"] --> Build["Package artifact\n(oras, helm, tar)"]
@@ -80,10 +89,17 @@ Same lifecycle as containers, just with different consumers.
 
 ## Publishing an Artifact with `oras`
 
+This command demonstrates how to publish a policy bundle as an OCI artifact using the `oras` CLI. The artifact type, media type, and annotations are all specified to ensure consumers know how to interpret and track the artifact.
+
 ```bash
+# Push a policy bundle to GitHub Container Registry as an OCI artifact
+# oras is the official OCI Registry As Storage client
 oras push ghcr.io/oneuptime/policies:rbac-v1 \
+  # Specify the artifact type so consumers know this is an OPA policy
   --artifact-type application/vnd.cncf.openpolicyagent.config.v1+json \
+  # The file to upload with its media type (gzipped tarball)
   policy.bundle.tar.gz:application/gzip \
+  # Annotations for provenance and environment tracking
   --annotation org.opencontainers.image.source=https://github.com/oneuptime/policies \
   --annotation org.oneuptime.stage="prod"
 ```

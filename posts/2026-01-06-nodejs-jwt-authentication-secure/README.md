@@ -18,22 +18,25 @@ A JWT consists of three parts:
 Header.Payload.Signature
 ```
 
+A JWT contains three base64-encoded parts: the header specifies the signing algorithm, the payload contains claims (user data and metadata), and the signature ensures the token hasn't been tampered with.
+
 ```javascript
-// Header
+// Header - describes the token type and signing algorithm
 {
-  "alg": "HS256",  // Signing algorithm
-  "typ": "JWT"
+  "alg": "HS256",  // HMAC-SHA256 signing algorithm
+  "typ": "JWT"     // Token type
 }
 
-// Payload
+// Payload - contains claims about the user and token
 {
-  "sub": "user123",           // Subject (user ID)
-  "iat": 1704067200,          // Issued at
-  "exp": 1704068100,          // Expiration
-  "roles": ["user"]           // Custom claims
+  "sub": "user123",           // Subject: identifies the user
+  "iat": 1704067200,          // Issued At: when token was created (Unix timestamp)
+  "exp": 1704068100,          // Expiration: when token expires (Unix timestamp)
+  "roles": ["user"]           // Custom claims: application-specific data
 }
 
-// Signature
+// Signature - verifies token integrity
+// Created by signing header + payload with the secret key
 HMACSHA256(base64UrlEncode(header) + "." + base64UrlEncode(payload), secret)
 ```
 
@@ -49,51 +52,61 @@ HMACSHA256(base64UrlEncode(header) + "." + base64UrlEncode(payload), secret)
 
 ## Basic Secure JWT Implementation
 
+This implementation demonstrates secure token generation with separate secrets for access and refresh tokens, proper expiration times, and validation at startup to catch configuration errors early.
+
 ```javascript
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
-// Configuration
+// Configuration with separate secrets for access and refresh tokens
+// Using different secrets prevents token type confusion attacks
 const config = {
   accessToken: {
     secret: process.env.JWT_ACCESS_SECRET,
-    expiresIn: '15m', // Short-lived
+    expiresIn: '15m', // Short-lived: limits damage if stolen
   },
   refreshToken: {
     secret: process.env.JWT_REFRESH_SECRET,
-    expiresIn: '7d',
+    expiresIn: '7d',  // Longer-lived but requires rotation
   },
 };
 
-// Validate configuration at startup
+// Fail fast: validate configuration at application startup
+// Prevents running with weak or missing secrets
 if (!config.accessToken.secret || config.accessToken.secret.length < 32) {
   throw new Error('JWT_ACCESS_SECRET must be at least 32 characters');
 }
 
-// Generate token pair
+// Generate both access and refresh tokens for a user
 function generateTokens(user) {
+  // Access token: used for API authentication
+  // Contains user info needed for authorization decisions
   const accessToken = jwt.sign(
     {
-      sub: user.id,
-      email: user.email,
-      roles: user.roles,
-      type: 'access',
+      sub: user.id,           // Subject: user identifier
+      email: user.email,      // Include for convenience
+      roles: user.roles,      // For role-based access control
+      type: 'access',         // Token type for validation
     },
     config.accessToken.secret,
     {
       expiresIn: config.accessToken.expiresIn,
-      algorithm: 'HS256',
-      issuer: 'your-app',
-      audience: 'your-api',
+      algorithm: 'HS256',     // Explicit algorithm prevents substitution
+      issuer: 'your-app',     // Validates token origin
+      audience: 'your-api',   // Validates intended recipient
     }
   );
 
+  // Generate unique ID for refresh token revocation tracking
   const refreshTokenId = crypto.randomUUID();
+
+  // Refresh token: used only to get new access tokens
+  // Minimal payload - just enough to identify user and token
   const refreshToken = jwt.sign(
     {
       sub: user.id,
-      jti: refreshTokenId, // Unique ID for revocation
-      type: 'refresh',
+      jti: refreshTokenId,    // JWT ID: unique identifier for revocation
+      type: 'refresh',        // Token type for validation
     },
     config.refreshToken.secret,
     {
@@ -106,19 +119,20 @@ function generateTokens(user) {
   return {
     accessToken,
     refreshToken,
-    refreshTokenId,
+    refreshTokenId,  // Store this for revocation tracking
   };
 }
 
-// Verify access token
+// Verify and decode an access token
 function verifyAccessToken(token) {
   try {
     const decoded = jwt.verify(token, config.accessToken.secret, {
-      algorithms: ['HS256'], // Prevent algorithm substitution attacks
-      issuer: 'your-app',
-      audience: 'your-api',
+      algorithms: ['HS256'], // CRITICAL: prevents algorithm substitution attacks
+      issuer: 'your-app',    // Verify token was issued by us
+      audience: 'your-api',  // Verify token was meant for us
     });
 
+    // Ensure this is actually an access token, not a refresh token
     if (decoded.type !== 'access') {
       throw new Error('Invalid token type');
     }
@@ -132,48 +146,55 @@ function verifyAccessToken(token) {
 
 ## Refresh Token Rotation
 
-Rotating refresh tokens on each use detects token theft:
+Rotating refresh tokens on each use detects token theft. If an attacker steals a refresh token and uses it, the legitimate user's next refresh attempt will fail, triggering a security alert. This pattern is critical for detecting and responding to compromised tokens.
 
 ```javascript
-// In-memory store (use Redis in production)
+// In-memory store for development (use Redis in production)
 const refreshTokenStore = new Map();
 
+// Store a refresh token with metadata for security tracking
 async function storeRefreshToken(userId, tokenId, metadata) {
   const key = `refresh:${userId}`;
   let userTokens = refreshTokenStore.get(key) || [];
 
-  // Limit tokens per user (e.g., max 5 devices)
+  // Limit active sessions per user (e.g., max 5 devices)
+  // Prevents unlimited token accumulation
   if (userTokens.length >= 5) {
-    userTokens = userTokens.slice(-4); // Keep last 4
+    userTokens = userTokens.slice(-4); // Remove oldest, keep last 4
   }
 
   userTokens.push({
     tokenId,
     createdAt: Date.now(),
-    ...metadata,
+    ...metadata,  // Store IP, user agent for session management UI
   });
 
   refreshTokenStore.set(key, userTokens);
 }
 
+// Revoke a specific refresh token (used after rotation or logout)
 async function revokeRefreshToken(userId, tokenId) {
   const key = `refresh:${userId}`;
   const userTokens = refreshTokenStore.get(key) || [];
+  // Filter out the revoked token
   refreshTokenStore.set(key, userTokens.filter(t => t.tokenId !== tokenId));
 }
 
+// Check if a refresh token is still valid (not revoked)
 async function isRefreshTokenValid(userId, tokenId) {
   const key = `refresh:${userId}`;
   const userTokens = refreshTokenStore.get(key) || [];
   return userTokens.some(t => t.tokenId === tokenId);
 }
 
+// Nuclear option: revoke ALL user tokens (password change, security breach)
 async function revokeAllUserTokens(userId) {
   const key = `refresh:${userId}`;
   refreshTokenStore.delete(key);
 }
 
 // Token refresh endpoint with rotation
+// This is the core of the security model - each refresh invalidates the old token
 app.post('/auth/refresh', async (req, res) => {
   const { refreshToken } = req.body;
 
@@ -182,20 +203,22 @@ app.post('/auth/refresh', async (req, res) => {
   }
 
   try {
-    // Verify the refresh token
+    // Step 1: Verify the refresh token signature and claims
     const decoded = jwt.verify(refreshToken, config.refreshToken.secret, {
       algorithms: ['HS256'],
     });
 
+    // Ensure we're dealing with a refresh token, not an access token
     if (decoded.type !== 'refresh') {
       return res.status(401).json({ error: 'Invalid token type' });
     }
 
-    // Check if token is in store (not revoked)
+    // Step 2: Check if token is in our store (not already used/revoked)
     const isValid = await isRefreshTokenValid(decoded.sub, decoded.jti);
     if (!isValid) {
-      // Token was revoked - possible theft detected
-      // Revoke ALL user tokens as security measure
+      // SECURITY ALERT: Token was already used or revoked
+      // This could indicate token theft - attacker used it before user
+      // Revoke ALL user tokens as a security precaution
       await revokeAllUserTokens(decoded.sub);
 
       console.warn(`Refresh token reuse detected for user ${decoded.sub}`);
@@ -205,23 +228,26 @@ app.post('/auth/refresh', async (req, res) => {
       });
     }
 
-    // Revoke the used refresh token
+    // Step 3: Immediately revoke the used refresh token (rotation)
+    // Even if the response fails, the old token is now invalid
     await revokeRefreshToken(decoded.sub, decoded.jti);
 
-    // Get user and generate new tokens
+    // Step 4: Get fresh user data (roles may have changed)
     const user = await User.findById(decoded.sub);
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
     }
 
+    // Step 5: Generate new token pair
     const tokens = generateTokens(user);
 
-    // Store new refresh token
+    // Step 6: Store new refresh token for future validation
     await storeRefreshToken(user.id, tokens.refreshTokenId, {
       userAgent: req.get('User-Agent'),
       ip: req.ip,
     });
 
+    // Return new tokens to client
     res.json({
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,

@@ -25,11 +25,15 @@ If Docker solved “works on my laptop,” Kubernetes solves “this app keeps w
 
 Picture a help desk ticket flowing through a company. You (the developer) submit a request, operations triage it, and someone on the ground actually does the work. Kubernetes follows the same rhythm.
 
+This diagram shows how your kubectl commands flow through the cluster. Understanding this path helps you debug when pods get stuck at any stage.
+
 ```mermaid
 graph LR
+  %% Request flow from developer to running pods
   Dev[Developer] -->|kubectl| API[Kubernetes API Server]
   API --> Etcd[(etcd state)]
   API --> Scheduler
+  %% Scheduler assigns pods to nodes, kubelets do the work
   Scheduler --> KubeletA[Kubelet on Node A]
   Scheduler --> KubeletB[Kubelet on Node B]
   KubeletA --> PodsA[Pods on Node A]
@@ -68,15 +72,19 @@ If `kubectl` hangs, restart Docker Desktop (kind/minikube rely on it) or run `ku
 
 Now that `kubectl` works, zoom out and see the moving parts. The control plane makes decisions; the nodes do the work.
 
+This diagram shows the separation between control plane components (which make scheduling decisions) and worker nodes (which run your actual workloads).
+
 ```mermaid
 graph TD
   subgraph Control Plane
+    %% Control plane components handle cluster-level decisions
     API2[API Server]
     Scheduler2[Scheduler]
     Controller2[Controller Manager]
     Etcd2[(etcd)]
   end
   subgraph Node 1
+    %% Worker nodes run kubelet and your application pods
     Kubelet1[Kubelet]
     Pod1(Pod: web-abc)
   end
@@ -84,6 +92,7 @@ graph TD
     Kubelet2[Kubelet]
     Pod2(Pod: web-def)
   end
+  %% Scheduler tells kubelets where to place pods
   API2 --> Scheduler2
   Scheduler2 --> Kubelet1
   Scheduler2 --> Kubelet2
@@ -101,6 +110,7 @@ Create a namespace to isolate your demo workloads:
 
 ```bash
 # Namespaces provide logical separation between workloads
+# They prevent resource name collisions and enable access control
 kubectl create namespace demo
 ```
 
@@ -109,26 +119,28 @@ Deployment YAML (`quote-api.yaml`):
 This Deployment tells Kubernetes to run 2 replicas of the quote-api container. The Deployment controller ensures that exactly 2 Pods are always running.
 
 ```yaml
+# Deployment manages a set of identical pods
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: quote-api
-  namespace: demo               # Deploy into the demo namespace
+  namespace: demo               # Deploy into the demo namespace for isolation
 spec:
-  replicas: 2                   # Run 2 copies of this Pod
+  replicas: 2                   # Run 2 copies of this Pod for availability
   selector:
     matchLabels:
-      app: quote-api            # Find Pods with this label
+      app: quote-api            # Find Pods with this label to manage
   template:
+    # Template defines what each Pod looks like
     metadata:
       labels:
-        app: quote-api          # Label applied to created Pods
+        app: quote-api          # Label applied to created Pods (must match selector)
     spec:
       containers:
         - name: api
-          image: ghcr.io/example/quote-api:1.0.0
+          image: ghcr.io/example/quote-api:1.0.0  # Container image to run
           ports:
-            - containerPort: 8080  # Port the container listens on
+            - containerPort: 8080  # Port the container listens on (informational)
 ```
 
 Every section mirrors plain English:
@@ -141,8 +153,11 @@ Apply the manifest to create the Deployment in your cluster:
 
 ```bash
 # Create or update the Deployment from the YAML file
+# apply is idempotent - safe to run multiple times
 kubectl apply -f quote-api.yaml
+
 # List Pods in the demo namespace - should show 2 Running Pods
+# -n specifies the namespace to query
 kubectl get pods -n demo
 ```
 
@@ -161,24 +176,30 @@ apiVersion: v1
 kind: Service
 metadata:
   name: quote-api
-  namespace: demo
+  namespace: demo               # Must match the Deployment's namespace
 spec:
   type: ClusterIP               # Internal cluster IP (default type)
+                                # Use LoadBalancer or NodePort for external access
   selector:
     app: quote-api              # Route traffic to Pods with this label
   ports:
-    - port: 80                  # Port the Service exposes
+    - port: 80                  # Port the Service exposes to other pods
       targetPort: 8080          # Port on the container to forward to
 ```
 
 Apply and test the Service using port-forwarding:
 
 ```bash
-# Create the Service
+# Create the Service from the YAML file
 kubectl apply -f service.yaml
+
 # Forward local port 8080 to Service port 80
+# This creates a tunnel through the API server to the Service
+# Useful for testing without setting up Ingress or LoadBalancer
 kubectl port-forward svc/quote-api -n demo 8080:80
+
 # In another terminal, test the endpoint
+# curl sends a GET request to the forwarded port
 curl http://localhost:8080
 ```
 
@@ -192,8 +213,12 @@ Update the image tag to trigger a rolling update. Kubernetes will gradually repl
 
 ```bash
 # Update the container image - triggers a rolling update
+# Kubernetes creates new pods with the new image before terminating old ones
+# The "api" after the slash is the container name from your Deployment spec
 kubectl set image deployment/quote-api api=ghcr.io/example/quote-api:1.1.0 -n demo
+
 # Watch the rollout progress until all Pods are updated
+# This command blocks until the rollout completes or fails
 kubectl rollout status deployment/quote-api -n demo
 ```
 
@@ -213,25 +238,27 @@ Once the PVC is bound, pods mount it like a normal folder. If the pod reschedule
 This example shows a StatefulSet running PostgreSQL with persistent storage. Unlike Deployments, StatefulSets give each Pod a stable identity and dedicated storage.
 
 ```yaml
+# PersistentVolumeClaim requests storage from the cluster
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: pg-data
   namespace: demo
 spec:
-  accessModes: [ReadWriteOnce]    # Only one Pod can mount at a time
+  accessModes: [ReadWriteOnce]    # Only one Pod can mount at a time (typical for databases)
   resources:
     requests:
-      storage: 20Gi               # Request 20GB of storage
+      storage: 20Gi               # Request 20GB of storage from the cluster
 ---
+# StatefulSet for stateful workloads that need stable identities
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: pg
   namespace: demo
 spec:
-  serviceName: pg                 # Headless Service for DNS
-  replicas: 1
+  serviceName: pg                 # Headless Service name for DNS-based discovery
+  replicas: 1                     # Single replica for this example
   selector:
     matchLabels:
       app: pg
@@ -242,19 +269,19 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: postgres:16
+          image: postgres:16      # Official PostgreSQL image
           ports:
             - containerPort: 5432   # PostgreSQL default port
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:
-                secretKeyRef:       # Read password from a Secret
+                secretKeyRef:       # Read password from a Secret (not hardcoded)
                   name: pg-secret
                   key: password
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql/data  # Where PostgreSQL stores data
-  volumeClaimTemplates:            # Creates a PVC for each Pod replica
+              mountPath: /var/lib/postgresql/data  # Where PostgreSQL stores data files
+  volumeClaimTemplates:            # Creates a unique PVC for each Pod replica
     - metadata:
         name: data
       spec:
@@ -274,6 +301,8 @@ Create the referenced secret before deploying the StatefulSet:
 
 ```bash
 # Create a Secret containing the PostgreSQL password
+# --from-literal creates a secret from a key=value pair
+# In production, use external secret management (Vault, AWS Secrets Manager)
 kubectl create secret generic pg-secret --from-literal=password=supersecure -n demo
 ```
 

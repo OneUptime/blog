@@ -37,18 +37,21 @@ This is defense in depth. Even if an attacker breaks out of the container, they'
 
 ### Check Your System
 
+These commands verify your system meets the requirements for rootless Docker. User namespace support is essential for UID mapping.
+
 ```bash
-# Kernel version
+# Check kernel version (5.11+ recommended, 4.18+ minimum)
 uname -r
 
-# User namespace support
+# Verify user namespace support is enabled
+# Value must be 1 (enabled)
 cat /proc/sys/kernel/unprivileged_userns_clone
 # Should return 1
 
-# Required packages (Debian/Ubuntu)
+# Install required packages on Debian/Ubuntu
 sudo apt install uidmap dbus-user-session slirp4netns
 
-# Required packages (RHEL/Fedora)
+# Install required packages on RHEL/Fedora
 sudo dnf install shadow-utils slirp4netns
 ```
 
@@ -56,15 +59,18 @@ sudo dnf install shadow-utils slirp4netns
 
 Your user needs subordinate ID ranges for user namespace mapping:
 
+Subordinate UIDs and GIDs allow your unprivileged user to map container UIDs to a range of host UIDs. This is how container "root" becomes a regular user on the host.
+
 ```bash
-# Check current allocation
+# Check current allocation for your user
 cat /etc/subuid
 cat /etc/subgid
 
-# If your user is missing, add it (as root)
+# If your user is missing, add subordinate ID ranges (run as root)
+# This allocates UIDs/GIDs 100000-165535 for user namespace mapping
 sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
 
-# Verify
+# Verify the configuration was applied
 grep $USER /etc/subuid /etc/subgid
 ```
 
@@ -76,18 +82,23 @@ grep $USER /etc/subuid /etc/subgid
 
 If you already have Docker installed:
 
+The rootless setup script configures a separate Docker daemon that runs under your user account, independent of the system Docker.
+
 ```bash
-# Run the rootless setup script
+# Run the rootless setup script (included with Docker)
 dockerd-rootless-setuptool.sh install
 
-# If the script isn't available, download it
+# If the script isn't available, download and run installer
 curl -fsSL https://get.docker.com/rootless | sh
 ```
 
 ### Option 2: Fresh Rootless-Only Install
 
+For a fresh installation of rootless Docker without the traditional root-mode Docker.
+
 ```bash
-# Download and run installer
+# Download and run installer script
+# This installs Docker configured for rootless mode only
 curl -fsSL https://get.docker.com/rootless | sh
 ```
 
@@ -95,15 +106,19 @@ curl -fsSL https://get.docker.com/rootless | sh
 
 The installer will output environment variables to add to your shell:
 
+Configure your shell to use the rootless Docker socket. The DOCKER_HOST variable tells Docker CLI where to connect.
+
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
-export PATH=/home/$USER/bin:$PATH
-export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock
+# These configure Docker CLI to connect to rootless daemon
+export PATH=/home/$USER/bin:$PATH                        # Add rootless binaries to PATH
+export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock # Point to user-owned socket
 ```
 
 Reload your shell:
 
 ```bash
+# Apply the configuration changes
 source ~/.bashrc
 ```
 
@@ -113,25 +128,31 @@ source ~/.bashrc
 
 ### Start/Stop with systemd (Recommended)
 
+Using systemd user services is the recommended way to manage the rootless Docker daemon. These services run in your user session.
+
 ```bash
-# Enable and start at login
+# Enable daemon to start automatically when you log in
 systemctl --user enable docker
+
+# Start the daemon now
 systemctl --user start docker
 
-# Check status
+# Check daemon status
 systemctl --user status docker
 
-# View logs
+# View daemon logs for troubleshooting
 journalctl --user -u docker
 ```
 
 ### Manual Start (For Testing)
 
+For testing or debugging, you can start the daemon manually without systemd.
+
 ```bash
-# Start daemon in foreground
+# Start daemon in foreground (useful for debugging)
 dockerd-rootless.sh
 
-# Or in background
+# Or start in background
 dockerd-rootless.sh &
 ```
 
@@ -139,8 +160,11 @@ dockerd-rootless.sh &
 
 By default, user services stop when you log out:
 
+Enable lingering to keep your user services running even when not logged in. This is essential for running containers as services.
+
 ```bash
-# Enable lingering for your user
+# Enable lingering for your user (persists services after logout)
+# Required if you want containers to keep running
 sudo loginctl enable-linger $USER
 ```
 
@@ -148,21 +172,25 @@ sudo loginctl enable-linger $USER
 
 ## Verifying Rootless Operation
 
+These commands confirm Docker is running in rootless mode and that UID mapping is working correctly.
+
 ```bash
-# Check Docker info
+# Check Docker info for rootless indicator
 docker info | grep -i rootless
 # Should show: rootless
 
-# Check the daemon socket
+# Verify the daemon socket path is user-owned
 echo $DOCKER_HOST
 # Should be: unix:///run/user/<uid>/docker.sock
 
-# Verify container root maps to your UID
+# Run container and check UID inside
 docker run --rm alpine id
-# Shows: uid=0(root) - inside container
+# Shows: uid=0(root) - this is root INSIDE the container
 
+# View the UID mapping to confirm container root maps to your UID
 docker run --rm alpine cat /proc/1/uid_map
 # Shows mapping: 0 <your-uid> 1
+# This means container UID 0 maps to your host UID
 ```
 
 ---
@@ -173,21 +201,27 @@ Rootless Docker can't bind to ports below 1024 by default and uses `slirp4netns`
 
 ### Port Binding
 
+Unprivileged users cannot bind to ports below 1024 by default on Linux. Use high ports for development.
+
 ```bash
-# This fails - can't bind port 80 without root
+# This fails - unprivileged users can't bind port 80
 docker run -p 80:80 nginx
 
-# This works - use high port
+# This works - use high port (1024+)
 docker run -p 8080:80 nginx
 ```
 
 ### Enable Low Ports (Optional)
 
+If you need to bind to ports below 1024, you have two options. Use with caution as this changes system security settings.
+
 ```bash
-# Allow binding to low ports
+# Option 1: Add capability to rootlesskit binary
+# This allows binding to low ports while remaining rootless
 sudo setcap cap_net_bind_service=ep $(which rootlesskit)
 
-# Or use sysctl
+# Option 2: Change system-wide setting for unprivileged port binding
+# Allows all unprivileged users to bind to ports >= 80
 sudo sysctl net.ipv4.ip_unprivileged_port_start=80
 ```
 
@@ -195,16 +229,17 @@ sudo sysctl net.ipv4.ip_unprivileged_port_start=80
 
 `slirp4netns` adds overhead compared to root mode networking. For high-performance needs:
 
+The pasta network backend provides better performance than slirp4netns for rootless networking.
+
 ```bash
-# Use pasta (faster than slirp4netns)
-# First install pasta
+# Install pasta (faster than slirp4netns)
 sudo apt install passt
 
 # Then configure Docker to use it
 # In ~/.config/docker/daemon.json
 {
   "features": {
-    "containerd-snapshotter": true
+    "containerd-snapshotter": true  # Enable modern features
   }
 }
 ```
@@ -213,14 +248,16 @@ sudo apt install passt
 
 Bridge networking works but with some caveats:
 
+User-defined networks work in rootless mode. Containers on the same network can communicate using container names as hostnames.
+
 ```bash
-# Create a network
+# Create a user-defined network
 docker network create mynet
 
-# Containers on same network can communicate
-docker run --network mynet --name db postgres
-docker run --network mynet --name app myapp
-# app can reach db by name
+# Containers on the same network can communicate by name
+docker run --network mynet --name db postgres      # Database container
+docker run --network mynet --name app myapp        # App can reach "db" by name
+# app container can connect to db using hostname "db"
 ```
 
 ---
@@ -231,24 +268,29 @@ docker run --network mynet --name app myapp
 
 Rootless Docker stores data in your home directory:
 
+Unlike root Docker which uses /var/lib/docker, rootless Docker stores everything under your home directory. Plan for disk space accordingly.
+
 ```
 ~/.local/share/docker/
-├── containers/
-├── image/
-├── network/
-├── overlay2/
-└── volumes/
+├── containers/    # Container filesystems and metadata
+├── image/         # Downloaded and built images
+├── network/       # Network configuration
+├── overlay2/      # Image and container layers
+└── volumes/       # Named volumes
 ```
 
 ### Overlay2 Requirements
 
 The default storage driver may need configuration:
 
+The overlay2 storage driver may require fuse-overlayfs on some systems. Check your current driver and install if needed.
+
 ```bash
-# Check current driver
+# Check current storage driver
 docker info | grep "Storage Driver"
 
-# If you get errors, you might need fuse-overlayfs
+# If you get errors with overlay2, install fuse-overlayfs
+# This provides an unprivileged overlay filesystem
 sudo apt install fuse-overlayfs
 ```
 
@@ -256,16 +298,18 @@ sudo apt install fuse-overlayfs
 
 If your home directory is small, move Docker data:
 
+You can relocate Docker's data directory to a larger partition. This is useful when home directories are quota-limited.
+
 ```bash
-# Create directory elsewhere
+# Create directory elsewhere (e.g., on larger partition)
 mkdir -p /data/docker-rootless
 
 # Configure in ~/.config/docker/daemon.json
 {
-  "data-root": "/data/docker-rootless"
+  "data-root": "/data/docker-rootless"  # Custom data directory
 }
 
-# Restart daemon
+# Restart daemon to apply changes
 systemctl --user restart docker
 ```
 
@@ -296,17 +340,23 @@ systemctl --user restart docker
 
 For CPU/memory limits to work:
 
+Resource limits require cgroup delegation to be enabled for your user. This allows the unprivileged daemon to set CPU and memory constraints.
+
 ```bash
-# Check cgroup version
+# Check cgroup version (v2 is required for full features)
 mount | grep cgroup
 
-# For cgroup v2, enable delegation
+# For cgroup v2, enable delegation to user services
 sudo mkdir -p /etc/systemd/system/user@.service.d
+
+# Create delegation configuration
 sudo cat > /etc/systemd/system/user@.service.d/delegate.conf << EOF
 [Service]
+# Delegate these cgroup controllers to user services
 Delegate=cpu cpuset io memory pids
 EOF
 
+# Reload systemd to apply changes
 sudo systemctl daemon-reload
 ```
 
@@ -333,28 +383,30 @@ sudo systemctl daemon-reload
 
 ## Quick Reference
 
+Common commands for installing, managing, and switching between rootless and root Docker modes.
+
 ```bash
 # Install rootless Docker
 curl -fsSL https://get.docker.com/rootless | sh
 
-# Start daemon
+# Start daemon with systemd user service
 systemctl --user start docker
 
-# Enable at login
+# Enable daemon to start on login
 systemctl --user enable docker
 
-# Keep running after logout
+# Keep running after logout (required for background containers)
 sudo loginctl enable-linger $USER
 
-# Verify rootless mode
+# Verify rootless mode is active
 docker info | grep rootless
 
-# Check daemon logs
+# View daemon logs for troubleshooting
 journalctl --user -u docker -f
 
-# Switch between rootless and root mode
-export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock  # rootless
-export DOCKER_HOST=unix:///var/run/docker.sock            # root
+# Switch between rootless and root mode by changing DOCKER_HOST
+export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock  # Use rootless daemon
+export DOCKER_HOST=unix:///var/run/docker.sock            # Use root daemon
 ```
 
 ---
@@ -363,8 +415,10 @@ export DOCKER_HOST=unix:///var/run/docker.sock            # root
 
 ### "permission denied" on docker.sock
 
+If you get permission denied errors, the daemon may not be running or the socket path is wrong.
+
 ```bash
-# Check socket exists
+# Check if socket exists at expected location
 ls -la /run/user/$(id -u)/docker.sock
 
 # If missing, start the daemon
@@ -373,23 +427,28 @@ systemctl --user start docker
 
 ### Daemon Won't Start
 
+Check logs for common configuration issues like missing subuid/subgid entries or networking components.
+
 ```bash
-# Check logs
+# Check daemon logs for errors
 journalctl --user -u docker --no-pager
 
 # Common issues:
-# - Missing subuid/subgid entries
-# - Missing slirp4netns
-# - Wrong kernel parameters
+# - Missing subuid/subgid entries → run usermod command above
+# - Missing slirp4netns → install networking package
+# - Wrong kernel parameters → check user namespace support
 ```
 
 ### Slow Networking
 
+Network performance in rootless mode is slower due to userspace networking. Install pasta for improved performance.
+
 ```bash
-# Install pasta for better performance
+# Install pasta for better network performance
 sudo apt install passt
 
 # Or accept the tradeoff - rootless prioritizes security over speed
+# For most workloads, the overhead is acceptable
 ```
 
 ---

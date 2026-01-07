@@ -10,6 +10,8 @@ Docker looks effortless: one CLI command builds an image or spawns a container i
 
 ## 1. The Control Plane Journey from CLI to Kernel
 
+The following diagram illustrates the complete path a command takes from when you type `docker run` until your container process starts. Understanding this flow is essential for debugging container issues and choosing the right tool for direct intervention when needed.
+
 ```mermaid
 flowchart LR
     A[docker CLI] -->|REST| B[dockerd]
@@ -33,8 +35,12 @@ Knowing this stack helps when you need to step outside the Docker CLI. For examp
 
 Every Docker image is an OCI manifest: JSON pointing to a config blob plus a series of content-addressed layers. You can inspect one without pulling it:
 
+This command uses the `crane` tool to fetch and display the manifest metadata for an image directly from the registry. It's useful for understanding an image's layer structure and sizes before downloading potentially gigabytes of data.
+
 ```bash
 # Show the manifest for nginx:1.27 without downloading gigabytes
+# Uses crane (go-containerregistry tool) to query registry directly
+# The jq filter extracts layer information showing media type and size
 $ crane manifest nginx:1.27 | jq '.layers[] | {mediaType, size}'
 ```
 
@@ -48,16 +54,25 @@ Key takeaways:
 
 When you start a container, Docker mounts a read-only stack of layers plus a thin writable layer on top. OverlayFS/globally known as union filesystems provide this illusion.
 
+This Dockerfile demonstrates multi-stage builds, a critical optimization technique. The first stage compiles the application with all build dependencies, while the second stage creates a minimal runtime image using only the compiled binary. This dramatically reduces the final image size and attack surface.
+
 ```Dockerfile
 # Stage 1: build
+# Start from a full Go toolchain image for compilation
 FROM golang:1.22-alpine AS build
+# Set working directory for all subsequent commands
 WORKDIR /src
+# Copy source files into the build container
 COPY . .
+# Compile the binary with trimpath to remove local paths from the binary
 RUN go build -trimpath -o app ./cmd/api
 
 # Stage 2: minimal runtime image
+# Use distroless base image (no shell, minimal attack surface)
 FROM gcr.io/distroless/base
+# Copy only the compiled binary from the build stage
 COPY --from=build /src/app /app
+# Set the container's entrypoint to run the binary directly
 ENTRYPOINT ["/app"]
 ```
 
@@ -67,21 +82,27 @@ If you ever wonder where files sit on disk, list `/var/lib/docker/overlay2`. Eac
 
 ## 4. Namespaces: Showing Each Container Its Own World
 
-Namespaces virtualize kernel resources so one container’s processes cannot accidentally see another’s. When `runc` executes `clone(CLONE_NEWNS | CLONE_NEWPID | ...)`, it gets fresh views of:
+Namespaces virtualize kernel resources so one container's processes cannot accidentally see another's. When `runc` executes `clone(CLONE_NEWNS | CLONE_NEWPID | ...)`, it gets fresh views of:
 
 - **PID namespace**: process IDs start at 1 inside the container. Only processes inside can signal each other unless explicitly shared.
 - **Mount namespace**: containers get their own mount table. Docker overlays layers, bind-mounts volumes, and hides host paths you never asked for.
 - **Network namespace**: each container owns a virtual NIC. Docker wires it to a bridge (docker0), a macvlan, or your custom CNI plugin.
 - **IPC & UTS namespaces**: isolate shared-memory segments and hostnames.
 
-You can prove it by entering a container’s namespaces from the host:
+You can prove it by entering a container's namespaces from the host:
+
+This example demonstrates how to use `nsenter` to enter a running container's namespace from the host system. This is invaluable for debugging when you need host-level tools that aren't available inside the container, or when the container's shell is broken.
 
 ```bash
 # Inspect the PID of a running container
+# docker inspect retrieves container metadata; --format extracts the host PID
 $ docker inspect --format '{{.State.Pid}}' api
 21573
 # Enter its namespace with nsenter
+# --target specifies the PID to get namespaces from
+# --mount --uts --ipc --net --pid enters all major namespaces
 $ sudo nsenter --target 21573 --mount --uts --ipc --net --pid
+# Now running in container's namespace - hostname shows container ID
 root@f3a0c9b6f799:/# hostname
 f3a0c9b6f799
 ```
@@ -90,7 +111,11 @@ f3a0c9b6f799
 
 Control groups (v2 on modern kernels) are hierarchical filesystems under `/sys/fs/cgroup`. Docker writes numeric limits there just before your process starts:
 
+This command starts an nginx container with strict resource limits. Memory is capped at 256MB, and CPU is limited to one full core. When these limits are exceeded, the container may be throttled (CPU) or killed (memory OOM).
+
 ```bash
+# Run nginx with memory limited to 256MB and CPU limited to 1 core
+# These flags translate to cgroup v2 settings in the kernel
 $ docker run --memory=256m --cpus=1 nginx
 ```
 
@@ -134,7 +159,7 @@ Docker drops a curated capability set by default. Run `docker run --cap-drop ALL
 
 - `--security-opt seccomp=profile.json` to ban dangerous syscalls.
 - `--security-opt apparmor=docker-default` or SELinux labels.
-- Rootless mode (user namespaces) so the container’s UID 0 maps to an unprivileged UID on the host.
+- Rootless mode (user namespaces) so the container's UID 0 maps to an unprivileged UID on the host.
 
 If you are diving deeper, read about `landlock` and `fanotify` policies, and scan images for vulnerabilities. For a practical hardening checklist, see [How to Shrink and Harden Docker Images Without Breaking Builds](https://oneuptime.com/blog/post/2025-11-27-shrink-and-harden-docker-images/view).
 
@@ -151,17 +176,25 @@ Containers are processes; the kernel exposes their behavior via cgroup and names
 
 Running the low-level stack manually demystifies Docker and helps when you understand all of this better:
 
+The following commands show how to use `runc` directly, bypassing Docker entirely. This is useful for understanding exactly what happens at the OCI runtime level and for debugging low-level container issues.
+
 ```bash
-# Generate a vanilla OCI bundle
+# Generate a vanilla OCI bundle (creates config.json with default settings)
 $ runc spec
 # Edit config.json to set rootfs, env vars, and cgroup limits
+# Then run the container directly with runc
 $ sudo runc run demo
 ```
 
 Or launch via containerd:
 
+This example uses `ctr`, the containerd CLI, to pull an image and run a container. The `--rm` flag removes the container after exit, `--net-host` shares the host's network namespace, and the command shows the cgroup the process belongs to.
+
 ```bash
+# Pull Alpine image from Docker Hub registry
 $ ctr image pull docker.io/library/alpine:3.20
+# Run container with host networking, auto-remove on exit
+# The command shows which cgroup the container process belongs to
 $ ctr run --rm --net-host docker.io/library/alpine:3.20 demo sh -c "cat /proc/self/cgroup"
 ```
 

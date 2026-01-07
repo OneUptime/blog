@@ -40,20 +40,28 @@ Istio uses a **sidecar proxy** (Envoy) injected into each pod. All inbound and o
 
 ## Installing Istio in Kubernetes
 
-The easiest way to install Istio is with the Istioctl CLI or Helm. Here’s a quick start with Istioctl:
+The easiest way to install Istio is with the Istioctl CLI or Helm. Here is a quick start with Istioctl that downloads and installs Istio with the demo profile, which includes all features for learning and testing.
 
 ```bash
+# Download the latest Istio release (includes istioctl CLI)
 curl -L https://istio.io/downloadIstio | sh -
+# Navigate into the istio directory (version number varies)
 cd istio-*/
+# Add istioctl to your PATH for this session
 export PATH="$PWD/bin:$PATH"
 
+# Install Istio with the demo profile (includes all components)
+# -y flag skips confirmation prompts
 istioctl install --set profile=demo -y
+# Enable automatic sidecar injection for the default namespace
+# Any pod created in this namespace will get an Envoy proxy
 kubectl label namespace default istio-injection=enabled
 ```
 
-Verify installation:
+Verify installation by checking that all Istio components are running:
 
 ```bash
+# Should show istiod, istio-ingressgateway, and other pods
 kubectl get pods -n istio-system
 ```
 
@@ -63,17 +71,21 @@ Let’s say you have two services, `frontend` and `backend`. With Istio, you can
 
 ### Step 1: Deploy Your Services
 
+Deploy standard Kubernetes Services and Deployments. With Istio sidecar injection enabled on the namespace, Envoy proxies are automatically added to each pod, intercepting all traffic for policy enforcement and telemetry collection.
+
 ```yaml
+# Frontend Service - provides stable DNS name for the frontend
 apiVersion: v1
 kind: Service
 metadata:
   name: frontend
 spec:
   selector:
-    app: frontend
+    app: frontend      # Routes to pods with this label
   ports:
-    - port: 80
+    - port: 80         # Service port
 ---
+# Frontend Deployment - the actual frontend application
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -86,22 +98,25 @@ spec:
   template:
     metadata:
       labels:
-        app: frontend
+        app: frontend  # Label used by Service selector
     spec:
       containers:
         - name: frontend
           image: mycompany/frontend:latest
+          # Istio will inject an Envoy sidecar container automatically
 ---
+# Backend Service - provides stable DNS name for the backend
 apiVersion: v1
 kind: Service
 metadata:
   name: backend
 spec:
   selector:
-    app: backend
+    app: backend       # Routes to pods with this label
   ports:
     - port: 80
 ---
+# Backend Deployment - the actual backend application
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -114,41 +129,53 @@ spec:
   template:
     metadata:
       labels:
-        app: backend
+        app: backend   # Label used by Service selector
     spec:
       containers:
         - name: backend
           image: mycompany/backend:latest
+          # Istio sidecar handles mTLS, metrics, and tracing automatically
 ```
 
 ### Step 2: Enable mTLS for the Namespace
+
+This PeerAuthentication policy enables strict mutual TLS for all services in the namespace. Istio automatically manages certificates, rotation, and encryption - no application code changes required.
 
 ```yaml
 apiVersion: security.istio.io/v1beta1
 kind: PeerAuthentication
 metadata:
   name: default
-  namespace: default
+  namespace: default      # Apply to the default namespace
 spec:
   mtls:
-    mode: STRICT
+    mode: STRICT          # Require mTLS for all traffic - reject plaintext
+    # Other modes: PERMISSIVE (accept both), DISABLE (no mTLS)
 ```
 
-Now, all traffic between services in the `default` namespace is encrypted with mutual TLS.
+Now, all traffic between services in the `default` namespace is encrypted with mutual TLS. Services outside the mesh or without Envoy sidecars will be rejected.
 
 ### Step 3: Observe Traffic and Metrics
 
-Istio automatically collects metrics and traces. Access the built-in dashboards:
+Istio automatically collects metrics and traces from all service-to-service traffic through the Envoy sidecars. Access the built-in dashboards for visualization and troubleshooting.
 
 ```bash
+# Kiali - Service mesh observability dashboard
+# Shows service topology, traffic flow, and health
 istioctl dashboard kiali
+
+# Jaeger - Distributed tracing UI
+# View request traces across multiple services
 istioctl dashboard jaeger
+
+# Grafana - Metrics visualization
+# Pre-configured dashboards for Istio metrics
 istioctl dashboard grafana
 ```
 
 ## Advanced Traffic Management Example: Canary Deployment
 
-With Istio, you can split traffic between two versions of a service for safe rollouts.
+With Istio, you can split traffic between two versions of a service for safe rollouts. This VirtualService routes 80% of traffic to v1 (stable) and 20% to v2 (canary), regardless of replica counts.
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -157,17 +184,17 @@ metadata:
   name: backend
 spec:
   hosts:
-    - backend
+    - backend           # Service name to apply routing rules to
   http:
     - route:
         - destination:
             host: backend
-            subset: v1
-          weight: 80
+            subset: v1    # Stable version (defined in DestinationRule)
+          weight: 80      # 80% of traffic goes to stable
         - destination:
             host: backend
-            subset: v2
-          weight: 20
+            subset: v2    # Canary version (defined in DestinationRule)
+          weight: 20      # 20% of traffic goes to canary for testing
 ```
 
 ## When Should You Use Istio?

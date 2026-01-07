@@ -51,6 +51,8 @@ Understanding where eBPF came from helps explain its design:
 
 **2016-Present - Explosion of Use Cases**: eBPF grew beyond networking into tracing, security, and observability. Major companies adopted it for production workloads.
 
+This timeline shows the evolution from simple packet filtering to a general-purpose kernel extension mechanism. The key inflection points were eBPF's introduction in 2014 and the advent of CO-RE (Compile Once, Run Everywhere) in 2020, which made eBPF programs portable across kernel versions.
+
 ```mermaid
 timeline
     title Evolution of BPF to eBPF
@@ -80,18 +82,23 @@ Here's the lifecycle of an eBPF program:
 
 eBPF programs are typically written in a restricted subset of C, then compiled to eBPF bytecode. Modern tools also support Rust.
 
+This simple eBPF program counts system calls across the entire system. The `SEC` macro specifies the hook point (tracepoint for syscall entry), and the program uses a BPF map to store and atomically increment the counter.
+
 ```c
 // Simple example: Count system calls
+// SEC macro attaches this function to the sys_enter tracepoint
 SEC("tracepoint/raw_syscalls/sys_enter")
 int count_syscalls(struct trace_event_raw_sys_enter *ctx) {
-    u64 *count;
-    u32 key = 0;
-    
+    u64 *count;       // Pointer to counter value in map
+    u32 key = 0;      // Single key for global counter
+
+    // Look up the current count from the BPF map
     count = bpf_map_lookup_elem(&syscall_count, &key);
     if (count) {
+        // Atomically increment the counter (thread-safe)
         __sync_fetch_and_add(count, 1);
     }
-    return 0;
+    return 0;  // Return 0 to continue normal execution
 }
 ```
 
@@ -118,6 +125,8 @@ Once verified, the bytecode is JIT (Just-In-Time) compiled to native machine ins
 ### Step 5: Attach and Run
 
 The compiled program is attached to a specific hook point (tracepoint, kprobe, socket, etc.) and runs every time that event occurs.
+
+This diagram illustrates the complete lifecycle of an eBPF program from source code to execution. The verifier is the critical security gate that ensures no malicious or buggy code can harm the kernel.
 
 ```mermaid
 flowchart LR
@@ -152,20 +161,24 @@ eBPF programs run in a register-based virtual machine with:
 
 eBPF programs can't call arbitrary kernel functions. Instead, they use a set of **helper functions** exposed by the kernel:
 
+These are the most commonly used eBPF helper functions. Each helper provides a safe, well-defined interface for eBPF programs to interact with kernel data structures and functionality without risking kernel stability.
+
 ```c
-// Common helpers
-bpf_map_lookup_elem()    // Read from a map
-bpf_map_update_elem()    // Write to a map
-bpf_probe_read()         // Safely read kernel memory
-bpf_get_current_pid_tgid()  // Get process ID
-bpf_ktime_get_ns()       // Get timestamp
-bpf_trace_printk()       // Debug output
-bpf_perf_event_output()  // Send data to userspace
+// Common helpers for eBPF programs
+bpf_map_lookup_elem()       // Read a value from a BPF map by key
+bpf_map_update_elem()       // Write or update a value in a BPF map
+bpf_probe_read()            // Safely read kernel memory (with bounds checking)
+bpf_get_current_pid_tgid()  // Get current process ID and thread group ID
+bpf_ktime_get_ns()          // Get current kernel timestamp in nanoseconds
+bpf_trace_printk()          // Debug output (writes to trace_pipe)
+bpf_perf_event_output()     // Send data to userspace via perf ring buffer
 ```
 
 ### Hook Points
 
 eBPF programs attach to various kernel hook points:
+
+This diagram categorizes the different types of eBPF hook points. Networking hooks (XDP, TC) are used for high-performance packet processing. Tracing hooks (kprobes, uprobes) enable observability. LSM hooks provide security enforcement capabilities.
 
 ```mermaid
 graph TB
@@ -174,18 +187,18 @@ graph TB
         TC[TC - Traffic Control]
         SOCK[Socket Operations]
     end
-    
+
     subgraph "Tracing Hooks"
         TP[Tracepoints]
         KP[Kprobes/Kretprobes]
         UP[Uprobes/Uretprobes]
         PERF[Perf Events]
     end
-    
+
     subgraph "Security Hooks"
         LSM[LSM - Linux Security Modules]
     end
-    
+
     subgraph "Other Hooks"
         CGROUP[Cgroup Hooks]
         SCHED[Scheduler Hooks]
@@ -212,6 +225,8 @@ Different program types attach to different hooks and have different capabilitie
 ### XDP (eXpress Data Path)
 
 XDP is particularly powerful for networking. It runs at the **earliest possible point**- before the kernel allocates a socket buffer:
+
+This diagram shows XDP's decision points. By processing packets before they enter the kernel's network stack, XDP can handle millions of packets per second - perfect for DDoS mitigation, load balancing, and custom packet processing.
 
 ```mermaid
 flowchart LR
@@ -251,24 +266,31 @@ Maps are the **primary data structure** for eBPF programs. They enable:
 
 ### Example: Counting Events by Process
 
+This program counts system calls per process ID. The map is defined using modern BTF (BPF Type Format) syntax, and the program demonstrates both looking up existing entries and inserting new ones atomically.
+
 ```c
 // Define a hash map: PID -> count
+// BTF-style map definition for type safety
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(max_entries, 10240);
-    __type(key, u32);      // PID
-    __type(value, u64);    // Count
-} syscall_counts SEC(".maps");
+    __uint(type, BPF_MAP_TYPE_HASH);  // Hash table for O(1) lookups
+    __uint(max_entries, 10240);        // Maximum number of tracked PIDs
+    __type(key, u32);                  // Key type: PID (32-bit)
+    __type(value, u64);                // Value type: counter (64-bit)
+} syscall_counts SEC(".maps");          // Place in .maps section
 
 SEC("tracepoint/raw_syscalls/sys_enter")
 int count_by_pid(void *ctx) {
+    // Extract PID from combined PID/TGID (upper 32 bits contain PID)
     u32 pid = bpf_get_current_pid_tgid() >> 32;
-    u64 *count, init_val = 1;
-    
+    u64 *count, init_val = 1;  // Initial value for new entries
+
+    // Try to find existing counter for this PID
     count = bpf_map_lookup_elem(&syscall_counts, &pid);
     if (count) {
+        // PID exists: atomically increment counter
         __sync_fetch_and_add(count, 1);
     } else {
+        // PID not seen before: insert with initial count of 1
         bpf_map_update_elem(&syscall_counts, &pid, &init_val, BPF_ANY);
     }
     return 0;
@@ -440,6 +462,8 @@ Several projects use eBPF for automatic OpenTelemetry instrumentation:
 
 This bridges the gap: get eBPF's zero-code deployment with OpenTelemetry's rich semantics.
 
+This diagram shows how eBPF auto-instrumentation integrates with the OpenTelemetry ecosystem. Applications remain unchanged, while eBPF extracts telemetry that flows through standard OTel infrastructure to your observability backend.
+
 ```mermaid
 flowchart TB
     subgraph "Your Applications"
@@ -447,19 +471,19 @@ flowchart TB
         APP2[Node.js API]
         APP3[Python Worker]
     end
-    
+
     subgraph "eBPF Layer"
         EBPF[eBPF Auto-Instrumentation]
     end
-    
+
     subgraph "OpenTelemetry"
         OTEL[OTel Collector]
     end
-    
+
     subgraph "Backend"
         ONEUPTIME[OneUptime]
     end
-    
+
     APP1 --> EBPF
     APP2 --> EBPF
     APP3 --> EBPF
@@ -508,14 +532,16 @@ eBPF isn't magic. There are real limitations:
 
 You don't need to write eBPF programs to benefit from them. Start with existing tools:
 
+These commands install the BCC (BPF Compiler Collection) tools, a suite of pre-built eBPF utilities for common observability tasks. Each tool provides instant visibility into a specific aspect of system behavior without any configuration.
+
 ```bash
 # Install BCC tools (Ubuntu/Debian)
 sudo apt-get install bpfcc-tools linux-headers-$(uname -r)
 
-# Try some tools
-sudo opensnoop-bpfcc     # Watch file opens
-sudo execsnoop-bpfcc     # Watch process execution
-sudo tcpconnect-bpfcc    # Watch TCP connections
+# Try some tools - each provides instant visibility
+sudo opensnoop-bpfcc     # Watch file opens across all processes
+sudo execsnoop-bpfcc     # Watch process execution (new processes)
+sudo tcpconnect-bpfcc    # Watch outgoing TCP connections
 sudo biolatency-bpfcc    # Disk I/O latency histogram
 ```
 
@@ -523,30 +549,37 @@ sudo biolatency-bpfcc    # Disk I/O latency histogram
 
 **Modern approach: Use libbpf + CO-RE**
 
+These commands set up a development environment for writing eBPF programs using the modern libbpf approach with CO-RE for portability. The libbpf-bootstrap repository provides example programs and build infrastructure.
+
 ```bash
-# Install dependencies
+# Install dependencies for compiling eBPF programs
 sudo apt-get install clang llvm libelf-dev libbpf-dev
 
-# Clone libbpf-bootstrap for examples
+# Clone libbpf-bootstrap for examples and build infrastructure
 git clone https://github.com/libbpf/libbpf-bootstrap.git
 cd libbpf-bootstrap/examples/c
+# Build the example programs
 make
 ```
 
 **Alternative: Use bpftrace for quick scripts**
 
+bpftrace provides a high-level scripting language for eBPF, perfect for quick one-liners and prototyping. It's the awk of eBPF - expressive enough for complex analysis but simple enough for interactive use.
+
 ```bash
-# Install bpftrace
+# Install bpftrace for high-level scripting
 sudo apt-get install bpftrace
 
-# One-liner to count syscalls by process
+# One-liner to count syscalls by process name
+# @[comm] creates a map keyed by process name, count() increments
 sudo bpftrace -e 'tracepoint:raw_syscalls:sys_enter { @[comm] = count(); }'
 
 # Latency histogram for read syscalls
+# Track start time on entry, compute duration on exit
 sudo bpftrace -e 'tracepoint:syscalls:sys_enter_read { @start[tid] = nsecs; }
-    tracepoint:syscalls:sys_exit_read /@start[tid]/ { 
-        @latency = hist(nsecs - @start[tid]); 
-        delete(@start[tid]); 
+    tracepoint:syscalls:sys_exit_read /@start[tid]/ {
+        @latency = hist(nsecs - @start[tid]);  // Histogram of durations
+        delete(@start[tid]);  // Clean up to avoid memory leak
     }'
 ```
 

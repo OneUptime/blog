@@ -16,16 +16,24 @@ Before backing up, know what you're dealing with:
 
 ### Named Volumes (Docker-Managed)
 
+Named volumes are the recommended approach for production data. Docker manages the storage location and lifecycle.
+
 ```bash
+# Create a named volume that Docker will manage
 docker volume create mydata
+
+# Mount the named volume at /data inside the container
 docker run -v mydata:/data myapp
 
-# Location: /var/lib/docker/volumes/mydata/_data
+# Location on host: /var/lib/docker/volumes/mydata/_data
 ```
 
 ### Bind Mounts (Host-Managed)
 
+Bind mounts map a host directory directly into the container. You control the exact location on the host filesystem.
+
 ```bash
+# Mount a specific host path into the container
 docker run -v /host/path:/container/path myapp
 
 # Data lives at /host/path - back it up like any directory
@@ -33,7 +41,10 @@ docker run -v /host/path:/container/path myapp
 
 ### Anonymous Volumes
 
+Anonymous volumes lack a reference name, making them difficult to manage and back up. Avoid these in production.
+
 ```bash
+# Creates an anonymous volume - hard to identify and backup
 docker run -v /data myapp
 
 # No external reference - difficult to back up, avoid in production
@@ -49,69 +60,79 @@ The universal method: mount the volume into a container and tar it.
 
 ### Backup a Volume
 
+This approach uses a temporary Alpine container to create a compressed archive of your volume data. The read-only mount ensures backup consistency.
+
 ```bash
 # Stop the container using the volume (recommended for consistency)
 docker stop myapp
 
-# Create backup
+# Create backup using temporary Alpine container
 docker run --rm \
-  -v mydata:/source:ro \
-  -v $(pwd)/backups:/backup \
+  -v mydata:/source:ro \       # Mount source volume as read-only
+  -v $(pwd)/backups:/backup \  # Mount local backup directory
   alpine tar czf /backup/mydata-$(date +%Y%m%d-%H%M%S).tar.gz -C /source .
 
-# Restart container
+# Restart container after backup completes
 docker start myapp
 ```
 
 ### Restore a Volume
 
+Restoring extracts the backup archive into the target volume. Optionally clear existing data first for a clean restore.
+
 ```bash
-# Stop the container
+# Stop the container before restore
 docker stop myapp
 
 # Clear existing data (optional, for clean restore)
 docker run --rm -v mydata:/target alpine sh -c "rm -rf /target/*"
 
-# Restore from backup
+# Restore from backup archive to target volume
 docker run --rm \
-  -v mydata:/target \
-  -v $(pwd)/backups:/backup:ro \
+  -v mydata:/target \           # Mount volume to restore into
+  -v $(pwd)/backups:/backup:ro \ # Mount backup directory as read-only
   alpine tar xzf /backup/mydata-20240106-120000.tar.gz -C /target
 
-# Start container
+# Start container with restored data
 docker start myapp
 ```
 
 ### Backup Script
 
+This reusable script backs up any volume with automatic old backup cleanup. It keeps the last 7 backups by default.
+
 ```bash
 #!/bin/bash
 # backup-volume.sh
 
-VOLUME_NAME=$1
-BACKUP_DIR=${2:-./backups}
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+VOLUME_NAME=$1                    # First argument: volume name to backup
+BACKUP_DIR=${2:-./backups}        # Second argument: backup directory (default: ./backups)
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)  # Generate timestamp for unique backup name
 BACKUP_FILE="${VOLUME_NAME}-${TIMESTAMP}.tar.gz"
 
+# Create backup directory if it doesn't exist
 mkdir -p "$BACKUP_DIR"
 
 echo "Backing up volume: $VOLUME_NAME"
 
+# Run backup using Alpine container with tar
 docker run --rm \
-  -v "${VOLUME_NAME}:/source:ro" \
-  -v "${BACKUP_DIR}:/backup" \
+  -v "${VOLUME_NAME}:/source:ro" \   # Source volume mounted read-only
+  -v "${BACKUP_DIR}:/backup" \        # Backup destination
   alpine tar czf "/backup/${BACKUP_FILE}" -C /source .
 
 echo "Backup created: ${BACKUP_DIR}/${BACKUP_FILE}"
 
-# Cleanup old backups (keep last 7)
+# Cleanup old backups - keep only the 7 most recent
 ls -t "${BACKUP_DIR}/${VOLUME_NAME}-"*.tar.gz 2>/dev/null | tail -n +8 | xargs -r rm
 
 echo "Cleanup complete"
 ```
 
 Usage:
+
 ```bash
+# Backup mydata volume to ./backups directory
 ./backup-volume.sh mydata ./backups
 ```
 
@@ -125,18 +146,22 @@ For services that can't tolerate downtime, but with consistency trade-offs:
 
 More reliable than filesystem backups for databases:
 
+Database dumps are transactionally consistent, unlike filesystem-level backups. Use the native dump tools for each database engine.
+
 ```bash
-# PostgreSQL
+# PostgreSQL - creates consistent SQL dump of entire database
 docker exec postgres pg_dump -U postgres dbname > backup.sql
 
-# MySQL
+# MySQL - dump with credentials from environment variable
 docker exec mysql mysqldump -u root -p${MYSQL_ROOT_PASSWORD} dbname > backup.sql
 
-# MongoDB
+# MongoDB - create compressed archive backup inside container
 docker exec mongodb mongodump --archive=/backup/dump.archive --gzip
 ```
 
 ### Combined Approach
+
+This setup runs a sidecar container that performs daily database dumps automatically. The backup container connects to the database over the internal network.
 
 ```yaml
 # docker-compose.yml
@@ -144,25 +169,25 @@ services:
   postgres:
     image: postgres:16
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./backups:/backups
+      - postgres-data:/var/lib/postgresql/data  # Database storage
+      - ./backups:/backups  # Backup output directory
 
   backup:
-    image: postgres:16
+    image: postgres:16  # Use same image for pg_dump compatibility
     depends_on:
-      - postgres
+      - postgres  # Ensure database starts first
     volumes:
-      - ./backups:/backups
+      - ./backups:/backups  # Mount backup directory
     entrypoint: >
       sh -c "while true; do
         pg_dump -h postgres -U postgres mydb | gzip > /backups/db-$$(date +%Y%m%d-%H%M%S).sql.gz
         sleep 86400
       done"
     environment:
-      PGPASSWORD: password
+      PGPASSWORD: password  # Database password for pg_dump
 
 volumes:
-  postgres-data:
+  postgres-data:  # Named volume for database files
 ```
 
 ---
@@ -173,58 +198,65 @@ Restic provides encrypted, deduplicated backups with multiple backend support.
 
 ### Setup Restic Backup Container
 
+This Dockerfile creates a custom Restic container with an automated backup script.
+
 ```dockerfile
 # Dockerfile.restic
 FROM restic/restic:latest
 
+# Add bash for script execution
 RUN apk add --no-cache bash
 
+# Copy backup script into container
 COPY backup.sh /backup.sh
 RUN chmod +x /backup.sh
 
 ENTRYPOINT ["/backup.sh"]
 ```
 
+The backup script handles repository initialization, backup creation, and retention policy enforcement.
+
 ```bash
 #!/bin/bash
 # backup.sh
 
-# Initialize repo if needed
+# Initialize repository if it doesn't exist, otherwise list snapshots
 restic snapshots || restic init
 
-# Backup
+# Perform backup with identifying tags
 restic backup /data --tag docker-volume --tag ${VOLUME_NAME:-unknown}
 
-# Prune old backups
+# Apply retention policy: keep 7 daily, 4 weekly, 6 monthly backups
 restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
 
-# Verify
+# Verify repository integrity
 restic check
 ```
 
 ### Docker Compose with Restic
+
+This configuration backs up your application data to S3 with encryption. Restic handles deduplication, so incremental backups are fast and storage-efficient.
 
 ```yaml
 services:
   app:
     image: myapp
     volumes:
-      - appdata:/data
+      - appdata:/data  # Application data volume
 
   backup:
     build:
       context: .
       dockerfile: Dockerfile.restic
     volumes:
-      - appdata:/data:ro
+      - appdata:/data:ro  # Mount volume read-only for backup
     environment:
-      - RESTIC_REPOSITORY=s3:s3.amazonaws.com/mybucket/backups
-      - RESTIC_PASSWORD=your-encryption-password
-      - AWS_ACCESS_KEY_ID=xxx
+      - RESTIC_REPOSITORY=s3:s3.amazonaws.com/mybucket/backups  # S3 backend
+      - RESTIC_PASSWORD=your-encryption-password  # Encryption key
+      - AWS_ACCESS_KEY_ID=xxx  # AWS credentials
       - AWS_SECRET_ACCESS_KEY=xxx
-      - VOLUME_NAME=appdata
-    # Run daily at 2 AM
-    # Use external scheduler or:
+      - VOLUME_NAME=appdata  # Tag for identifying backups
+    # Run backup daily - sleep between runs
     entrypoint: >
       sh -c "while true; do /backup.sh; sleep 86400; done"
 
@@ -234,8 +266,10 @@ volumes:
 
 ### Restore with Restic
 
+These commands demonstrate how to list available backups and restore from a specific snapshot.
+
 ```bash
-# List snapshots
+# List all available snapshots in the repository
 docker run --rm \
   -e RESTIC_REPOSITORY=s3:s3.amazonaws.com/mybucket/backups \
   -e RESTIC_PASSWORD=your-encryption-password \
@@ -243,9 +277,9 @@ docker run --rm \
   -e AWS_SECRET_ACCESS_KEY=xxx \
   restic/restic snapshots
 
-# Restore specific snapshot
+# Restore specific snapshot (abc123) to the data volume
 docker run --rm \
-  -v appdata:/data \
+  -v appdata:/data \  # Volume to restore into
   -e RESTIC_REPOSITORY=s3:s3.amazonaws.com/mybucket/backups \
   -e RESTIC_PASSWORD=your-encryption-password \
   restic/restic restore abc123 --target /data
@@ -259,56 +293,60 @@ Borg offers excellent compression and deduplication.
 
 ### Borg Backup Container
 
+This configuration uses the Borg backup image with environment-based configuration. It automatically handles backup creation and retention.
+
 ```yaml
 services:
   borg-backup:
     image: pschiffe/borg-backup
     volumes:
-      - appdata:/source:ro
-      - borg-repo:/repo
-      - ./borg-config:/config:ro
+      - appdata:/source:ro  # Source data mounted read-only
+      - borg-repo:/repo     # Local repository for backups
+      - ./borg-config:/config:ro  # Optional configuration files
     environment:
-      - BORG_REPO=/repo
-      - BORG_PASSPHRASE=your-passphrase
-      - BACKUP_DIRS=/source
-      - PRUNE_PREFIX=auto-
-      - PRUNE_KEEP_DAILY=7
-      - PRUNE_KEEP_WEEKLY=4
-      - PRUNE_KEEP_MONTHLY=6
+      - BORG_REPO=/repo  # Path to Borg repository
+      - BORG_PASSPHRASE=your-passphrase  # Encryption passphrase
+      - BACKUP_DIRS=/source  # Directories to backup
+      - PRUNE_PREFIX=auto-  # Prefix for automatic backup naming
+      - PRUNE_KEEP_DAILY=7   # Keep 7 daily backups
+      - PRUNE_KEEP_WEEKLY=4  # Keep 4 weekly backups
+      - PRUNE_KEEP_MONTHLY=6 # Keep 6 monthly backups
 
 volumes:
   appdata:
-  borg-repo:
+  borg-repo:  # Persistent storage for Borg repository
 ```
 
 ### Manual Borg Operations
 
+These commands demonstrate manual Borg operations for initialization, backup, listing, and restoration.
+
 ```bash
-# Initialize repository
+# Initialize new encrypted repository
 docker run --rm \
   -v borg-repo:/repo \
   -e BORG_PASSPHRASE=secret \
   pschiffe/borg-backup \
-  borg init --encryption=repokey /repo
+  borg init --encryption=repokey /repo  # repokey stores encryption key in repo
 
-# Create backup
+# Create a new backup archive with dated name
 docker run --rm \
-  -v appdata:/source:ro \
-  -v borg-repo:/repo \
+  -v appdata:/source:ro \  # Source data
+  -v borg-repo:/repo \      # Repository location
   -e BORG_PASSPHRASE=secret \
   pschiffe/borg-backup \
   borg create /repo::backup-$(date +%Y%m%d) /source
 
-# List backups
+# List all backup archives in repository
 docker run --rm \
   -v borg-repo:/repo \
   -e BORG_PASSPHRASE=secret \
   pschiffe/borg-backup \
   borg list /repo
 
-# Restore
+# Restore specific backup archive to target volume
 docker run --rm \
-  -v appdata:/target \
+  -v appdata:/target \  # Destination for restored files
   -v borg-repo:/repo \
   -e BORG_PASSPHRASE=secret \
   pschiffe/borg-backup \
@@ -321,18 +359,25 @@ docker run --rm \
 
 ### Using Cron on Host
 
+This cron job triggers the backup script daily at 2 AM. Output is logged for monitoring and troubleshooting.
+
 ```bash
 # /etc/cron.d/docker-backups
+# Run backup script daily at 2 AM as root user
 0 2 * * * root /opt/scripts/backup-volumes.sh >> /var/log/docker-backup.log 2>&1
 ```
+
+This script iterates through multiple volumes and backs them all up to S3 in a single run.
 
 ```bash
 #!/bin/bash
 # /opt/scripts/backup-volumes.sh
 
+# List of volumes to backup
 VOLUMES="postgres-data redis-data uploads"
 BACKUP_DIR="/backups"
 
+# Backup each volume
 for vol in $VOLUMES; do
   echo "$(date): Backing up $vol"
   docker run --rm \
@@ -341,19 +386,21 @@ for vol in $VOLUMES; do
     alpine tar czf "/backup/${vol}-$(date +%Y%m%d).tar.gz" -C /source .
 done
 
-# Upload to S3
+# Upload all backups to S3, remove files not in source (sync)
 aws s3 sync "$BACKUP_DIR" s3://mybucket/docker-backups/ --delete
 ```
 
 ### Using Ofelia (Docker-Native Scheduler)
+
+Ofelia is a Docker-native job scheduler that reads schedules from container labels. No host cron configuration required.
 
 ```yaml
 services:
   ofelia:
     image: mcuadros/ofelia:latest
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./ofelia.ini:/etc/ofelia/config.ini:ro
+      - /var/run/docker.sock:/var/run/docker.sock  # Access to control other containers
+      - ./ofelia.ini:/etc/ofelia/config.ini:ro     # Optional config file
     depends_on:
       - backup
 
@@ -363,10 +410,10 @@ services:
       - appdata:/source:ro
       - ./backups:/backup
     labels:
-      ofelia.enabled: "true"
-      ofelia.job-exec.backup.schedule: "0 0 2 * * *"
+      ofelia.enabled: "true"  # Enable Ofelia scheduling
+      ofelia.job-exec.backup.schedule: "0 0 2 * * *"  # Run at 2 AM daily
       ofelia.job-exec.backup.command: "tar czf /backup/app-$(date +%Y%m%d).tar.gz -C /source ."
-    command: tail -f /dev/null
+    command: tail -f /dev/null  # Keep container running for scheduled jobs
 
 volumes:
   appdata:
@@ -380,28 +427,30 @@ Backups are worthless if they can't be restored. Test regularly.
 
 ### Automated Restore Testing
 
+This script creates a temporary volume, restores a backup, and verifies the contents. Use it to validate backups regularly.
+
 ```bash
 #!/bin/bash
 # test-restore.sh
 
-BACKUP_FILE=$1
-TEST_VOLUME="restore-test-$(date +%s)"
+BACKUP_FILE=$1  # Backup file to test
+TEST_VOLUME="restore-test-$(date +%s)"  # Unique volume name using timestamp
 
-# Create test volume
+# Create temporary test volume
 docker volume create "$TEST_VOLUME"
 
-# Restore to test volume
+# Restore backup to test volume
 docker run --rm \
   -v "${TEST_VOLUME}:/target" \
   -v "$(pwd)/backups:/backup:ro" \
   alpine tar xzf "/backup/${BACKUP_FILE}" -C /target
 
-# Verify contents (customize for your data)
+# Verify contents (customize verification for your data)
 docker run --rm \
   -v "${TEST_VOLUME}:/data:ro" \
   alpine sh -c "ls -la /data && echo 'Restore verification passed'"
 
-# Cleanup
+# Cleanup test volume
 docker volume rm "$TEST_VOLUME"
 
 echo "Restore test completed successfully"
@@ -409,8 +458,10 @@ echo "Restore test completed successfully"
 
 ### Checksum Verification
 
+Generate checksums during backup to detect corruption before attempting restore.
+
 ```bash
-# Generate checksum during backup
+# Generate checksum during backup for integrity verification
 docker run --rm \
   -v mydata:/source:ro \
   -v $(pwd)/backups:/backup \
@@ -419,7 +470,7 @@ docker run --rm \
     sha256sum /backup/mydata.tar.gz > /backup/mydata.tar.gz.sha256
   "
 
-# Verify checksum before restore
+# Verify checksum before restore to detect corruption
 sha256sum -c backups/mydata.tar.gz.sha256
 ```
 
@@ -427,23 +478,25 @@ sha256sum -c backups/mydata.tar.gz.sha256
 
 ## Complete Backup Solution
 
+This production-ready example combines database dumps, file backups, S3 uploads, and automatic cleanup into a single solution.
+
 ```yaml
 # docker-compose.yml
 services:
   app:
     image: myapp
     volumes:
-      - appdata:/app/data
+      - appdata:/app/data  # Application data
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_healthy  # Wait for healthy database
 
   db:
     image: postgres:16
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data  # Database storage
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]  # PostgreSQL readiness check
       interval: 10s
       timeout: 5s
       retries: 5
@@ -451,30 +504,30 @@ services:
   backup:
     image: alpine
     volumes:
-      - appdata:/source/app:ro
-      - postgres-data:/source/db:ro
-      - ./backups:/backup
-      - /var/run/docker.sock:/var/run/docker.sock
+      - appdata:/source/app:ro       # App data for file backup
+      - postgres-data:/source/db:ro  # DB data (not used directly, pg_dump preferred)
+      - ./backups:/backup            # Local backup storage
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker access
     entrypoint: >
       sh -c "
         apk add --no-cache docker-cli postgresql-client aws-cli &&
         while true; do
           echo 'Starting backup at' $$(date)
 
-          # Database dump (consistent)
+          # Database dump (transactionally consistent)
           PGPASSWORD=password pg_dump -h db -U postgres mydb | gzip > /backup/db-$$(date +%Y%m%d-%H%M%S).sql.gz
 
-          # File backup
+          # File backup for application data
           tar czf /backup/app-$$(date +%Y%m%d-%H%M%S).tar.gz -C /source/app .
 
-          # Upload to S3
+          # Upload to S3 for off-site storage
           aws s3 sync /backup/ s3://mybucket/backups/ --delete
 
-          # Cleanup local (keep 3 days)
+          # Cleanup local backups older than 3 days
           find /backup -type f -mtime +3 -delete
 
           echo 'Backup completed at' $$(date)
-          sleep 86400
+          sleep 86400  # Sleep 24 hours
         done
       "
 
@@ -487,23 +540,25 @@ volumes:
 
 ## Quick Reference
 
+These essential commands cover the most common backup and restore operations.
+
 ```bash
-# Backup named volume
+# Backup named volume to compressed archive
 docker run --rm -v mydata:/source:ro -v $(pwd):/backup alpine tar czf /backup/mydata.tar.gz -C /source .
 
-# Restore to named volume
+# Restore from archive to named volume
 docker run --rm -v mydata:/target -v $(pwd):/backup alpine tar xzf /backup/mydata.tar.gz -C /target
 
-# List volume contents
+# List volume contents without modifying
 docker run --rm -v mydata:/data alpine ls -la /data
 
-# Copy volume to volume
+# Copy entire volume to another volume
 docker run --rm -v source:/from:ro -v target:/to alpine cp -a /from/. /to/
 
-# Database dump (PostgreSQL)
+# Database dump (PostgreSQL) with compression
 docker exec postgres pg_dump -U postgres dbname | gzip > backup.sql.gz
 
-# Database restore (PostgreSQL)
+# Database restore (PostgreSQL) from compressed dump
 gunzip -c backup.sql.gz | docker exec -i postgres psql -U postgres dbname
 ```
 

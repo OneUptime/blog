@@ -20,15 +20,22 @@ Compose treats models as another resource type (like `volumes` or `configs`), so
 
 ## How the `models` block works
 
+The following example shows the minimal syntax for declaring an AI model dependency. The `models` attribute on a service grants it access to the specified model, while the top-level `models` block defines where to pull the model from.
+
 ```yaml
 services:
   api:
+    # Your application container
     image: ghcr.io/acme/api:main
+    # Grant this service access to the llm_small model
+    # Compose will inject AI_LLM_SMALL_URL environment variable automatically
     models:
       - llm_small
 
+# Top-level models section - defines available AI models
 models:
   llm_small:
+    # OCI artifact reference - version-pin like any Docker image
     model: docker.io/acme/llm-small:1.2.0
 ```
 
@@ -36,21 +43,31 @@ Behind the scenes, Docker Desktop launches a **model runner** container, downloa
 
 Need more control? Switch to the long syntax so you can pick your env var, add runtime flags, or adjust token windows:
 
+This expanded configuration demonstrates advanced model settings. You can customize the environment variable name, lock to a specific digest for reproducibility, and tune inference parameters like context window size and GPU acceleration.
+
 ```yaml
 services:
   worker:
     image: ghcr.io/acme/worker:main
+    # Long syntax for fine-grained model configuration
     models:
       llm_large:
+        # Override the default env var name (AI_LLM_LARGE_URL -> SUMMARIZER_URL)
+        # Your app reads this to find the inference endpoint
         endpoint_var: SUMMARIZER_URL
 
 models:
   llm_large:
+    # Use SHA digest for immutable, reproducible deployments
+    # Prevents "latest" drift when promoting to production
     model: docker.io/acme/llm-large@sha256:deadcafe
+    # Context window size in tokens - adjust based on your use case
+    # Larger values = more context but more memory
     context_size: 8192
+    # Runtime flags passed directly to the model runner
     runtime_flags:
-      - "--temperature=0.2"
-      - "--gpu-layers=40"
+      - "--temperature=0.2"   # Lower temperature = more deterministic output
+      - "--gpu-layers=40"     # Number of layers to offload to GPU
 ```
 
 Compose still injects credentials and URLs, but now you control the env var name (`SUMMARIZER_URL`) and the runtime knobs.

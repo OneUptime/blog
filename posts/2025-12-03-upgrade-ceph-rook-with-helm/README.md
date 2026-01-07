@@ -32,11 +32,19 @@ Rook releases intentionally lag Ceph so that each operator knows how to orchestr
 ## Pre-Upgrade Checklist (30 Minutes Well Spent)
 
 1. **Confirm all PGs are `active+clean`**:
+
+   This command checks cluster health status. Never start an upgrade when placement groups are degraded or recovering - you risk data loss if something goes wrong mid-upgrade.
+
    ```bash
+   # Connect to the Ceph tools pod and check overall cluster status
    kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph -s
    ```
 2. **Snapshot Helm values** so you can diff later:
+
+   Capturing your current values provides a rollback safety net. If the upgrade fails, you can compare what changed and restore the previous configuration quickly.
+
    ```bash
+   # Export current Helm values to a file for comparison and potential rollback
    helm get values rook-ceph -n rook-ceph > pre-upgrade-values.yaml
    ```
 3. **Back up cluster CRDs** (especially `CephBlockPool`, `CephObjectStore`, `CephFilesystem`) with `kubectl get -oyaml`.
@@ -48,27 +56,47 @@ Rook releases intentionally lag Ceph so that each operator knows how to orchestr
 ## Phase 1: Upgrade the Rook Operator
 
 1. **Update the chart repo**:
+
+   Ensure you have the latest chart definitions before upgrading. Stale repo data can cause you to miss critical patches or security fixes.
+
    ```bash
+   # Add or refresh the Rook Helm repository
    helm repo add rook-release https://charts.rook.io/release
+
+   # Fetch latest chart metadata
    helm repo update
    ```
 2. **Render the diff** between current and target versions:
+
+   The diff plugin shows exactly what will change before you commit. Review CRD changes, RBAC modifications, and image tags carefully - surprises here cause outages.
+
    ```bash
+   # Preview all changes between current state and target version
    helm diff upgrade rook-ceph rook-release/rook-ceph \
      --namespace rook-ceph \
-     --version v1.14.2 \
-     -f values/rook/operator.yaml
+     --version v1.14.2 \                    # Target Rook operator version
+     -f values/rook/operator.yaml           # Your custom operator settings
    ```
 3. **Apply the upgrade**:
+
+   This command performs the actual upgrade. The operator pod will restart and begin reconciling all Ceph CRDs with the new controller logic.
+
    ```bash
+   # Execute the operator upgrade
    helm upgrade --install rook-ceph rook-release/rook-ceph \
      --namespace rook-ceph \
-     --version v1.14.2 \
-     -f values/rook/operator.yaml
+     --version v1.14.2 \                    # Pin to specific version for reproducibility
+     -f values/rook/operator.yaml           # Apply your custom configuration
    ```
 4. **Watch the operator** restart once and reconcile:
+
+   Monitor the rollout to ensure the new operator starts cleanly. The logs should show it detecting and adopting the existing Ceph cluster without errors.
+
    ```bash
+   # Wait for the operator deployment to complete its rollout
    kubectl -n rook-ceph rollout status deploy/rook-ceph-operator
+
+   # Stream logs and verify the operator recognizes the Ceph version
    kubectl -n rook-ceph logs deploy/rook-ceph-operator -f | grep "ceph version"
    ```
 
@@ -79,42 +107,61 @@ Once the operator is healthy it automatically refreshes CRDs so the cluster CRs 
 ## Phase 2: Upgrade the Ceph Cluster
 
 1. **Edit the cluster values file** to point at the new Ceph image and feature flags:
+
+   This YAML configures the Ceph version, enables useful management modules, and defines your storage pool topology. Changing the image tag here triggers the actual Ceph daemon upgrades.
+
    ```yaml
    cephClusterSpec:
      cephVersion:
-       image: quay.io/ceph/ceph:v18.2.2
+       image: quay.io/ceph/ceph:v18.2.2    # New Ceph Reef release with latest fixes
      manager:
        modules:
-         - name: pg_autoscaler
+         - name: pg_autoscaler             # Automatically adjusts PG counts as cluster grows
            enabled: true
      dashboard:
-       enabled: true
+       enabled: true                       # Keep the web UI for visual health checks
    cephBlockPools:
-     - name: fast-rbd
+     - name: fast-rbd                      # Your primary block storage pool
        spec:
          replicated:
-           size: 3
-         deviceClass: nvme
+           size: 3                         # Maintain triple replication for durability
+         deviceClass: nvme                 # Pin this pool to NVMe OSDs for performance
    ```
 2. **Dry-run the cluster chart** so you can review the CR diff:
+
+   A dry-run renders the manifests without applying them. Use this to catch configuration mistakes before they affect your live storage cluster.
+
    ```bash
+   # Preview the upgrade without making any changes
    helm upgrade rook-ceph-cluster rook-release/rook-ceph-cluster \
      --namespace rook-ceph \
-     --version v1.14.2 \
-     -f values/rook/cluster.yaml \
-     --dry-run
+     --version v1.14.2 \                   # Match the operator version
+     -f values/rook/cluster.yaml \         # Your cluster configuration
+     --dry-run                             # Render only - do not apply
    ```
 3. **Apply the upgrade** when the diff looks good:
+
+   This triggers the Rook operator to orchestrate a rolling upgrade of all Ceph daemons. Mons upgrade first, then managers, then OSDs in controlled batches.
+
    ```bash
+   # Execute the cluster upgrade - Rook handles the rolling restart sequence
    helm upgrade rook-ceph-cluster rook-release/rook-ceph-cluster \
      --namespace rook-ceph \
-     --version v1.14.2 \
-     -f values/rook/cluster.yaml
+     --version v1.14.2 \                   # Target chart version
+     -f values/rook/cluster.yaml           # Apply your storage configuration
    ```
 4. **Track component rollouts**:
+
+   Watch each daemon type restart in sequence. The upgrade is safe as long as you see pods cycling through terminating and running states without errors or extended pending times.
+
    ```bash
+   # Watch manager pods upgrade (typically one at a time)
    kubectl -n rook-ceph get pods -l app=rook-ceph-mgr -w
+
+   # Watch monitor pods upgrade (maintains quorum throughout)
    kubectl -n rook-ceph get pods -l app=rook-ceph-mon -w
+
+   # Watch OSD pods sorted by start time to see upgrade progression
    kubectl -n rook-ceph get pods -l app=rook-ceph-osd --sort-by=.status.startTime
    ```
    OSDs are drained and restarted in batches. If you tagged devices by topology, CRUSH will keep placement sane during the shuffle.
@@ -124,8 +171,14 @@ Once the operator is healthy it automatically refreshes CRDs so the cluster CRs 
 ## Phase 3: Validate, Roll Forward, or Roll Back
 
 - **Health gate**:
+
+  After the upgrade completes, verify all daemons report the new version and the cluster shows HEALTH_OK. Mixed versions during upgrade are normal, but they should converge within minutes.
+
   ```bash
+  # Confirm all daemons are running the expected Ceph version
   kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph versions
+
+  # Check for any health warnings or errors introduced by the upgrade
   kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph health detail
   ```
 - **StorageClasses**: `kubectl get sc -l rook-ceph` and create a disposable PVC to confirm the CSI sidecars picked up the new image.
@@ -147,11 +200,19 @@ Once the operator is healthy it automatically refreshes CRDs so the cluster CRs 
 ## Runbook Snippets You Can Reuse
 
 - **Quick status**:
+
+  This command shows all OSD daemons with their status, version, and placement. Use it to quickly identify any OSDs stuck in a failed state during upgrades.
+
   ```bash
+  # List all OSD daemons with their current state and version
   kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph orch ps --daemon-type osd
   ```
 - **Pause the upgrade**:
+
+  If you notice performance degradation or need to pause for investigation, this annotation tells Rook to stop restarting additional OSDs until you are ready to continue.
+
   ```bash
+  # Add annotation to pause OSD rolling restarts
   kubectl -n rook-ceph annotate cephcluster rook-ceph spec.allowMultipleOSDDaemons=false --overwrite
   ```
   This throttles OSD restarts when your disks are saturated.

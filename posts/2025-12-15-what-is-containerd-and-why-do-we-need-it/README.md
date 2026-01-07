@@ -160,70 +160,83 @@ kubelet → containerd → runc
 
 ### On Ubuntu/Debian
 
+This script installs containerd from Docker's official repository, which provides the most up-to-date and stable version. The installation includes setting up GPG keys for package verification and generating the default configuration file.
+
 ```bash
-# Install dependencies
+# Install prerequisites for adding external repositories
 sudo apt-get update
 sudo apt-get install -y ca-certificates curl gnupg
 
-# Add Docker's official GPG key (containerd is distributed via Docker's repo)
+# Add Docker's official GPG key for package signature verification
+# containerd is distributed through Docker's repository
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg    # Make key readable by apt
 
-# Add the repository
+# Add the Docker repository to apt sources
+# Uses dpkg to detect architecture (amd64, arm64, etc.)
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Install containerd
+# Install containerd from the newly added repository
 sudo apt-get update
 sudo apt-get install -y containerd.io
 
-# Generate default config
+# Generate the default containerd configuration file
+# This creates a baseline config that you can customize
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
 
-# Enable and start
+# Enable containerd to start on boot and start it now
 sudo systemctl enable containerd
 sudo systemctl start containerd
 ```
 
 ### On RHEL/CentOS/Fedora
 
+For Red Hat-based systems, containerd is also available through Docker's repository. The dnf package manager handles dependency resolution automatically.
+
 ```bash
-# Add Docker repo
+# Add Docker's repository for CentOS/RHEL systems
 sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
 
-# Install containerd
+# Install containerd package
 sudo dnf install -y containerd.io
 
-# Generate default config
+# Create config directory and generate default configuration
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
 
-# Enable and start
-sudo systemctl enable containerd
-sudo systemctl start containerd
+# Enable containerd service and start it
+sudo systemctl enable containerd    # Start on boot
+sudo systemctl start containerd     # Start immediately
 ```
 
 ## Configuring containerd for Kubernetes
 
-For Kubernetes, you need to enable the CRI plugin and configure the cgroup driver.
+For Kubernetes, you need to enable the CRI plugin and configure the cgroup driver. The cgroup driver must match between containerd and kubelet to avoid resource management issues.
 
 Edit `/etc/containerd/config.toml`:
 
 ```toml
+# Config file format version
 version = 2
 
 [plugins]
+  # CRI plugin configuration - enables Kubernetes integration
   [plugins."io.containerd.grpc.v1.cri"]
+    # The pause container creates the pod's network namespace
     sandbox_image = "registry.k8s.io/pause:3.9"
     [plugins."io.containerd.grpc.v1.cri".containerd]
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+        # Configure runc as the OCI runtime
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
           runtime_type = "io.containerd.runc.v2"
           [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+            # CRITICAL: Use systemd cgroup driver to match kubelet
+            # Mismatched cgroup drivers cause pod failures
             SystemdCgroup = true
 ```
 
@@ -232,9 +245,10 @@ Key settings:
 - **SystemdCgroup = true**: Use systemd cgroup driver (matches kubelet default)
 - **sandbox_image**: The pause container image for pod networking
 
-Restart containerd:
+After modifying the configuration, restart containerd to apply changes:
 
 ```bash
+# Restart containerd to load new configuration
 sudo systemctl restart containerd
 ```
 
@@ -242,40 +256,49 @@ sudo systemctl restart containerd
 
 ### With ctr (Low-Level CLI)
 
-`ctr` is the built-in CLI for containerd. It's functional but not user-friendly:
+`ctr` is the built-in CLI for containerd. It is functional but not user-friendly - designed more for debugging and testing than daily use. Understanding `ctr` helps when troubleshooting containerd issues.
 
 ```bash
-# Pull an image
+# Pull an image from Docker Hub (requires full image reference)
 sudo ctr images pull docker.io/library/nginx:latest
 
-# List images
+# List all images stored in containerd
 sudo ctr images list
 
-# Run a container
+# Run a container interactively and remove it on exit
+# --rm removes container after exit, -t allocates a TTY
 sudo ctr run --rm -t docker.io/library/nginx:latest nginx-test
 
-# List containers
+# List all containers (both running and stopped)
 sudo ctr containers list
 
-# List running tasks
+# List running tasks (actual processes)
+# Tasks are the running instances of containers
 sudo ctr tasks list
 ```
 
 ### With nerdctl (Docker-Compatible CLI)
 
-`nerdctl` provides a Docker-like experience for containerd:
+`nerdctl` provides a Docker-like experience for containerd, making migration from Docker seamless. It supports most Docker CLI flags and even Docker Compose files.
 
 ```bash
-# Install nerdctl
+# Download and install nerdctl binary
 wget https://github.com/containerd/nerdctl/releases/download/v1.7.0/nerdctl-1.7.0-linux-amd64.tar.gz
+# Extract to /usr/local/bin for system-wide access
 sudo tar -xzf nerdctl-1.7.0-linux-amd64.tar.gz -C /usr/local/bin
 
-# Now use Docker-like commands
+# Now use familiar Docker-like commands
+# -d runs detached, --name sets container name, -p maps ports
 nerdctl run -d --name nginx -p 8080:80 nginx
+# List running containers
 nerdctl ps
+# View container logs
 nerdctl logs nginx
+# Execute interactive shell inside the container
 nerdctl exec -it nginx sh
+# Stop the running container
 nerdctl stop nginx
+# Remove the stopped container
 nerdctl rm nginx
 ```
 
@@ -286,26 +309,29 @@ nerdctl also supports:
 
 ## containerd Namespaces
 
-containerd uses namespaces to isolate different clients. This is different from Linux kernel namespaces - it's a containerd-specific concept for multi-tenancy.
+containerd uses namespaces to isolate different clients. This is different from Linux kernel namespaces - it is a containerd-specific concept for multi-tenancy that allows multiple systems (Docker, Kubernetes, etc.) to share a single containerd instance without conflicts.
 
 ```bash
-# List namespaces
+# List all containerd namespaces
 sudo ctr namespaces list
 
-# Kubernetes uses the "k8s.io" namespace
+# Kubernetes stores containers in the "k8s.io" namespace
+# Use -n flag to specify which namespace to query
 sudo ctr -n k8s.io containers list
 
-# Docker uses the "moby" namespace
+# Docker uses the "moby" namespace when running on containerd
 sudo ctr -n moby containers list
 
-# Default namespace is "default"
+# Manual ctr commands use "default" namespace by default
 sudo ctr -n default images list
 ```
 
-When troubleshooting Kubernetes, always specify the namespace:
+When troubleshooting Kubernetes, always specify the namespace to see the right containers and images:
 
 ```bash
+# View images available to Kubernetes
 sudo ctr -n k8s.io images list
+# View Kubernetes containers (pods are multiple containers)
 sudo ctr -n k8s.io containers list
 ```
 
@@ -336,42 +362,62 @@ Both are CRI-compliant runtimes for Kubernetes. How do they compare?
 
 ### Check containerd status
 
+These commands help verify containerd is running and identify startup issues from the systemd journal.
+
 ```bash
+# Check if containerd service is running and healthy
 sudo systemctl status containerd
+# Follow containerd logs in real-time for debugging
 sudo journalctl -u containerd -f
 ```
 
 ### Verify CRI is working
 
+The `crictl` command is the standard tool for interacting with CRI-compliant runtimes. It is essential for Kubernetes troubleshooting.
+
 ```bash
-# Using crictl (CRI CLI)
+# Using crictl (CRI CLI) - shows runtime info and version
 sudo crictl info
+# List images available to Kubernetes
 sudo crictl images
+# List running containers (similar to docker ps)
 sudo crictl ps
 ```
 
 ### Common issues
 
 **Container won't start:**
+
+When a container fails to start, check the task status and logs to identify the root cause.
+
 ```bash
-# Check container logs
+# List tasks to see container states (running, stopped, etc.)
 sudo ctr -n k8s.io tasks list
+# View container output - replace <container-id> with actual ID
 sudo ctr -n k8s.io tasks logs <container-id>
 ```
 
 **Image pull failures:**
+
+Image pull issues are often due to network, authentication, or registry configuration problems.
+
 ```bash
-# Test pull manually
+# Test pull manually to see detailed error messages
 sudo ctr images pull docker.io/library/nginx:latest
 
 # Check registry configuration in /etc/containerd/config.toml
+# Look for [plugins."io.containerd.grpc.v1.cri".registry] section
 ```
 
 **Cgroup driver mismatch:**
+
+Cgroup driver mismatches between containerd and kubelet cause pods to fail. Both must use the same driver.
+
 ```bash
 # Ensure containerd and kubelet use the same cgroup driver
 # In containerd config: SystemdCgroup = true
 # In kubelet config: --cgroup-driver=systemd
+# After fixing, restart both services
 ```
 
 ## Best Practices
@@ -385,16 +431,23 @@ sudo ctr images pull docker.io/library/nginx:latest
 
 ### Enabling Metrics
 
+containerd exposes Prometheus-compatible metrics that provide insights into container operations, image pulls, and runtime performance.
+
 ```toml
-# In /etc/containerd/config.toml
+# Add this section to /etc/containerd/config.toml
 [metrics]
+  # Bind metrics endpoint to localhost only for security
+  # Use 0.0.0.0:1338 to expose externally (not recommended)
   address = "127.0.0.1:1338"
 ```
 
-Scrape with Prometheus:
+Configure Prometheus to scrape containerd metrics. This enables monitoring of container runtime performance alongside your applications.
+
 ```yaml
+# Add to prometheus.yml scrape_configs
 - job_name: 'containerd'
   static_configs:
+    # Point to containerd metrics endpoint
     - targets: ['localhost:1338']
 ```
 

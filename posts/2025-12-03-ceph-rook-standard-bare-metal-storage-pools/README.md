@@ -93,90 +93,108 @@ Below is a "kitchen table" deployment you can run in a homelab or staging enviro
 
 ### 1. Add the Chart Repos
 
+First, register the official Rook Helm repository and update your local chart cache. This ensures you have access to the latest stable versions of both the operator and cluster charts.
+
 ```bash
+# Add the official Rook Helm repository for production-ready charts
 helm repo add rook-release https://charts.rook.io/release
+
+# Update local cache to fetch the latest chart versions
 helm repo update
 ```
 
 ### 2. Install the Rook Operator
 
+The Rook operator watches for Ceph CRDs and manages the entire lifecycle of your storage cluster. Installing it first establishes the foundation that all subsequent Ceph components depend on.
+
 ```bash
+# Create a dedicated namespace to isolate Ceph components
 kubectl create namespace rook-ceph
+
+# Install the Rook operator with CSI drivers enabled for block and filesystem storage
 helm upgrade --install rook-ceph rook-release/rook-ceph \
    --namespace rook-ceph \
-   --set csi.enableRbdDriver=true \
-   --set csi.enableCephfsDriver=true
+   --set csi.enableRbdDriver=true \       # Enable RBD for block storage (databases, VMs)
+   --set csi.enableCephfsDriver=true      # Enable CephFS for shared filesystem volumes
 ```
 
 This chart deploys the operator, CRDs, CSI sidecars, and default RBAC.
 
 ### 3. Define Storage in Values
 
-Create `rook-ceph-cluster-values.yaml` describing your nodes and devices:
+Create `rook-ceph-cluster-values.yaml` describing your nodes and devices. This configuration file explicitly maps physical disks to OSD pods, giving you precise control over which hardware participates in the storage cluster.
 
 ```yaml
 cephClusterSpec:
-   dataDirHostPath: /var/lib/rook
+   dataDirHostPath: /var/lib/rook       # Host path where Ceph stores metadata and logs
    network:
-      provider: host
+      provider: host                     # Use host networking for better performance
    mon:
-      count: 3
+      count: 3                           # Run 3 monitors for quorum (minimum for production)
    storage:
-      useAllDevices: false
-      useAllNodes: false
+      useAllDevices: false               # Disable auto-discovery to prevent accidental data loss
+      useAllNodes: false                 # Explicitly list nodes instead of using all available
       nodes:
-         - name: worker-a
+         - name: worker-a                # First storage node
             devices:
-               - name: "/dev/nvme0n1"
-               - name: "/dev/sdb"
-         - name: worker-b
+               - name: "/dev/nvme0n1"    # Fast NVMe for hot data and WAL/DB
+               - name: "/dev/sdb"        # Spinning disk for bulk capacity
+         - name: worker-b                # Second storage node
             devices:
-               - name: "/dev/nvme0n1"
+               - name: "/dev/nvme0n1"    # Each node contributes NVMe and HDD
                - name: "/dev/sdb"
-         - name: worker-c
+         - name: worker-c                # Third storage node - ensures data survives any single failure
             devices:
                - name: "/dev/nvme0n1"
                - name: "/dev/sdb"
    dashboard:
-      enabled: true
+      enabled: true                      # Enable Ceph dashboard for visual cluster management
 cephBlockPools:
-   - name: fast-rbd
+   - name: fast-rbd                      # Pool name referenced by StorageClass
       spec:
          replicated:
-            size: 3
-         crushRoot: host
+            size: 3                      # Triple replication for high durability
+         crushRoot: host                 # Spread replicas across hosts, not just OSDs
       storageClass:
-         enabled: true
-         name: fast-rbd
-         reclaimPolicy: Delete
+         enabled: true                   # Automatically create a StorageClass for this pool
+         name: fast-rbd                  # StorageClass name developers will reference
+         reclaimPolicy: Delete           # Clean up RBD images when PVCs are deleted
          parameters:
-            csi.storage.k8s.io/fstype: xfs
-            imageFeatures: layering
+            csi.storage.k8s.io/fstype: xfs        # XFS performs well for database workloads
+            imageFeatures: layering               # Enable layering for snapshot support
 ```
 
 ### 4. Deploy the CephCluster CR via Helm
 
+Now deploy the actual Ceph cluster using your values file. This triggers the operator to create monitor pods, manager pods, and OSD pods on the nodes you specified.
+
 ```bash
+# Deploy the Ceph cluster with your custom storage configuration
 helm upgrade --install rook-ceph-cluster rook-release/rook-ceph-cluster \
    --namespace rook-ceph \
-   -f rook-ceph-cluster-values.yaml
+   -f rook-ceph-cluster-values.yaml    # Apply your node and device mappings
 ```
 
 Within a few minutes you should see mons, mgr, and OSD pods running. The Helm chart also provisions the `fast-rbd` StorageClass so developers can claim block volumes:
 
+The following commands verify your StorageClass exists and demonstrate provisioning a 200GB volume for a PostgreSQL database. This proves end-to-end functionality from Ceph pools through CSI to actual workloads.
+
 ```bash
+# Verify the StorageClass was created by the Helm chart
 kubectl get storageclass fast-rbd
+
+# Create a test PVC to prove storage provisioning works
 kubectl apply -f - <<'EOF'
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-   name: postgres-data
+   name: postgres-data              # Name your PVC descriptively for the workload
 spec:
-   accessModes: ["ReadWriteOnce"]
-   storageClassName: fast-rbd
+   accessModes: ["ReadWriteOnce"]   # Block storage for single-pod access (typical for databases)
+   storageClassName: fast-rbd       # Reference the Ceph RBD StorageClass we created
    resources:
       requests:
-         storage: 200Gi
+         storage: 200Gi             # Request 200GB - Ceph will carve this from the pool
 EOF
 ```
 

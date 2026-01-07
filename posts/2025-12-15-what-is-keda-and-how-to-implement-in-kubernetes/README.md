@@ -37,17 +37,27 @@ KEDA is an open-source project that acts as a Kubernetes Metrics Server and a cu
 
 ## Installing KEDA
 
-KEDA can be installed via Helm or with kubectl manifests. Here’s the Helm method (recommended):
+KEDA can be installed via Helm or with kubectl manifests. Here's the Helm method (recommended):
+
+The following commands add the KEDA Helm repository, update your local chart cache, and install KEDA into its own dedicated namespace. This creates the KEDA operator and metrics server that will manage your autoscaling.
 
 ```bash
+# Add the official KEDA Helm chart repository
 helm repo add kedacore https://kedacore.github.io/charts
+
+# Update your local Helm repository cache
 helm repo update
+
+# Install KEDA into a dedicated namespace
+# --create-namespace creates the 'keda' namespace if it doesn't exist
 helm install keda kedacore/keda --namespace keda --create-namespace
 ```
 
-Verify installation:
+Verify that KEDA components are running correctly before creating any ScaledObjects:
 
 ```bash
+# Check that KEDA pods are running
+# You should see keda-operator and keda-metrics-apiserver pods
 kubectl get pods -n keda
 ```
 
@@ -57,12 +67,16 @@ Suppose you have a deployment that processes jobs from a RabbitMQ queue. You wan
 
 ### Step 1: Deploy Your Worker
 
+This Deployment creates a single worker pod that connects to RabbitMQ and processes messages from the "jobs" queue. KEDA will automatically adjust the replica count based on queue depth.
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: queue-worker
 spec:
+  # Initial replica count - KEDA will override this based on queue length
+  # Can be set to 0 for scale-to-zero capability
   replicas: 1
   selector:
     matchLabels:
@@ -70,42 +84,66 @@ spec:
   template:
     metadata:
       labels:
+        # Labels must match the selector above
         app: queue-worker
     spec:
       containers:
         - name: worker
+          # Your application image that processes queue messages
           image: mycompany/worker:latest
           env:
+            # RabbitMQ connection details
+            # Use Kubernetes DNS for service discovery within the cluster
             - name: RABBITMQ_HOST
               value: rabbitmq.default.svc.cluster.local
+            # Queue name that this worker consumes from
+            # Must match the queueName in your ScaledObject
             - name: QUEUE_NAME
               value: jobs
 ```
 
 ### Step 2: Create a KEDA ScaledObject
 
+The ScaledObject is the core KEDA resource that defines how your deployment should scale. It specifies which deployment to scale, the min/max boundaries, and the trigger configuration that determines when scaling occurs.
+
 ```yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
+  # Name should clearly indicate what it scales
   name: queue-worker-scaledobject
 spec:
+  # Reference to the deployment that KEDA should scale
   scaleTargetRef:
+    # Must match the name of your Deployment
     name: queue-worker
+  # Minimum replicas - set to 0 for true scale-to-zero
+  # When queue is empty, KEDA scales down to this number
   minReplicaCount: 0
+  # Maximum replicas - prevents runaway scaling
+  # Set based on your resource capacity and workload requirements
   maxReplicaCount: 10
+  # Triggers define what events cause scaling
   triggers:
     - type: rabbitmq
       metadata:
+        # Full AMQP connection string to RabbitMQ
+        # In production, use TriggerAuthentication to store credentials securely
         host: "amqp://guest:guest@rabbitmq.default.svc.cluster.local:5672/"
+        # Queue to monitor - must exist in RabbitMQ
         queueName: jobs
-        queueLength: "5"  # Scale up when >5 messages
+        # Scale threshold - add one replica for every 5 messages in queue
+        # Lower values = more aggressive scaling, higher values = more conservative
+        queueLength: "5"
 ```
 
-Apply both manifests:
+Apply both manifests to create the worker and enable autoscaling:
 
 ```bash
+# Deploy the worker application first
 kubectl apply -f worker-deployment.yaml
+
+# Then create the ScaledObject to enable KEDA autoscaling
 kubectl apply -f scaledobject.yaml
 ```
 
@@ -113,24 +151,34 @@ KEDA will now monitor the RabbitMQ queue and scale your worker deployment up or 
 
 ## Example: Autoscale Based on Prometheus Metrics
 
-You can scale on any Prometheus metric (e.g., HTTP requests per second):
+You can scale on any Prometheus metric (e.g., HTTP requests per second). This is powerful for scaling based on application-specific metrics like request rate, error rate, or custom business metrics.
 
 ```yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
+  # Descriptive name indicating this scales the API based on requests
   name: api-autoscaler
 spec:
   scaleTargetRef:
+    # Target deployment to scale
     name: api-deployment
+  # Keep at least 1 replica running (no scale-to-zero for API services)
   minReplicaCount: 1
+  # Allow scaling up to 20 replicas during traffic spikes
   maxReplicaCount: 20
   triggers:
     - type: prometheus
       metadata:
+        # Prometheus server URL - use Kubernetes DNS for in-cluster Prometheus
         serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
+        # Name for the metric (used in logging and HPA)
         metricName: http_requests_total
+        # Scale threshold - add replica for every 100 requests per second
+        # Tune this based on how many req/s each pod can handle
         threshold: '100'
+        # PromQL query to calculate current request rate
+        # sum(rate(...)) aggregates across all pods and calculates per-second rate
         query: sum(rate(http_requests_total[1m]))
 ```
 

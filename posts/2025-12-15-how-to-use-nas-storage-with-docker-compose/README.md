@@ -32,23 +32,31 @@ Before starting:
 
 For NFS on Debian/Ubuntu:
 
+The NFS client package allows your Docker host to mount NFS shares. This is a one-time setup required before Docker can create NFS volumes.
+
 ```bash
+# Update package list and install NFS client utilities
+# nfs-common includes mount.nfs required for NFS volume mounts
 sudo apt-get update && sudo apt-get install -y nfs-common
 ```
 
 For NFS on RHEL/Rocky/AlmaLinux:
 
 ```bash
+# Install NFS utilities for Red Hat-based distributions
+# Includes rpcbind and other NFS dependencies
 sudo dnf install -y nfs-utils
 ```
 
 For SMB/CIFS:
 
+CIFS utilities are required when connecting to Windows shares or NAS devices configured for SMB protocol.
+
 ```bash
-# Debian/Ubuntu
+# Debian/Ubuntu - install CIFS mount utilities
 sudo apt-get install -y cifs-utils
 
-# RHEL/Rocky
+# RHEL/Rocky - same package, different package manager
 sudo dnf install -y cifs-utils
 ```
 
@@ -72,6 +80,8 @@ On TrueNAS:
 
 ### Step 2: Use NFS in Docker Compose
 
+This Docker Compose configuration demonstrates how to declare an NFS volume using the built-in local driver with NFS options. The volume is mounted into the container just like any other Docker volume.
+
 ```yaml
 # docker-compose.yml
 version: "3.8"
@@ -80,16 +90,23 @@ services:
   app:
     image: nginx:alpine
     volumes:
+      # Mount the NFS volume to serve static files
       - nfs-data:/usr/share/nginx/html
     ports:
       - "8080:80"
 
+# Volume definitions - NFS configuration lives here
 volumes:
   nfs-data:
+    # Use the local driver with NFS-specific options
     driver: local
     driver_opts:
+      # Specify NFS as the filesystem type
       type: nfs
+      # Mount options: NAS IP, NFS version, and behavior flags
+      # soft = return errors on timeout, nolock = disable file locking
       o: addr=192.168.1.100,nfsvers=4.1,soft,nolock
+      # NFS export path on your NAS (note the leading colon)
       device: ":/volume1/docker-data"
 ```
 
@@ -106,33 +123,43 @@ volumes:
 
 ### Production-Ready NFS Example
 
+This comprehensive example shows a multi-service stack with different NFS mount strategies for each workload type. Databases use hard mounts for data integrity, while ephemeral data uses soft mounts for better failure handling.
+
 ```yaml
 version: "3.8"
 
 services:
+  # PostgreSQL database - critical data, needs reliable storage
   postgres:
     image: postgres:16
     environment:
       POSTGRES_PASSWORD: secretpassword
     volumes:
+      # Database files stored on NAS for persistence and backup
       - postgres-data:/var/lib/postgresql/data
 
+  # Redis cache - ephemeral data, can tolerate some loss
   redis:
     image: redis:7-alpine
     volumes:
       - redis-data:/data
 
+  # Application container - uses shared upload storage
   app:
     image: myapp:latest
     volumes:
+      # User uploads - shared between app instances for horizontal scaling
       - app-uploads:/app/uploads
+      # Application logs - centralized on NAS for easy access
       - app-logs:/app/logs
     depends_on:
       - postgres
       - redis
 
 volumes:
-  # Database: use hard mount for data integrity
+  # Database volume: use 'hard' mount for data integrity
+  # 'hard' = retry indefinitely on failure (prevents data corruption)
+  # 'intr' = allow interrupt to prevent hung processes
   postgres-data:
     driver: local
     driver_opts:
@@ -140,7 +167,9 @@ volumes:
       o: addr=192.168.1.100,nfsvers=4.1,hard,intr
       device: ":/volume1/docker/postgres"
 
-  # Cache: soft mount is fine, data is ephemeral
+  # Cache volume: 'soft' mount is fine since data is ephemeral
+  # 'soft' = return error on timeout (container can handle gracefully)
+  # 'nolock' = disable NFS locking for better performance
   redis-data:
     driver: local
     driver_opts:
@@ -148,7 +177,9 @@ volumes:
       o: addr=192.168.1.100,nfsvers=4.1,soft,nolock
       device: ":/volume1/docker/redis"
 
-  # App data: balanced settings
+  # Upload volume: balanced settings for reliability + performance
+  # 'hard' = ensure uploads don't get corrupted
+  # 'noatime' = don't update access times (reduces write operations)
   app-uploads:
     driver: local
     driver_opts:
@@ -156,6 +187,8 @@ volumes:
       o: addr=192.168.1.100,nfsvers=4.1,hard,noatime
       device: ":/volume1/docker/uploads"
 
+  # Logs volume: soft mount since logs are append-only
+  # Some log loss is acceptable vs. hanging the application
   app-logs:
     driver: local
     driver_opts:

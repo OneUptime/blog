@@ -39,50 +39,73 @@ Return shape expected by OneUptime:
 
 ### Minimal example
 
+The following script demonstrates the core pattern for synthetic monitoring: navigate to a page, validate critical content exists, capture visual evidence, and return structured results. This pattern ensures you catch both functional issues (missing content) and visual regressions.
+
 ```js
 // This code is executed in a sandbox. You can use Playwright APIs via the provided page/browser.
 // You may return { data, screenshots } where screenshots are Buffers.
+
+// Step 1: Navigate to the target URL and wait for the DOM to be ready
+// Using 'domcontentloaded' is faster than 'load' since we don't need all resources
 await page.goto('https://example.com', { waitUntil: 'domcontentloaded' });
 
-// 2) Validate title text exists
+// Step 2: Validate that the expected title text exists on the page
+// This assertion catches content delivery issues or broken deployments
 const title = await page.textContent('h1');
 if (!title || !title.toLowerCase().includes('example')) {
+  // Throwing an error marks the synthetic check as failed in OneUptime
   throw new Error('Expected title to contain "example"');
 }
 
-// 3) Take a screenshot
+// Step 3: Take a full-page screenshot for visual verification
+// Screenshots are stored in OneUptime and help debug issues when they occur
 screenshots.home = await page.screenshot({ fullPage: true });
 
-// 4) Return any structured data
+// Step 4: Return structured data that OneUptime will store and display
+// Include any metrics or values you want to track over time
 return {
-  data: { ok: true, title },
-  screenshots,
+  data: { ok: true, title },  // Custom data accessible in OneUptime dashboard
+  screenshots,                 // Named screenshots for artifact storage
 };
 ```
 
 ### Multi-step flow with assertions
 
+This example simulates a complete user login journey - one of the most critical flows to monitor. It tests authentication, page navigation, and verifies that key dashboard elements render correctly. Use this pattern to catch login regressions, SSO issues, or broken post-login redirects before users encounter them.
+
 ```ts
+// Log the current test environment for debugging purposes
+// browserType and screenSizeType are provided by OneUptime's execution context
 console.log(`Running on ${browserType} at ${screenSizeType} size`);
 
+// Step 1: Navigate to the login page
 await page.goto('https://your-app.example/login', { waitUntil: 'domcontentloaded' });
+
+// Step 2: Fill in login credentials
+// Use a dedicated test account - never use real user credentials in synthetic tests
 await page.fill('input[name=email]', 'synthetic+bot@example.com');
 await page.fill('input[name=password]', 'not-a-real-password');
+
+// Step 3: Submit the login form
 await page.click('button[type=submit]');
 
-// Wait for dashboard
+// Step 4: Wait for the dashboard to load after successful login
+// The 15-second timeout accommodates slow authentication backends
 await page.waitForSelector('[data-test="dashboard"]', { timeout: 15000 });
 
-// Verify a key widget is present
+// Step 5: Verify that a critical business widget is present and has content
+// This catches issues where the page loads but data fails to populate
 const widgetText = await page.textContent('[data-test="kpi-revenue"]');
 if (!widgetText) {
+  // Fail the check if the revenue KPI widget is missing or empty
   throw new Error('Revenue KPI widget missing');
 }
 
+// Step 6: Return results with a screenshot of the authenticated dashboard
 return {
-  data: { ok: true, widgetText },
+  data: { ok: true, widgetText },  // Include widget text for trend analysis
   screenshots: {
-    dashboard: await page.screenshot({ fullPage: true })
+    dashboard: await page.screenshot({ fullPage: true })  // Capture full dashboard state
   },
 };
 ```
@@ -117,6 +140,8 @@ Your script can `console.log()` and return named screenshots. OneUptime captures
 These are shown in the Dashboard under the monitor’s summary view.
 
 ## How results flow through the system
+
+This diagram illustrates the complete lifecycle of a synthetic monitoring check, from configuration to visualization. Understanding this flow helps you troubleshoot issues and optimize your monitoring setup.
 
 ```mermaid
 flowchart LR

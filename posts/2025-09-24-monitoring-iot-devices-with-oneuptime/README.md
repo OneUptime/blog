@@ -50,6 +50,8 @@ OneUptime's IoT monitoring works through **incoming request monitors**:
 4. **OneUptime tracks request timestamps** and validates against criteria
 5. **Alerts trigger** when expected heartbeats are missed
 
+This diagram illustrates the heartbeat monitoring architecture. Each IoT device sends periodic HTTP requests to OneUptime, which validates the heartbeat against defined criteria and triggers appropriate alerts when devices go offline.
+
 ```mermaid
 flowchart LR
   subgraph OneUptime
@@ -57,23 +59,23 @@ flowchart LR
     C[Criteria Check]
     A[Alerts]
   end
-  
+
   subgraph IoT Devices
     S1[Smart Sensor]
     S2[Industrial Device]
     S3[Connected Vehicle]
   end
-  
+
   S1 -->|Heartbeat| M
   S2 -->|Heartbeat| M
   S3 -->|Heartbeat| M
   M --> C
   C --> A
-  
+
   Slack[Slack]
   OneUptime_On_Call["OneUptime On-Call"]
   Update[Update]
-  
+
   A -->|Device offline| Slack
   A -->|Custom alert| OneUptime_On_Call
   A -->|Status page| Update
@@ -124,68 +126,87 @@ This URL is specific to your monitor and includes a secret key for security.
 For devices that can make HTTP requests:
 
 **Python (MicroPython/Raspberry Pi):**
+
+This Python script implements a simple heartbeat loop suitable for Raspberry Pi or MicroPython-based devices. It sends a GET request to OneUptime every 5 minutes and handles network failures gracefully to ensure the device keeps trying.
+
 ```python
-import urequests  # or requests for full Python
+import urequests  # Use 'requests' for full Python, 'urequests' for MicroPython
 import time
 
+# Configuration: Your unique OneUptime heartbeat endpoint
 HEARTBEAT_URL = "https://oneuptime.com/heartbeat/abc123"
-INTERVAL = 300  # 5 minutes
+INTERVAL = 300  # Heartbeat interval in seconds (5 minutes)
 
+# Main heartbeat loop - runs continuously
 while True:
     try:
+        # Send GET request to OneUptime to signal device is alive
         response = urequests.get(HEARTBEAT_URL)
-        print(f"Heartbeat sent: {response.status_code}")
-        response.close()
+        print(f"Heartbeat sent: {response.status_code}")  # Log success for debugging
+        response.close()  # Important: close connection to free resources on constrained devices
     except Exception as e:
+        # Log failures but continue running - network issues are expected in IoT
         print(f"Heartbeat failed: {e}")
-    
+
+    # Wait before sending next heartbeat
     time.sleep(INTERVAL)
 ```
 
 **Arduino (ESP32/ESP8266):**
-```cpp
-#include <WiFi.h>
-#include <HTTPClient.h>
 
-const char* HEARTBEAT_URL = "https://oneuptime.com/heartbeat/abc123";
-const int INTERVAL = 300000; // 5 minutes in milliseconds
+This Arduino sketch demonstrates heartbeat monitoring for ESP32 or ESP8266 microcontrollers. These popular WiFi-enabled boards are widely used in IoT projects and can easily integrate with OneUptime's monitoring.
+
+```cpp
+#include <WiFi.h>       // WiFi library for ESP32 (use ESP8266WiFi.h for ESP8266)
+#include <HTTPClient.h> // HTTP client for making web requests
+
+// Configuration constants
+const char* HEARTBEAT_URL = "https://oneuptime.com/heartbeat/abc123";  // Your OneUptime endpoint
+const int INTERVAL = 300000;  // 5 minutes in milliseconds
 
 void setup() {
+  // Initialize WiFi connection
+  // Replace with your actual network credentials
   WiFi.begin("SSID", "PASSWORD");
-  // ... WiFi connection code
+  // ... WiFi connection code (wait for connection, etc.)
 }
 
 void loop() {
+  // Only send heartbeat if WiFi is connected
   if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-    http.begin(HEARTBEAT_URL);
-    int httpCode = http.GET();
-    Serial.println("Heartbeat: " + String(httpCode));
-    http.end();
+    HTTPClient http;                    // Create HTTP client instance
+    http.begin(HEARTBEAT_URL);          // Configure request URL
+    int httpCode = http.GET();          // Send GET request and get response code
+    Serial.println("Heartbeat: " + String(httpCode));  // Log for debugging
+    http.end();                         // Clean up HTTP connection
   }
-  delay(INTERVAL);
+  delay(INTERVAL);  // Wait 5 minutes before next heartbeat
 }
 ```
 
 ### Advanced Payload Monitoring
 
-Send custom data with heartbeats for richer monitoring:
+Send custom data with heartbeats for richer monitoring. By including device telemetry in the heartbeat payload, you can track metrics like battery levels, sensor readings, and location data alongside the basic online/offline status.
 
 ```python
 import json
 import requests
 
+# Build a payload with device telemetry data
+# OneUptime stores this data and can alert on specific values
 payload = {
-    "device_id": "sensor_001",
-    "temperature": 23.5,
-    "battery_level": 85,
-    "location": "factory_floor_a"
+    "device_id": "sensor_001",       # Unique identifier for this device
+    "temperature": 23.5,              # Current temperature reading from sensor
+    "battery_level": 85,              # Battery percentage for predictive maintenance
+    "location": "factory_floor_a"     # Physical location for asset tracking
 }
 
+# Send POST request with JSON payload
+# POST allows larger payloads than GET for complex telemetry
 response = requests.post(
     HEARTBEAT_URL,
-    json=payload,
-    headers={"Content-Type": "application/json"}
+    json=payload,                                    # Automatically serializes dict to JSON
+    headers={"Content-Type": "application/json"}     # Specify content type for the server
 )
 ```
 
@@ -307,21 +328,23 @@ Action: Security alert
 
 ### 1. Payload Standardization
 
-Establish consistent payload formats across your IoT devices for that one specific monitor:
+Establish consistent payload formats across your IoT devices for that one specific monitor. A standardized schema makes it easier to parse data, create alerts based on specific fields, and build dashboards across your device fleet.
 
 ```json
 {
-  "device_id": "unique_identifier",
-  "timestamp": "2025-09-24T10:30:00Z",
-  "status": "online|offline|error",
-  "metrics": {
-    "temperature": 23.5,
-    "battery": 85,
-    "signal_strength": -45
+  "device_id": "unique_identifier",           // Required: Unique identifier for device tracking
+  "timestamp": "2025-09-24T10:30:00Z",        // ISO 8601 timestamp for accurate time tracking
+  "status": "online|offline|error",           // Device status enum for quick filtering
+
+  "metrics": {                                // Nested object for sensor readings
+    "temperature": 23.5,                      // Temperature in Celsius
+    "battery": 85,                            // Battery percentage (0-100)
+    "signal_strength": -45                    // WiFi/cellular signal in dBm
   },
-  "location": {
-    "lat": 40.7128,
-    "lon": -74.0060
+
+  "location": {                               // GPS coordinates for asset tracking
+    "lat": 40.7128,                           // Latitude in decimal degrees
+    "lon": -74.0060                           // Longitude in decimal degrees
   }
 }
 ```

@@ -27,6 +27,8 @@ Mocking databases hides integration bugs. Testcontainers gives you real database
 
 ## Installation
 
+Install the testcontainers package with the modules you need. The package supports PostgreSQL, Redis, Kafka, and many other services.
+
 ```bash
 pip install testcontainers[postgresql] testcontainers[redis] pytest pytest-asyncio
 ```
@@ -37,6 +39,8 @@ pip install testcontainers[postgresql] testcontainers[redis] pytest pytest-async
 
 ### Basic Setup
 
+This fixture configuration creates a PostgreSQL container once per test session (for speed) and provides a fresh database session for each test (for isolation). The session fixture handles table creation and cleanup.
+
 ```python
 # tests/conftest.py
 import pytest
@@ -46,35 +50,37 @@ from sqlalchemy.orm import sessionmaker
 
 @pytest.fixture(scope="session")
 def postgres_container():
-    """Start PostgreSQL container for test session"""
+    """Start PostgreSQL container for test session - reused across all tests"""
     with PostgresContainer("postgres:15") as postgres:
-        yield postgres
+        yield postgres  # Container stays up for entire session
 
 @pytest.fixture(scope="session")
 def db_engine(postgres_container):
-    """Create SQLAlchemy engine"""
+    """Create SQLAlchemy engine from container connection"""
     engine = create_engine(postgres_container.get_connection_url())
     return engine
 
 @pytest.fixture(scope="function")
 def db_session(db_engine):
     """Create fresh database session for each test"""
-    # Create tables
+    # Create tables before test
     from app.models import Base
     Base.metadata.create_all(db_engine)
 
     Session = sessionmaker(bind=db_engine)
     session = Session()
 
-    yield session
+    yield session  # Run test with this session
 
-    # Cleanup
-    session.rollback()
+    # Cleanup after test
+    session.rollback()  # Discard uncommitted changes
     session.close()
-    Base.metadata.drop_all(db_engine)
+    Base.metadata.drop_all(db_engine)  # Clean slate for next test
 ```
 
 ### Testing Repository Layer
+
+With real PostgreSQL, you can test actual SQL behavior, constraints, and transactions. These tests verify that your repository code works correctly with the database.
 
 ```python
 # tests/test_user_repository.py
@@ -87,15 +93,17 @@ class TestUserRepository:
         """Test creating a user in real PostgreSQL"""
         repo = UserRepository(db_session)
 
+        # Create user through repository
         user = repo.create(
             email="test@example.com",
             name="Test User"
         )
 
-        assert user.id is not None
+        # Verify returned object
+        assert user.id is not None  # ID assigned by database
         assert user.email == "test@example.com"
 
-        # Verify in database
+        # Verify persisted in database
         fetched = db_session.query(User).filter_by(id=user.id).first()
         assert fetched is not None
         assert fetched.email == "test@example.com"
@@ -104,22 +112,23 @@ class TestUserRepository:
         """Test finding user by email"""
         repo = UserRepository(db_session)
 
-        # Create user
+        # Create user first
         repo.create(email="find@example.com", name="Find Me")
 
-        # Find user
+        # Find user by email
         user = repo.find_by_email("find@example.com")
 
         assert user is not None
         assert user.name == "Find Me"
 
     def test_unique_email_constraint(self, db_session):
-        """Test database enforces unique emails"""
+        """Test database enforces unique emails - catches constraint violations"""
         repo = UserRepository(db_session)
 
         repo.create(email="unique@example.com", name="First")
 
-        with pytest.raises(Exception):  # IntegrityError
+        # Second create with same email should fail
+        with pytest.raises(Exception):  # IntegrityError from database
             repo.create(email="unique@example.com", name="Second")
 ```
 
@@ -129,6 +138,8 @@ class TestUserRepository:
 
 ### Redis Fixture
 
+Redis fixtures follow the same pattern: session-scoped container for performance, function-scoped client with automatic cleanup between tests.
+
 ```python
 # tests/conftest.py
 from testcontainers.redis import RedisContainer
@@ -136,23 +147,25 @@ import redis
 
 @pytest.fixture(scope="session")
 def redis_container():
-    """Start Redis container"""
+    """Start Redis container - reused across session"""
     with RedisContainer("redis:7") as container:
         yield container
 
 @pytest.fixture(scope="function")
 def redis_client(redis_container):
-    """Create Redis client, flush between tests"""
+    """Create Redis client, flush between tests for isolation"""
     client = redis.Redis(
         host=redis_container.get_container_host_ip(),
         port=redis_container.get_exposed_port(6379),
-        decode_responses=True
+        decode_responses=True  # Return strings instead of bytes
     )
     yield client
-    client.flushall()
+    client.flushall()  # Clean all data after each test
 ```
 
 ### Testing Cache Layer
+
+Real Redis tests verify that caching logic works correctly, including TTL expiration and pattern-based invalidation.
 
 ```python
 # tests/test_cache.py
@@ -161,7 +174,7 @@ from app.cache import CacheService
 
 class TestCacheService:
     def test_set_and_get(self, redis_client):
-        """Test basic cache operations"""
+        """Test basic cache operations with real Redis"""
         cache = CacheService(redis_client)
 
         cache.set("key", {"data": "value"}, ttl=300)
@@ -170,31 +183,33 @@ class TestCacheService:
         assert result == {"data": "value"}
 
     def test_cache_expiration(self, redis_client):
-        """Test cache TTL"""
+        """Test cache TTL with real Redis timing"""
         cache = CacheService(redis_client)
 
-        cache.set("expiring", "data", ttl=1)
+        cache.set("expiring", "data", ttl=1)  # 1 second TTL
 
         # Immediately available
         assert cache.get("expiring") == "data"
 
         # Wait for expiration
         import time
-        time.sleep(1.5)
+        time.sleep(1.5)  # Wait past TTL
 
+        # Should be gone
         assert cache.get("expiring") is None
 
     def test_cache_invalidation(self, redis_client):
-        """Test cache invalidation patterns"""
+        """Test cache invalidation patterns with real Redis"""
         cache = CacheService(redis_client)
 
         # Set multiple related keys
         cache.set("user:1:profile", {"name": "Alice"})
         cache.set("user:1:settings", {"theme": "dark"})
 
-        # Invalidate all user keys
+        # Invalidate all user keys with pattern
         cache.invalidate_pattern("user:1:*")
 
+        # Both should be gone
         assert cache.get("user:1:profile") is None
         assert cache.get("user:1:settings") is None
 ```
@@ -205,6 +220,8 @@ class TestCacheService:
 
 ### Full API Testing
 
+This configuration starts all required services and creates a properly configured FastAPI test client. Environment variables point the app to test containers instead of production services.
+
 ```python
 # tests/conftest.py
 from fastapi.testclient import TestClient
@@ -214,7 +231,7 @@ import pytest
 
 @pytest.fixture(scope="session")
 def services():
-    """Start all required services"""
+    """Start all required services for integration tests"""
     with PostgresContainer("postgres:15") as postgres:
         with RedisContainer("redis:7") as redis_container:
             yield {
@@ -227,31 +244,33 @@ def app(services):
     """Create FastAPI app with test configuration"""
     import os
 
-    # Set environment for test services
+    # Point app to test containers via environment variables
     os.environ["DATABASE_URL"] = services["postgres"].get_connection_url()
     os.environ["REDIS_URL"] = f"redis://{services['redis'].get_container_host_ip()}:{services['redis'].get_exposed_port(6379)}"
 
-    # Import app after setting environment
+    # Import app after setting environment (important!)
     from app.main import create_app
     app = create_app()
 
-    # Create tables
+    # Create tables for this test
     from app.database import engine
     from app.models import Base
     Base.metadata.create_all(engine)
 
     yield app
 
-    # Cleanup
+    # Cleanup tables
     Base.metadata.drop_all(engine)
 
 @pytest.fixture(scope="function")
 def client(app):
-    """Create test client"""
+    """Create test client for making HTTP requests"""
     return TestClient(app)
 ```
 
 ### Testing API Endpoints
+
+Full integration tests verify the entire request/response cycle including database operations, validation, and error handling.
 
 ```python
 # tests/test_api.py
@@ -259,7 +278,7 @@ import pytest
 
 class TestUserAPI:
     def test_create_user(self, client):
-        """Test user creation endpoint"""
+        """Test user creation endpoint with real database"""
         response = client.post(
             "/api/users",
             json={"email": "new@example.com", "name": "New User"}
@@ -268,18 +287,18 @@ class TestUserAPI:
         assert response.status_code == 201
         data = response.json()
         assert data["email"] == "new@example.com"
-        assert "id" in data
+        assert "id" in data  # Database-generated ID
 
     def test_get_user(self, client):
-        """Test user retrieval"""
-        # Create user
+        """Test user retrieval after creation"""
+        # Create user first
         create_response = client.post(
             "/api/users",
             json={"email": "get@example.com", "name": "Get User"}
         )
         user_id = create_response.json()["id"]
 
-        # Get user
+        # Get the created user
         response = client.get(f"/api/users/{user_id}")
 
         assert response.status_code == 200
@@ -292,12 +311,14 @@ class TestUserAPI:
         assert response.status_code == 404
 
     def test_duplicate_email(self, client):
-        """Test unique email validation"""
+        """Test unique email validation at API level"""
+        # Create first user
         client.post(
             "/api/users",
             json={"email": "dup@example.com", "name": "First"}
         )
 
+        # Try to create second with same email
         response = client.post(
             "/api/users",
             json={"email": "dup@example.com", "name": "Second"}
@@ -313,6 +334,8 @@ class TestUserAPI:
 
 ### AsyncPG with Testcontainers
 
+For async applications using asyncpg, create an async-compatible fixture that provides a connection pool for concurrent database operations.
+
 ```python
 # tests/conftest.py
 import pytest
@@ -322,7 +345,7 @@ import asyncpg
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """Create event loop for async tests"""
+    """Create event loop for async tests - required by pytest-asyncio"""
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
@@ -335,7 +358,7 @@ async def async_postgres():
 
 @pytest.fixture(scope="function")
 async def async_pool(async_postgres):
-    """Create asyncpg connection pool"""
+    """Create asyncpg connection pool for async database operations"""
     pool = await asyncpg.create_pool(
         host=async_postgres.get_container_host_ip(),
         port=int(async_postgres.get_exposed_port(5432)),
@@ -344,7 +367,7 @@ async def async_pool(async_postgres):
         database=async_postgres.dbname
     )
 
-    # Create schema
+    # Create schema for tests
     async with pool.acquire() as conn:
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS users (
@@ -356,13 +379,15 @@ async def async_pool(async_postgres):
 
     yield pool
 
-    # Cleanup
+    # Cleanup after test
     async with pool.acquire() as conn:
         await conn.execute('DROP TABLE IF EXISTS users')
     await pool.close()
 ```
 
 ### Async Repository Tests
+
+Async tests can verify concurrent database operations, which is important for high-throughput applications.
 
 ```python
 # tests/test_async_repository.py
@@ -372,7 +397,7 @@ from app.repositories import AsyncUserRepository
 @pytest.mark.asyncio
 class TestAsyncUserRepository:
     async def test_create_user(self, async_pool):
-        """Test async user creation"""
+        """Test async user creation with real database"""
         repo = AsyncUserRepository(async_pool)
 
         user = await repo.create(
@@ -384,7 +409,7 @@ class TestAsyncUserRepository:
         assert user["email"] == "async@example.com"
 
     async def test_concurrent_operations(self, async_pool):
-        """Test concurrent database operations"""
+        """Test concurrent database operations don't conflict"""
         repo = AsyncUserRepository(async_pool)
 
         # Create multiple users concurrently
@@ -394,6 +419,7 @@ class TestAsyncUserRepository:
             for i in range(10)
         ]
 
+        # All should succeed without conflicts
         users = await asyncio.gather(*tasks)
 
         assert len(users) == 10
@@ -406,6 +432,8 @@ class TestAsyncUserRepository:
 
 ### Compose-Like Setup
 
+For applications requiring multiple services, start all containers in one fixture. This provides a consistent test environment that mirrors production.
+
 ```python
 # tests/conftest.py
 from testcontainers.postgres import PostgresContainer
@@ -415,11 +443,13 @@ import pytest
 
 @pytest.fixture(scope="session")
 def test_infrastructure():
-    """Start all infrastructure services"""
+    """Start all infrastructure services - like docker-compose for tests"""
+    # Create containers (not started yet)
     postgres = PostgresContainer("postgres:15")
     redis = RedisContainer("redis:7")
     kafka = KafkaContainer("confluentinc/cp-kafka:7.4.0")
 
+    # Start all containers
     postgres.start()
     redis.start()
     kafka.start()
@@ -430,6 +460,7 @@ def test_infrastructure():
         "kafka": kafka
     }
 
+    # Stop in reverse order
     kafka.stop()
     redis.stop()
     postgres.stop()
@@ -450,21 +481,24 @@ def app_config(test_infrastructure):
 
 ### Testing with Custom Postgres
 
+When you need custom extensions or initialization scripts, create a custom container class. This allows you to test with the exact database configuration you use in production.
+
 ```python
 # tests/conftest.py
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
 class CustomPostgresContainer(DockerContainer):
-    """PostgreSQL with custom extensions"""
+    """PostgreSQL with custom extensions and initialization"""
 
     def __init__(self):
         super().__init__("postgres:15")
+        # Set environment variables for PostgreSQL
         self.with_env("POSTGRES_USER", "test")
         self.with_env("POSTGRES_PASSWORD", "test")
         self.with_env("POSTGRES_DB", "testdb")
         self.with_exposed_ports(5432)
-        # Add custom initialization
+        # Mount custom initialization SQL
         self.with_volume_mapping(
             "./tests/init.sql",
             "/docker-entrypoint-initdb.d/init.sql"
@@ -472,17 +506,19 @@ class CustomPostgresContainer(DockerContainer):
 
     def start(self):
         super().start()
+        # Wait for database to be ready before returning
         wait_for_logs(self, "database system is ready to accept connections")
         return self
 
     def get_connection_url(self):
+        """Build connection URL from container settings"""
         host = self.get_container_host_ip()
         port = self.get_exposed_port(5432)
         return f"postgresql://test:test@{host}:{port}/testdb"
 
 @pytest.fixture(scope="session")
 def custom_postgres():
-    """Use custom Postgres container"""
+    """Use custom Postgres container with extensions"""
     container = CustomPostgresContainer()
     container.start()
     yield container
@@ -495,6 +531,8 @@ def custom_postgres():
 
 ### Using factory_boy with Testcontainers
 
+Factory_boy creates realistic test data without manual object construction. Combined with Testcontainers, you get realistic data in a real database.
+
 ```python
 # tests/factories.py
 import factory
@@ -502,19 +540,21 @@ from factory.alchemy import SQLAlchemyModelFactory
 from app.models import User, Order
 
 class UserFactory(SQLAlchemyModelFactory):
+    """Factory for creating User test objects"""
     class Meta:
         model = User
-        sqlalchemy_session = None  # Set dynamically
+        sqlalchemy_session = None  # Set dynamically per test
 
-    email = factory.Sequence(lambda n: f"user{n}@example.com")
-    name = factory.Faker("name")
+    email = factory.Sequence(lambda n: f"user{n}@example.com")  # Unique emails
+    name = factory.Faker("name")  # Random realistic names
 
 class OrderFactory(SQLAlchemyModelFactory):
+    """Factory for creating Order test objects with associated User"""
     class Meta:
         model = Order
         sqlalchemy_session = None
 
-    user = factory.SubFactory(UserFactory)
+    user = factory.SubFactory(UserFactory)  # Auto-create related user
     total = factory.Faker("pydecimal", left_digits=3, right_digits=2, positive=True)
     status = "pending"
 
@@ -534,6 +574,7 @@ def factories(db_session):
 class TestOrderService:
     def test_calculate_user_total(self, db_session, factories):
         """Test calculating user's total orders"""
+        # Create user and orders using factories
         user = factories["user"].create()
         factories["order"].create_batch(3, user=user, total=100)
 
@@ -549,12 +590,14 @@ class TestOrderService:
 
 ### Container Reuse
 
+Module-scoped fixtures balance isolation with performance. TRUNCATE is faster than dropping/recreating tables.
+
 ```python
 # tests/conftest.py
 import pytest
 from testcontainers.postgres import PostgresContainer
 
-# Module-scoped for better performance
+# Module-scoped for better performance - container reused within module
 @pytest.fixture(scope="module")
 def postgres():
     """Reuse container across module"""
@@ -563,10 +606,10 @@ def postgres():
 
 @pytest.fixture(scope="function")
 def clean_db(postgres, db_engine):
-    """Reset database state between tests"""
+    """Reset database state between tests using TRUNCATE"""
     from app.models import Base
 
-    # Fast cleanup with TRUNCATE
+    # Fast cleanup with TRUNCATE (faster than DROP/CREATE)
     with db_engine.connect() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(f'TRUNCATE TABLE {table.name} CASCADE')
@@ -577,6 +620,8 @@ def clean_db(postgres, db_engine):
 
 ### Parallel Test Execution
 
+For parallel tests with pytest-xdist, each worker needs its own container to prevent conflicts.
+
 ```python
 # pytest.ini
 [pytest]
@@ -585,7 +630,7 @@ addopts = -n auto  # pytest-xdist for parallel tests
 # tests/conftest.py
 @pytest.fixture(scope="session")
 def postgres(worker_id):
-    """Separate container per test worker"""
+    """Separate container per test worker for parallel execution"""
     with PostgresContainer("postgres:15") as postgres:
         yield postgres
 ```

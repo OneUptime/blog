@@ -36,37 +36,39 @@ Collect this data before touching YAML. Without it, you are tuning blind.
 
 **Config Example**
 
+The following HPA configuration demonstrates how to handle bursty traffic for a checkout API. It uses dual metrics (queue depth and CPU) to ensure rapid scale-up during traffic spikes while preventing premature scale-down that could leave you under-provisioned for the next surge.
+
 ```yaml
-apiVersion: autoscaling/v2
+apiVersion: autoscaling/v2          # Use v2 API for advanced scaling behaviors
 kind: HorizontalPodAutoscaler
 metadata:
-   name: checkout-api
+   name: checkout-api               # Target the checkout-api deployment
 spec:
-   minReplicas: 6
-   maxReplicas: 120
+   minReplicas: 6                   # Keep 6 pods warm to handle baseline traffic and avoid cold starts
+   maxReplicas: 120                 # Cap at 120 pods to prevent runaway scaling and control costs
    behavior:
       scaleUp:
-         stabilizationWindowSeconds: 0
+         stabilizationWindowSeconds: 0    # Scale up immediately without waiting - critical for bursts
          policies:
             - type: Percent
-               value: 200
-               periodSeconds: 60
+               value: 200                 # Allow doubling pods per minute during spikes
+               periodSeconds: 60          # Evaluate scaling every 60 seconds
       scaleDown:
-         stabilizationWindowSeconds: 300
+         stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down to avoid thrashing
    metrics:
       - type: Pods
          pods:
             metric:
-               name: queue_depth
+               name: queue_depth          # Custom metric from your message queue or job system
             target:
                type: AverageValue
-               averageValue: "30"
+               averageValue: "30"         # Target 30 items per pod - tune based on load testing
       - type: Resource
          resource:
             name: cpu
             target:
                type: AverageUtilization
-               averageUtilization: 60
+               averageUtilization: 60     # CPU acts as safety valve if queue metric fails
 ```
 
 This profile lets queue depth double replicas instantly while CPU acts as a safety valve if the queue metric malfunctions.
@@ -82,27 +84,29 @@ This profile lets queue depth double replicas instantly while CPU acts as a safe
 
 **Scenario**: A nightly ETL job consumes 2 GiB RAM on average but occasionally peaks to 5 GiB when a partner uploads malformed CSVs. VPA (in `Auto` mode) can bump memory requests so the pod stops OOM-killing mid-run, while HPA stays focused on the API fleet that needs rapid horizontal scaling.
 
+This VPA configuration automatically adjusts CPU and memory requests for an ETL workload. By setting min and max bounds, you ensure the autoscaler can respond to memory spikes from malformed data while preventing over-provisioning that wastes cluster resources.
+
 ```yaml
-apiVersion: autoscaling.k8s.io/v1
+apiVersion: autoscaling.k8s.io/v1    # VPA API version for production use
 kind: VerticalPodAutoscaler
 metadata:
-   name: pricing-etl
+   name: pricing-etl                  # Matches the target deployment name for clarity
 spec:
    targetRef:
-      apiVersion: apps/v1
+      apiVersion: apps/v1             # Reference to the Deployment API
       kind: Deployment
-      name: pricing-etl
+      name: pricing-etl               # The deployment VPA will manage
    updatePolicy:
-      updateMode: "Auto"
+      updateMode: "Auto"              # Automatically restart pods with new resource values
    resourcePolicy:
       containerPolicies:
-         - containerName: "etl"
+         - containerName: "etl"       # Target the specific container in the pod
             minAllowed:
-               cpu: "500m"
-               memory: "2Gi"
+               cpu: "500m"            # Floor: never go below 0.5 CPU cores
+               memory: "2Gi"          # Floor: 2GB minimum prevents under-provisioning
             maxAllowed:
-               cpu: "4"
-               memory: "8Gi"
+               cpu: "4"               # Ceiling: cap at 4 CPU cores to control costs
+               memory: "8Gi"          # Ceiling: 8GB max handles worst-case CSV processing
 ```
 
 Pinning `minAllowed`/`maxAllowed` keeps VPA from shrinking so far that the next burst under-provisions the job.
@@ -122,27 +126,29 @@ Pinning `minAllowed`/`maxAllowed` keeps VPA from shrinking so far that the next 
 
 **Provisioner Sketch (Karpenter)**
 
+This Karpenter provisioner is optimized for bursty workloads that need rapid node scaling. It constrains instance types to compute-optimized families, enables automatic consolidation to reduce costs after spikes, and sets a short TTL so idle nodes are terminated quickly rather than sitting around charging you money.
+
 ```yaml
-apiVersion: karpenter.k8s.aws/v1alpha5
+apiVersion: karpenter.k8s.aws/v1alpha5    # Karpenter's custom API for node provisioning
 kind: Provisioner
 metadata:
-   name: bursty-workloads
+   name: bursty-workloads                  # Dedicated provisioner for spike-prone services
 spec:
    consolidation:
-      enabled: true
+      enabled: true                        # Automatically bin-pack and remove underutilized nodes
    providerRef:
-      name: burst-ec2
+      name: burst-ec2                      # Reference to AWS-specific node template
    requirements:
       - key: karpenter.k8s.aws/instance-family
          operator: In
-         values: [m6i, c7i]
+         values: [m6i, c7i]                # Balanced and compute-optimized instances for flexibility
       - key: kubernetes.io/arch
          operator: In
-         values: [amd64]
+         values: [amd64]                   # Stick to x86_64 for consistent container images
    limits:
       resources:
-         cpu: "500"
-   ttlSecondsAfterEmpty: 120
+         cpu: "500"                        # Hard cap: max 500 vCPUs to prevent runaway costs
+   ttlSecondsAfterEmpty: 120               # Terminate empty nodes after 2 minutes to save money
 ```
 
 Provisioners dedicated to bursty services can scale out aggressively yet fold extra nodes within two minutes once demand drops.

@@ -54,6 +54,8 @@ OneUptime's SSL monitoring works by:
 4. **Checking certificate health continuously**
 5. **Alerting when issues are detected**
 
+This diagram shows how OneUptime probes connect to your infrastructure to monitor SSL certificates. The probes perform SSL handshakes to retrieve certificate details, which are then evaluated against your configured criteria to generate appropriate alerts.
+
 ```mermaid
 flowchart LR
   subgraph OneUptime
@@ -61,19 +63,19 @@ flowchart LR
     M[Monitor]
     A[Alerts]
   end
-  
+
   subgraph Your Infrastructure
     D1[api.example.com:443]
     D2[app.example.com:443]
     D3[cdn.example.com:443]
   end
-  
+
   P -->|SSL handshake| D1
   P -->|SSL handshake| D2
   P -->|SSL handshake| D3
   P --> M
   M --> A
-  
+
   A -->|30 days before expiration| Slack
   A -->|Certificate invalid| PagerDuty
   A -->|Self-signed detected| Email
@@ -195,15 +197,25 @@ Set up cascading alerts for different urgency levels:
 You can create alerts for specific scenarios:
 
 **Self-Signed Certificate Detection**:
+
+This alert configuration catches unexpected self-signed certificates in production, which could indicate a misconfiguration or potential security issue.
+
 ```yaml
-Condition: SSL Certificate is self-signed
-Action: Immediate alert to security team
+# Alert when a self-signed certificate is detected
+# Self-signed certs in production are usually a misconfiguration
+Condition: SSL Certificate is self-signed   # Triggers when cert issuer equals subject
+Action: Immediate alert to security team    # High priority - potential security risk
 ```
 
 **Certificate Authority Changes**:
+
+Unexpected changes in the certificate issuer could indicate a man-in-the-middle attack or unauthorized certificate replacement. This alert ensures any CA changes are reviewed.
+
 ```yaml
-Condition: Certificate issuer changes unexpectedly  
-Action: Alert for manual verification
+# Alert when the certificate issuer changes unexpectedly
+# Helps detect unauthorized certificate replacements
+Condition: Certificate issuer changes unexpectedly  # Compares against known issuer
+Action: Alert for manual verification               # Requires human review
 ```
 
 ---

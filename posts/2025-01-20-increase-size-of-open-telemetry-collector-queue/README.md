@@ -12,22 +12,42 @@ In the OpenTelemetry Collector, the sending queue is used to buffer the data bef
 
 By default, the sending queue size is set to 1000 and the number of consumers is set to 1. You can increase the sending queue size and the number of consumers to handle more data.
 
-Here's how to increase it: 
+Here's how to increase it:
+
+The following YAML configuration shows how to modify the exporter section of your OpenTelemetry Collector config file. The sending queue acts as a buffer between data processing and export, preventing data loss during backend slowdowns or network issues.
 
 ```yaml
-
-# Exporter section of your configuration file will look like this:
+# Exporter section of your OpenTelemetry Collector configuration file
+# Exporters define where and how telemetry data is sent
 exporters:
 
-  # Example exporter configuration
+  # OTLP HTTP exporter - sends data using HTTP protocol
+  # You can also use otlp (gRPC) for better performance
   otlphttp:
+    # Replace with your actual backend endpoint URL
+    # Common endpoints: OneUptime, Jaeger, Tempo, or any OTLP-compatible backend
     endpoint: "http://your_exporter_endpoint:port"
+
+    # Headers sent with each request
+    # Add authentication tokens here if your backend requires them
     headers: {"Content-Type": "application/json"}
 
-    # Sending queue configuration
+    # Sending queue configuration - controls data buffering before export
+    # This is critical for handling traffic bursts and backend slowdowns
     sending_queue:
+      # Enable the queue (default: true)
+      # Set to false only if you want synchronous exports
       enabled: true
+
+      # Number of parallel goroutines reading from the queue
+      # Increase this for higher throughput (uses more CPU)
+      # Rule of thumb: start with 3, increase if queue backs up
       num_consumers: 3
+
+      # Maximum number of batches to hold in the queue
+      # Each batch can contain multiple spans/metrics/logs
+      # Higher values = more memory usage but better burst handling
+      # Default is 1000, increase for high-volume pipelines
       queue_size: 1000
 ```
 

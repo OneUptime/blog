@@ -161,33 +161,46 @@ flowchart LR
 
 When starting the authorization flow, your application generates a random string called the `code_verifier`. This should be a cryptographically random string between 43 and 128 characters.
 
+The following code demonstrates how to generate a cryptographically secure code verifier using the Web Crypto API. This verifier serves as the secret that only your application knows, and it must be generated fresh for each authorization request.
+
 ```javascript
-// Generate a code verifier
+// Generate a code verifier using cryptographically secure random values
 function generateCodeVerifier() {
+  // Create a byte array to hold 32 random bytes (256 bits of entropy)
   const array = new Uint8Array(32);
+  // Fill the array with cryptographically secure random values
   crypto.getRandomValues(array);
+  // Convert the random bytes to a URL-safe base64 string
   return base64URLEncode(array);
 }
 
+// Generate a new verifier - store this securely for use in the token exchange
 const codeVerifier = generateCodeVerifier();
-// Example: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+// Example output: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 ```
 
 **Step 2: Create a Code Challenge**
 
 Next, create a `code_challenge` by hashing the verifier using SHA-256 and encoding it with base64url.
 
+The code challenge is a one-way hash of the verifier. This is the value you send to the authorization server during the initial request. Because SHA-256 is irreversible, an attacker who intercepts this challenge cannot derive the original verifier.
+
 ```javascript
-// Create a code challenge from the verifier
+// Create a code challenge from the verifier using SHA-256 hashing
 async function generateCodeChallenge(verifier) {
+  // Create a TextEncoder to convert the string to UTF-8 bytes
   const encoder = new TextEncoder();
+  // Encode the verifier string into a Uint8Array of UTF-8 bytes
   const data = encoder.encode(verifier);
+  // Compute the SHA-256 hash of the encoded verifier (returns ArrayBuffer)
   const hash = await crypto.subtle.digest('SHA-256', data);
+  // Convert the hash to a URL-safe base64 string for transmission
   return base64URLEncode(new Uint8Array(hash));
 }
 
+// Generate the challenge from our verifier - this gets sent to the auth server
 const codeChallenge = await generateCodeChallenge(codeVerifier);
-// Example: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+// Example output: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
 ```
 
 ### The Transformation Process
@@ -216,31 +229,35 @@ flowchart TB
 
 **Step 3: Include the Challenge in the Authorization Request**
 
-Send the code challenge (not the verifier) along with your authorization request:
+Send the code challenge (not the verifier) along with your authorization request.
+
+This HTTP request initiates the OAuth flow by redirecting the user to the authorization server. The code challenge is included so the server can store it and verify against the verifier later. The S256 method indicates SHA-256 hashing was used.
 
 ```
 GET /authorize?
-  response_type=code&
-  client_id=your-client-id&
-  redirect_uri=https://your-app.com/callback&
-  scope=openid profile&
-  code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&
-  code_challenge_method=S256
+  response_type=code&                    # Request an authorization code (not a token)
+  client_id=your-client-id&              # Your application's registered client ID
+  redirect_uri=https://your-app.com/callback&  # Where to send the user after authorization
+  scope=openid profile&                  # The permissions your app is requesting
+  code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&  # The SHA-256 hash of the verifier
+  code_challenge_method=S256             # Indicates the challenge was created using SHA-256
 ```
 
 **Step 4: Exchange the Code with the Verifier**
 
-When exchanging the authorization code for tokens, include the original `code_verifier`:
+When exchanging the authorization code for tokens, include the original `code_verifier`.
+
+This POST request is the token exchange step. The server will hash the provided code_verifier and compare it to the code_challenge that was stored earlier. Only if they match will the server issue tokens, proving that the same application that started the flow is completing it.
 
 ```
 POST /token
 Content-Type: application/x-www-form-urlencoded
 
-grant_type=authorization_code&
-code=SplxlOBeZQQYbYS6WxSbIA&
-redirect_uri=https://your-app.com/callback&
-client_id=your-client-id&
-code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+grant_type=authorization_code&           # Indicates we're exchanging an auth code for tokens
+code=SplxlOBeZQQYbYS6WxSbIA&            # The authorization code received from the callback
+redirect_uri=https://your-app.com/callback&  # Must match the original redirect_uri exactly
+client_id=your-client-id&                # Your application's client ID
+code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk  # The original unhashed verifier (proof of identity)
 ```
 
 ### Complete PKCE Flow
@@ -511,90 +528,111 @@ stateDiagram-v2
 
 ## Implementation Example: Complete Flow
 
-Here is a complete implementation example for a browser-based application:
+Here is a complete implementation example for a browser-based application.
+
+This class encapsulates the entire PKCE authentication flow for single-page applications. It handles generating the cryptographic values, initiating the authorization request, and exchanging the authorization code for tokens. The implementation follows security best practices by using sessionStorage for temporary verifier storage and clearing sensitive data after use.
 
 ```javascript
+// PKCEAuth: A complete PKCE authentication handler for browser-based apps
 class PKCEAuth {
+  // Initialize the auth handler with OAuth configuration
   constructor(config) {
-    this.clientId = config.clientId;
-    this.redirectUri = config.redirectUri;
-    this.authEndpoint = config.authEndpoint;
-    this.tokenEndpoint = config.tokenEndpoint;
+    this.clientId = config.clientId;           // Your OAuth application's client ID
+    this.redirectUri = config.redirectUri;     // URL where auth server sends the user back
+    this.authEndpoint = config.authEndpoint;   // Authorization server's authorize URL
+    this.tokenEndpoint = config.tokenEndpoint; // Authorization server's token URL
   }
 
-  // Generate cryptographically random string
+  // Generate cryptographically random string of specified byte length
   generateRandomString(length) {
+    // Create a typed array to hold the random bytes
     const array = new Uint8Array(length);
+    // Fill with cryptographically secure random values (essential for security)
     crypto.getRandomValues(array);
+    // Convert to URL-safe base64 encoding
     return this.base64URLEncode(array);
   }
 
-  // Base64 URL encode
+  // Convert binary data to URL-safe base64 encoding (required by PKCE spec)
   base64URLEncode(buffer) {
+    // Convert byte array to base64 string using btoa
     return btoa(String.fromCharCode(...buffer))
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
+      .replace(/\+/g, '-')   // Replace + with - for URL safety
+      .replace(/\//g, '_')   // Replace / with _ for URL safety
+      .replace(/=+$/, '');   // Remove trailing padding characters
   }
 
-  // Generate code challenge from verifier
+  // Generate SHA-256 code challenge from the verifier
   async generateCodeChallenge(verifier) {
+    // Encode verifier string to UTF-8 bytes
     const encoder = new TextEncoder();
     const data = encoder.encode(verifier);
+    // Compute SHA-256 hash (returns ArrayBuffer)
     const hash = await crypto.subtle.digest('SHA-256', data);
+    // Convert hash to URL-safe base64 for transmission
     return this.base64URLEncode(new Uint8Array(hash));
   }
 
-  // Start the authorization flow
+  // Initiate the PKCE authorization flow
   async startAuthFlow() {
+    // Generate fresh random verifier (32 bytes = 256 bits of entropy)
     const codeVerifier = this.generateRandomString(32);
+    // Create the SHA-256 challenge from the verifier
     const codeChallenge = await this.generateCodeChallenge(codeVerifier);
 
-    // Store verifier for later use
+    // Store verifier in sessionStorage (survives redirects, cleared on tab close)
+    // IMPORTANT: Never store in localStorage as it persists indefinitely
     sessionStorage.setItem('pkce_verifier', codeVerifier);
 
+    // Build the authorization URL with all required PKCE parameters
     const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: this.clientId,
-      redirect_uri: this.redirectUri,
-      scope: 'openid profile email',
-      code_challenge: codeChallenge,
-      code_challenge_method: 'S256',
-      state: this.generateRandomString(16)
+      response_type: 'code',              // Request authorization code (not implicit token)
+      client_id: this.clientId,           // Identify our application
+      redirect_uri: this.redirectUri,     // Where to return after authorization
+      scope: 'openid profile email',      // Requested permissions
+      code_challenge: codeChallenge,      // The hashed verifier for PKCE
+      code_challenge_method: 'S256',      // Indicate SHA-256 was used
+      state: this.generateRandomString(16) // CSRF protection token
     });
 
+    // Redirect user to authorization server to authenticate
     window.location.href = `${this.authEndpoint}?${params}`;
   }
 
-  // Exchange authorization code for tokens
+  // Exchange the authorization code for access and refresh tokens
   async exchangeCodeForTokens(authorizationCode) {
+    // Retrieve the verifier we stored before the redirect
     const codeVerifier = sessionStorage.getItem('pkce_verifier');
 
+    // Verify we have the verifier (should always exist if flow started correctly)
     if (!codeVerifier) {
       throw new Error('No code verifier found');
     }
 
+    // Make POST request to token endpoint with the code and verifier
     const response = await fetch(this.tokenEndpoint, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/x-www-form-urlencoded', // OAuth requires form encoding
       },
       body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: authorizationCode,
-        redirect_uri: this.redirectUri,
-        client_id: this.clientId,
-        code_verifier: codeVerifier
+        grant_type: 'authorization_code',  // Indicate we're exchanging a code
+        code: authorizationCode,           // The code from the callback URL
+        redirect_uri: this.redirectUri,    // Must match original request exactly
+        client_id: this.clientId,          // Our application identifier
+        code_verifier: codeVerifier        // The original verifier (proves we started the flow)
       })
     });
 
-    // Clear the verifier after use
+    // CRITICAL: Clear the verifier immediately after use (one-time use only)
     sessionStorage.removeItem('pkce_verifier');
 
+    // Check for errors from the token endpoint
     if (!response.ok) {
       throw new Error('Token exchange failed');
     }
 
+    // Return the token response containing access_token, refresh_token, etc.
     return response.json();
   }
 }

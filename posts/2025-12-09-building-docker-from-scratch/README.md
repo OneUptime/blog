@@ -14,6 +14,8 @@ In this guide, we'll build a basic container engine from scratch using Go. By th
 
 Before we write code, let's understand what a container actually is. Despite the marketing, containers aren't virtual machines. They're just regular Linux processes with three key isolation mechanisms:
 
+The following diagram shows the three pillars of container isolation. Each mechanism serves a distinct purpose: namespaces control visibility, cgroups control resources, and filesystem isolation provides a separate root filesystem.
+
 ```mermaid
 graph TB
     subgraph "Container Isolation"
@@ -46,8 +48,12 @@ To follow along, you'll need:
 
 Let's create our project:
 
+These commands initialize a new Go module for our container engine. The module system manages dependencies and versioning for our project.
+
 ```bash
+# Create project directory and navigate into it
 mkdir minicontainer && cd minicontainer
+# Initialize Go module with the project name
 go mod init minicontainer
 ```
 
@@ -76,6 +82,8 @@ Namespaces are the foundation of container isolation. Linux supports several nam
 
 Let's start with the basics. Create `main.go`:
 
+This is our initial container engine implementation. The key insight is the two-phase execution: `run` creates a child process in new namespaces, and `child` runs inside those namespaces. We use `/proc/self/exe` to re-execute ourselves, a common pattern in container runtimes.
+
 ```go
 package main
 
@@ -87,6 +95,7 @@ import (
 )
 
 func main() {
+	// Command dispatcher: "run" starts isolation, "child" executes inside it
 	switch os.Args[1] {
 	case "run":
 		run()
@@ -98,18 +107,24 @@ func main() {
 }
 
 func run() {
+	// Log the parent process info for debugging
 	fmt.Printf("Running %v as PID %d\n", os.Args[2:], os.Getpid())
 
+	// Re-execute ourselves with "child" command to run in new namespaces
+	// /proc/self/exe is a symlink to the current executable
 	cmd := exec.Command("/proc/self/exe", append([]string{"child"}, os.Args[2:]...)...)
+	// Connect standard I/O so the container can interact with the terminal
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	// This is where the magic happens!
+	// SysProcAttr configures the new process's namespaces
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWUTS |  // New hostname namespace
 			syscall.CLONE_NEWPID |           // New PID namespace
 			syscall.CLONE_NEWNS,             // New mount namespace
+		// Unshareflags ensures mounts are private to this namespace
 		Unshareflags: syscall.CLONE_NEWNS,
 	}
 
@@ -117,11 +132,14 @@ func run() {
 }
 
 func child() {
+	// Now running inside the new namespaces - PID will appear as 1
 	fmt.Printf("Running %v as PID %d\n", os.Args[2:], os.Getpid())
 
 	// Set a different hostname for our container
+	// This only affects the UTS namespace we're in
 	must(syscall.Sethostname([]byte("container")))
 
+	// Execute the actual command the user requested
 	cmd := exec.Command(os.Args[2], os.Args[3:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -130,6 +148,7 @@ func child() {
 	must(cmd.Run())
 }
 
+// must is a helper that panics on error for cleaner code
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -139,8 +158,12 @@ func must(err error) {
 
 Let's test it:
 
+These commands build and run our container engine. Running as root is required because creating namespaces is a privileged operation.
+
 ```bash
+# Compile the Go code into an executable
 go build -o minicontainer .
+# Run with sudo - namespace creation requires root privileges
 sudo ./minicontainer run /bin/bash
 ```
 
@@ -162,15 +185,20 @@ Seeing host processes isn't very container-like. We need to give our container i
 
 You can use Alpine Linux's mini root filesystem:
 
+These commands download and extract Alpine Linux's minimal root filesystem. Alpine is ideal for containers due to its tiny size (around 5MB) and security-focused design.
+
 ```bash
+# Create directory for our container's root filesystem
 mkdir -p rootfs
 cd rootfs
 
-# Download Alpine mini root filesystem
+# Download Alpine mini root filesystem (x86_64 architecture)
+# This is a complete minimal Linux userspace
 curl -o alpine.tar.gz https://dl-cdn.alpinelinux.org/alpine/v3.18/releases/x86_64/alpine-minirootfs-3.18.0-x86_64.tar.gz
 
-# Extract it
+# Extract it - this becomes our container's / directory
 tar xzf alpine.tar.gz
+# Clean up the archive
 rm alpine.tar.gz
 cd ..
 ```
@@ -179,20 +207,26 @@ cd ..
 
 Update the `child()` function:
 
+This enhanced `child()` function adds filesystem isolation using `chroot` and mounts the `/proc` filesystem. The `/proc` mount is essential because it's how Linux exposes process information, and without it, tools like `ps` won't work correctly.
+
 ```go
 func child() {
 	fmt.Printf("Running %v as PID %d\n", os.Args[2:], os.Getpid())
 
-	// Set hostname
+	// Set hostname for this UTS namespace
 	must(syscall.Sethostname([]byte("container")))
 
-	// Change root filesystem
+	// Change root filesystem to our Alpine rootfs
+	// After chroot, the container can't see the host filesystem
 	must(syscall.Chroot("./rootfs"))
+	// Change working directory to new root
 	must(os.Chdir("/"))
 
 	// Mount proc so we can see our isolated processes
+	// This creates /proc inside our new root filesystem
 	must(syscall.Mount("proc", "proc", "proc", 0, ""))
 
+	// Execute the requested command
 	cmd := exec.Command(os.Args[2], os.Args[3:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -200,7 +234,7 @@ func child() {
 
 	must(cmd.Run())
 
-	// Clean up
+	// Clean up: unmount proc when the container exits
 	must(syscall.Unmount("proc", 0))
 }
 ```
@@ -228,23 +262,26 @@ Namespaces control what a process can see. Cgroups control what resources it can
 
 Update `child()`:
 
+This version adds cgroup-based resource limits by calling `cg()` before running the user's command. The cgroup is created and configured before the container starts, ensuring resource limits are enforced from the beginning.
+
 ```go
 func child() {
 	fmt.Printf("Running %v as PID %d\n", os.Args[2:], os.Getpid())
 
-	// Set up cgroup for memory limiting
+	// Set up cgroup for memory limiting before entering the container
 	cg()
 
-	// Set hostname
+	// Set hostname for this namespace
 	must(syscall.Sethostname([]byte("container")))
 
-	// Change root filesystem
+	// Change root filesystem to Alpine rootfs
 	must(syscall.Chroot("./rootfs"))
 	must(os.Chdir("/"))
 
-	// Mount proc
+	// Mount proc for process visibility
 	must(syscall.Mount("proc", "proc", "proc", 0, ""))
 
+	// Execute the user's command
 	cmd := exec.Command(os.Args[2], os.Args[3:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -252,20 +289,24 @@ func child() {
 
 	must(cmd.Run())
 
+	// Cleanup proc mount
 	must(syscall.Unmount("proc", 0))
 }
 
+// cg creates a cgroup and adds our process to it with resource limits
 func cg() {
-	// Create a cgroup for our container
+	// Create a cgroup for our container under the cgroup v2 hierarchy
 	cgroupPath := "/sys/fs/cgroup/minicontainer"
-	
-	// Create the cgroup directory
+
+	// Create the cgroup directory (this creates the cgroup)
 	os.MkdirAll(cgroupPath, 0755)
 
 	// Set memory limit to 100MB
+	// memory.max is the cgroup v2 interface for memory limits
 	must(os.WriteFile(cgroupPath+"/memory.max", []byte("100000000"), 0700))
 
-	// Add our process to this cgroup
+	// Add our process to this cgroup by writing our PID
+	// All child processes will inherit this cgroup membership
 	must(os.WriteFile(cgroupPath+"/cgroup.procs", []byte(fmt.Sprintf("%d", os.Getpid())), 0700))
 }
 ```
@@ -276,13 +317,15 @@ func cg() {
 
 Full network isolation requires more setup, but here's the concept:
 
+This code snippet shows how to add network namespace isolation. With `CLONE_NEWNET`, the container starts with only a loopback interface, completely isolated from the host network.
+
 ```go
 // Add to Cloneflags in run()
 cmd.SysProcAttr = &syscall.SysProcAttr{
     Cloneflags: syscall.CLONE_NEWUTS |
         syscall.CLONE_NEWPID |
         syscall.CLONE_NEWNS |
-        syscall.CLONE_NEWNET,  // New network namespace
+        syscall.CLONE_NEWNET,  // New network namespace - isolated network stack
     Unshareflags: syscall.CLONE_NEWNS,
 }
 ```
@@ -292,6 +335,8 @@ With `CLONE_NEWNET`, the container gets its own network stack with no interfaces
 ## The Complete Code
 
 Here's our final `main.go`:
+
+This is the complete container engine implementation with all features: namespace isolation (PID, UTS, mount, network), filesystem isolation via chroot, and resource limits via cgroups. It demonstrates the core mechanisms that production container runtimes like Docker and containerd use.
 
 ```go
 package main
@@ -304,11 +349,12 @@ import (
 )
 
 func main() {
+	// Command dispatcher handles two modes of operation
 	switch os.Args[1] {
 	case "run":
-		run()
+		run()     // Parent: set up namespaces and spawn child
 	case "child":
-		child()
+		child()   // Child: configure container and run user command
 	default:
 		panic("Unknown command. Use: run <command>")
 	}
@@ -317,17 +363,20 @@ func main() {
 func run() {
 	fmt.Printf("Parent: Running %v as PID %d\n", os.Args[2:], os.Getpid())
 
+	// Re-execute ourselves in new namespaces
+	// /proc/self/exe ensures we run the same binary
 	cmd := exec.Command("/proc/self/exe", append([]string{"child"}, os.Args[2:]...)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	// Configure namespace isolation flags
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: syscall.CLONE_NEWUTS |
-			syscall.CLONE_NEWPID |
-			syscall.CLONE_NEWNS |
-			syscall.CLONE_NEWNET,
-		Unshareflags: syscall.CLONE_NEWNS,
+		Cloneflags: syscall.CLONE_NEWUTS |   // Isolate hostname
+			syscall.CLONE_NEWPID |            // Isolate process IDs
+			syscall.CLONE_NEWNS |             // Isolate mount points
+			syscall.CLONE_NEWNET,             // Isolate network stack
+		Unshareflags: syscall.CLONE_NEWNS,   // Make mounts private
 	}
 
 	must(cmd.Run())
@@ -336,20 +385,20 @@ func run() {
 func child() {
 	fmt.Printf("Child: Running %v as PID %d\n", os.Args[2:], os.Getpid())
 
-	// Set up resource limits
+	// Set up resource limits via cgroups
 	cg()
 
-	// Set container hostname
+	// Set container hostname (only visible in this UTS namespace)
 	must(syscall.Sethostname([]byte("container")))
 
-	// Set up new root filesystem
+	// Set up new root filesystem (chroot jail)
 	must(syscall.Chroot("./rootfs"))
 	must(os.Chdir("/"))
 
-	// Mount /proc for process visibility
+	// Mount /proc for process visibility inside the container
 	must(syscall.Mount("proc", "proc", "proc", 0, ""))
 
-	// Run the requested command
+	// Run the requested command inside the container
 	cmd := exec.Command(os.Args[2], os.Args[3:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -357,24 +406,26 @@ func child() {
 
 	must(cmd.Run())
 
-	// Cleanup
+	// Cleanup: unmount proc before exit
 	must(syscall.Unmount("proc", 0))
 }
 
 func cg() {
+	// Create cgroup directory for resource isolation
 	cgroupPath := "/sys/fs/cgroup/minicontainer"
 	os.MkdirAll(cgroupPath, 0755)
-	
-	// Memory limit: 100MB
+
+	// Memory limit: 100MB (prevents container from using excessive RAM)
 	must(os.WriteFile(cgroupPath+"/memory.max", []byte("100000000"), 0700))
-	
-	// CPU limit: 50% of one core
+
+	// CPU limit: 50% of one core (50000 microseconds per 100000 microsecond period)
 	must(os.WriteFile(cgroupPath+"/cpu.max", []byte("50000 100000"), 0700))
-	
-	// Add current process to cgroup
+
+	// Add current process to cgroup (all children inherit this)
 	must(os.WriteFile(cgroupPath+"/cgroup.procs", []byte(fmt.Sprintf("%d", os.Getpid())), 0700))
 }
 
+// must panics on error - keeps the main code clean
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -384,20 +435,22 @@ func must(err error) {
 
 ## Testing Your Container
 
+These commands demonstrate how to test your container engine and verify that isolation is working correctly. The memory limit test should fail or be killed, proving that cgroup limits are enforced.
+
 ```bash
-# Build
+# Build the container engine
 go build -o minicontainer .
 
-# Run with a shell
+# Run with a shell - this creates an isolated environment
 sudo ./minicontainer run /bin/sh
 
-# Inside the container:
-hostname              # "container"
-ps aux                # Only container processes
-cat /etc/os-release   # Alpine Linux
-ip addr               # Only loopback (isolated network)
+# Inside the container, verify isolation:
+hostname              # "container" - proves UTS namespace works
+ps aux                # Only container processes - proves PID namespace works
+cat /etc/os-release   # Alpine Linux - proves filesystem isolation works
+ip addr               # Only loopback (isolated network) - proves network namespace
 
-# Test memory limit - this should fail or be killed
+# Test memory limit - this should fail or be killed due to 100MB limit
 dd if=/dev/zero of=/dev/null bs=1M count=200
 ```
 
@@ -412,6 +465,8 @@ Our minicontainer demonstrates the core concepts, but production runtimes like D
 | Storage | Simple chroot | Union filesystems (OverlayFS) |
 | Security | Basic namespaces | Seccomp, AppArmor, capabilities |
 | Orchestration | None | Docker Compose, Kubernetes |
+
+This diagram shows the layered architecture of the container ecosystem, from high-level CLI tools down to kernel primitives.
 
 ```mermaid
 graph LR

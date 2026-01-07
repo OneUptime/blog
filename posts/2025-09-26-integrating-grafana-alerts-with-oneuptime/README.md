@@ -48,6 +48,8 @@ The integration uses **incoming request monitors** with webhooks:
 4. **Status pages update automatically** to reflect current system health
 5. **On-call rotations trigger** for critical alerts requiring immediate attention
 
+The following diagram shows the complete alert flow from Grafana to OneUptime. When a metric threshold is breached, the alert triggers a webhook that flows through OneUptime's incident management pipeline, ultimately notifying both customers (via status page) and engineers (via on-call).
+
 ```mermaid
 flowchart LR
   subgraph Grafana
@@ -55,20 +57,20 @@ flowchart LR
     R[Rules]
     A[Alert]
   end
-  
+
   subgraph OneUptime
     IR[Incoming Request]
     I[Incident Creation]
     SP[Status Page Update]
     OC[On-call Trigger]
   end
-  
+
   Q --> R --> A
   A -->|Webhook| IR
   IR --> I
   I --> SP
   I --> OC
-  
+
   SP -->|Public Status| Customers
   OC -->|Notifications| Engineers
 ```
@@ -118,44 +120,47 @@ In Grafana, create a new contact point:
 
 ### Basic Alert Rule Setup
 
-Create alert rules that send meaningful data to OneUptime:
+Create alert rules that send meaningful data to OneUptime. This example demonstrates a CPU usage alert with proper labeling and annotations that provide context for incident responders.
 
 ```yaml
-# Example Grafana alert rule
+# Example Grafana alert rule for monitoring CPU usage
+# This rule triggers when CPU exceeds 85% for 5 consecutive minutes
 alert: High CPU Usage
-expr: cpu_usage_percent > 85
-for: 5m
+expr: cpu_usage_percent > 85        # PromQL expression defining the threshold
+for: 5m                              # Alert only fires after condition persists for 5 minutes
 labels:
-  severity: critical
-  service: web-server
-  team: infrastructure
+  severity: critical                 # Used by OneUptime for incident priority
+  service: web-server                # Identifies the affected service
+  team: infrastructure               # Routes alert to the responsible team
 annotations:
-  summary: "High CPU usage detected"
-  description: "CPU usage is {{ $value }}% on {{ $labels.instance }}"
-  runbook_url: "https://wiki.company.com/cpu-troubleshooting"
-  dashboard_url: "https://grafana.company.com/d/cpu-dashboard"
+  summary: "High CPU usage detected"                                    # Brief description for notifications
+  description: "CPU usage is {{ $value }}% on {{ $labels.instance }}"  # Detailed message with dynamic values
+  runbook_url: "https://wiki.company.com/cpu-troubleshooting"          # Link to remediation steps
+  dashboard_url: "https://grafana.company.com/d/cpu-dashboard"         # Quick access to relevant dashboard
 ```
 
 ### Advanced Alert Configuration
 
-Include contextual information for better incident management:
+Include contextual information for better incident management. This advanced example shows how to provide comprehensive context that helps responders understand impact, affected systems, and remediation steps.
 
 ```yaml
+# Advanced alert rule with rich context for incident management
+# Monitors database connection pool utilization to prevent outages
 alert: Database Connection Pool Exhausted
-expr: db_connections_active / db_connections_max > 0.9
-for: 2m
+expr: db_connections_active / db_connections_max > 0.9  # Triggers at 90% pool utilization
+for: 2m                                                  # 2-minute evaluation window
 labels:
-  severity: warning
-  service: database
-  component: connection-pool
-  environment: production
+  severity: warning                   # Warning level - not yet critical but needs attention
+  service: database                   # Primary service affected
+  component: connection-pool          # Specific component for precise routing
+  environment: production             # Environment context for prioritization
 annotations:
   summary: "Database connection pool nearly exhausted"
   description: "Active connections: {{ $value }} of max {{ $labels.max_connections }}"
-  impact: "May cause application slowdown or outages"
-  affected_services: "web-app, api-gateway, background-jobs"
-  mitigation_steps: "1. Check application connection leaks 2. Consider scaling database"
-  owner: "database-team@company.com"
+  impact: "May cause application slowdown or outages"                              # Business impact statement
+  affected_services: "web-app, api-gateway, background-jobs"                       # Downstream dependencies
+  mitigation_steps: "1. Check application connection leaks 2. Consider scaling database"  # Actionable remediation
+  owner: "database-team@company.com"                                               # Escalation contact
 ```
 
 ---
@@ -164,46 +169,51 @@ annotations:
 
 ### Webhook Payload Structure
 
-Grafana sends structured webhook payloads:
+Understanding the Grafana webhook payload structure is essential for configuring OneUptime to extract the right information. This payload contains all the context needed to create meaningful incidents.
 
 ```json
 {
-  "receiver": "oneuptime-integration",
-  "status": "firing",
-  "alerts": [
+  // Top-level metadata about the webhook delivery
+  "receiver": "oneuptime-integration",        // Name of the contact point that sent this
+  "status": "firing",                          // "firing" = alert active, "resolved" = alert cleared
+
+  "alerts": [                                  // Array of alerts (can contain multiple)
     {
-      "status": "firing",
-      "labels": {
-        "alertname": "High CPU Usage",
-        "severity": "critical",
-        "service": "web-server",
-        "instance": "web-01"
+      "status": "firing",                      // Individual alert status
+      "labels": {                              // Key-value pairs for routing and identification
+        "alertname": "High CPU Usage",         // The alert rule name
+        "severity": "critical",                // Priority level for incident creation
+        "service": "web-server",               // Affected service name
+        "instance": "web-01"                   // Specific instance/host
       },
-      "annotations": {
+      "annotations": {                         // Human-readable context
         "summary": "High CPU usage detected",
         "description": "CPU usage is 92.5% on web-01",
         "runbook_url": "https://wiki.company.com/cpu-troubleshooting"
       },
-      "startsAt": "2025-09-26T10:30:00Z",
-      "endsAt": "0001-01-01T00:00:00Z",
-      "generatorURL": "https://grafana.company.com/alerting/grafana/...",
-      "fingerprint": "a1b2c3d4e5f6..."
+      "startsAt": "2025-09-26T10:30:00Z",     // When the alert started firing
+      "endsAt": "0001-01-01T00:00:00Z",       // When alert ended (zero time = still active)
+      "generatorURL": "https://grafana.company.com/alerting/grafana/...",  // Link back to Grafana
+      "fingerprint": "a1b2c3d4e5f6..."        // Unique identifier for deduplication
     }
   ],
+
+  // Aggregation metadata for grouped alerts
   "groupLabels": {
-    "service": "web-server"
+    "service": "web-server"                    // Labels used for grouping alerts together
   },
-  "commonLabels": {
+  "commonLabels": {                            // Labels shared by all alerts in this group
     "severity": "critical",
     "service": "web-server"
   },
-  "commonAnnotations": {
+  "commonAnnotations": {                       // Annotations shared by all alerts
     "summary": "High CPU usage detected"
   },
-  "externalURL": "https://grafana.company.com/",
-  "version": "1",
-  "groupKey": "{service=\"web-server\"}",
-  "truncatedAlerts": 0
+
+  "externalURL": "https://grafana.company.com/",  // Grafana instance URL
+  "version": "1",                                  // Webhook format version
+  "groupKey": "{service=\"web-server\"}",         // Unique key for this alert group
+  "truncatedAlerts": 0                            // Number of alerts omitted (if payload too large)
 }
 ```
 

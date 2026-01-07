@@ -49,10 +49,17 @@ For example, at OneUptime, our SLOs focus on incident detection time and resolut
 
 ### 2. Calculate Your Error Budget
 
-Once you have SLOs, calculating the error budget is straightforward:
+Once you have SLOs, calculating the error budget is straightforward. The formula below shows how to derive your acceptable failure threshold from your reliability target. This calculation is fundamental because it transforms your aspirational SLO into a concrete, measurable budget that your team can track and manage.
 
 ```
+# Error Budget Formula
+# This calculates the maximum allowable downtime or failure rate
+
 Error Budget = 100% - SLO Target
+# Where:
+#   100% represents perfect reliability (the theoretical maximum)
+#   SLO Target is your defined service level objective (e.g., 99.9%)
+#   The result is your "budget" for acceptable failures
 ```
 
 For a 99.9% SLO:
@@ -61,10 +68,22 @@ For a 99.9% SLO:
 
 ### 3. Track Burn Rate
 
-Burn rate is how quickly you're consuming your error budget. It's calculated as:
+Burn rate is how quickly you're consuming your error budget. It's calculated as shown below. Understanding burn rate is critical because it tells you not just whether you're failing, but how fast you're approaching your reliability limits. A high burn rate is an early warning signal that demands immediate attention before your error budget is fully exhausted.
 
 ```
+# Burn Rate Formula
+# This measures how fast you're consuming your error budget
+
 Burn Rate = (Actual Errors / Total Requests) / (Error Budget / 100)
+# Where:
+#   Actual Errors = the number of failed requests in your measurement period
+#   Total Requests = the total number of requests in the same period
+#   Error Budget = your allowable failure percentage (e.g., 0.1 for 99.9% SLO)
+#
+# Interpretation:
+#   Burn Rate = 1  -> consuming budget at the expected sustainable rate
+#   Burn Rate > 1  -> consuming budget faster than planned (risk of exhaustion)
+#   Burn Rate < 1  -> consuming budget slower than expected (room to innovate)
 ```
 
 A burn rate of 1 means you're consuming your error budget at the expected rate. Anything above 1 means you're on track to exhaust it early.

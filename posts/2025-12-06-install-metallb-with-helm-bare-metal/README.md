@@ -52,27 +52,38 @@ flowchart TB
 
 Create a scratch file (`values-metallb.yaml`) so your IP intent is version-controlled:
 
+This values file defines your IP address pool and tells MetalLB to use Layer 2 (ARP) announcements. Keep this file in Git alongside your other infrastructure manifests so network changes go through code review.
+
 ```yaml
 ipAddressPools:
-  - name: baremetal-pool
-    protocol: layer2
+  - name: baremetal-pool          # Logical name referenced by services and advertisements
+    protocol: layer2              # Use ARP/NDP for simple flat networks
     addresses:
-      - 10.20.30.220-10.20.30.239
+      - 10.20.30.220-10.20.30.239 # 20 IPs reserved exclusively for load balancers
 l2Advertisements:
   - ipAddressPools:
-      - baremetal-pool
+      - baremetal-pool            # Advertise this pool via ARP on the local network segment
 ```
 
 ## Step 2: Install MetalLB with Helm
 
+This sequence registers the MetalLB chart repository, creates an isolated namespace, and deploys the controller and speakers with your IP pool configuration. Running this in a dedicated namespace keeps MetalLB resources cleanly separated from application workloads.
+
 ```bash
+# Add the official MetalLB Helm repository
 helm repo add metallb https://metallb.github.io/metallb
+
+# Refresh local chart cache to get latest versions
 helm repo update
+
+# Create a dedicated namespace for MetalLB components
 kubectl create namespace metallb-system
+
+# Install MetalLB with your IP pool configuration
 helm upgrade --install metallb metallb/metallb \
   --namespace metallb-system \
-  --version 0.14.7 \
-  -f values-metallb.yaml
+  --version 0.14.7 \              # Pin version for reproducible deployments
+  -f values-metallb.yaml          # Apply your address pool and advertisement config
 ```
 
 What this does:
@@ -83,9 +94,16 @@ What this does:
 
 Verify the rollout:
 
+These commands confirm that MetalLB components are running and your IP pool is properly configured. All pods should reach Ready state within seconds since MetalLB is lightweight and has no external dependencies.
+
 ```bash
+# Verify controller and speaker pods are running
 kubectl get pods -n metallb-system
+
+# Confirm your IP address pool was created from the values file
 kubectl get ipaddresspools.metallb.io
+
+# Verify Layer 2 advertisements are active
 kubectl get l2advertisements.metallb.io
 ```
 
@@ -95,24 +113,31 @@ Everything should show `READY` within a few seconds because the controller and s
 
 If your network team prefers real routing over ARP flooding, extend the values file:
 
+BGP mode integrates MetalLB with your datacenter routing infrastructure. Each speaker establishes a peering session with your core router and announces load balancer IPs as /32 routes, enabling proper ECMP load distribution and faster failover than Layer 2.
+
 ```yaml
 bgpPeers:
-  - name: core-router
-    myASN: 64513
-    peerASN: 64512
-    peerAddress: 10.20.30.1
-    holdTime: 30s
-    keepaliveTime: 10s
+  - name: core-router               # Friendly name for this peering relationship
+    myASN: 64513                    # Your cluster's private AS number
+    peerASN: 64512                  # Your router's AS number
+    peerAddress: 10.20.30.1         # Router's IP address for BGP peering
+    holdTime: 30s                   # Time before session is considered dead
+    keepaliveTime: 10s              # Interval between keepalive messages
 bgpAdvertisements:
-  - aggregationLength: 32
+  - aggregationLength: 32           # Advertise each IP as a /32 host route
     ipAddressPools:
-      - baremetal-pool
+      - baremetal-pool              # Announce IPs from this pool via BGP
 ```
 
 Then re-run the Helm upgrade. Speakers establish BGP sessions from every node that runs user workloads, ensuring failover if a node dies. Confirm with:
 
+These commands verify that BGP peering is established and show session state details. Look for "Established" status to confirm successful connectivity with your router.
+
 ```bash
+# List all BGP peer configurations
 kubectl get bgppeers.metallb.io
+
+# Show detailed session state including timers and received routes
 kubectl describe bgppeers core-router -n metallb-system
 ```
 
@@ -120,11 +145,13 @@ kubectl describe bgppeers core-router -n metallb-system
 
 Deploy something boring (NGINX) so you can prove that MetalLB works end-to-end:
 
+This manifest creates a complete test deployment with a LoadBalancer service. It demonstrates the full workflow from pod creation through external IP allocation. Once applied, MetalLB will assign an IP from your pool and begin answering ARP requests for it.
+
 ```yaml
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: demo
+  name: demo                        # Isolate test resources in their own namespace
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -132,20 +159,20 @@ metadata:
   name: web
   namespace: demo
 spec:
-  replicas: 2
+  replicas: 2                       # Run two pods for basic redundancy testing
   selector:
     matchLabels:
-      app: web
+      app: web                      # Label selector must match template labels
   template:
     metadata:
       labels:
-        app: web
+        app: web                    # Labels used by both Deployment and Service selectors
     spec:
       containers:
         - name: nginx
-          image: caddy:2.8
+          image: caddy:2.8          # Lightweight web server for testing
           ports:
-            - containerPort: 80
+            - containerPort: 80     # Expose HTTP inside the container
 ---
 apiVersion: v1
 kind: Service
@@ -153,24 +180,30 @@ metadata:
   name: web
   namespace: demo
 spec:
-  type: LoadBalancer
+  type: LoadBalancer                # Triggers MetalLB to allocate an external IP
   selector:
-    app: web
+    app: web                        # Route traffic to pods with this label
   ports:
-    - port: 80
-      targetPort: 80
+    - port: 80                      # External port clients will connect to
+      targetPort: 80                # Container port to forward traffic to
 ```
 
 Apply it and watch the `EXTERNAL-IP` field populate:
 
+These commands deploy the test application and show real-time updates as MetalLB assigns an external IP. The IP should appear within seconds if your pool is correctly configured.
+
 ```bash
+# Create the namespace, deployment, and service
 kubectl apply -f demo.yaml
+
+# Watch the service until EXTERNAL-IP changes from <pending> to an actual address
 kubectl get svc -n demo -w
 ```
 
 MetalLB should allocate one of the addresses from `10.20.30.220-239`. Hit it from any machine on that L2 segment:
 
 ```bash
+# Test external connectivity - replace with the actual allocated IP
 curl http://10.20.30.221
 ```
 

@@ -35,6 +35,59 @@ Log monitors keep a constant eye on the messages your applications send. When so
 7. **Assign who should know** by connecting incidents to on-call policies, Slack channels, status pages, or automated workflows.
 8. **Save** and let OneUptime handle the rest.
 
+The following filter query syntax demonstrates how to target specific logs in your monitor configuration. These examples show common patterns for filtering by severity, service, and custom attributes.
+
+```sql
+-- Example log filter queries for OneUptime log monitors
+-- Use these patterns in the filter field when creating a log monitor
+
+-- Filter by severity level: catch only error and critical logs
+severity IN ('error', 'critical', 'fatal')
+
+-- Filter by service name: monitor a specific microservice
+service.name = 'checkout-service' AND severity = 'error'
+
+-- Filter by environment: only production issues
+attributes.env = 'production' AND message CONTAINS 'timeout'
+
+-- Combine multiple conditions: payment errors in production
+service.name = 'payment-gateway'
+    AND severity IN ('error', 'warning')
+    AND attributes.env = 'production'
+    AND message CONTAINS 'declined'
+
+-- Exclude known noise: filter out health check logs
+NOT (message CONTAINS 'health' OR message CONTAINS 'ping')
+    AND severity = 'error'
+
+-- Time-based patterns: detect missing heartbeat logs
+-- Use with "count < 1" alert rule to detect absence
+message CONTAINS 'heartbeat' AND service.name = 'scheduler'
+```
+
+Here is an example of how your application should structure log entries for optimal filtering. Consistent log formatting makes it easier to create precise monitors.
+
+```json
+{
+    "timestamp": "2025-10-27T14:30:00.123Z",
+    "severity": "error",
+    "message": "Payment processing failed: card declined",
+    "service": {
+        "name": "payment-gateway",
+        "version": "2.3.1"
+    },
+    "attributes": {
+        "env": "production",
+        "region": "us-east-1",
+        "transaction_id": "txn_abc123",
+        "error_code": "CARD_DECLINED",
+        "customer_id": "cust_xyz789"
+    },
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "span_id": "00f067aa0ba902b7"
+}
+```
+
 ---
 
 ## Everyday use cases
@@ -43,6 +96,51 @@ Log monitors keep a constant eye on the messages your applications send. When so
 - **Detect silent systems** by flagging when expected logs do not show up within the chosen window.
 - **Verify releases** by keeping temporary monitors for launch keywords during the rollout window.
 - **Watch partner integrations** with attribute filters (such as `partner = shipping`) so third-party issues never surprise you.
+
+The following monitor configuration JSON shows how a complete log monitor is structured. This example detects checkout errors in production and triggers alerts when the error count exceeds thresholds.
+
+```json
+{
+    "monitor": {
+        "name": "Checkout Errors - Production",
+        "type": "logs",
+        "description": "Alerts when checkout errors spike in production environment",
+
+        "filter": {
+            "query": "service.name = 'checkout-service' AND severity = 'error'",
+            "timeWindow": "5m",
+            "attributes": {
+                "env": "production"
+            }
+        },
+
+        "schedule": {
+            "interval": "1m"
+        },
+
+        "alertRules": [
+            {
+                "name": "Warning",
+                "condition": "count >= 10",
+                "severity": "warning",
+                "message": "Elevated checkout errors detected"
+            },
+            {
+                "name": "Critical",
+                "condition": "count >= 50",
+                "severity": "critical",
+                "message": "Checkout error spike - immediate attention required"
+            }
+        ],
+
+        "notifications": {
+            "onCall": "platform-team",
+            "slack": "#checkout-alerts",
+            "statusPage": "checkout-component"
+        }
+    }
+}
+```
 
 ---
 

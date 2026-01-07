@@ -32,24 +32,33 @@ Before starting, ensure:
 
 For Debian/Ubuntu:
 
+The NFS client package must be installed on every Kubernetes worker node that will mount NFS volumes. Without this package, pods scheduled to these nodes will fail to start with mount errors.
+
 ```bash
+# Install NFS client utilities for mounting NFS shares
+# nfs-common includes mount.nfs required for NFS PersistentVolumes
 sudo apt-get update && sudo apt-get install -y nfs-common
 ```
 
 For RHEL/Rocky/AlmaLinux:
 
 ```bash
+# Install NFS utilities for Red Hat-based distributions
+# Includes mount.nfs and supporting services
 sudo dnf install -y nfs-utils
 ```
 
 For iSCSI support:
 
+iSCSI requires the initiator service to be running on each node. Unlike NFS, iSCSI creates block devices that appear as local disks, enabling better database performance.
+
 ```bash
-# Debian/Ubuntu
+# Debian/Ubuntu - install iSCSI initiator and enable the service
 sudo apt-get install -y open-iscsi
+# Enable and start iscsid to handle iSCSI connections
 sudo systemctl enable --now iscsid
 
-# RHEL/Rocky
+# RHEL/Rocky - same steps with different package name
 sudo dnf install -y iscsi-initiator-utils
 sudo systemctl enable --now iscsid
 ```
@@ -75,6 +84,8 @@ On TrueNAS:
 
 ### Step 2: Create a PersistentVolume
 
+This PersistentVolume definition tells Kubernetes how to connect to your NAS. The capacity is informational for NFS (it doesn't enforce quotas), but other fields like access modes and mount options directly affect how pods can use the storage.
+
 ```yaml
 # nfs-pv.yaml
 apiVersion: v1
@@ -82,19 +93,28 @@ kind: PersistentVolume
 metadata:
   name: nfs-pv
 spec:
+  # Capacity is advisory only for NFS - your NAS manages actual limits
+  # Still useful for resource planning and PVC matching
   capacity:
-    storage: 100Gi  # Informational only for NFS
+    storage: 100Gi
   accessModes:
-    - ReadWriteMany  # NFS supports multiple pods writing
+    # ReadWriteMany allows multiple pods to mount simultaneously
+    # This is NFS's key advantage - shared access across the cluster
+    - ReadWriteMany
+  # Retain keeps the PV data even after PVC is deleted
+  # Use Delete for test environments, Retain for production
   persistentVolumeReclaimPolicy: Retain
+  # StorageClass groups similar storage types together
+  # PVCs request storage by class name
   storageClassName: nfs
+  # Mount options passed to the mount command
   mountOptions:
-    - nfsvers=4.1
-    - hard
-    - noatime
+    - nfsvers=4.1    # Use NFS v4.1 for better performance and security
+    - hard           # Retry indefinitely on failure (safe for data integrity)
+    - noatime        # Don't update access times (reduces NAS I/O)
   nfs:
-    server: 192.168.1.100  # Your NAS IP
-    path: /volume1/kubernetes  # Your NFS export path
+    server: 192.168.1.100       # Your NAS IP address
+    path: /volume1/kubernetes   # NFS export path from your NAS config
 ```
 
 ### Step 3: Create a PersistentVolumeClaim

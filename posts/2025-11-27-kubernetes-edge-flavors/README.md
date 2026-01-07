@@ -105,8 +105,12 @@ It does introduce new components and certificates, so invest in automation early
 
 ## Decision Tree
 
+This flowchart helps you choose the right Kubernetes distribution based on your specific requirements. Start from the top and follow the path that matches your use case.
+
 ```mermaid
 flowchart TD
+  %% Decision tree for selecting Kubernetes edge distribution
+  %% Start by evaluating the most specialized requirement first
   A[Need offline autonomy & device control?] -->|Yes| B[KubeEdge]
   A -->|No| C[Need ARM-friendly prod clusters?]
   C -->|Yes| D[K3s]

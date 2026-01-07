@@ -27,11 +27,14 @@ Benefits:
 1. **Docker Desktop** (or Docker Engine on Linux)
 2. **VS Code** with the **Dev Containers extension** (ms-vscode-remote.remote-containers)
 
+These commands verify Docker is working and install the required VS Code extension:
+
 ```bash
-# Verify Docker is running
+# Verify Docker is running - should display client and server versions
 docker version
 
-# Install extension from command line
+# Install the Dev Containers extension from the command line
+# Alternatively, install from the VS Code Extensions marketplace
 code --install-extension ms-vscode-remote.remote-containers
 ```
 
@@ -42,6 +45,8 @@ code --install-extension ms-vscode-remote.remote-containers
 ### Minimal Configuration
 
 Create `.devcontainer/devcontainer.json` in your project root:
+
+This minimal configuration uses a pre-built Microsoft dev container image with Node.js and TypeScript already installed:
 
 ```json
 {
@@ -56,6 +61,8 @@ Open the project in VS Code and click "Reopen in Container" when prompted.
 
 ### Using a Dockerfile
 
+For custom environments, use a Dockerfile to define exactly what tools and dependencies you need:
+
 ```json
 // .devcontainer/devcontainer.json
 {
@@ -69,33 +76,41 @@ Open the project in VS Code and click "Reopen in Container" when prompted.
 }
 ```
 
+This Dockerfile creates a custom development environment with additional tools beyond the base Node.js installation:
+
 ```dockerfile
 # .devcontainer/Dockerfile
 FROM node:22-bookworm
 
-# Install additional tools
+# Install additional tools needed for development
+# Clean up apt cache to reduce image size
 RUN apt-get update && apt-get install -y \
     git \
     curl \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Install global npm packages
+# Install global npm packages for TypeScript development
 RUN npm install -g typescript ts-node nodemon
 
-# Create non-root user
+# Create non-root user for better security
+# Using build args allows customization without modifying Dockerfile
 ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
+# Create group and user with specified IDs to match host permissions
 RUN groupadd --gid $USER_GID $USERNAME \
     && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME
 
+# Switch to non-root user for subsequent operations
 USER $USERNAME
 ```
 
 ### Using Docker Compose
 
 For projects with databases or multiple services:
+
+This configuration connects your dev container to a full application stack including databases:
 
 ```json
 // .devcontainer/devcontainer.json
@@ -109,25 +124,33 @@ For projects with databases or multiple services:
 }
 ```
 
+The Docker Compose file defines all services your development environment needs:
+
 ```yaml
 # .devcontainer/docker-compose.yml
 services:
+  # Main development container where VS Code connects
   app:
     build:
       context: .
       dockerfile: Dockerfile
     volumes:
+      # Mount source code with caching for better performance on macOS/Windows
       - ..:/workspace:cached
+    # Keep container running indefinitely for VS Code to connect
     command: sleep infinity
     environment:
+      # Connection string for the database service
       - DATABASE_URL=postgres://postgres:password@db:5432/dev
 
+  # PostgreSQL database for local development
   db:
     image: postgres:16
     environment:
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=dev
     volumes:
+      # Persist database data across container restarts
       - postgres-data:/var/lib/postgresql/data
 
 volumes:
@@ -139,6 +162,8 @@ volumes:
 ## VS Code Extensions
 
 ### Installing Extensions in Container
+
+This configuration automatically installs recommended extensions when the container opens:
 
 ```json
 {
@@ -165,13 +190,17 @@ volumes:
 
 ### Required vs Recommended Extensions
 
+Extensions listed in the customizations array install automatically when the container opens, ensuring everyone has the same development tools:
+
 ```json
 {
   "customizations": {
     "vscode": {
       "extensions": [
-        // These install automatically
+        // These install automatically when container opens
+        // ESLint for code linting
         "dbaeumer.vscode-eslint",
+        // Prettier for code formatting
         "esbenp.prettier-vscode"
       ]
     }
@@ -188,6 +217,8 @@ Extensions in this array install automatically when the container opens.
 Sync your personal dotfiles (shell config, git config, vim settings) into dev containers.
 
 ### Configure in VS Code Settings
+
+Add these settings to your VS Code user settings to automatically clone and install your dotfiles in every dev container:
 
 ```json
 // User settings.json
@@ -211,18 +242,23 @@ dotfiles/
     └── starship.toml
 ```
 
+This installation script creates symbolic links from your dotfiles repository to the home directory:
+
 ```bash
 #!/bin/bash
 # install.sh
+# Navigate to dotfiles directory
 cd ~/dotfiles
 
-# Symlink dotfiles
+# Symlink dotfiles to home directory
+# -sf forces overwrite of existing files
 ln -sf ~/dotfiles/.bashrc ~/.bashrc
 ln -sf ~/dotfiles/.zshrc ~/.zshrc
 ln -sf ~/dotfiles/.gitconfig ~/.gitconfig
 ln -sf ~/dotfiles/.vimrc ~/.vimrc
 
-# Install starship prompt
+# Install starship prompt configuration
+# Create .config directory if it doesn't exist
 mkdir -p ~/.config
 ln -sf ~/dotfiles/.config/starship.toml ~/.config/starship.toml
 ```
@@ -232,6 +268,8 @@ ln -sf ~/dotfiles/.config/starship.toml ~/.config/starship.toml
 ## Complete Configuration Examples
 
 ### Node.js/TypeScript Project
+
+A comprehensive dev container configuration for Node.js/TypeScript projects with all common extensions and settings:
 
 ```json
 // .devcontainer/devcontainer.json
@@ -276,6 +314,8 @@ ln -sf ~/dotfiles/.config/starship.toml ~/.config/starship.toml
 
 ### Python Project
 
+A complete Python development environment with linting, formatting, and type checking configured:
+
 ```json
 // .devcontainer/devcontainer.json
 {
@@ -316,6 +356,8 @@ ln -sf ~/dotfiles/.config/starship.toml ~/.config/starship.toml
 
 ### Go Project
 
+A Go development environment with gopls language server and golangci-lint configured:
+
 ```json
 // .devcontainer/devcontainer.json
 {
@@ -354,6 +396,8 @@ ln -sf ~/dotfiles/.config/starship.toml ~/.config/starship.toml
 
 ### Full-Stack with Docker Compose
 
+A complete full-stack development environment with application, database, and caching services:
+
 ```json
 // .devcontainer/devcontainer.json
 {
@@ -386,34 +430,46 @@ ln -sf ~/dotfiles/.config/starship.toml ~/.config/starship.toml
 }
 ```
 
+The Docker Compose file for a full-stack development setup with database and Redis:
+
 ```yaml
 # .devcontainer/docker-compose.yml
 services:
+  # Main development container
   app:
     build:
       context: .
       dockerfile: Dockerfile
     volumes:
+      # Mount source code with caching for performance
       - ..:/workspace:cached
+      # Named volume for node_modules prevents overwriting by the bind mount
       - node_modules:/workspace/node_modules
+    # Keep container running for VS Code connection
     command: sleep infinity
     environment:
+      # Database connection string using service name
       - DATABASE_URL=postgres://postgres:password@db:5432/dev
+      # Redis connection string using service name
       - REDIS_URL=redis://redis:6379
     depends_on:
       - db
       - redis
 
+  # PostgreSQL database service
   db:
     image: postgres:16
     environment:
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=dev
     volumes:
+      # Persist database data
       - postgres-data:/var/lib/postgresql/data
     ports:
+      # Expose for external database tools
       - "5432:5432"
 
+  # Redis caching service
   redis:
     image: redis:7-alpine
     ports:
@@ -430,24 +486,27 @@ volumes:
 
 Features are reusable units of dev container configuration:
 
+Dev Container Features are pre-packaged tools and configurations that can be easily added to any dev container:
+
 ```json
 {
   "features": {
-    // GitHub CLI
+    // GitHub CLI for repository operations
     "ghcr.io/devcontainers/features/github-cli:1": {},
 
-    // Docker-in-Docker
+    // Docker-in-Docker for building and running containers
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
 
-    // AWS CLI
+    // AWS CLI for cloud operations
     "ghcr.io/devcontainers/features/aws-cli:1": {},
 
-    // Kubectl + Helm
+    // Kubectl and Helm for Kubernetes development
+    // minikube set to "none" to skip installation
     "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
       "minikube": "none"
     },
 
-    // Common utilities
+    // Common utilities including zsh and oh-my-zsh
     "ghcr.io/devcontainers/features/common-utils:2": {
       "installZsh": true,
       "installOhMyZsh": true
@@ -462,23 +521,27 @@ Browse features at: https://containers.dev/features
 
 ## Lifecycle Scripts
 
+Lifecycle scripts run at different stages of the container lifecycle, allowing you to automate setup and configuration:
+
 ```json
 {
-  // Run once when container is created
+  // Run once when container is created (after build)
   "postCreateCommand": "npm install && npx prisma generate",
 
-  // Run every time container starts
+  // Run every time container starts (including restarts)
   "postStartCommand": "git fetch --all",
 
-  // Run every time VS Code attaches
+  // Run every time VS Code attaches to the container
   "postAttachCommand": "npm run dev",
 
-  // Initialize command (runs before postCreateCommand)
+  // Initialize command (runs before postCreateCommand, on host machine)
   "initializeCommand": "echo 'Building dev container...'"
 }
 ```
 
 ### Multi-Command Scripts
+
+For complex initialization, you can define multiple named commands that run in parallel:
 
 ```json
 {
@@ -496,13 +559,17 @@ Browse features at: https://containers.dev/features
 
 ### 1. Cache Dependencies
 
+Using named volumes for dependencies prevents them from being overwritten by the bind mount and improves performance:
+
 ```yaml
 # docker-compose.yml
 services:
   app:
     volumes:
+      # Source code mount with caching
       - ..:/workspace:cached
-      - node_modules:/workspace/node_modules  # Named volume for deps
+      # Named volume for deps - persists across rebuilds
+      - node_modules:/workspace/node_modules
 
 volumes:
   node_modules:
@@ -510,14 +577,18 @@ volumes:
 
 ### 2. Use Non-Root User
 
+Running as a non-root user improves security and avoids file permission issues:
+
 ```json
 {
-  "remoteUser": "node",  // or "vscode" for base images
+  "remoteUser": "node",
   "containerUser": "node"
 }
 ```
 
 ### 3. Git Configuration
+
+Adding the workspace to Git's safe directories prevents permission warnings:
 
 ```json
 {
@@ -526,6 +597,8 @@ volumes:
 ```
 
 ### 4. Environment Variables
+
+You can set environment variables at both container and remote session levels:
 
 ```json
 {
@@ -541,6 +614,8 @@ volumes:
 
 ### 5. Mount SSH Keys
 
+Mount your SSH keys to enable Git operations over SSH inside the container:
+
 ```json
 {
   "mounts": [
@@ -553,20 +628,22 @@ volumes:
 
 ## Quick Reference
 
+Common VS Code Dev Container commands:
+
 ```bash
 # Rebuild container
 # Command Palette (Cmd/Ctrl+Shift+P) > "Dev Containers: Rebuild Container"
 
-# Rebuild without cache
+# Rebuild without cache (useful when base image has updates)
 # Command Palette > "Dev Containers: Rebuild Container Without Cache"
 
 # Open folder in container
 # Command Palette > "Dev Containers: Open Folder in Container"
 
-# Clone repository in container
+# Clone repository in container (creates isolated volume)
 # Command Palette > "Dev Containers: Clone Repository in Container Volume"
 
-# View container logs
+# View container logs (helpful for debugging)
 # Command Palette > "Dev Containers: Show Container Log"
 ```
 
