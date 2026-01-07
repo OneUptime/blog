@@ -38,6 +38,8 @@ The connection creation overhead is paid once, not per request.
 
 ### Basic Pool Setup
 
+This basic connection pool wrapper provides thread-safe connection management. The pool maintains pre-established connections for quick reuse:
+
 ```python
 # pool_basic.py
 from psycopg2 import pool
@@ -52,13 +54,14 @@ class DatabasePool:
     def __init__(
         self,
         dsn: str,
-        min_connections: int = 2,
-        max_connections: int = 10
+        min_connections: int = 2,   # Minimum connections to keep open
+        max_connections: int = 10   # Maximum connections allowed
     ):
         self.dsn = dsn
+        # ThreadedConnectionPool is safe for multi-threaded applications
         self._pool = pool.ThreadedConnectionPool(
-            minconn=min_connections,
-            maxconn=max_connections,
+            minconn=min_connections,  # Pre-create this many connections
+            maxconn=max_connections,  # Hard limit on total connections
             dsn=dsn
         )
         logger.info(
@@ -66,20 +69,20 @@ class DatabasePool:
         )
 
     def get_connection(self):
-        """Get a connection from the pool"""
+        """Get a connection from the pool (blocks if none available)"""
         return self._pool.getconn()
 
     def return_connection(self, conn):
-        """Return a connection to the pool"""
+        """Return a connection to the pool for reuse"""
         self._pool.putconn(conn)
 
     def close_all(self):
-        """Close all connections"""
+        """Close all connections - call during shutdown"""
         self._pool.closeall()
         logger.info("All connections closed")
 
 
-# Usage
+# Usage example
 db_pool = DatabasePool(
     dsn="postgresql://user:pass@localhost:5432/mydb",
     min_connections=2,
@@ -87,12 +90,14 @@ db_pool = DatabasePool(
 )
 
 # Get connection, execute query, return connection
+# IMPORTANT: Always return connections to avoid pool exhaustion
 conn = db_pool.get_connection()
 try:
     with conn.cursor() as cur:
         cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
         result = cur.fetchone()
 finally:
+    # Always return in finally block to handle exceptions
     db_pool.return_connection(conn)
 ```
 
@@ -279,6 +284,8 @@ For async applications (FastAPI, aiohttp), asyncpg provides high-performance asy
 
 ### Basic Async Pool
 
+asyncpg is the fastest PostgreSQL library for Python async applications. Its built-in pool is highly optimized for concurrent access:
+
 ```python
 # async_pool.py
 import asyncpg
@@ -289,7 +296,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 class AsyncDatabasePool:
-    """Async connection pool for asyncpg"""
+    """Async connection pool for asyncpg - ideal for FastAPI/aiohttp"""
 
     _pool: Optional[asyncpg.Pool] = None
 
@@ -297,19 +304,19 @@ class AsyncDatabasePool:
     async def initialize(
         cls,
         dsn: str,
-        min_size: int = 5,
-        max_size: int = 20,
-        max_queries: int = 50000,
-        max_inactive_connection_lifetime: float = 300.0
+        min_size: int = 5,            # Keep at least 5 connections ready
+        max_size: int = 20,           # Allow up to 20 concurrent connections
+        max_queries: int = 50000,     # Recycle connection after 50k queries
+        max_inactive_connection_lifetime: float = 300.0  # Close idle after 5 min
     ):
-        """Initialize the connection pool"""
+        """Initialize the connection pool - call once at startup"""
         cls._pool = await asyncpg.create_pool(
             dsn=dsn,
-            min_size=min_size,
-            max_size=max_size,
-            max_queries=max_queries,
+            min_size=min_size,        # Pre-established connections
+            max_size=max_size,        # Upper limit
+            max_queries=max_queries,  # Prevents connection degradation
             max_inactive_connection_lifetime=max_inactive_connection_lifetime,
-            command_timeout=60.0
+            command_timeout=60.0      # Query timeout in seconds
         )
         logger.info(f"Async pool created: min={min_size}, max={max_size}")
         return cls._pool

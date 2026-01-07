@@ -33,6 +33,8 @@ cProfile is Python's built-in profiler. It's deterministic, meaning it traces ev
 
 ### Basic Usage
 
+This example demonstrates how to use cProfile programmatically to profile specific code sections. The profiler tracks all function calls and their execution times:
+
 ```python
 # profile_example.py
 import cProfile
@@ -40,14 +42,16 @@ import pstats
 from io import StringIO
 
 def slow_function():
-    """Simulates a slow operation"""
+    """Simulates a slow operation using explicit loop"""
     total = 0
+    # Explicit loop - slower due to Python bytecode overhead
     for i in range(1000000):
         total += i ** 2
     return total
 
 def fast_function():
-    """Simulates a fast operation"""
+    """Simulates a fast operation using generator expression"""
+    # Generator with built-in sum() - faster due to C implementation
     return sum(i ** 2 for i in range(1000000))
 
 def main():
@@ -56,33 +60,46 @@ def main():
 
 # Profile the main function
 if __name__ == "__main__":
+    # Create profiler instance
     profiler = cProfile.Profile()
+
+    # Start profiling - all function calls are now tracked
     profiler.enable()
 
     main()
 
+    # Stop profiling
     profiler.disable()
 
-    # Print results
+    # Create statistics object and format output
     stats = pstats.Stats(profiler)
+    # Sort by cumulative time (time in function + all subcalls)
     stats.sort_stats('cumulative')
-    stats.print_stats(10)  # Top 10 functions
+    # Print top 10 functions by time spent
+    stats.print_stats(10)
 ```
 
 ### Command Line Profiling
 
+The fastest way to profile a script is using the command line interface. This approach requires no code changes:
+
 ```bash
-# Profile a script
+# Profile a script and sort output by cumulative time
+# -s cumtime sorts results to show slowest functions first
 python -m cProfile -s cumtime my_script.py
 
-# Save to file for analysis
+# Save profile data to binary file for later analysis
+# Useful for comparing profiles across different runs
 python -m cProfile -o profile_output.prof my_script.py
 
-# Analyze saved profile
+# Analyze saved profile data with custom sorting and filtering
+# Shows top 20 functions sorted by cumulative time
 python -c "import pstats; p = pstats.Stats('profile_output.prof'); p.sort_stats('cumulative').print_stats(20)"
 ```
 
 ### Profiling Flask Applications
+
+This middleware approach profiles each request individually, useful for identifying slow endpoints. Enable profiling via environment variable for development:
 
 ```python
 # flask_profiler.py
@@ -94,39 +111,44 @@ import os
 
 app = Flask(__name__)
 
-# Only enable in development
+# Only enable in development - profiling adds overhead
 PROFILING_ENABLED = os.getenv('FLASK_PROFILING', 'false').lower() == 'true'
 
 @app.before_request
 def before_request():
+    """Start profiling before each request"""
     if PROFILING_ENABLED:
+        # Create a new profiler for this request
         g.profiler = cProfile.Profile()
         g.profiler.enable()
 
 @app.after_request
 def after_request(response):
+    """Stop profiling and log results after each request"""
     if PROFILING_ENABLED and hasattr(g, 'profiler'):
         g.profiler.disable()
 
-        # Create stats
+        # Format stats to string for logging
         stream = StringIO()
         stats = pstats.Stats(g.profiler, stream=stream)
         stats.sort_stats('cumulative')
-        stats.print_stats(20)
+        stats.print_stats(20)  # Top 20 functions
 
-        # Log the profile
+        # Log the profile results
         print(stream.getvalue())
 
     return response
 
 @app.route('/api/slow')
 def slow_endpoint():
-    # Some slow operation
+    # Some slow operation - profiler will show time spent here
     result = sum(i ** 2 for i in range(100000))
     return {'result': result}
 ```
 
 ### Profile Decorator
+
+Create a reusable decorator to profile specific functions. This is useful when you want to profile specific code paths without instrumenting the entire application:
 
 ```python
 # profiler_decorator.py
@@ -139,10 +161,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 def profile(output_file=None, sort_by='cumulative', limit=20):
-    """Decorator to profile a function"""
+    """Decorator to profile a function
+
+    Args:
+        output_file: Optional file path to save binary profile data
+        sort_by: Sort key ('cumulative', 'tottime', 'calls')
+        limit: Number of functions to display in output
+    """
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
+            # Create fresh profiler for each call
             profiler = cProfile.Profile()
             profiler.enable()
 
@@ -152,21 +181,23 @@ def profile(output_file=None, sort_by='cumulative', limit=20):
             finally:
                 profiler.disable()
 
-                # Output results
+                # Format profile output to string
                 stream = StringIO()
                 stats = pstats.Stats(profiler, stream=stream)
                 stats.sort_stats(sort_by)
                 stats.print_stats(limit)
 
+                # Optionally save to file for external analysis tools
                 if output_file:
                     profiler.dump_stats(output_file)
 
+                # Log the profile results
                 logger.info(f"Profile for {func.__name__}:\n{stream.getvalue()}")
 
         return wrapper
     return decorator
 
-# Usage
+# Usage - decorate functions you want to profile
 @profile(sort_by='tottime', limit=10)
 def process_data(data):
     results = []
@@ -195,7 +226,7 @@ Understanding the output columns:
 
 ## py-spy: Production-Safe Profiling
 
-py-spy is a sampling profiler that can profile running Python processes without modifying code or impacting performance significantly.
+py-spy is a sampling profiler that can profile running Python processes without modifying code or impacting performance significantly. Unlike cProfile, it works externally and can attach to already-running processes.
 
 ### Installation
 
@@ -205,30 +236,40 @@ pip install py-spy
 
 ### Profile a Running Process
 
+py-spy can attach to any running Python process. This is especially useful for debugging production issues without restarting the application:
+
 ```bash
 # Find Python process ID
 ps aux | grep python
 
-# Profile running process (requires root on Linux)
+# Live top-like view of function performance (requires root on Linux)
+# Updates in real-time showing where time is being spent
 sudo py-spy top --pid 12345
 
-# Record profile to file
+# Record profile data and generate a flamegraph SVG
+# The --duration flag specifies how long to sample (in seconds)
 sudo py-spy record -o profile.svg --pid 12345 --duration 30
 
-# Profile with native extensions
+# Include native C extension code in the profile
+# Useful when profiling numpy, pandas, or other C-heavy libraries
 sudo py-spy record -o profile.svg --pid 12345 --native
 ```
 
 ### Profile a Script
 
+You can also launch a script directly under py-spy for profiling from the start:
+
 ```bash
-# Run and profile a script
+# Run and profile a script, generating flamegraph SVG
+# The double dash separates py-spy args from the command to run
 py-spy record -o profile.svg -- python my_script.py
 
-# Generate flamegraph
+# Generate output in Speedscope format for web-based analysis
+# Speedscope (https://speedscope.app) provides interactive visualization
 py-spy record -o flamegraph.svg --format speedscope -- python my_script.py
 
-# Profile with subprocesses
+# Profile the main process and all child processes
+# Essential for multi-process applications (multiprocessing, subprocess)
 py-spy record -o profile.svg --subprocesses -- python my_script.py
 ```
 
@@ -274,9 +315,13 @@ py-spy record -o profile.svg --format flamegraph -- python app.py
 
 ### memory_profiler for Line-by-Line Analysis
 
+memory_profiler shows memory usage for each line of code, making it easy to identify memory-hungry operations:
+
 ```bash
 pip install memory_profiler
 ```
+
+The @profile decorator marks functions for memory analysis. Each line shows memory before and after execution:
 
 ```python
 # memory_example.py
@@ -284,20 +329,21 @@ from memory_profiler import profile
 
 @profile
 def memory_hungry_function():
-    # Creates a large list
+    # Creates a large list - allocates ~38MB for 1M integers
     data = [i ** 2 for i in range(1000000)]
 
-    # Process data
+    # Process data - no additional memory needed
     result = sum(data)
 
-    # Clear data
+    # Clear data - frees the ~38MB
     del data
 
     return result
 
 @profile
 def memory_efficient_function():
-    # Uses generator (lazy evaluation)
+    # Uses generator (lazy evaluation) - minimal memory footprint
+    # Only one value in memory at a time
     return sum(i ** 2 for i in range(1000000))
 
 if __name__ == "__main__":

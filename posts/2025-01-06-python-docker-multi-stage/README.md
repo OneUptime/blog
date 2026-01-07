@@ -30,51 +30,58 @@ A typical Python image can shrink from 1GB+ to under 100MB with proper multi-sta
 
 ### Simple Flask Application
 
+This Dockerfile demonstrates the multi-stage pattern: use a full build environment in stage 1, then copy only the compiled artifacts to a minimal runtime image:
+
 ```dockerfile
 # Dockerfile
-# Stage 1: Build
+# Stage 1: Build - includes compilers and dev tools
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# Install build dependencies
+# Install build dependencies needed to compile C extensions
+# These won't be in the final image
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Create virtual environment
+# Create virtual environment in a known location
+# This makes it easy to copy to the runtime stage
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install dependencies
+# Install Python dependencies into the virtual environment
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Stage 2: Runtime
+# Stage 2: Runtime - minimal image for production
 FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
-# Install only runtime dependencies
+# Install only runtime libraries (not dev headers)
+# libpq5 is the PostgreSQL client library without build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy virtual environment from builder
+# Copy only the virtual environment from builder stage
+# This includes all installed packages but not build tools
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
 COPY . .
 
-# Create non-root user
+# Security: Create non-root user and switch to it
 RUN useradd --create-home --shell /bin/bash app \
     && chown -R app:app /app
 USER app
 
 EXPOSE 8000
 
+# Run with gunicorn for production
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app:app"]
 ```
 
@@ -205,38 +212,39 @@ CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ## uv Multi-Stage Build (Fastest)
 
-uv is a fast Python package installer written in Rust:
+uv is a blazing fast Python package installer written in Rust. It can be 10-100x faster than pip, significantly reducing build times:
 
 ```dockerfile
 # Dockerfile
-# Stage 1: Build with uv
+# Stage 1: Build with uv for fast dependency installation
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# Install uv
+# Copy uv binary directly from its official image
+# This is faster than installing via pip
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Create virtual environment
+# Create virtual environment using uv
 RUN uv venv /opt/venv
 
-# Install dependencies
+# Install dependencies using uv (10-100x faster than pip)
 COPY requirements.txt .
 RUN uv pip install --python=/opt/venv/bin/python -r requirements.txt
 
-# Stage 2: Runtime
+# Stage 2: Runtime - uv not needed here
 FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
-# Copy virtual environment
+# Copy only the virtual environment (uv binary stays in build stage)
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application
 COPY . .
 
-# Non-root user
+# Security: Non-root user
 RUN useradd --create-home app && chown -R app:app /app
 USER app
 
@@ -249,11 +257,11 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ## Distroless Images (Maximum Security)
 
-Google's distroless images contain only the application and runtime:
+Google's distroless images contain only the application and runtime - no shell, no package manager, no utilities. This minimizes attack surface:
 
 ```dockerfile
 # Dockerfile
-# Stage 1: Build
+# Stage 1: Build (standard Python image with all tools)
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
@@ -266,24 +274,27 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Stage 2: Distroless runtime
+# Stage 2: Distroless runtime - no shell, no package manager
+# Only contains Python runtime and essential libraries
 FROM gcr.io/distroless/python3-debian12
 
 WORKDIR /app
 
-# Copy virtual environment
+# Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy application
+# Copy application code
 COPY --from=builder /app .
 
-# Distroless runs as nonroot by default
+# Distroless images run as 'nonroot' user by default (UID 65532)
+# No need to create user - it's built in
 USER nonroot
 
 EXPOSE 8000
 
-# Distroless requires full path
+# IMPORTANT: Distroless has no shell, so use exec form
+# Must use full path to Python interpreter
 CMD ["/opt/venv/bin/python", "-m", "gunicorn", "--bind", "0.0.0.0:8000", "app:app"]
 ```
 

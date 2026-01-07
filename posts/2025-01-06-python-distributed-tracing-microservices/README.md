@@ -37,7 +37,7 @@ Context propagation is how trace information flows between services. When Servic
 
 ## Base Setup
 
-First, let's set up a shared OpenTelemetry configuration:
+First, let's set up a shared OpenTelemetry configuration that all microservices can use. This module handles tracer initialization and propagator configuration:
 
 ```python
 # telemetry.py
@@ -53,41 +53,43 @@ from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 def init_telemetry(service_name: str):
-    """Initialize OpenTelemetry with OTLP exporter"""
+    """Initialize OpenTelemetry with OTLP exporter - call once at service startup"""
 
-    # Create resource with service information
+    # Resource attributes identify this service in trace visualizations
+    # These attributes appear on every span from this service
     resource = Resource.create({
-        "service.name": service_name,
+        "service.name": service_name,                          # Unique service identifier
         "service.version": os.getenv("SERVICE_VERSION", "1.0.0"),
         "deployment.environment": os.getenv("ENVIRONMENT", "development"),
     })
 
-    # Create tracer provider
+    # TracerProvider manages tracer instances and span processing
     provider = TracerProvider(resource=resource)
 
-    # Configure OTLP exporter
+    # Configure OTLP exporter to send traces to backend
     otlp_exporter = OTLPSpanExporter(
         endpoint=os.getenv("OTLP_ENDPOINT", "https://oneuptime.com/otlp/v1/traces"),
         headers={"x-oneuptime-token": os.getenv("ONEUPTIME_TOKEN", "")}
     )
 
-    # Add span processor
+    # BatchSpanProcessor buffers and sends spans in batches for efficiency
     provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 
-    # Set the tracer provider
+    # Register as the global tracer provider
     trace.set_tracer_provider(provider)
 
-    # Configure propagators (W3C Trace Context + B3 for compatibility)
+    # Configure propagators for cross-service context passing
+    # Support both W3C Trace Context (standard) and B3 (for legacy systems)
     propagator = CompositePropagator([
-        TraceContextTextMapPropagator(),
-        B3MultiFormat()
+        TraceContextTextMapPropagator(),  # W3C standard (traceparent header)
+        B3MultiFormat()                   # Zipkin-compatible (x-b3-* headers)
     ])
     set_global_textmap(propagator)
 
     return trace.get_tracer(service_name)
 
 def get_tracer(name: str):
-    """Get a tracer for the given module"""
+    """Get a tracer for a specific module - use module name for filtering"""
     return trace.get_tracer(name)
 ```
 
@@ -96,6 +98,8 @@ def get_tracer(name: str):
 ## HTTP Context Propagation
 
 ### Outgoing Requests with `requests`
+
+When making HTTP calls to other services, inject the trace context into request headers. This links the downstream service's spans to your trace:
 
 ```python
 # http_client.py
@@ -109,23 +113,27 @@ tracer = trace.get_tracer(__name__)
 def make_traced_request(method: str, url: str, **kwargs):
     """Make an HTTP request with trace context propagation"""
 
+    # Create a CLIENT span - indicates an outgoing call
     with tracer.start_as_current_span(
         f"HTTP {method} {url}",
-        kind=SpanKind.CLIENT
+        kind=SpanKind.CLIENT  # CLIENT kind for outgoing requests
     ) as span:
-        # Set span attributes
+        # Add HTTP semantic conventions as attributes
         span.set_attribute("http.method", method)
         span.set_attribute("http.url", url)
 
-        # Inject trace context into headers
+        # CRITICAL: inject() adds trace headers (traceparent, etc.)
+        # This is what enables distributed tracing
         headers = kwargs.pop("headers", {})
-        inject(headers)
+        inject(headers)  # Adds traceparent, tracestate headers
 
         try:
             response = requests.request(method, url, headers=headers, **kwargs)
 
+            # Record response status for debugging
             span.set_attribute("http.status_code", response.status_code)
 
+            # Mark span as error for 4xx/5xx responses
             if response.status_code >= 400:
                 span.set_status(trace.Status(
                     trace.StatusCode.ERROR,
@@ -135,6 +143,7 @@ def make_traced_request(method: str, url: str, **kwargs):
             return response
 
         except Exception as e:
+            # Capture exception with stack trace
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
             raise

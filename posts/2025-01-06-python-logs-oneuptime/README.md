@@ -554,23 +554,31 @@ class OneUptimeConfig:
 
 ### Environment Variables
 
+Set these environment variables in your deployment configuration. The token is sensitive and should be stored securely (e.g., Kubernetes secrets, AWS Secrets Manager).
+
 ```bash
 # .env
-ONEUPTIME_ENDPOINT=https://otlp.oneuptime.com
-ONEUPTIME_TOKEN=your-api-token
-SERVICE_NAME=my-python-app
-ENVIRONMENT=production
-LOG_LEVEL=INFO
+# OneUptime connection settings
+ONEUPTIME_ENDPOINT=https://otlp.oneuptime.com  # OTLP endpoint
+ONEUPTIME_TOKEN=your-api-token                  # API token (keep secret!)
+
+# Service identification
+SERVICE_NAME=my-python-app    # Appears in OneUptime UI
+ENVIRONMENT=production        # Helps filter logs by environment
+
+# Logging configuration
+LOG_LEVEL=INFO               # DEBUG, INFO, WARNING, ERROR, CRITICAL
 ```
 
 ---
 
 ## Async Logging Handler
 
-For high-throughput applications:
+For high-throughput applications, logging can become a bottleneck if the OTLP exporter blocks. This handler queues log records and processes them in a background thread, preventing logging from slowing down your application.
 
 ```python
 # async_logging.py
+# Non-blocking logging handler for high-throughput applications
 import asyncio
 import logging
 from queue import Queue
@@ -578,37 +586,43 @@ from threading import Thread
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
 class AsyncLoggingHandler(logging.Handler):
-    """Non-blocking logging handler"""
+    """Non-blocking logging handler that queues logs for background processing"""
 
     def __init__(self, otel_handler: logging.Handler, queue_size: int = 10000):
         super().__init__()
         self.otel_handler = otel_handler
+        # Queue with max size to prevent memory exhaustion
         self.queue = Queue(maxsize=queue_size)
         self._start_worker()
 
     def _start_worker(self):
+        """Start background thread to process queued log records"""
         def worker():
             while True:
                 record = self.queue.get()
-                if record is None:
+                if record is None:  # Shutdown signal
                     break
                 try:
                     self.otel_handler.emit(record)
                 except Exception:
-                    pass  # Don't let logging errors crash the app
+                    # Never let logging errors crash the application
+                    pass
 
+        # Daemon thread exits when main program exits
         self.worker = Thread(target=worker, daemon=True)
         self.worker.start()
 
     def emit(self, record: logging.LogRecord):
+        """Queue log record for background processing (non-blocking)"""
         try:
-            self.queue.put_nowait(record)
+            self.queue.put_nowait(record)  # Don't block if queue is full
         except:
-            pass  # Drop if queue full
+            pass  # Drop log if queue is full - better than blocking
 
     def close(self):
-        self.queue.put(None)
-        self.worker.join(timeout=5)
+        """Graceful shutdown - process remaining logs before exit"""
+        self.queue.put(None)  # Signal worker to stop
+        self.worker.join(timeout=5)  # Wait up to 5 seconds
         super().close()
 ```
 

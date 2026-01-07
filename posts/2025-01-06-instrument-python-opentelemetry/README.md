@@ -30,31 +30,40 @@ Auto-instrumentation is the fastest way to add observability to your Python appl
 
 ### Installation
 
+Install the core OpenTelemetry packages along with auto-instrumentation tools. The `opentelemetry-bootstrap` command automatically detects and installs instrumentation libraries for frameworks you're using:
+
 ```bash
-# Core OpenTelemetry packages
+# Core OpenTelemetry packages - the foundation for all instrumentation
 pip install opentelemetry-api \
             opentelemetry-sdk \
             opentelemetry-exporter-otlp
 
-# Auto-instrumentation package
+# Auto-instrumentation package - enables zero-code instrumentation
 pip install opentelemetry-distro \
             opentelemetry-instrumentation
 
-# Install all available instrumentations
+# Automatically detect and install all available instrumentations
+# for libraries in your environment (Flask, requests, SQLAlchemy, etc.)
 opentelemetry-bootstrap -a install
 ```
 
 ### Running with Auto-Instrumentation
 
-The simplest approach is using the `opentelemetry-instrument` command:
+The simplest approach is using the `opentelemetry-instrument` command. This wrapper automatically instruments your application without any code changes:
 
 ```bash
-# Set environment variables
+# Set environment variables to configure the telemetry destination
+# OTEL_SERVICE_NAME identifies your service in trace visualizations
 export OTEL_SERVICE_NAME="my-python-app"
+
+# OTLP endpoint where traces will be sent
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://oneuptime.com/otlp"
+
+# Authentication header for your observability backend
 export OTEL_EXPORTER_OTLP_HEADERS="x-oneuptime-token=your-token-here"
 
-# Run your application with auto-instrumentation
+# Run your application with auto-instrumentation enabled
+# The wrapper intercepts calls and creates spans automatically
 opentelemetry-instrument python app.py
 ```
 
@@ -74,6 +83,8 @@ pip install flask \
 
 ### Programmatic Setup
 
+This example demonstrates how to manually configure OpenTelemetry in a Flask application. This approach gives you more control over the tracer configuration and is useful when you need custom settings:
+
 ```python
 # app.py
 from flask import Flask, jsonify
@@ -85,33 +96,41 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
-# Configure resource attributes
+# Configure resource attributes that identify this service
+# These attributes appear on every span and help with filtering
 resource = Resource.create({
-    "service.name": "flask-api",
-    "service.version": "1.0.0",
-    "deployment.environment": "production"
+    "service.name": "flask-api",           # Unique service identifier
+    "service.version": "1.0.0",            # Version for tracking deployments
+    "deployment.environment": "production"  # Environment label
 })
 
-# Set up the tracer provider
+# Set up the tracer provider with resource attributes
+# The provider manages tracer instances and span processors
 provider = TracerProvider(resource=resource)
 
-# Configure OTLP exporter
+# Configure OTLP exporter to send traces to your backend
+# Using HTTP/protobuf protocol for wide compatibility
 otlp_exporter = OTLPSpanExporter(
     endpoint="https://oneuptime.com/otlp/v1/traces",
     headers={"x-oneuptime-token": "your-token-here"}
 )
 
-# Add span processor
+# Add BatchSpanProcessor for efficient batched exports
+# Batching reduces network overhead compared to exporting each span individually
 provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+
+# Register this provider as the global tracer provider
 trace.set_tracer_provider(provider)
 
 # Create Flask app
 app = Flask(__name__)
 
-# Instrument Flask
+# Instrument Flask to automatically trace all incoming requests
+# This creates spans for every HTTP request with method, route, status code
 FlaskInstrumentor().instrument_app(app)
 
-# Also instrument outgoing HTTP requests
+# Also instrument outgoing HTTP requests made with the requests library
+# This ensures distributed tracing works across service boundaries
 RequestsInstrumentor().instrument()
 
 @app.route("/api/users")
@@ -152,6 +171,8 @@ pip install fastapi uvicorn \
 
 ### Programmatic Setup
 
+FastAPI applications benefit from async-aware instrumentation. This setup instruments both incoming requests and outgoing async HTTP calls using httpx:
+
 ```python
 # main.py
 from fastapi import FastAPI, HTTPException
@@ -164,29 +185,37 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 import httpx
 
-# Configure resource
+# Configure resource attributes for service identification
 resource = Resource.create({
-    "service.name": "fastapi-service",
-    "service.version": "1.0.0",
-    "deployment.environment": "production"
+    "service.name": "fastapi-service",       # Service name in trace UI
+    "service.version": "1.0.0",              # Track which version generated traces
+    "deployment.environment": "production"    # Filter by environment
 })
 
-# Set up tracer provider
+# Set up tracer provider with the configured resource
 provider = TracerProvider(resource=resource)
+
+# Create OTLP exporter for sending traces to backend
 otlp_exporter = OTLPSpanExporter(
     endpoint="https://oneuptime.com/otlp/v1/traces",
     headers={"x-oneuptime-token": "your-token-here"}
 )
+
+# Use BatchSpanProcessor to export spans in batches for efficiency
 provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+
+# Set this provider as the global default
 trace.set_tracer_provider(provider)
 
-# Create FastAPI app
+# Create FastAPI app with title for documentation
 app = FastAPI(title="Instrumented FastAPI")
 
-# Instrument FastAPI
+# Instrument FastAPI to auto-trace all endpoints
+# Creates spans for requests with route, method, status attributes
 FastAPIInstrumentor.instrument_app(app)
 
-# Instrument httpx for async HTTP calls
+# Instrument httpx for tracing async HTTP client calls
+# Essential for distributed tracing across microservices
 HTTPXClientInstrumentor().instrument()
 
 @app.get("/api/items")
@@ -202,6 +231,7 @@ async def get_item(item_id: int):
 @app.get("/api/external")
 async def call_external():
     """Demonstrates traced outgoing HTTP calls"""
+    # httpx calls are automatically traced due to instrumentation above
     async with httpx.AsyncClient() as client:
         response = await client.get("https://httpbin.org/get")
         return {"external_status": response.status_code}
@@ -295,45 +325,52 @@ While auto-instrumentation covers common patterns, manual instrumentation gives 
 
 ### Creating Custom Spans
 
+Manual instrumentation allows you to trace custom business logic. This example shows how to create nested spans that capture the complete flow of an order processing operation:
+
 ```python
 from opentelemetry import trace
 
-# Get a tracer for your module
+# Get a tracer for your module - use a descriptive name for filtering
 tracer = trace.get_tracer("my_app.services")
 
 def process_order(order_id: str, items: list):
     """Process an order with custom spans"""
 
-    # Create a span for the entire operation
+    # Create a parent span for the entire operation
+    # All nested spans will be children of this span
     with tracer.start_as_current_span("process_order") as span:
-        # Add attributes to the span
+        # Add attributes to provide context for debugging
+        # Use semantic naming: resource.property format
         span.set_attribute("order.id", order_id)
         span.set_attribute("order.item_count", len(items))
 
-        # Validate the order
+        # Create a child span for order validation
+        # Nested spans automatically become children of the current span
         with tracer.start_as_current_span("validate_order") as validate_span:
             is_valid = validate_order_items(items)
             validate_span.set_attribute("validation.passed", is_valid)
 
+            # Mark span as error if validation fails
             if not is_valid:
                 validate_span.set_status(
                     trace.Status(trace.StatusCode.ERROR, "Invalid order items")
                 )
                 raise ValueError("Invalid order items")
 
-        # Calculate totals
+        # Child span for total calculation
         with tracer.start_as_current_span("calculate_totals") as calc_span:
             total = calculate_order_total(items)
             calc_span.set_attribute("order.total", total)
 
-        # Process payment
+        # Child span for payment processing - critical path to monitor
         with tracer.start_as_current_span("process_payment") as payment_span:
             payment_span.set_attribute("payment.amount", total)
             payment_result = charge_customer(order_id, total)
+            # Record payment outcome for debugging and metrics
             payment_span.set_attribute("payment.success", payment_result.success)
             payment_span.set_attribute("payment.transaction_id", payment_result.transaction_id)
 
-        # Set final status
+        # Set final status on parent span
         span.set_attribute("order.status", "completed")
         span.set_attribute("order.total", total)
 
@@ -341,6 +378,8 @@ def process_order(order_id: str, items: list):
 ```
 
 ### Adding Events and Exceptions
+
+Events are timestamped annotations within a span. They're useful for marking significant points during execution. This example shows how to add events and properly record exceptions:
 
 ```python
 from opentelemetry import trace
@@ -351,7 +390,8 @@ tracer = trace.get_tracer("my_app.services")
 def risky_operation(data: dict):
     with tracer.start_as_current_span("risky_operation") as span:
         try:
-            # Add an event for debugging
+            # Add an event to mark the start of processing
+            # Events are like log entries attached to the span
             span.add_event("Starting processing", {
                 "data.size": len(str(data)),
                 "data.keys": str(list(data.keys()))
@@ -359,7 +399,7 @@ def risky_operation(data: dict):
 
             result = process_data(data)
 
-            # Add success event
+            # Add success event with outcome details
             span.add_event("Processing completed", {
                 "result.count": len(result)
             })
@@ -367,11 +407,15 @@ def risky_operation(data: dict):
             return result
 
         except ValueError as e:
-            # Record the exception
+            # record_exception automatically captures stack trace
+            # and adds it as an event with exception details
             span.record_exception(e)
+
+            # Set span status to ERROR with description
             span.set_status(Status(StatusCode.ERROR, str(e)))
 
-            # Add context about the failure
+            # Add custom event with additional context
+            # Useful for understanding why the error occurred
             span.add_event("Validation failed", {
                 "error.type": type(e).__name__,
                 "error.message": str(e)
@@ -382,6 +426,8 @@ def risky_operation(data: dict):
 
 ### Span Decorators for Clean Code
 
+Create a reusable decorator to automatically trace functions. This pattern reduces boilerplate and ensures consistent instrumentation across your codebase:
+
 ```python
 from functools import wraps
 from opentelemetry import trace
@@ -389,45 +435,55 @@ from opentelemetry import trace
 tracer = trace.get_tracer("my_app.decorators")
 
 def traced(span_name: str = None, attributes: dict = None):
-    """Decorator for automatic span creation"""
+    """Decorator for automatic span creation
+
+    Args:
+        span_name: Custom span name (defaults to function name)
+        attributes: Static attributes to add to every span
+    """
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
+            # Use provided name or fall back to function name
             name = span_name or func.__name__
 
             with tracer.start_as_current_span(name) as span:
-                # Add default attributes
+                # Add metadata about the function being called
                 span.set_attribute("function.name", func.__name__)
                 span.set_attribute("function.module", func.__module__)
 
-                # Add custom attributes
+                # Add any custom static attributes
                 if attributes:
                     for key, value in attributes.items():
                         span.set_attribute(key, value)
 
                 try:
                     result = func(*args, **kwargs)
+                    # Mark successful execution
                     span.set_attribute("function.success", True)
                     return result
                 except Exception as e:
+                    # Capture exception with full stack trace
                     span.record_exception(e)
                     span.set_status(
                         Status(StatusCode.ERROR, str(e))
                     )
                     span.set_attribute("function.success", False)
-                    raise
+                    raise  # Re-raise after recording
 
         return wrapper
     return decorator
 
-# Usage
+# Usage - simply decorate functions to trace them
 @traced("user_registration", {"operation.type": "user_management"})
 def register_user(email: str, name: str):
-    # This function is automatically traced
+    # This function is automatically traced with custom span name
     return create_user_in_database(email, name)
 ```
 
 ### Async Support
+
+For async/await code, you need an async-compatible decorator. The span context is properly maintained across await points:
 
 ```python
 from opentelemetry import trace
@@ -437,16 +493,23 @@ import asyncio
 tracer = trace.get_tracer("my_app.async")
 
 def async_traced(span_name: str = None):
-    """Decorator for async functions"""
+    """Decorator for async functions
+
+    Works with async/await syntax while maintaining
+    proper trace context across await points.
+    """
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
             name = span_name or func.__name__
 
+            # Context manager works with async functions
             with tracer.start_as_current_span(name) as span:
+                # Mark this as an async operation for filtering
                 span.set_attribute("async", True)
 
                 try:
+                    # await the async function within the span context
                     result = await func(*args, **kwargs)
                     return result
                 except Exception as e:
@@ -459,9 +522,11 @@ def async_traced(span_name: str = None):
         return wrapper
     return decorator
 
+# Usage with async functions
 @async_traced("fetch_user_data")
 async def fetch_user_data(user_id: str):
     """Async function with automatic tracing"""
+    # All async operations within this function are covered by the span
     async with httpx.AsyncClient() as client:
         response = await client.get(f"https://api.example.com/users/{user_id}")
         return response.json()

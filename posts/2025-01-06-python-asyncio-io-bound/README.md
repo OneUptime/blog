@@ -18,36 +18,40 @@ Asyncio shines for I/O-bound workloads: HTTP requests, database queries, file op
 
 ### The Event Loop
 
-Asyncio uses a single-threaded event loop that switches between coroutines when they hit `await`:
+Asyncio uses a single-threaded event loop that switches between coroutines when they hit `await`. This enables concurrent execution without the complexity of threads:
 
 ```python
 import asyncio
 
 async def fetch_data(name: str, delay: float):
+    """Simulate an async I/O operation like a network call"""
     print(f"{name}: Starting")
-    await asyncio.sleep(delay)  # Yields to event loop
+    # await yields control back to the event loop
+    # Other coroutines can run while this one waits
+    await asyncio.sleep(delay)
     print(f"{name}: Done")
     return f"{name} result"
 
 async def main():
-    # These run concurrently, not sequentially
+    # asyncio.gather runs multiple coroutines concurrently
+    # All three start immediately, don't wait for each other
     results = await asyncio.gather(
-        fetch_data("A", 2),
-        fetch_data("B", 1),
-        fetch_data("C", 1.5)
+        fetch_data("A", 2),   # Takes 2 seconds
+        fetch_data("B", 1),   # Takes 1 second
+        fetch_data("C", 1.5)  # Takes 1.5 seconds
     )
     print(results)
 
-# Output:
+# Output order shows concurrent execution:
 # A: Starting
 # B: Starting
 # C: Starting
 # B: Done (after 1s)
 # C: Done (after 1.5s)
 # A: Done (after 2s)
-# Total time: ~2s, not 4.5s
+# Total time: ~2s (longest task), not 4.5s (sum of all)
 
-asyncio.run(main())
+asyncio.run(main())  # Entry point for async code
 ```
 
 ### When to Use Asyncio
@@ -71,6 +75,8 @@ asyncio.run(main())
 
 ### Pattern 1: Concurrent HTTP Requests
 
+This pattern demonstrates the power of async for network I/O. Multiple HTTP requests run concurrently, dramatically reducing total wait time:
+
 ```python
 # concurrent_requests.py
 import asyncio
@@ -78,28 +84,34 @@ import httpx
 import time
 
 async def fetch_url(client: httpx.AsyncClient, url: str) -> dict:
-    """Fetch a single URL"""
+    """Fetch a single URL using the shared async client"""
+    # await suspends this coroutine until response arrives
     response = await client.get(url)
     return {"url": url, "status": response.status_code}
 
 async def fetch_all(urls: list[str]) -> list[dict]:
-    """Fetch multiple URLs concurrently"""
+    """Fetch multiple URLs concurrently using asyncio.gather"""
+    # Use async context manager for proper client lifecycle
     async with httpx.AsyncClient() as client:
+        # Create list of coroutines (not yet running)
         tasks = [fetch_url(client, url) for url in urls]
+        # gather runs all tasks concurrently and waits for all to complete
         results = await asyncio.gather(*tasks)
     return results
 
-# Compare sync vs async
+# Compare sync vs async to see the performance difference
 def sync_fetch_all(urls: list[str]):
-    """Synchronous version for comparison"""
+    """Synchronous version - requests run sequentially"""
     import requests
     results = []
     for url in urls:
+        # Each request blocks until complete before starting next
         response = requests.get(url)
         results.append({"url": url, "status": response.status_code})
     return results
 
 async def main():
+    # 5 URLs that each take 1 second to respond
     urls = [
         "https://httpbin.org/delay/1",
         "https://httpbin.org/delay/1",
@@ -108,12 +120,12 @@ async def main():
         "https://httpbin.org/delay/1",
     ]
 
-    # Async: ~1 second total
+    # Async: ~1 second total (all requests run in parallel)
     start = time.time()
     results = await fetch_all(urls)
     print(f"Async: {time.time() - start:.2f}s")
 
-    # Sync: ~5 seconds total
+    # Sync: ~5 seconds total (requests run one after another)
     start = time.time()
     results = sync_fetch_all(urls)
     print(f"Sync: {time.time() - start:.2f}s")
@@ -122,6 +134,8 @@ asyncio.run(main())
 ```
 
 ### Pattern 2: Controlled Concurrency with Semaphores
+
+When making many concurrent requests, you need to limit concurrency to avoid overwhelming servers or hitting rate limits. Semaphores act as a gate that only allows N concurrent operations:
 
 ```python
 # semaphore_control.py
@@ -133,34 +147,43 @@ async def fetch_with_limit(
     client: httpx.AsyncClient,
     url: str
 ) -> dict:
-    """Fetch URL with concurrency limit"""
-    async with semaphore:  # Only N concurrent requests
+    """Fetch URL with concurrency limit enforced by semaphore"""
+    # Semaphore context manager ensures only N concurrent executions
+    # If limit reached, this awaits until a slot is available
+    async with semaphore:
         response = await client.get(url)
         return {"url": url, "status": response.status_code}
 
 async def fetch_many_controlled(urls: list[str], max_concurrent: int = 10):
-    """Fetch many URLs with controlled concurrency"""
+    """Fetch many URLs with controlled concurrency to avoid overwhelming servers"""
+    # Create semaphore that allows max_concurrent simultaneous operations
     semaphore = asyncio.Semaphore(max_concurrent)
 
     async with httpx.AsyncClient() as client:
+        # Create all tasks - they're queued but semaphore controls execution
         tasks = [
             fetch_with_limit(semaphore, client, url)
             for url in urls
         ]
+        # return_exceptions=True prevents one failure from canceling others
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     return results
 
 # Usage
 async def main():
+    # Generate 100 URLs to fetch
     urls = [f"https://httpbin.org/get?id={i}" for i in range(100)]
 
-    # Fetch 100 URLs, max 10 at a time
+    # Fetch 100 URLs, but only 10 requests active at any time
+    # This prevents connection exhaustion and rate limit issues
     results = await fetch_many_controlled(urls, max_concurrent=10)
     print(f"Fetched {len(results)} URLs")
 ```
 
 ### Pattern 3: Producer-Consumer with Queues
+
+The producer-consumer pattern decouples work generation from work processing. Async queues provide backpressure when consumers can't keep up:
 
 ```python
 # producer_consumer.py
@@ -168,44 +191,50 @@ import asyncio
 from typing import Any
 
 async def producer(queue: asyncio.Queue, items: list):
-    """Produce items to the queue"""
+    """Produce items to the queue for consumers to process"""
     for item in items:
+        # put() awaits if queue is full (backpressure)
         await queue.put(item)
         print(f"Produced: {item}")
-    # Signal completion
+    # Send sentinel value to signal end of items
     await queue.put(None)
 
 async def consumer(queue: asyncio.Queue, name: str):
-    """Consume items from the queue"""
+    """Consume and process items from the queue"""
     while True:
+        # get() awaits until an item is available
         item = await queue.get()
+
         if item is None:
-            # Put sentinel back for other consumers
+            # Sentinel received - put it back for other consumers
             await queue.put(None)
             break
 
         print(f"{name} processing: {item}")
-        await asyncio.sleep(0.1)  # Simulate work
+        await asyncio.sleep(0.1)  # Simulate async work
+        # Mark task as done for queue.join() tracking
         queue.task_done()
 
 async def main():
-    queue = asyncio.Queue(maxsize=10)  # Bounded queue
+    # Bounded queue creates backpressure when full
+    # Producer will wait if queue has 10 items
+    queue = asyncio.Queue(maxsize=10)
 
     items = list(range(20))
 
-    # Start consumers
+    # Start multiple consumer tasks for parallel processing
     consumers = [
         asyncio.create_task(consumer(queue, f"Consumer-{i}"))
-        for i in range(3)
+        for i in range(3)  # 3 concurrent consumers
     ]
 
-    # Start producer
+    # Start producer (runs until all items queued)
     await producer(queue, items)
 
-    # Wait for all items to be processed
+    # Wait until all items have been processed (task_done called)
     await queue.join()
 
-    # Cancel consumers
+    # Clean up consumer tasks
     for c in consumers:
         c.cancel()
 
@@ -214,19 +243,23 @@ asyncio.run(main())
 
 ### Pattern 4: Timeout Handling
 
+Timeouts prevent operations from hanging indefinitely. Python 3.11+ provides the clean `asyncio.timeout()` context manager:
+
 ```python
 # timeout_handling.py
 import asyncio
 import httpx
 
 async def fetch_with_timeout(url: str, timeout: float) -> dict:
-    """Fetch URL with timeout"""
+    """Fetch URL with timeout - returns error dict if timeout exceeded"""
     try:
+        # asyncio.timeout (Python 3.11+) cancels the block after timeout seconds
         async with asyncio.timeout(timeout):
             async with httpx.AsyncClient() as client:
                 response = await client.get(url)
                 return {"url": url, "status": response.status_code}
     except asyncio.TimeoutError:
+        # Timeout occurred - return error instead of raising
         return {"url": url, "error": "timeout"}
 
 async def fetch_with_fallback(url: str, fallback_url: str, timeout: float):

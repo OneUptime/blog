@@ -50,91 +50,96 @@ Prometheus supports four core metric types:
 
 ### Counter Example
 
-Counters track cumulative values that only increase:
+Counters track cumulative values that only increase. They're reset to zero on restart. Use counters for counting events like requests, errors, or orders:
 
 ```python
 from prometheus_client import Counter
 
-# Create a counter
+# Create a counter with labels for dimensional data
+# Labels allow filtering and grouping in Prometheus queries
 http_requests_total = Counter(
-    'http_requests_total',
-    'Total HTTP requests',
-    ['method', 'endpoint', 'status']
+    'http_requests_total',              # Metric name (must be unique)
+    'Total HTTP requests',              # Description shown in docs
+    ['method', 'endpoint', 'status']    # Label names for dimensions
 )
 
-# Increment the counter
+# Increment the counter - use labels() to specify dimension values
 def handle_request(method, endpoint, status_code):
     http_requests_total.labels(
-        method=method,
-        endpoint=endpoint,
-        status=str(status_code)
-    ).inc()
+        method=method,              # e.g., 'GET', 'POST'
+        endpoint=endpoint,          # e.g., '/api/users'
+        status=str(status_code)     # e.g., '200', '500'
+    ).inc()  # Increment by 1
 
-# Usage
-handle_request('GET', '/api/users', 200)
-handle_request('POST', '/api/orders', 201)
-handle_request('GET', '/api/users', 500)  # Error case
+# Usage examples - each combination creates a separate time series
+handle_request('GET', '/api/users', 200)   # Successful GET
+handle_request('POST', '/api/orders', 201)  # Successful POST
+handle_request('GET', '/api/users', 500)    # Error case
 ```
 
 ### Gauge Example
 
-Gauges represent values that can increase or decrease:
+Gauges represent values that can increase or decrease. Use gauges for current state like queue size, active connections, or temperature:
 
 ```python
 from prometheus_client import Gauge
 
-# Create gauges
+# Create gauges - no labels for simple single-value metric
 active_connections = Gauge(
     'active_connections',
     'Number of active database connections'
 )
 
+# Gauge with labels for multiple queues
 queue_size = Gauge(
     'task_queue_size',
     'Number of tasks in the queue',
-    ['queue_name']
+    ['queue_name']      # Label to identify different queues
 )
 
-# Set, increment, decrement
-active_connections.set(5)
-active_connections.inc()  # Now 6
-active_connections.dec()  # Now 5
+# Set, increment, decrement operations
+active_connections.set(5)   # Set to absolute value
+active_connections.inc()    # Now 6 (increment by 1)
+active_connections.dec()    # Now 5 (decrement by 1)
 
-# With labels
-queue_size.labels(queue_name='email').set(42)
-queue_size.labels(queue_name='notifications').set(18)
+# With labels - track multiple queues independently
+queue_size.labels(queue_name='email').set(42)         # Email queue has 42 items
+queue_size.labels(queue_name='notifications').set(18)  # Notifications has 18
 ```
 
 ### Histogram Example
 
-Histograms track the distribution of values:
+Histograms track the distribution of values by counting observations in configurable buckets. They're essential for latency percentiles (p50, p95, p99):
 
 ```python
 from prometheus_client import Histogram
 import time
 
-# Create histogram with custom buckets
+# Create histogram with custom buckets for latency ranges
+# Buckets define the upper bounds; Prometheus counts observations <= each bound
 request_latency = Histogram(
     'request_latency_seconds',
     'Request latency in seconds',
     ['endpoint'],
+    # Custom buckets optimized for web request latencies
     buckets=[0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
 )
 
-# Time a function
+# Manual timing with observe()
 def process_request(endpoint):
     start_time = time.time()
 
     # Do processing
     result = do_actual_work()
 
-    # Record the latency
+    # Record the latency - goes into appropriate bucket
     duration = time.time() - start_time
     request_latency.labels(endpoint=endpoint).observe(duration)
 
     return result
 
-# Or use the built-in timer decorator
+# Or use the built-in timer decorator for cleaner code
+# Automatically measures duration and records it
 @request_latency.labels(endpoint='/api/users').time()
 def get_users():
     return fetch_users_from_db()

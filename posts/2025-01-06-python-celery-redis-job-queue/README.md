@@ -24,39 +24,43 @@ pip install celery[redis] redis
 
 ### Basic Configuration
 
+Create the Celery application with Redis as both the message broker and result backend. The configuration below optimizes for reliability in production:
+
 ```python
 # celery_app.py
 from celery import Celery
 import os
 
-# Create Celery app
+# Create Celery app with Redis broker and backend
 app = Celery(
-    'myapp',
-    broker=os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0'),
-    backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0'),
-    include=['tasks']  # Include task modules
+    'myapp',  # App name for identification
+    broker=os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0'),    # Message queue
+    backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0'), # Result storage
+    include=['tasks']  # Auto-discover tasks from these modules
 )
 
-# Configuration
+# Configuration for production reliability
 app.conf.update(
-    # Task settings
+    # Serialization settings - JSON for security (no pickle)
     task_serializer='json',
-    accept_content=['json'],
+    accept_content=['json'],    # Only accept JSON to prevent code injection
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
 
     # Reliability settings
-    task_acks_late=True,
-    task_reject_on_worker_lost=True,
-    worker_prefetch_multiplier=1,
+    task_acks_late=True,              # Acknowledge after task completes (not before)
+    task_reject_on_worker_lost=True,  # Requeue task if worker crashes
+    worker_prefetch_multiplier=1,     # Fetch one task at a time for fair distribution
 
-    # Result settings
-    result_expires=3600,  # Results expire after 1 hour
+    # Result backend settings
+    result_expires=3600,  # Clean up results after 1 hour to save memory
 )
 ```
 
 ### Basic Tasks
+
+Define tasks using the @app.task decorator. Tasks can be called asynchronously with .delay() or apply_async():
 
 ```python
 # tasks.py
@@ -65,27 +69,29 @@ import time
 
 @app.task
 def add(x, y):
-    """Simple synchronous task"""
+    """Simple synchronous task - result is stored in backend"""
     return x + y
 
 @app.task
 def send_email(to: str, subject: str, body: str):
-    """Send an email asynchronously"""
-    # Email sending logic
+    """Send an email asynchronously - offload from web request"""
+    # Email sending logic would go here
     print(f"Sending email to {to}: {subject}")
-    time.sleep(2)  # Simulate sending
+    time.sleep(2)  # Simulate SMTP communication
     return {"status": "sent", "to": to}
 
 @app.task
 def process_upload(file_path: str, user_id: str):
-    """Process an uploaded file"""
+    """Process an uploaded file in background"""
     print(f"Processing {file_path} for user {user_id}")
-    # Processing logic
+    # Heavy processing logic (resize images, parse CSV, etc.)
     return {"processed": True, "path": file_path}
 
-# Usage
-# result = add.delay(4, 4)
+# Usage examples:
+# .delay() is shorthand for .apply_async()
+# result = add.delay(4, 4)                    # Returns AsyncResult
 # result = send_email.delay("user@example.com", "Hello", "World")
+# result.get(timeout=10)                      # Wait for result (blocking)
 ```
 
 ---
@@ -175,40 +181,46 @@ celery -A celery_app beat --loglevel=info
 
 ### Basic Retries
 
+Use bind=True to access the task instance (self), which provides retry capabilities. This pattern handles transient failures gracefully:
+
 ```python
 from celery_app import app
 from celery.exceptions import Retry
 import requests
 
 @app.task(
-    bind=True,
-    max_retries=5,
-    default_retry_delay=60  # 60 seconds
+    bind=True,              # Gives access to self.retry()
+    max_retries=5,          # Maximum retry attempts
+    default_retry_delay=60  # Wait 60 seconds between retries
 )
 def call_external_api(self, endpoint: str, data: dict):
-    """Call external API with retry"""
+    """Call external API with automatic retry on failure"""
     try:
         response = requests.post(endpoint, json=data, timeout=30)
-        response.raise_for_status()
+        response.raise_for_status()  # Raises exception for 4xx/5xx
         return response.json()
     except requests.RequestException as exc:
-        # Retry with exponential backoff
+        # self.retry() re-queues the task with the same arguments
+        # exc parameter preserves the exception for logging
         raise self.retry(exc=exc)
 ```
 
 ### Exponential Backoff
 
+Celery's built-in exponential backoff prevents overwhelming failing services. Each retry waits longer than the previous:
+
 ```python
 @app.task(
     bind=True,
-    autoretry_for=(requests.RequestException,),
-    retry_backoff=True,
-    retry_backoff_max=600,  # Max 10 minutes
-    retry_jitter=True,
-    max_retries=5
+    autoretry_for=(requests.RequestException,),  # Auto-retry on these exceptions
+    retry_backoff=True,           # Enable exponential backoff (2, 4, 8, 16... seconds)
+    retry_backoff_max=600,        # Cap maximum wait at 10 minutes
+    retry_jitter=True,            # Add randomness to prevent thundering herd
+    max_retries=5                 # Give up after 5 attempts
 )
 def robust_api_call(self, endpoint: str, data: dict):
-    """API call with automatic exponential backoff"""
+    """API call with automatic exponential backoff on failure"""
+    # No try/except needed - autoretry_for handles it
     response = requests.post(endpoint, json=data, timeout=30)
     response.raise_for_status()
     return response.json()
