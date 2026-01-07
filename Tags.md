@@ -265,3 +265,34 @@
 - Integration Tests
 - Mocking
 - pytest
+- Rust
+- gRPC
+- Flamegraph
+- Optimization
+- Arena Allocators
+- tokio
+- Axum
+- REST API
+- Web Development
+- Backend
+- SQLx
+- musl
+- Signals
+- Exponential Backoff
+- Background Jobs
+- governor
+- CLI
+- clap
+- Command Line
+- rayon
+- Worker Threads
+- File I/O
+- Memory-Mapped Files
+- Input Validation
+- Sandboxing
+- seccomp
+- Landlock
+- wiremock
+- HTTP
+- LLM
+- Tools

@@ -1987,5 +1987,173 @@
       "authorGitHubUsername": "nawazdhandala",
       "tags": ["Python", "Celery", "OpenTelemetry", "Monitoring", "OneUptime"],
       "post": "2025-01-06-celery-opentelemetry-oneuptime"
+    },
+    {
+      "title": "How to Instrument Rust Applications with OpenTelemetry",
+      "description": "Learn how to instrument Rust applications with OpenTelemetry for distributed tracing, metrics, and observability.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "OpenTelemetry", "Tracing", "Metrics", "Observability"],
+      "post": "2026-01-07-rust-opentelemetry-instrumentation"
+    },
+    {
+      "title": "How to Implement Distributed Tracing in Rust Microservices",
+      "description": "Learn how to implement distributed tracing across Rust microservices with context propagation for HTTP, gRPC, and message queues.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Distributed Tracing", "Microservices", "OpenTelemetry", "gRPC"],
+      "post": "2026-01-07-rust-distributed-tracing-microservices"
+    },
+    {
+      "title": "How to Export Custom Prometheus Metrics in Rust",
+      "description": "Learn how to export custom Prometheus metrics from Rust applications including counters, gauges, histograms, and business metrics.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Prometheus", "Metrics", "Monitoring", "Observability"],
+      "post": "2026-01-07-rust-prometheus-custom-metrics"
+    },
+    {
+      "title": "How to Add Structured Logging with tracing in Rust",
+      "description": "Learn how to add structured logging to Rust applications using the tracing ecosystem with JSON output and span context.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Logging", "tracing", "Structured Logging", "Observability"],
+      "post": "2026-01-07-rust-tracing-structured-logs"
+    },
+    {
+      "title": "How to Profile Rust Applications with perf and Flamegraph",
+      "description": "Learn how to profile Rust applications using perf, flamegraph, and samply to find CPU bottlenecks and optimize performance.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Profiling", "Performance", "Flamegraph", "Optimization"],
+      "post": "2026-01-07-rust-profiling-perf-flamegraph"
+    },
+    {
+      "title": "How to Reduce Memory Usage in Rust Services",
+      "description": "Learn how to reduce memory usage in Rust services using arena allocators, zero-copy parsing, and memory-efficient data structures.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Memory", "Performance", "Optimization", "Arena Allocators"],
+      "post": "2026-01-07-rust-memory-optimization"
+    },
+    {
+      "title": "How to Use async Rust Without Blocking the Runtime",
+      "description": "Learn how to write async Rust code that doesn't block the tokio runtime using spawn_blocking, channels, and proper async patterns.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Async", "tokio", "Concurrency", "Performance"],
+      "post": "2026-01-07-rust-async-without-blocking"
+    },
+    {
+      "title": "How to Build REST APIs with Axum in Rust",
+      "description": "Learn how to build REST APIs with Axum including routing, middleware, error handling, and database integration.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Axum", "REST API", "Web Development", "Backend"],
+      "post": "2026-01-07-rust-axum-rest-api"
+    },
+    {
+      "title": "How to Implement JWT Authentication in Rust APIs",
+      "description": "Learn how to implement JWT authentication in Rust APIs with access tokens, refresh tokens, and secure middleware.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "JWT", "Authentication", "Security", "API"],
+      "post": "2026-01-07-rust-jwt-authentication"
+    },
+    {
+      "title": "How to Implement Database Connection Pooling in Rust",
+      "description": "Learn how to implement database connection pooling in Rust with SQLx, Deadpool, and proper configuration for production.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Database", "Connection Pool", "SQLx", "PostgreSQL"],
+      "post": "2026-01-07-rust-database-connection-pooling"
+    },
+    {
+      "title": "How to Build Minimal Docker Images for Rust",
+      "description": "Learn how to build minimal Docker images for Rust applications using multi-stage builds, musl, and distroless base images.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Docker", "Containers", "musl", "DevOps"],
+      "post": "2026-01-07-rust-minimal-docker-images"
+    },
+    {
+      "title": "How to Implement Health Checks in Rust for Kubernetes",
+      "description": "Learn how to implement Kubernetes health checks in Rust including liveness, readiness, and startup probes.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Kubernetes", "Health Checks", "DevOps", "Reliability"],
+      "post": "2026-01-07-rust-kubernetes-health-checks"
+    },
+    {
+      "title": "How to Handle Graceful Shutdown in Rust Services",
+      "description": "Learn how to implement graceful shutdown in Rust services with signal handling, connection draining, and cleanup.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Graceful Shutdown", "Signals", "Kubernetes", "Reliability"],
+      "post": "2026-01-07-rust-graceful-shutdown"
+    },
+    {
+      "title": "How to Implement Retry with Exponential Backoff in Rust",
+      "description": "Learn how to implement retry logic with exponential backoff and jitter in Rust for resilient network operations.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Retry", "Resilience", "Exponential Backoff", "Error Handling"],
+      "post": "2026-01-07-rust-retry-exponential-backoff"
+    },
+    {
+      "title": "How to Build a Job Queue in Rust with Tokio and Redis",
+      "description": "Learn how to build a reliable job queue in Rust with Tokio and Redis including retries, dead letter queues, and monitoring.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Job Queue", "Redis", "tokio", "Background Jobs"],
+      "post": "2026-01-07-rust-job-queue-tokio-redis"
+    },
+    {
+      "title": "How to Implement Rate Limiting in Rust APIs",
+      "description": "Learn how to implement rate limiting in Rust APIs using token bucket, sliding window, and the governor crate.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Rate Limiting", "API", "governor", "Security"],
+      "post": "2026-01-07-rust-rate-limiting"
+    },
+    {
+      "title": "How to Build a CLI Tool in Rust with Clap and Proper Error Handling",
+      "description": "Learn how to build professional CLI tools in Rust using Clap for argument parsing and proper error handling patterns.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "CLI", "clap", "Error Handling", "Command Line"],
+      "post": "2026-01-07-rust-cli-clap-error-handling"
+    },
+    {
+      "title": "How to Use Worker Threads in Rust for CPU-Intensive Tasks",
+      "description": "Learn how to use worker threads in Rust for CPU-intensive tasks using rayon and tokio::task::spawn_blocking.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "rayon", "Worker Threads", "CPU", "Parallel Processing"],
+      "post": "2026-01-07-rust-worker-threads-cpu-intensive"
+    },
+    {
+      "title": "How to Handle File I/O Efficiently in Rust",
+      "description": "Learn how to handle file I/O efficiently in Rust with buffered I/O, memory-mapped files, and async file operations.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "File I/O", "Performance", "Async", "Memory-Mapped Files"],
+      "post": "2026-01-07-rust-file-io-efficient"
+    },
+    {
+      "title": "How to Secure Rust APIs Against Common Vulnerabilities",
+      "description": "Learn how to secure Rust APIs against OWASP Top 10 vulnerabilities including SQL injection, broken authentication, and XSS.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Security", "API", "OWASP", "Input Validation"],
+      "post": "2026-01-07-rust-api-security"
+    },
+    {
+      "title": "How to Run Rust Binaries Without Root Using Sandboxing",
+      "description": "Learn how to sandbox Rust applications with seccomp, Landlock, and capability dropping for defense-in-depth security.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Security", "Sandboxing", "seccomp", "Landlock"],
+      "post": "2026-01-07-rust-sandboxing-seccomp-landlock"
+    },
+    {
+      "title": "How to Write Integration Tests for Rust APIs with Testcontainers",
+      "description": "Learn how to write reliable integration tests for Rust APIs using Testcontainers with PostgreSQL, Redis, and Docker.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Testing", "Integration Tests", "Testcontainers", "Docker"],
+      "post": "2026-01-07-rust-testcontainers"
+    },
+    {
+      "title": "How to Mock External APIs in Rust Tests with wiremock",
+      "description": "Learn how to mock external HTTP APIs in Rust tests using wiremock for fast, deterministic, and reliable tests.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "Testing", "Mocking", "wiremock", "HTTP"],
+      "post": "2026-01-07-rust-wiremock-mocking"
+    },
+    {
+      "title": "How to Build an MCP Server in Rust",
+      "description": "Learn how to build an MCP (Model Context Protocol) server in Rust for integrating AI assistants with external tools and data.",
+      "authorGitHubUsername": "nawazdhandala",
+      "tags": ["Rust", "MCP", "AI", "LLM", "Tools"],
+      "post": "2026-01-07-rust-mcp-server"
     }
 ]
