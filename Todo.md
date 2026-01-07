@@ -339,3 +339,63 @@ A comprehensive list of Ceph blog topics covering installation, operations, perf
 - [ ] 23. **How to Run PostgreSQL on Ceph RBD with High Availability** - Database storage best practices on Ceph
 
 ---
+
+# OpenTelemetry "How to" Blog Topics
+
+A comprehensive list of OpenTelemetry blog topics covering language-specific instrumentation, collector configuration, advanced tracing patterns, metrics, and operational guides.
+
+---
+
+## 🌐 Language/Framework-Specific Instrumentation
+
+- [ ] 1. **How to Instrument Java Spring Boot Applications with OpenTelemetry** - Auto and manual instrumentation for Spring Web, Spring Data, and reactive stacks
+- [ ] 2. **How to Instrument Go Applications with OpenTelemetry** - net/http, Gin, Echo, and gRPC instrumentation patterns
+- [ ] 3. **How to Instrument .NET/C# Applications with OpenTelemetry** - ASP.NET Core, Entity Framework, and Azure SDK instrumentation
+- [ ] 4. **How to Instrument React/Next.js Frontend with OpenTelemetry** - Browser instrumentation, user session tracing, and backend correlation
+- [ ] 5. **How to Instrument Ruby on Rails with OpenTelemetry** - ActiveRecord, ActionController, and Sidekiq tracing
+
+---
+
+## 🔧 OpenTelemetry Collector Deep Dives
+
+- [ ] 6. **How to Configure OpenTelemetry Collector Processors for Data Transformation** - Filtering, batching, attribute manipulation, and span enrichment
+- [ ] 7. **How to Set Up OpenTelemetry Collector High Availability and Load Balancing** - Production-grade collector deployments with horizontal scaling
+- [ ] 8. **How to Route Telemetry to Multiple Backends with OpenTelemetry Collector** - Fanout patterns to Jaeger, OneUptime, Prometheus, and custom destinations
+- [ ] 9. **How to Implement Tail-Based Sampling in OpenTelemetry Collector** - Error-based and latency-based sampling strategies
+
+---
+
+## 🔍 Advanced Tracing Patterns
+
+- [ ] 10. **How to Trace Database Queries with OpenTelemetry** - SQL and NoSQL query instrumentation with query sanitization
+- [ ] 11. **How to Trace Message Queues (Kafka, RabbitMQ, SQS) with OpenTelemetry** - Async messaging context propagation and consumer tracing
+- [ ] 12. **How to Add Custom Attributes and Events to OpenTelemetry Spans** - Enriching traces beyond auto-instrumentation
+- [ ] 13. **How to Trace Serverless Functions (Lambda, Cloud Functions) with OpenTelemetry** - Cold start handling and invocation patterns
+- [ ] 14. **How to Implement Baggage and Context Propagation in OpenTelemetry** - Cross-service data passing for request metadata
+
+---
+
+## 📊 Metrics Deep Dives
+
+- [ ] 15. **How to Create Custom Metrics with OpenTelemetry SDK** - Counters, gauges, histograms, and observable instruments from scratch
+- [ ] 16. **How to Migrate from Prometheus to OpenTelemetry Metrics** - Bridging existing Prometheus setups with OTel receivers
+- [ ] 17. **How to Set Up Metric Cardinality Control in OpenTelemetry** - Avoiding metric explosion with attribute filtering and aggregation
+
+---
+
+## 🛠️ Operational Guides
+
+- [ ] 18. **How to Troubleshoot Common OpenTelemetry Instrumentation Issues** - Missing traces, broken context propagation, and silent failures
+- [ ] 19. **How to Upgrade OpenTelemetry SDK Versions Safely** - Migration patterns, breaking changes, and compatibility testing
+- [ ] 20. **How to Benchmark and Optimize OpenTelemetry SDK Overhead** - Measuring and minimizing performance impact in production
+- [ ] 21. **How to Set Up OpenTelemetry in a Monorepo** - Shared instrumentation configuration across multiple packages
+
+---
+
+## 🔌 Integration Guides
+
+- [ ] 22. **How to Send OpenTelemetry Data from AWS Lambda to OneUptime** - Serverless-specific patterns with Lambda extensions
+- [ ] 23. **How to Integrate OpenTelemetry with Grafana and Prometheus** - Mixed observability stacks with Tempo and Mimir
+- [ ] 24. **How to Export OpenTelemetry Data to Multiple Destinations Simultaneously** - Multi-vendor strategies and data routing patterns
+
+---
