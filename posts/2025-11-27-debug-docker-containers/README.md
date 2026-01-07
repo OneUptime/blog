@@ -12,8 +12,14 @@ When a container crashes at 2 a.m., the fastest fix comes from disciplined triag
 
 ## 1. Inspect First, Exec Later
 
+Before jumping into a container shell, gather information non-invasively. These commands show container state without modifying anything, helping you understand what went wrong.
+
 ```bash
+# List all containers (including stopped) that match the name filter
 docker ps -a --filter "name=api"
+
+# Extract specific state information using Go template formatting
+# Shows current status and exit code (non-zero usually means error)
 docker inspect api_web_1 --format '{{.State.Status}} {{.State.ExitCode}}'
 ```
 
@@ -25,11 +31,17 @@ docker inspect api_web_1 --format '{{.State.Status}} {{.State.ExitCode}}'
 
 ## 2. Check Logs with Context
 
+Container logs are your first line of defense for debugging. Use these commands to view recent output, filter by time, or follow logs in real-time.
+
 ```bash
+# Show the last 200 lines of logs (useful for recent crashes)
 docker logs --tail 200 api_web_1
-# For timestamps
+
+# Show logs from the last 30 minutes only
 docker logs --since 30m api_web_1
-# Follow live tail
+
+# Follow logs in real-time (like tail -f)
+# Press Ctrl+C to stop following
 docker logs -f api_web_1
 ```
 
@@ -37,19 +49,25 @@ For multi-container Compose stacks, `docker compose logs -f api` stitches multip
 
 ## 3. Copy Artifacts Without Exec
 
-Need config files or crash dumps? Use `docker cp`:
+Need config files or crash dumps? Use `docker cp` to safely extract files from a container to your local machine without opening a shell.
 
 ```bash
+# Copy a file from container to local directory
+# Syntax: docker cp <container>:<path> <local-path>
 docker cp api_web_1:/app/logs/error.json ./artifacts/
 ```
 
-No shell required, so there’s no risk of editing files inside the container.
+No shell required, so there's no risk of editing files inside the container.
 
 ## 4. Exec with Read-Only Intent
 
-If you must open a shell:
+If you must open a shell, set up your terminal properly for better readability. This command passes your terminal dimensions to the container for correct text wrapping.
 
 ```bash
+# Open interactive shell with proper terminal sizing
+# -i: Keep STDIN open for interactive input
+# -t: Allocate a pseudo-TTY for terminal features
+# --env: Pass terminal dimensions for proper text display
 docker exec -it --env COLUMNS=$(tput cols) --env LINES=$(tput lines) api_web_1 sh
 ```
 
@@ -60,21 +78,26 @@ Enable read-only filesystem in production to discourage edits (`docker run --rea
 
 ## 5. Launch Ephemeral Debug Containers
 
-When the base image lacks shell tools (distroless), spin up a helper container sharing the same namespaces.
+When the base image lacks shell tools (distroless), spin up a helper container sharing the same namespaces. This technique lets you debug minimal images without modifying them.
 
 ```bash
+# Launch a debug container that shares the target's network and process namespaces
 docker run --rm -it \
-  --network container:api_web_1 \
-  --pid container:api_web_1 \
-  -v /var/lib/docker/overlay2:/overlay2:ro \
-  alpine:3.20 sh
+  --network container:api_web_1 \    # Share network namespace (same localhost, ports)
+  --pid container:api_web_1 \        # Share PID namespace (see target's processes)
+  -v /var/lib/docker/overlay2:/overlay2:ro \  # Read-only access to image layers
+  alpine:3.20 sh                     # Alpine includes useful debug tools
 ```
 
 Or use `docker debug` (BuildKit) / `docker run --privileged --pid=container:<id>` to examine processes without modifying the running container.
 
 ## 6. Dive into Layers
 
+Understanding how your image was built helps identify bloat and potential issues. The history command shows each layer, its size, and the command that created it.
+
 ```bash
+# Show the build history of an image with layer sizes
+# Large layers may indicate opportunities for optimization
 docker history ghcr.io/acme/api:sha-abc123
 ```
 
@@ -90,8 +113,14 @@ Pipe events into OneUptime via webhook for centralized alerting.
 
 ## 8. Snapshot and Reproduce Locally
 
+Capture the current state of a problematic container as a new image. This allows you to reproduce issues on a different machine without affecting production.
+
 ```bash
+# Create a new image from the container's current state
+# The timestamp suffix ensures unique image tags
 docker commit api_web_1 debug/api-failed:$(date +%s)
+
+# Export the image to a tar file for transfer to another machine
 docker save debug/api-failed > /tmp/api-debug.tar
 ```
 

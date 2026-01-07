@@ -45,30 +45,37 @@ Once those expectations are clear, you can encode them in OTel instrumentation a
 
 ### 1. Default to explicit attribute allow-lists
 
-When you add log or span attributes, define them centrally and make it hard to sneak in unapproved keys.
+When you add log or span attributes, define them centrally and make it hard to sneak in unapproved keys. These helper functions only return pre-approved attributes, forcing developers to consciously update the allow-list to add new fields.
 
 ```typescript
-// telemetry/attributes.ts
+// telemetry/attributes.ts - Centralized attribute definitions prevent PII leaks
+// Only returns approved fields - no way to accidentally include email/password
+
 const safeUserAttributes = (user: { id: string; country: string; plan: string }) => ({
-  'user.id': user.id, // hashed or surrogate ID
-  'user.country': user.country,
-  'user.plan': user.plan,
+  'user.id': user.id,       // Hashed or surrogate ID, not the actual user email
+  'user.country': user.country, // Country is OK - not personally identifiable
+  'user.plan': user.plan,   // Plan type is business data, not PII
+  // NOTE: email, name, phone are intentionally excluded
 });
 
 const safeOrderAttributes = (order: { id: string; amount: number; currency: string }) => ({
-  'order.id': order.id,
-  'order.amount': order.amount,
+  'order.id': order.id,         // Safe internal identifier
+  'order.amount': order.amount, // Amount without payment details
   'order.currency': order.currency,
+  // NOTE: billing address, card info are intentionally excluded
 });
 
+// Export the allow-list - developers can only use these approved helpers
 export const safeAttributes = {
   user: safeUserAttributes,
   order: safeOrderAttributes,
 };
 ```
 
+This checkout service demonstrates safe instrumentation. Instead of attaching the raw payment object (which contains card numbers), it uses the approved attribute helpers and converts sensitive presence checks to booleans.
+
 ```typescript
-// services/checkout.ts
+// services/checkout.ts - Safe instrumentation using approved attribute helpers
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { safeAttributes } from '../telemetry/attributes';
 
@@ -77,14 +84,18 @@ const tracer = trace.getTracer('checkout');
 export async function submitOrder(payload: CheckoutRequest) {
   return tracer.startActiveSpan('CheckoutHandler', async (span) => {
     try {
+      // Use safe attribute helpers - these only include approved fields
       span.setAttributes({
-        ...safeAttributes.user(payload.user),
-        ...safeAttributes.order(payload.order),
+        ...safeAttributes.user(payload.user),   // Only id, country, plan
+        ...safeAttributes.order(payload.order), // Only id, amount, currency
       });
 
-      // Never attach raw payment data
-      span.setAttribute('payment.method', payload.payment.method);
-      span.setAttribute('payment.has_token', Boolean(payload.payment.token));
+      // For sensitive data, only record presence/type, never the value
+      span.setAttribute('payment.method', payload.payment.method); // 'credit_card', 'paypal'
+      span.setAttribute('payment.has_token', Boolean(payload.payment.token)); // true/false only
+
+      // NEVER DO: span.setAttribute('payment.token', payload.payment.token)
+      // NEVER DO: span.setAttribute('payment.card_number', payload.payment.cardNumber)
 
       const result = await processPayment(payload);
       span.setStatus({ code: SpanStatusCode.OK });
@@ -108,28 +119,33 @@ Key ideas:
 
 ### 2. Strip secrets from logs before they leave the process
 
+Pino's redact option automatically replaces matching fields with `[Redacted]` before they're written. This is your safety net - even if application code accidentally logs a password, it won't reach your log storage.
+
 ```typescript
-// telemetry/logger.ts
+// telemetry/logger.ts - Pino logger with automatic PII redaction
 import pino from 'pino';
 import redact from 'redact-object';
 
+// Define fields that must NEVER appear in logs
+// These patterns are matched against nested paths (e.g., 'credit_card.number')
 const redactRules = [
-  'password',
-  'token',
-  'secret',
-  'authorization',
-  'credit_card.number',
+  'password',           // User passwords
+  'token',              // Auth tokens, API keys
+  'secret',             // Any field named 'secret'
+  'authorization',      // HTTP Authorization headers
+  'credit_card.number', // Nested payment card number
 ];
 
 const logger = pino({
   level: process.env.LOG_LEVEL ?? 'info',
-  redact: redactRules,
+  redact: redactRules,  // Pino replaces these with '[Redacted]'
   formatters: {
     level(label) {
-      return { level: label };
+      return { level: label };  // Include level as readable string
     },
   },
   mixin() {
+    // Add service metadata to every log entry
     return {
       service: 'checkout-service',
       environment: process.env.NODE_ENV,
@@ -137,7 +153,9 @@ const logger = pino({
   },
 });
 
+// Helper that applies additional redaction before logging
 export function logSecure(level: pino.Level, message: string, payload: unknown = {}) {
+  // Double-redact for safety - Pino's built-in + explicit redact-object
   logger[level](redact(payload, redactRules), message);
 }
 ```
@@ -146,10 +164,10 @@ Pino’s `redact` option replaces matching fields with `[Redacted]` before they 
 
 ### 3. Bake redaction into metric views
 
-Metric labels (dimensions) often leak PII because they are “just strings”. Filter them with OTel SDK Views so you never export disallowed labels.
+Metric labels (dimensions) often leak PII because they are "just strings". Views act as an allow-list - only explicitly listed attributes are exported. Any attribute not in the list is silently dropped before leaving your application.
 
 ```typescript
-// telemetry/metrics.ts
+// telemetry/metrics.ts - Metric views enforce attribute allow-lists
 import { MeterProvider, View, InstrumentType } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 
@@ -157,15 +175,20 @@ const exporter = new OTLPMetricExporter({ url: process.env.OTEL_EXPORTER_OTLP_ME
 
 const meterProvider = new MeterProvider({
   views: [
+    // Define allowed attributes for HTTP duration histogram
+    // Any other attributes (like user.email) are automatically dropped
     new View({
       instrumentName: 'http.server.duration',
       instrumentType: InstrumentType.HISTOGRAM,
       attributeKeys: ['http.method', 'http.route', 'http.status_code', 'deployment.environment'],
+      // NOT included: user.id, user.email, request.body, etc.
     }),
+    // Define allowed attributes for the orders counter
     new View({
       instrumentName: 'checkout.orders.created',
       instrumentType: InstrumentType.COUNTER,
       attributeKeys: ['deployment.environment', 'tenant.id'],
+      // NOT included: customer.email, order.billing_address, etc.
     }),
   ],
 });
@@ -179,36 +202,42 @@ Views drop any attribute keys not explicitly listed, ensuring no engineer can ad
 
 ## Sanitize Data in the OpenTelemetry Collector
 
-Even with disciplined instrumentation, you need a second layer of defense in the collector. Attribute processors can redact, hash, or drop sensitive telemetry before it hits storage.
+Even with disciplined instrumentation, you need a second layer of defense in the collector. This is your centralized enforcement point - if PII slips through application code, the collector can catch it before it reaches storage. The configuration below demonstrates multiple sanitization strategies.
 
 ```yaml
-# collector-config.yaml
+# collector-config.yaml - Defense-in-depth PII sanitization pipeline
 receivers:
   otlp:
     protocols:
-      http:
-      grpc:
+      http:    # Accept OTLP over HTTP
+      grpc:    # Accept OTLP over gRPC
+
 processors:
+  # STRATEGY 1: Delete sensitive headers from all telemetry
   attributes/sanitize_headers:
     actions:
-      - key: http.request.header.authorization
+      - key: http.request.header.authorization  # Remove auth tokens
         action: delete
-      - key: http.request.header.cookie
+      - key: http.request.header.cookie         # Remove session cookies
         action: delete
-      - key: user.email
-        action: hash
+      - key: user.email                         # Hash instead of delete
+        action: hash                            # Preserves cardinality without exposing PII
         value_hash_algorithm: sha256
+
+  # STRATEGY 2: Delete payment data from specific services
   attributes/drop_unused:
     include:
       match_type: strict
-      services: ["checkout-service", "identity-service"]
+      services: ["checkout-service", "identity-service"]  # Only apply to these services
     actions:
       - key: payment.card_token
         action: delete
       - key: payment.card_number
         action: delete
+
+  # STRATEGY 3: Log allow-list - only keep approved fields
   redaction/logs:
-    allow_all_keys: false
+    allow_all_keys: false                       # Default deny - must be in list
     allowed_keys:
       - timestamp
       - severity
@@ -217,17 +246,21 @@ processors:
       - span_id
       - service.name
       - deployment.environment
-      - user.id
+      - user.id                                 # Hashed ID only, not email
+
+  # STRATEGY 4: Drop entire spans that match dangerous patterns
   filter/deny_spans:
     traces:
       span:
-        - attributes["span.name"] == "PIIDump" # safety net for rogue spans
+        - attributes["span.name"] == "PIIDump"  # Catch rogue debugging spans
+
 exporters:
   otlphttp/secure:
     endpoint: ${TELEMETRY_BACKEND}
     headers:
       authorization: ${BACKEND_TOKEN}
 
+# Wire everything together - order matters!
 service:
   pipelines:
     traces:
@@ -280,14 +313,28 @@ Treat PII detection like any other production incident.
 - **Continuous scanning**: run regex-based detections (emails, SSNs, credit card BINs) inside the collector using the `transform` processor to route suspicious telemetry to a separate exporter.
 - **Unit tests for telemetry**: write tests that initialize instrumentation and assert that disallowed attributes never appear.
 
+These unit tests verify that your attribute helpers never expose PII. Run them in CI to catch violations before code reaches production.
+
 ```typescript
-// telemetry/__tests__/attributes.test.ts
+// telemetry/__tests__/attributes.test.ts - Verify PII is never exposed
 import { safeAttributes } from '../attributes';
 
 describe('safeAttributes.user', () => {
+  // This test ensures the helper function doesn't leak email
   it('does not expose email', () => {
     const attrs = safeAttributes.user({ id: 'user-123', country: 'US', plan: 'pro' });
-    expect(attrs).not.toHaveProperty('user.email');
+    expect(attrs).not.toHaveProperty('user.email');  // Should never appear
+  });
+
+  // Add more tests for other PII fields
+  it('does not expose phone number', () => {
+    const attrs = safeAttributes.user({ id: 'user-123', country: 'US', plan: 'pro' });
+    expect(attrs).not.toHaveProperty('user.phone');
+  });
+
+  it('does not expose real name', () => {
+    const attrs = safeAttributes.user({ id: 'user-123', country: 'US', plan: 'pro' });
+    expect(attrs).not.toHaveProperty('user.name');
   });
 });
 ```

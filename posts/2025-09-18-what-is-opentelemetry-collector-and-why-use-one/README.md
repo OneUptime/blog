@@ -118,62 +118,76 @@ graph LR
 | Extensions | Auth, health check, zpages, pprof, headers, feature add-ons |
 | Pipelines | Declarative graphs binding receiver → processors → exporter |
 
-A minimal example pipeline (YAML):
+The following configuration demonstrates a production-ready Collector pipeline. It receives telemetry via OTLP, applies memory protection and batching, performs intelligent tail sampling to keep errors and slow traces, redacts sensitive data, and exports to OneUptime:
 
 ```yaml
+# RECEIVERS: Define how telemetry enters the Collector
 receivers:
   otlp:
     protocols:
-      grpc:
-      http:
+      grpc:        # High-performance binary protocol (port 4317)
+      http:        # HTTP/JSON alternative (port 4318)
 
+# PROCESSORS: Transform, filter, and enrich telemetry
 processors:
+  # Batch data to reduce network overhead
   batch:
-    send_batch_max_size: 8192
-    timeout: 5s
+    send_batch_max_size: 8192   # Max items per batch
+    timeout: 5s                  # Send batch after 5s even if not full
+
+  # Protect Collector from memory exhaustion
   memory_limiter:
-    limit_mib: 512
-    spike_limit_mib: 128
-    check_interval: 2s
+    limit_mib: 512              # Hard memory limit
+    spike_limit_mib: 128        # Allow temporary spikes up to this amount
+    check_interval: 2s          # How often to check memory usage
+
+  # Remove sensitive data before export (GDPR/PII compliance)
   attributes/redact:
     actions:
-      - key: user.email
+      - key: user.email         # Remove email addresses from all telemetry
         action: delete
+
+  # Intelligent sampling: keep errors and slow requests, sample the rest
   tail_sampling:
-    decision_wait: 5s
-    num_traces: 10000
+    decision_wait: 5s           # Wait for full trace before deciding
+    num_traces: 10000           # Max concurrent traces to track
     policies:
-      - name: errors
+      - name: errors            # Always keep traces with errors
         type: status_code
         status_code:
           status_codes: [ERROR]
-      - name: latency
+      - name: latency           # Keep slow requests (>500ms)
         type: latency
         latency:
           threshold_ms: 500
 
+# EXPORTERS: Define where telemetry is sent
 exporters:
   otlphttp_oneuptime:
     endpoint: https://oneuptime.com/otlp/v1/traces
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${ONEUPTIME_TOKEN}  # Auth token from environment
 
-
+# SERVICE: Wire receivers → processors → exporters into pipelines
 service:
   pipelines:
+    # Traces pipeline with full processing
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, tail_sampling, attributes/redact]
       exporters: [otlphttp_oneuptime]
+
+    # Metrics pipeline (no sampling needed for aggregated data)
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [otlphttp_oneuptime]
+
+    # Logs pipeline with PII redaction
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch, attributes/redact]
       exporters: [otlphttp_oneuptime]
-    
 ```
 
 ---

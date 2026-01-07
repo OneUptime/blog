@@ -53,24 +53,28 @@ startupProbe:
 
 ### FastAPI Implementation
 
+This basic implementation shows how to set up liveness and readiness endpoints in FastAPI. The liveness probe returns a simple health status, while the readiness probe tracks whether the application has completed its initialization phase.
+
 ```python
 # health_checks.py
+# FastAPI health check endpoints for Kubernetes probes
 from fastapi import FastAPI, Response, status
 from datetime import datetime
 import asyncio
 
 app = FastAPI()
 
-# Startup time tracking
+# Track when the app started and whether initialization is complete
 startup_time = datetime.utcnow()
-ready = False
+ready = False  # Set to True after all services are initialized
 
 @app.on_event("startup")
 async def startup():
     global ready
-    # Simulate initialization (DB connections, cache warming, etc.)
+    # Initialize all required services before accepting traffic
+    # Examples: DB connections, cache warming, loading ML models
     await initialize_services()
-    ready = True
+    ready = True  # Now safe to receive traffic
 
 @app.get("/health")
 async def health_check():
@@ -79,9 +83,10 @@ async def health_check():
     Should return 200 if the process is running.
     Keep this simple - don't check external dependencies here.
     """
+    # Return minimal response - this should be fast and reliable
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat()  # Useful for debugging
     }
 
 @app.get("/ready")
@@ -90,13 +95,16 @@ async def readiness_check(response: Response):
     Readiness probe - can we handle traffic?
     Should check if the application is ready to serve requests.
     """
+    # Check if initialization is complete
     if not ready:
+        # Return 503 to tell Kubernetes not to send traffic yet
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {
             "status": "not_ready",
             "reason": "Service is starting up"
         }
 
+    # Application is ready to receive traffic
     return {
         "status": "ready",
         "uptime_seconds": (datetime.utcnow() - startup_time).total_seconds()
@@ -105,25 +113,30 @@ async def readiness_check(response: Response):
 
 ### Flask Implementation
 
+The Flask equivalent uses the `before_first_request` decorator to handle initialization. This ensures services are set up before the first request is processed, and the readiness endpoint reflects this state.
+
 ```python
 # flask_health.py
+# Flask health check endpoints for Kubernetes probes
 from flask import Flask, jsonify
 from datetime import datetime
 
 app = Flask(__name__)
 
+# Track startup time and initialization state
 startup_time = datetime.utcnow()
-ready = False
+ready = False  # Becomes True after first request initializes services
 
 @app.before_first_request
 def initialize():
     global ready
-    # Initialize services
+    # This runs before the first request is handled
+    # Initialize database connections, caches, etc.
     ready = True
 
 @app.route('/health')
 def health():
-    """Liveness probe"""
+    """Liveness probe - simple check that process is running"""
     return jsonify({
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat()
@@ -131,16 +144,17 @@ def health():
 
 @app.route('/ready')
 def ready_check():
-    """Readiness probe"""
+    """Readiness probe - check if app can handle traffic"""
     if not ready:
+        # Return 503 with JSON body explaining the state
         return jsonify({
             "status": "not_ready",
             "reason": "Initializing"
-        }), 503
+        }), 503  # Service Unavailable
 
     return jsonify({
         "status": "ready",
-        "uptime": str(datetime.utcnow() - startup_time)
+        "uptime": str(datetime.utcnow() - startup_time)  # Human-readable uptime
     })
 ```
 
@@ -148,8 +162,11 @@ def ready_check():
 
 ## Comprehensive Health Check Service
 
+This service provides a centralized way to manage health checks across your application. It supports multiple components, tracks startup/shutdown states, and handles timeouts gracefully. The service can differentiate between healthy, degraded, and unhealthy states.
+
 ```python
 # health_service.py
+# Comprehensive health check management with component tracking
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Callable, Awaitable
@@ -157,36 +174,38 @@ from datetime import datetime
 import asyncio
 
 class HealthStatus(Enum):
-    HEALTHY = "healthy"
-    DEGRADED = "degraded"
-    UNHEALTHY = "unhealthy"
+    """Possible health states for a component"""
+    HEALTHY = "healthy"  # Component is working normally
+    DEGRADED = "degraded"  # Component works but with issues
+    UNHEALTHY = "unhealthy"  # Component is not working
 
 @dataclass
 class ComponentHealth:
-    name: str
-    status: HealthStatus
-    message: Optional[str] = None
-    latency_ms: Optional[float] = None
-    details: Optional[Dict] = None
+    """Data class representing the health state of a single component"""
+    name: str  # Component identifier (e.g., "database", "redis")
+    status: HealthStatus  # Current health status
+    message: Optional[str] = None  # Optional error or status message
+    latency_ms: Optional[float] = None  # Response time in milliseconds
+    details: Optional[Dict] = None  # Additional details (pool size, version, etc.)
 
 class HealthCheckService:
-    """Comprehensive health check management"""
+    """Comprehensive health check management for Kubernetes probes"""
 
     def __init__(self):
-        self._checks: Dict[str, Callable] = {}
-        self._shutdown_requested = False
-        self._startup_complete = False
+        self._checks: Dict[str, Callable] = {}  # Registered health check functions
+        self._shutdown_requested = False  # True when graceful shutdown starts
+        self._startup_complete = False  # True when initialization finishes
 
     def register_check(self, name: str, check: Callable[[], Awaitable[bool]]):
-        """Register a health check function"""
+        """Register an async health check function for a component"""
         self._checks[name] = check
 
     def set_startup_complete(self):
-        """Mark startup as complete"""
+        """Call this after all initialization is done"""
         self._startup_complete = True
 
     def request_shutdown(self):
-        """Mark service as shutting down"""
+        """Call this when graceful shutdown begins"""
         self._shutdown_requested = True
 
     async def check_component(
@@ -194,10 +213,11 @@ class HealthCheckService:
         name: str,
         check: Callable
     ) -> ComponentHealth:
-        """Run a single health check with timeout"""
+        """Run a single health check with timeout protection"""
         start = datetime.utcnow()
 
         try:
+            # Run check with timeout to prevent hanging probes
             result = await asyncio.wait_for(check(), timeout=5.0)
             latency = (datetime.utcnow() - start).total_seconds() * 1000
 
@@ -207,12 +227,14 @@ class HealthCheckService:
                 latency_ms=latency
             )
         except asyncio.TimeoutError:
+            # Health check took too long - treat as unhealthy
             return ComponentHealth(
                 name=name,
                 status=HealthStatus.UNHEALTHY,
                 message="Health check timeout"
             )
         except Exception as e:
+            # Any exception means the component is unhealthy
             return ComponentHealth(
                 name=name,
                 status=HealthStatus.UNHEALTHY,
@@ -224,6 +246,7 @@ class HealthCheckService:
         Liveness check - is the process alive?
         Should be simple and fast. Don't check dependencies.
         """
+        # Kubernetes restarts pod if this fails repeatedly
         return {
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat()
@@ -232,43 +255,49 @@ class HealthCheckService:
     async def get_readiness(self) -> tuple[Dict, int]:
         """
         Readiness check - can we handle traffic?
-        Checks all registered components.
+        Checks all registered components and returns appropriate status.
         """
+        # During shutdown, stop accepting new traffic
         if self._shutdown_requested:
             return {
                 "status": "not_ready",
                 "reason": "Shutdown in progress"
             }, 503
 
+        # During startup, wait until initialization completes
         if not self._startup_complete:
             return {
                 "status": "not_ready",
                 "reason": "Startup in progress"
             }, 503
 
-        # Check all components
+        # Run all registered health checks
         results = []
         for name, check in self._checks.items():
             result = await self.check_component(name, check)
             results.append(result)
 
-        # Determine overall status
+        # Categorize results by status
         unhealthy = [r for r in results if r.status == HealthStatus.UNHEALTHY]
         degraded = [r for r in results if r.status == HealthStatus.DEGRADED]
 
+        # Determine overall status based on component health
         if unhealthy:
+            # Any unhealthy component means not ready for traffic
             return {
                 "status": "not_ready",
                 "unhealthy_components": [r.name for r in unhealthy],
                 "components": [self._serialize_component(r) for r in results]
             }, 503
         elif degraded:
+            # Degraded components - still accept traffic but flag the issue
             return {
                 "status": "degraded",
                 "degraded_components": [r.name for r in degraded],
                 "components": [self._serialize_component(r) for r in results]
             }, 200
         else:
+            # All components healthy
             return {
                 "status": "ready",
                 "components": [self._serialize_component(r) for r in results]
@@ -277,6 +306,7 @@ class HealthCheckService:
     async def get_startup(self) -> tuple[Dict, int]:
         """
         Startup check - has the application finished starting?
+        Kubernetes uses this to know when to start liveness/readiness probes.
         """
         if self._startup_complete:
             return {"status": "started"}, 200
@@ -284,6 +314,7 @@ class HealthCheckService:
             return {"status": "starting"}, 503
 
     def _serialize_component(self, component: ComponentHealth) -> Dict:
+        """Convert ComponentHealth to JSON-serializable dict"""
         return {
             "name": component.name,
             "status": component.status.value,
@@ -296,88 +327,97 @@ class HealthCheckService:
 
 ## FastAPI Integration with Dependencies
 
+This example shows how to integrate the health check service with real dependencies like PostgreSQL and Redis. The lifespan context manager handles startup and shutdown, while the health checks verify database and cache connectivity.
+
 ```python
 # fastapi_health.py
+# FastAPI integration with database and Redis health checks
 from fastapi import FastAPI, Response, Depends
 from contextlib import asynccontextmanager
 import asyncpg
 import aioredis
 
-# Initialize health service
+# Initialize the health check service
 health_service = HealthCheckService()
 
-# Database pool
+# Global connection pool references (populated during startup)
 db_pool: asyncpg.Pool = None
 redis_client: aioredis.Redis = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Manage application lifecycle - startup and shutdown"""
     global db_pool, redis_client
 
-    # Startup
+    # === STARTUP PHASE ===
+    # Create database connection pool with min/max size limits
     db_pool = await asyncpg.create_pool(
         "postgresql://localhost/mydb",
-        min_size=5,
-        max_size=20
+        min_size=5,  # Keep 5 connections warm
+        max_size=20  # Scale up to 20 under load
     )
 
+    # Create Redis client connection
     redis_client = await aioredis.from_url("redis://localhost")
 
-    # Register health checks
+    # Register health check functions for each dependency
     health_service.register_check("database", check_database)
     health_service.register_check("redis", check_redis)
 
-    # Mark startup complete
+    # Signal that startup is complete - readiness probe will now pass
     health_service.set_startup_complete()
 
-    yield
+    yield  # Application runs here
 
-    # Shutdown
+    # === SHUTDOWN PHASE ===
+    # Mark as shutting down - readiness probe will now fail
     health_service.request_shutdown()
+    # Close all connections gracefully
     await db_pool.close()
     await redis_client.close()
 
+# Create FastAPI app with lifecycle management
 app = FastAPI(lifespan=lifespan)
 
 async def check_database() -> bool:
-    """Check database connectivity"""
+    """Verify database is reachable with a simple query"""
     try:
         async with db_pool.acquire() as conn:
-            await conn.fetchval("SELECT 1")
+            await conn.fetchval("SELECT 1")  # Simple connectivity test
         return True
     except Exception:
-        return False
+        return False  # Any error means unhealthy
 
 async def check_redis() -> bool:
-    """Check Redis connectivity"""
+    """Verify Redis is reachable with a ping command"""
     try:
-        await redis_client.ping()
+        await redis_client.ping()  # Built-in Redis health check
         return True
     except Exception:
-        return False
+        return False  # Any error means unhealthy
 
 @app.get("/health")
 async def liveness():
-    """Liveness probe - Kubernetes uses this to know if it should restart"""
+    """Liveness probe - Kubernetes restarts pod if this fails"""
     return await health_service.get_liveness()
 
 @app.get("/ready")
 async def readiness(response: Response):
-    """Readiness probe - Kubernetes uses this to know if it should send traffic"""
+    """Readiness probe - Kubernetes removes pod from service if this fails"""
     result, status_code = await health_service.get_readiness()
-    response.status_code = status_code
+    response.status_code = status_code  # Set appropriate HTTP status
     return result
 
 @app.get("/startup")
 async def startup(response: Response):
-    """Startup probe - Kubernetes uses this during initial startup"""
+    """Startup probe - Kubernetes waits for this before other probes"""
     result, status_code = await health_service.get_startup()
     response.status_code = status_code
     return result
 
 @app.get("/health/detailed")
 async def detailed_health(response: Response):
-    """Detailed health check for debugging (not for probes)"""
+    """Detailed health check for debugging - includes all component status"""
     result, status_code = await health_service.get_readiness()
     response.status_code = status_code
     return result
@@ -460,51 +500,58 @@ spec:
 
 ## Handling Graceful Shutdown
 
+Graceful shutdown ensures that in-flight requests complete before the application stops. This example shows how to handle SIGTERM signals from Kubernetes, mark the service as not ready (to stop receiving new traffic), and clean up resources properly.
+
 ```python
 # graceful_shutdown.py
+# Graceful shutdown handling for Kubernetes deployments
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import signal
 import asyncio
 
 health_service = HealthCheckService()
-shutdown_event = asyncio.Event()
+shutdown_event = asyncio.Event()  # Can be used to coordinate shutdown
 
 async def handle_shutdown():
-    """Handle shutdown gracefully"""
-    # 1. Mark as not ready (stop receiving traffic)
+    """Handle shutdown gracefully in the correct order"""
+    # Step 1: Mark as not ready (Kubernetes stops sending new traffic)
     health_service.request_shutdown()
 
-    # 2. Wait for in-flight requests (Kubernetes gives us time)
-    await asyncio.sleep(5)  # Match preStop hook
+    # Step 2: Wait for in-flight requests to complete
+    # This should match the preStop hook delay in Kubernetes
+    await asyncio.sleep(5)
 
-    # 3. Close connections
+    # Step 3: Close connections and release resources
     await cleanup_connections()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    """Manage application lifecycle with signal handling"""
+    # Get the event loop for signal handling
     loop = asyncio.get_event_loop()
 
+    # Register handlers for shutdown signals from Kubernetes
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(
             sig,
-            lambda: asyncio.create_task(handle_shutdown())
+            lambda: asyncio.create_task(handle_shutdown())  # Non-blocking
         )
 
+    # Initialize services during startup
     # ... initialize services ...
     health_service.set_startup_complete()
 
-    yield
+    yield  # Application runs here
 
-    # Shutdown
+    # Final cleanup when the app is shutting down
     await handle_shutdown()
 
 app = FastAPI(lifespan=lifespan)
 
 @app.get("/ready")
 async def readiness(response: Response):
-    # Will return 503 when shutdown is requested
+    """Readiness probe - returns 503 once shutdown begins"""
     result, status_code = await health_service.get_readiness()
     response.status_code = status_code
     return result
@@ -516,27 +563,30 @@ async def readiness(response: Response):
 
 ### Database Health Check
 
+This comprehensive database health check goes beyond simple connectivity. It measures response latency, checks connection pool utilization, and can flag degraded states when the pool is nearly exhausted.
+
 ```python
 async def check_database_health(pool: asyncpg.Pool) -> ComponentHealth:
-    """Comprehensive database health check"""
+    """Comprehensive database health check with pool monitoring"""
     start = datetime.utcnow()
 
     try:
+        # Acquire a connection and run a simple query
         async with pool.acquire() as conn:
-            # Simple connectivity check
-            await conn.fetchval("SELECT 1")
+            await conn.fetchval("SELECT 1")  # Minimal query to test connectivity
 
+        # Calculate response latency
         latency = (datetime.utcnow() - start).total_seconds() * 1000
 
-        # Check pool status
-        pool_size = pool.get_size()
-        idle_size = pool.get_idle_size()
+        # Check connection pool status for early warning signs
+        pool_size = pool.get_size()  # Total connections in pool
+        idle_size = pool.get_idle_size()  # Available connections
 
-        # Warn if pool is nearly exhausted
+        # If pool is nearly exhausted, mark as degraded (not unhealthy)
         if idle_size < 2:
             return ComponentHealth(
                 name="database",
-                status=HealthStatus.DEGRADED,
+                status=HealthStatus.DEGRADED,  # Still works, but under pressure
                 message=f"Low idle connections: {idle_size}",
                 latency_ms=latency,
                 details={
@@ -545,6 +595,7 @@ async def check_database_health(pool: asyncpg.Pool) -> ComponentHealth:
                 }
             )
 
+        # All good - database is healthy
         return ComponentHealth(
             name="database",
             status=HealthStatus.HEALTHY,
@@ -556,12 +607,14 @@ async def check_database_health(pool: asyncpg.Pool) -> ComponentHealth:
         )
 
     except asyncio.TimeoutError:
+        # Connection attempt timed out - definitely unhealthy
         return ComponentHealth(
             name="database",
             status=HealthStatus.UNHEALTHY,
             message="Connection timeout"
         )
     except Exception as e:
+        # Any other error - log it and mark unhealthy
         return ComponentHealth(
             name="database",
             status=HealthStatus.UNHEALTHY,
@@ -571,16 +624,18 @@ async def check_database_health(pool: asyncpg.Pool) -> ComponentHealth:
 
 ### Redis Health Check
 
+The Redis health check uses the built-in PING command and optionally retrieves server information to provide useful metadata in the health response.
+
 ```python
 async def check_redis_health(redis: aioredis.Redis) -> ComponentHealth:
-    """Redis health check with latency"""
+    """Redis health check with latency and server info"""
     start = datetime.utcnow()
 
     try:
-        await redis.ping()
+        await redis.ping()  # Built-in Redis connectivity check
         latency = (datetime.utcnow() - start).total_seconds() * 1000
 
-        # Get Redis info
+        # Get additional Redis server info for diagnostics
         info = await redis.info("server")
 
         return ComponentHealth(
@@ -588,11 +643,12 @@ async def check_redis_health(redis: aioredis.Redis) -> ComponentHealth:
             status=HealthStatus.HEALTHY,
             latency_ms=latency,
             details={
-                "redis_version": info.get("redis_version"),
-                "connected_clients": info.get("connected_clients")
+                "redis_version": info.get("redis_version"),  # Server version
+                "connected_clients": info.get("connected_clients")  # Connection count
             }
         )
     except Exception as e:
+        # Any Redis error means the cache is unavailable
         return ComponentHealth(
             name="redis",
             status=HealthStatus.UNHEALTHY,
@@ -602,41 +658,48 @@ async def check_redis_health(redis: aioredis.Redis) -> ComponentHealth:
 
 ### External API Health Check
 
+When your service depends on external APIs, you can check their availability as part of your readiness probe. This function checks the API's health endpoint and marks the component as degraded (not unhealthy) if the API returns a non-200 status.
+
 ```python
 async def check_external_api(
     url: str,
     name: str,
     timeout: float = 5.0
 ) -> ComponentHealth:
-    """Check external API health"""
+    """Check external API availability with configurable timeout"""
     start = datetime.utcnow()
 
     try:
+        # Use async HTTP client for non-blocking requests
         async with httpx.AsyncClient() as client:
             response = await client.get(url, timeout=timeout)
             latency = (datetime.utcnow() - start).total_seconds() * 1000
 
             if response.status_code == 200:
+                # API is healthy
                 return ComponentHealth(
                     name=name,
                     status=HealthStatus.HEALTHY,
                     latency_ms=latency
                 )
             else:
+                # API responded but with an error - mark as degraded
                 return ComponentHealth(
                     name=name,
-                    status=HealthStatus.DEGRADED,
+                    status=HealthStatus.DEGRADED,  # Not healthy, but reachable
                     message=f"Status code: {response.status_code}",
                     latency_ms=latency
                 )
 
     except httpx.TimeoutException:
+        # API didn't respond in time - definitely unhealthy
         return ComponentHealth(
             name=name,
             status=HealthStatus.UNHEALTHY,
             message="Request timeout"
         )
     except Exception as e:
+        # Network error or other failure
         return ComponentHealth(
             name=name,
             status=HealthStatus.UNHEALTHY,

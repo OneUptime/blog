@@ -12,20 +12,29 @@ Bloated images slow CI, burn bandwidth, and inflate your attack surface. The fix
 
 ## 1. Start with Multi-Stage Builds
 
-Compile artifacts in one stage, run them in another. No compilers or package caches land in production.
+Compile artifacts in one stage, run them in another. No compilers or package caches land in production. This technique can reduce image sizes by 90% or more.
 
 ```dockerfile
-# Stage 1: build
+# Stage 1: Build environment with full toolchain
+# Uses BUILDPLATFORM for native compilation speed during cross-platform builds
 FROM --platform=$BUILDPLATFORM golang:1.22-bullseye AS build
 WORKDIR /src
+
+# Download dependencies first (cached layer if go.mod/go.sum unchanged)
 COPY go.mod go.sum ./
 RUN go mod download
+
+# Copy source and build a static binary
 COPY . .
+# CGO_ENABLED=0: Create fully static binary (no glibc dependency)
+# -ldflags "-s -w": Strip debug symbols (-s) and DWARF info (-w) to reduce size
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -ldflags "-s -w" -o /out/app ./cmd/server
 
-# Stage 2: runtime
+# Stage 2: Minimal runtime image (no shell, no package manager)
 FROM gcr.io/distroless/static-debian12
+# Run as non-root user (65532 is the distroless nonroot user)
 USER 65532:65532
+# Copy only the compiled binary from the build stage
 COPY --from=build /out/app /app
 ENTRYPOINT ["/app"]
 ```
@@ -35,11 +44,18 @@ ENTRYPOINT ["/app"]
 
 ## 2. Cache Dependencies Intelligently
 
-Order Dockerfile instructions to maximize cache hits.
+Order Dockerfile instructions to maximize cache hits. Docker caches each layer, but a change invalidates all subsequent layers. By copying dependency files first, you only rebuild the npm install layer when dependencies change.
 
 ```dockerfile
+# Copy dependency manifests first (these change less frequently)
 COPY package.json package-lock.json ./
+
+# Install production dependencies only (--omit=dev excludes devDependencies)
+# npm ci is faster and more reliable than npm install for CI/CD
 RUN npm ci --omit=dev
+
+# Copy application source code last (changes most frequently)
+# This layer rebuilds on every code change, but npm ci stays cached
 COPY . .
 ```
 
@@ -61,11 +77,17 @@ If glibc is mandatory, use Chainguard or Wolfi distros that track CVEs closely.
 
 ## 5. Use BuildKit Secrets and SSH Mounts
 
-Never bake secrets into layers. Enable BuildKit (`DOCKER_BUILDKIT=1`) and mount secrets temporarily.
+Never bake secrets into layers. Enable BuildKit (`DOCKER_BUILDKIT=1`) and mount secrets temporarily. The secret is available during the build but never saved in the image layers.
 
 ```dockerfile
 # syntax=docker/dockerfile:1.6
-RUN --mount=type=secret,id=npm,mode=0444 npm config set //registry.npmjs.org/:_authToken "$(cat /run/secrets/npm)"
+# Enable BuildKit syntax for advanced features
+
+# Mount the secret at /run/secrets/npm during this RUN command only
+# mode=0444: Read-only permissions for the secret file
+# The secret exists only during this step and is NOT stored in any layer
+RUN --mount=type=secret,id=npm,mode=0444 \
+    npm config set //registry.npmjs.org/:_authToken "$(cat /run/secrets/npm)"
 ```
 
 Call build with `docker build --secret id=npm,src=$PWD/.npm-token .`.

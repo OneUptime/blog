@@ -43,17 +43,31 @@ Plan volumes for mutable data (uploads, caches) and map host paths or cloud stor
 
 ## 4. Author the Dockerfile
 
+Create a Dockerfile that replicates the VM's runtime environment. This example containerizes a Python/Gunicorn application extracted from a legacy VM.
+
 ```dockerfile
+# Use slim Python image (smaller than full debian-based image)
 FROM python:3.11-slim AS base
 WORKDIR /app
+
+# Install dependencies using Poetry (common in Python projects)
+# First, copy only dependency files for better caching
 COPY pyproject.toml poetry.lock ./
 RUN pip install --upgrade pip \
  && pip install poetry \
  && poetry export -f requirements.txt --output requirements.txt
+
+# Install production dependencies without caching (smaller image)
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
 COPY . .
+
+# Configure the application port (matches what the VM was using)
 ENV PORT=8000
 EXPOSE 8000
+
+# Start Gunicorn with 4 workers (adjust based on container CPU limits)
 ENTRYPOINT ["gunicorn", "app.wsgi:application", "-b", "0.0.0.0:8000", "--workers", "4"]
 ```
 
@@ -67,9 +81,21 @@ Use multi-stage builds if you need compilation, and pin versions to keep reprodu
 
 ## 6. Build, Test, Repeat
 
-1. `docker build -t ghcr.io/acme/legacy-api:migration .`
-2. `docker run -p 8080:8000 --env-file env/dev.env ghcr.io/acme/legacy-api:migration`
-3. Execute the VM’s smoke tests (curl, integration suites, synthetic traffic).
+Follow this iterative process to validate the containerized application matches the VM's behavior.
+
+1. Build the image with a descriptive tag indicating this is a migration candidate:
+   ```bash
+   docker build -t ghcr.io/acme/legacy-api:migration .
+   ```
+
+2. Run the container with the same environment variables the VM used:
+   ```bash
+   # Map host port 8080 to container port 8000
+   # Load environment variables from file (extracted from VM)
+   docker run -p 8080:8000 --env-file env/dev.env ghcr.io/acme/legacy-api:migration
+   ```
+
+3. Execute the VM's smoke tests (curl, integration suites, synthetic traffic).
 4. Add container tests to CI so regressions stay caught.
 
 ## 7. Plan Cutover

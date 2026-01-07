@@ -27,7 +27,7 @@ npm install @opentelemetry/api \
 
 ### Basic Setup
 
-Create `tracing.js` - this must be loaded before any other modules:
+Create `tracing.js` - this must be loaded before any other modules so instrumentation can wrap HTTP and database libraries before they're imported.
 
 ```javascript
 const { NodeSDK } = require('@opentelemetry/sdk-node');
@@ -38,40 +38,47 @@ const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { Resource } = require('@opentelemetry/resources');
 const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
 
+// Define service identity - this appears in all traces/metrics
 const resource = new Resource({
   [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || 'express-api',
   [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
   [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
 });
 
+// Configure where to send traces (Jaeger, Zipkin, or any OTLP-compatible backend)
 const traceExporter = new OTLPTraceExporter({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
 });
 
+// Configure where to send metrics
 const metricExporter = new OTLPMetricExporter({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/metrics',
 });
 
+// Initialize the SDK with all configuration
 const sdk = new NodeSDK({
   resource,
   traceExporter,
+  // Export metrics every 30 seconds
   metricReader: new PeriodicExportingMetricReader({
     exporter: metricExporter,
     exportIntervalMillis: 30000,
   }),
+  // Auto-instrument common libraries
   instrumentations: [
     getNodeAutoInstrumentations({
-      '@opentelemetry/instrumentation-express': { enabled: true },
-      '@opentelemetry/instrumentation-http': { enabled: true },
-      '@opentelemetry/instrumentation-pg': { enabled: true },
-      '@opentelemetry/instrumentation-redis': { enabled: true },
+      '@opentelemetry/instrumentation-express': { enabled: true },  // Express routes
+      '@opentelemetry/instrumentation-http': { enabled: true },     // HTTP client/server
+      '@opentelemetry/instrumentation-pg': { enabled: true },       // PostgreSQL
+      '@opentelemetry/instrumentation-redis': { enabled: true },    // Redis
     }),
   ],
 });
 
+// Start the SDK - must happen before importing other modules
 sdk.start();
 
-// Graceful shutdown
+// Ensure spans are flushed before process exits
 process.on('SIGTERM', () => {
   sdk.shutdown()
     .then(() => console.log('Tracing terminated'))
@@ -84,25 +91,29 @@ module.exports = sdk;
 
 ### Loading Order
 
+The tracing module must be imported first, before Express or any other libraries. This ensures the instrumentation can monkey-patch modules before they are used.
+
 ```javascript
-// app.js - Load tracing FIRST
+// app.js - Load tracing FIRST before any other imports
 require('./tracing');
 
+// Now import Express and other modules - they will be instrumented
 const express = require('express');
 const app = express();
 
 // ... rest of your app
 ```
 
-Or use the `-r` flag:
+Alternatively, use Node's `-r` flag to preload the tracing module:
 
 ```bash
+# This loads tracing.js before app.js runs
 node -r ./tracing.js app.js
 ```
 
 ## Custom Span Creation
 
-While auto-instrumentation captures Express routes and HTTP calls, you often need custom spans for business logic:
+While auto-instrumentation captures Express routes and HTTP calls, you often need custom spans for business logic. Custom spans let you measure specific operations and add domain-specific attributes.
 
 ```javascript
 const { trace, SpanStatusCode } = require('@opentelemetry/api');

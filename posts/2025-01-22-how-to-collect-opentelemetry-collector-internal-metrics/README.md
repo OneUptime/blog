@@ -18,21 +18,25 @@ Here's how you can configure the OpenTelemetry Collector to collect internal met
 
 **Add the following configuration to the `config.yaml` file of the OpenTelemetry Collector:**
 
+The `service.telemetry.metrics` section configures how the Collector reports its own health metrics. By setting up a periodic reader with an OTLP exporter, the Collector will automatically push metrics about queue depths, processing rates, dropped items, and resource usage to your observability backend.
+
 ```yaml
-# This is how your service section should look like
+# Add this to your existing Collector config.yaml
+# This configures the Collector's self-monitoring capabilities
 service:
   telemetry:
      metrics:
       readers:
-        - periodic:
+        - periodic:              # Periodically export internal metrics
             exporter:
-              # You can use any supported exporter here. 
-              # In this example, we are using the OTLP HTTP exporter.
+              # Configure OTLP HTTP exporter for internal metrics
+              # These metrics help you monitor the Collector itself
               otlp:
-                protocol: http/protobuf
-                # In this case we use the OneUptime backend, but you can use any other backend that supports OTLP.
+                protocol: http/protobuf    # Binary format for efficiency
+                # Endpoint where metrics are sent (use your backend URL)
                 endpoint: https://oneuptime.com/otlp
-                # For more information on YOUR_ONEUPTIME_TOKEN, please refer to the OneUptime documentation here: https://oneuptime.com/docs/telemetry/open-telemetry
+                # Authentication header - replace with your actual token
+                # Get your token from: https://oneuptime.com/docs/telemetry/open-telemetry
                 headers:
                  x-oneuptime-token: YOUR_ONEUPTIME_TOKEN
 ```

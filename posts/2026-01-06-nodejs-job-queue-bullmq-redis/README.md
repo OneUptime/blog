@@ -29,10 +29,13 @@ npm install bullmq ioredis
 
 ### Queue Producer
 
+The producer creates jobs and adds them to the queue. Jobs are stored in Redis and processed by workers running in separate processes (or even separate servers).
+
 ```javascript
 // producer.js
 const { Queue } = require('bullmq');
 
+// Create a queue connection - jobs are stored in Redis
 const emailQueue = new Queue('email', {
   connection: {
     host: process.env.REDIS_HOST || 'localhost',
@@ -41,20 +44,22 @@ const emailQueue = new Queue('email', {
   },
 });
 
-// Add a job
+// Function to add a job to the queue
 async function sendWelcomeEmail(userId, email) {
   const job = await emailQueue.add(
-    'welcome', // Job name
+    'welcome',  // Job name - used for routing in worker
     {
+      // Job payload - any serializable data
       userId,
       email,
       template: 'welcome',
     },
     {
-      attempts: 3,
+      // Job options
+      attempts: 3,  // Retry up to 3 times on failure
       backoff: {
-        type: 'exponential',
-        delay: 1000,
+        type: 'exponential',  // Wait longer between each retry
+        delay: 1000,          // Initial delay: 1s, 2s, 4s
       },
     }
   );
@@ -63,9 +68,10 @@ async function sendWelcomeEmail(userId, email) {
   return job;
 }
 
-// Usage in API
+// Usage in API - job is queued, response returns immediately
 app.post('/users', async (req, res) => {
   const user = await createUser(req.body);
+  // Email is sent asynchronously - doesn't block the response
   await sendWelcomeEmail(user.id, user.email);
   res.json(user);
 });
@@ -73,29 +79,33 @@ app.post('/users', async (req, res) => {
 
 ### Queue Worker
 
+Workers run in separate processes and poll Redis for jobs. They execute the job processor function and report progress, completion, or failure. The concurrency option controls parallel processing.
+
 ```javascript
-// worker.js
+// worker.js - typically run as a separate process
 const { Worker } = require('bullmq');
 
+// Create a worker that processes jobs from the 'email' queue
 const worker = new Worker(
-  'email',
+  'email',  // Queue name to process
   async (job) => {
+    // This function runs for each job
     console.log(`Processing job ${job.id}: ${job.name}`);
 
     const { userId, email, template } = job.data;
 
-    // Update progress
+    // Report progress for long-running jobs (visible in dashboard)
     await job.updateProgress(10);
 
     // Fetch user data
     const user = await getUser(userId);
     await job.updateProgress(30);
 
-    // Render template
+    // Render email template
     const html = await renderTemplate(template, { user });
     await job.updateProgress(50);
 
-    // Send email
+    // Send the email
     await sendEmail({
       to: email,
       subject: getSubject(template),
@@ -104,6 +114,7 @@ const worker = new Worker(
 
     await job.updateProgress(100);
 
+    // Return value is stored as job result
     return { sent: true, email };
   },
   {
@@ -112,16 +123,18 @@ const worker = new Worker(
       port: parseInt(process.env.REDIS_PORT) || 6379,
       password: process.env.REDIS_PASSWORD,
     },
-    concurrency: 5, // Process 5 jobs simultaneously
+    concurrency: 5,  // Process up to 5 jobs in parallel
   }
 );
 
+// Event handlers for monitoring
 worker.on('completed', (job, result) => {
   console.log(`Job ${job.id} completed:`, result);
 });
 
 worker.on('failed', (job, err) => {
   console.error(`Job ${job.id} failed:`, err.message);
+  // Job will be retried if attempts remain
 });
 
 worker.on('progress', (job, progress) => {
@@ -131,24 +144,25 @@ worker.on('progress', (job, progress) => {
 
 ## Delayed Jobs
 
-Schedule jobs to run in the future:
+Schedule jobs to run in the future. Delayed jobs are stored in Redis and moved to the active queue when their delay expires. This is ideal for reminders, scheduled notifications, or retry delays.
 
 ```javascript
-// Schedule for later
+// Schedule job for 7 days from now
 await emailQueue.add(
   'reminder',
   { userId, type: 'trial-ending' },
   {
-    delay: 7 * 24 * 60 * 60 * 1000, // 7 days
+    delay: 7 * 24 * 60 * 60 * 1000,  // Delay in milliseconds
   }
 );
 
-// Schedule at specific time
+// Schedule at a specific date/time
 const targetDate = new Date('2024-12-25T09:00:00Z');
 await emailQueue.add(
   'holiday-greeting',
   { campaign: 'christmas' },
   {
+    // Calculate delay from now until target time
     delay: targetDate.getTime() - Date.now(),
   }
 );
@@ -156,33 +170,33 @@ await emailQueue.add(
 
 ## Job Priorities
 
-Higher priority jobs are processed first:
+Priorities determine processing order when multiple jobs are waiting. Lower numbers mean higher priority. Use this to ensure critical jobs (security alerts) are processed before less urgent work (marketing emails).
 
 ```javascript
-// Critical job - process immediately
+// Critical job - process immediately (priority 1 = highest)
 await notificationQueue.add(
   'security-alert',
   { userId, type: 'password-changed' },
   {
-    priority: 1, // Highest priority
+    priority: 1,  // Processed before all lower priority jobs
   }
 );
 
-// Normal priority
+// Normal priority jobs
 await notificationQueue.add(
   'weekly-digest',
   { userId },
   {
-    priority: 10, // Default priority
+    priority: 10,  // Default priority level
   }
 );
 
-// Low priority - process when idle
+// Low priority - process when queue is otherwise empty
 await notificationQueue.add(
   'marketing',
   { campaign: 'new-feature' },
   {
-    priority: 100, // Low priority
+    priority: 100,  // Processed last
   }
 );
 ```

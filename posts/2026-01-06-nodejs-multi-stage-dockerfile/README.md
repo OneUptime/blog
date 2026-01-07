@@ -14,53 +14,61 @@ For more Docker best practices, see our guide on [shrinking and hardening Docker
 
 ## The Problem with Single-Stage Builds
 
+A single-stage Dockerfile includes everything in the final image: development dependencies, build tools, source code, and intermediate artifacts. This results in massive images that are slow to push/pull and have increased security exposure.
+
 ```dockerfile
-# BAD: Single stage - everything in final image
+# BAD: Single stage - everything ends up in the final image
 FROM node:20
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
+RUN npm install            # Includes devDependencies like TypeScript, Jest, etc.
+COPY . .                   # Includes source files, tests, docs
+RUN npm run build          # Build artifacts plus original source
 
 EXPOSE 3000
 CMD ["node", "dist/index.js"]
 
 # Result: 1.2GB image with dev dependencies, source files, build tools
+# Contains: node_modules with devDeps, src/, tests/, .git/, etc.
 ```
 
 ## Multi-Stage Build Pattern
 
+Multi-stage builds use multiple FROM statements. Each stage can access files from previous stages via COPY --from, but only the final stage becomes the production image. This lets you compile code in one stage and copy only the output to a minimal runtime image.
+
 ```dockerfile
-# Stage 1: Dependencies
+# Stage 1: Install production dependencies only
+# This stage's node_modules will be copied to the final image
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --only=production  # No devDependencies
 
-# Stage 2: Build
+# Stage 2: Build the application
+# This stage has full devDependencies for TypeScript, etc.
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm ci                    # All dependencies for build
 COPY . .
-RUN npm run build
+RUN npm run build             # Compile TypeScript, bundle, etc.
 
-# Stage 3: Production
+# Stage 3: Production image (this is what gets deployed)
+# Only contains the runtime - no build tools, no source code
 FROM node:20-alpine AS production
 WORKDIR /app
 
-# Create non-root user
+# Security: Create non-root user to run the application
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-# Copy only what's needed
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/package.json ./
+# Cherry-pick only what's needed from previous stages
+COPY --from=deps /app/node_modules ./node_modules  # Prod deps only
+COPY --from=build /app/dist ./dist                  # Compiled output
+COPY --from=build /app/package.json ./              # For metadata
 
-# Set ownership
+# Set ownership and switch to non-root user
 RUN chown -R nodejs:nodejs /app
 USER nodejs
 
@@ -68,11 +76,15 @@ EXPOSE 3000
 CMD ["node", "dist/index.js"]
 
 # Result: ~150MB image with only production dependencies
+# No source code, no devDependencies, no build tools
 ```
 
 ## Optimized Dockerfile for Node.js
 
+This production-ready Dockerfile includes cache mounts for faster rebuilds, security updates, non-root user, and health checks. The syntax directive enables BuildKit features like cache mounts.
+
 ```dockerfile
+# Enable BuildKit syntax for cache mounts and other advanced features
 # syntax=docker/dockerfile:1
 
 # ============================================
@@ -154,6 +166,8 @@ CMD ["node", "dist/index.js"]
 
 ## TypeScript-Specific Build
 
+TypeScript projects require a compile step that needs devDependencies. This Dockerfile runs type checking as part of the build to catch errors early, then creates a minimal production image with only JavaScript output.
+
 ```dockerfile
 # syntax=docker/dockerfile:1
 
@@ -161,44 +175,50 @@ FROM node:20-alpine AS base
 WORKDIR /app
 
 # ============================================
-# Dependencies stage
+# Dependencies stage - install all deps for build
 # ============================================
 FROM base AS deps
 COPY package.json package-lock.json ./
+# Cache npm downloads for faster rebuilds
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 
 # ============================================
-# Build stage
+# Build stage - compile TypeScript to JavaScript
 # ============================================
 FROM deps AS build
+# Copy TypeScript config and source files
 COPY tsconfig.json ./
 COPY src ./src
 
-# Type check and build
+# Run type checking first (fails fast on type errors)
+# Then compile to JavaScript
 RUN npm run typecheck && \
     npm run build
 
 # ============================================
-# Production dependencies
+# Production dependencies - separate stage for clean deps
 # ============================================
 FROM base AS prod-deps
 COPY package.json package-lock.json ./
+# --ignore-scripts prevents postinstall scripts (security)
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --only=production --ignore-scripts
 
 # ============================================
-# Production image
+# Production image - minimal runtime only
 # ============================================
 FROM node:20-alpine AS production
 
 ENV NODE_ENV=production
 WORKDIR /app
 
+# Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nodejs
 
-# Copy production deps and built code
+# Copy only production deps and compiled JavaScript
+# No TypeScript, no source files, no devDependencies
 COPY --from=prod-deps --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=build --chown=nodejs:nodejs /app/dist ./dist
 COPY --chown=nodejs:nodejs package.json ./
@@ -211,23 +231,26 @@ CMD ["node", "dist/index.js"]
 
 ## NestJS Dockerfile
 
+NestJS applications follow a similar pattern. The libc6-compat package is needed for some native modules. Note that NestJS outputs to dist/main.js by default.
+
 ```dockerfile
 # syntax=docker/dockerfile:1
 
 FROM node:20-alpine AS base
+# libc6-compat is required for some native Node modules
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Dependencies
+# Dependencies - install all for build
 FROM base AS deps
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 
-# Build
+# Build - compile NestJS application
 FROM deps AS build
 COPY . .
-RUN npm run build
+RUN npm run build  # Outputs to dist/
 
 # Production deps only
 FROM base AS prod-deps
@@ -235,58 +258,62 @@ COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --only=production
 
-# Production
+# Production - minimal runtime image
 FROM node:20-alpine AS production
 ENV NODE_ENV=production
 WORKDIR /app
 
+# Security: non-root user
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nodejs
 
+# Copy production deps and compiled NestJS app
 COPY --from=prod-deps --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=build --chown=nodejs:nodejs /app/dist ./dist
 
 USER nodejs
 EXPOSE 3000
+# NestJS default entry point is dist/main.js
 CMD ["node", "dist/main.js"]
 ```
 
 ## Layer Caching Optimization
 
-Order commands from least to most frequently changed:
+Docker caches each layer. When a layer changes, all subsequent layers must rebuild. Order your Dockerfile from least to most frequently changed operations. This maximizes cache hits during development.
 
 ```dockerfile
-# 1. Base image (rarely changes)
+# 1. Base image (rarely changes) - cached for months
 FROM node:20-alpine
 
-# 2. System dependencies (changes rarely)
+# 2. System dependencies (changes rarely) - cached until you need new packages
 RUN apk add --no-cache dumb-init
 
-# 3. Create user (changes rarely)
+# 3. Create user (changes rarely) - cached essentially forever
 RUN adduser -S nodejs
 
-# 4. Set working directory
+# 4. Set working directory - cached forever
 WORKDIR /app
 
-# 5. Package files (changes when deps change)
+# 5. Package files (changes when deps change) - cache invalidated by npm changes
 COPY package.json package-lock.json ./
 
-# 6. Install dependencies (changes when deps change)
+# 6. Install dependencies (changes when deps change) - slow step, cached when possible
 RUN npm ci --only=production
 
-# 7. Application code (changes frequently)
+# 7. Application code (changes frequently) - invalidated on every code change
 COPY --chown=nodejs:nodejs . .
 
-# 8. Build (changes when code changes)
+# 8. Build (changes when code changes) - runs after code changes
 RUN npm run build
 
 USER nodejs
+# dumb-init handles signals properly for graceful shutdown
 CMD ["dumb-init", "node", "dist/index.js"]
 ```
 
 ## Using .dockerignore
 
-Prevent unnecessary files from being copied:
+The .dockerignore file excludes files from the build context sent to the Docker daemon. This speeds up builds and prevents sensitive files from accidentally being included in images.
 
 ```
 # .dockerignore
@@ -336,50 +363,60 @@ docker-compose*
 
 ## Distroless Images
 
-For maximum security, use distroless base images:
+Distroless images contain only your application and its runtime dependencies. No shell, no package manager, no utilities. This dramatically reduces attack surface since attackers cannot install tools or spawn shells.
 
 ```dockerfile
-# Build stage
+# Build stage - use full image for building
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+# Build and remove devDependencies
 RUN npm run build && npm prune --production
 
-# Production with distroless
+# Production with distroless - no shell, no package manager
 FROM gcr.io/distroless/nodejs20-debian12
 
 WORKDIR /app
+# Copy only the built application and production dependencies
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./
 
 EXPOSE 3000
+# Note: Distroless requires array syntax - no shell to parse commands
+# Path is relative - "node" is already the entrypoint
 CMD ["dist/index.js"]
 ```
 
-Distroless images:
-- No shell, package manager, or other programs
-- Only your application and runtime
-- Reduced attack surface
+Distroless images provide:
+- No shell - attackers cannot spawn interactive sessions
+- No package manager - cannot install malicious tools
+- Only your application and runtime - minimal attack surface
+- CVE scanning shows fewer vulnerabilities
 
 ## Security Scanning
+
+Scan your images for known vulnerabilities before deploying. Trivy is a popular open-source scanner that checks both OS packages and application dependencies.
 
 ### Trivy Scan
 
 ```bash
-# Scan image for vulnerabilities
+# Scan image for all vulnerabilities (informational)
 trivy image my-app:latest
 
-# Scan with severity threshold
+# Scan with severity filter - show only HIGH and CRITICAL
 trivy image --severity HIGH,CRITICAL my-app:latest
 
-# Fail build on vulnerabilities
+# Fail CI/CD pipeline if vulnerabilities found (exit code 1)
+# Use this in your build pipeline to gate deployments
 trivy image --exit-code 1 --severity HIGH,CRITICAL my-app:latest
 ```
 
 ### GitHub Actions Integration
+
+Integrate security scanning into your CI/CD pipeline. This workflow builds the image, scans it for vulnerabilities, and uploads results to GitHub's security tab for visibility.
 
 ```yaml
 name: Build and Scan
@@ -392,17 +429,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Build image with commit SHA tag for traceability
       - name: Build image
         run: docker build -t my-app:${{ github.sha }} .
 
+      # Scan the built image for vulnerabilities
       - name: Run Trivy scan
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: my-app:${{ github.sha }}
-          format: 'sarif'
+          format: 'sarif'                  # GitHub-compatible format
           output: 'trivy-results.sarif'
-          severity: 'HIGH,CRITICAL'
+          severity: 'HIGH,CRITICAL'        # Only report serious issues
 
+      # Upload results to GitHub Security tab
       - name: Upload scan results
         uses: github/codeql-action/upload-sarif@v2
         with:
@@ -411,15 +451,19 @@ jobs:
 
 ## Build Arguments and Secrets
 
+Never put secrets in your Dockerfile or pass them as build arguments - they are visible in image history. Use Docker BuildKit secrets which are mounted temporarily and never stored in the image.
+
 ```dockerfile
 # syntax=docker/dockerfile:1
 
 FROM node:20-alpine AS build
 
-# Build argument (visible in image history)
+# Build argument (visible in image history via `docker history`)
+# OK for non-sensitive configuration
 ARG NODE_ENV=production
 
-# Secret (not visible in image history)
+# Secret mount (NOT visible in image history)
+# The secret is mounted as a file during build, then removed
 RUN --mount=type=secret,id=npm_token \
     NPM_TOKEN=$(cat /run/secrets/npm_token) \
     npm ci
@@ -428,29 +472,31 @@ COPY . .
 RUN npm run build
 ```
 
-Build with secrets:
+Build with secrets from the command line:
 
 ```bash
-# Create secret file
+# Create a file containing the secret (not committed to git!)
 echo "npm_xxxxx" > npm_token.txt
 
-# Build with secret
+# Build with secret - BuildKit mounts it only during build
+# The secret is never stored in any image layer
 docker build --secret id=npm_token,src=npm_token.txt -t my-app .
 ```
 
 ## Multi-Architecture Builds
 
-Build for both AMD64 and ARM64:
+Build images that run on both Intel/AMD (amd64) and Apple Silicon/AWS Graviton (arm64). Docker buildx can cross-compile and push multi-arch manifests in a single command.
 
 ```bash
-# Create builder
+# Create and use a buildx builder with multi-arch support
 docker buildx create --name multiarch --use
 
-# Build for multiple platforms
+# Build for multiple platforms and push to registry
+# Docker creates a manifest that points to both architectures
 docker buildx build \
-  --platform linux/amd64,linux/arm64 \
+  --platform linux/amd64,linux/arm64 \  # Specify target architectures
   -t my-app:latest \
-  --push \
+  --push \                               # Push directly (can't load multi-arch locally)
   .
 ```
 

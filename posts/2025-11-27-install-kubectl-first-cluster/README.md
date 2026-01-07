@@ -14,16 +14,25 @@ Description: A zero-to-one walkthrough for installing kubectl on macOS/Linux/Win
 
 ### macOS (Homebrew)
 
+Homebrew is the easiest way to install and keep kubectl updated on macOS.
+
 ```bash
+# Install kubectl via Homebrew
 brew install kubectl
+# Verify installation - shows the client version
 kubectl version --client
 ```
 
 ### Linux (curl + install)
 
+Download the latest stable binary directly from the Kubernetes release server.
+
 ```bash
+# Download kubectl binary for Linux amd64
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+# Make it executable
 chmod +x kubectl
+# Move to a directory in your PATH
 sudo mv kubectl /usr/local/bin/
 ```
 
@@ -31,8 +40,12 @@ Optional: `sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl` 
 
 ### Windows (winget)
 
+Windows Package Manager (winget) makes installation straightforward on Windows 10/11.
+
 ```
+# Install kubectl using winget
 winget install -e --id Kubernetes.kubectl
+# Verify installation
 kubectl version --client
 ```
 
@@ -61,18 +74,28 @@ These commands merge cluster details into your local kubeconfig automatically.
 If someone sends you `prod-kubeconfig`, append it safely:
 
 ```bash
+# Ensure the .kube directory exists
 mkdir -p ~/.kube
+# Merge existing config with the new file, flatten into a single file
 KUBECONFIG=~/.kube/config:~/Downloads/prod-kubeconfig kubectl config view --flatten > /tmp/combined
+# Replace the original config with the merged version
 mv /tmp/combined ~/.kube/config
+# Restrict permissions - kubeconfig contains credentials
 chmod 600 ~/.kube/config
 ```
 
 ## 4. Sanity Checks
 
+Run these commands to verify your kubeconfig is set up correctly and you can communicate with the cluster.
+
 ```bash
+# List all configured contexts (clusters you can connect to)
 kubectl config get-contexts
+# Switch to your cluster context
 kubectl config use-context my-first-cluster
+# Show API server and DNS service URLs
 kubectl cluster-info
+# List all nodes - should show at least one in Ready state
 kubectl get nodes
 ```
 
@@ -81,9 +104,14 @@ kubectl get nodes
 
 ## 5. Your First Pod (Optional but Fun)
 
+Deploy a simple nginx container to verify your RBAC permissions and that the scheduler can place workloads.
+
 ```bash
+# Create a Deployment with 1 nginx Pod
 kubectl create deployment hello-k8s --image=nginx --replicas=1
+# Verify the Pod is running (may take a few seconds to pull the image)
 kubectl get pods -l app=hello-k8s
+# Clean up when done
 kubectl delete deployment hello-k8s
 ```
 

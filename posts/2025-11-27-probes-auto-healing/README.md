@@ -28,6 +28,8 @@ Return non-200 status codes when broken so probes fail decisively.
 
 ## 2. Add Probes to the Deployment
 
+The following Kubernetes Deployment manifest configures all three probe types for a web application. Each probe serves a distinct purpose: the startup probe gives your app time to initialize, the readiness probe controls traffic routing, and the liveness probe triggers automatic restarts when the container becomes unhealthy.
+
 `deployments/web-with-probes.yaml`
 
 ```yaml
@@ -37,7 +39,7 @@ metadata:
   name: web
   namespace: dev
 spec:
-  replicas: 3
+  replicas: 3  # Run 3 instances for high availability
   selector:
     matchLabels:
       app: web
@@ -51,26 +53,35 @@ spec:
           image: ghcr.io/example/web:1.4.2
           ports:
             - containerPort: 8080
+
+          # Readiness probe: Controls whether this Pod receives traffic
+          # Pod is removed from Service endpoints when probe fails
           readinessProbe:
             httpGet:
-              path: /readyz
+              path: /readyz      # Endpoint that checks if app can serve requests
               port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            failureThreshold: 3
+            initialDelaySeconds: 5   # Wait 5s before first check
+            periodSeconds: 5         # Check every 5 seconds
+            failureThreshold: 3      # Remove from service after 3 failures
+
+          # Liveness probe: Detects hung or deadlocked containers
+          # Container is restarted when probe fails
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /healthz     # Endpoint that verifies process health
               port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 10
-            timeoutSeconds: 2
+            initialDelaySeconds: 15  # Wait 15s for app startup before checking
+            periodSeconds: 10        # Check every 10 seconds
+            timeoutSeconds: 2        # Fail if response takes >2s
+
+          # Startup probe: Gates liveness/readiness probes during boot
+          # Prevents premature restarts for slow-starting apps
           startupProbe:
             httpGet:
               path: /healthz
               port: 8080
-            failureThreshold: 30
-            periodSeconds: 5
+            failureThreshold: 30     # Allow up to 30 * 5s = 150s for startup
+            periodSeconds: 5         # Check every 5 seconds during startup
 ```
 
 Key rules:
@@ -79,18 +90,23 @@ Key rules:
 - **Readiness probe** removes Pods from Services while failing, preventing bad traffic.
 - **Liveness probe** restarts the container when it keeps failing.
 
-Apply it:
+Apply the deployment to your cluster. This command creates or updates the Deployment resource with the probe configuration:
 
 ```bash
+# Deploy the web application with health probes configured
 kubectl apply -f deployments/web-with-probes.yaml
 ```
 
 ## 3. Watch Probe Status
 
-Use `kubectl describe pod` to confirm probe conditions:
+After deploying, use `kubectl` commands to verify that probes are working correctly. The `describe` command shows detailed probe status and any failures in the Events section:
 
 ```bash
+# List all pods for the web app and check their status
 kubectl get pods -n dev -l app=web
+
+# Inspect probe configuration and recent probe events for a specific pod
+# Replace 'web-abcde' with your actual pod name from the previous command
 kubectl describe pod web-abcde -n dev | grep -A5 Liveness
 ```
 
@@ -98,11 +114,16 @@ Events should show `Readiness probe succeeded` before traffic hits the Pod. If y
 
 ## 4. Test Failure Paths Safely
 
-Force the readiness endpoint to break (toggle a feature flag or pause the HTTP handler) and observe:
+Before relying on probes in production, validate that they behave correctly when your application fails. Force the readiness endpoint to break (toggle a feature flag or pause the HTTP handler) and observe how Kubernetes responds:
 
 ```bash
+# Start port-forwarding in the background to access the service locally
 kubectl port-forward svc/web 8080:80 &
-# flip /readyz to return 503 via feature toggle or chaos script
+
+# Now trigger a failure in your app (e.g., via feature flag or chaos script)
+# The /readyz endpoint should start returning 503
+
+# Watch the endpoints list - unhealthy pods will be removed automatically
 kubectl get endpoints web -n dev
 ```
 
@@ -120,9 +141,13 @@ Monitor probe events; flapping indicates thresholds are too aggressive.
 
 ## 6. Alert on Probe Failures
 
-Scrape `kubelet_probe_*` or `kube_pod_container_status_restarts_total` metrics. Example PromQL alert:
+Don't rely solely on Kubernetes to handle probe failures silently. Set up alerting so your team is notified when containers restart frequently, which often indicates an underlying issue that needs investigation. Scrape `kubelet_probe_*` or `kube_pod_container_status_restarts_total` metrics from your monitoring system.
 
-```
+The following PromQL query fires an alert when a container restarts more than 3 times in 5 minutes, which typically indicates a crashloop or persistent health issue:
+
+```promql
+# Alert when container restarts exceed threshold
+# This catches crashloops and persistent liveness probe failures
 increase(kube_pod_container_status_restarts_total{namespace="prod",container="web"}[5m]) > 3
 ```
 

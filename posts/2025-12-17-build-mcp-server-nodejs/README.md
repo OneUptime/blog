@@ -40,6 +40,8 @@ Let's create a new MCP server project from scratch.
 
 ### Initialize the Project
 
+Start by creating a new directory and installing the required packages. The MCP SDK provides the server framework, while Zod handles input validation with TypeScript-friendly schemas.
+
 ```bash
 # Create project directory
 mkdir my-mcp-server
@@ -57,7 +59,7 @@ npm install -D typescript @types/node tsx
 
 ### Configure TypeScript
 
-Create a `tsconfig.json` file:
+Create a `tsconfig.json` file. The Node16 module settings ensure compatibility with ES modules, while strict mode catches potential type errors at compile time.
 
 ```json
 {
@@ -81,6 +83,8 @@ Create a `tsconfig.json` file:
 ```
 
 ### Update package.json
+
+Configure the package.json with the correct module type and entry points. The `bin` field allows the server to be run as a CLI command after npm installation.
 
 ```json
 {
@@ -115,10 +119,11 @@ Let's start with a basic MCP server structure and progressively add features.
 
 ### Basic Server Structure
 
-Create `src/index.ts`:
+Create `src/index.ts`. This minimal server sets up the MCP protocol with stdio transport (communication via stdin/stdout). The shebang line allows direct execution as a CLI tool.
 
 ```typescript
 #!/usr/bin/env node
+// Shebang for CLI execution - the server communicates via stdin/stdout
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -165,10 +170,13 @@ Tools are functions that AI assistants can call. Let's implement several practic
 
 ### Define Tool Schemas with Zod
 
-Create `src/schemas.ts`:
+Create `src/schemas.ts`. Zod schemas define the expected input format for each tool. The `.describe()` method provides documentation that AI assistants can use to understand how to call each tool correctly.
 
 ```typescript
 import { z } from "zod";
+
+// Each schema defines the expected input for a tool
+// .describe() adds documentation visible to AI assistants
 
 // Schema for a greeting tool
 export const GreetingSchema = z.object({
@@ -234,7 +242,7 @@ export type DatabaseQuery = z.infer<typeof DatabaseQuerySchema>;
 
 ### Implement Tool Handlers
 
-Create `src/tools.ts`:
+Create `src/tools.ts`. This file contains both the tool definitions (metadata for AI assistants) and the handler implementations. Each handler validates input using Zod schemas before executing the operation.
 
 ```typescript
 import { z } from "zod";
@@ -503,10 +511,12 @@ export async function handleTool(
 
 ### Register Tools with the Server
 
-Update `src/index.ts`:
+Update `src/index.ts` to register the tool handlers. The `setRequestHandler` method maps MCP protocol requests to your handler functions. Tool errors are returned as results (not thrown) so the AI can understand what went wrong.
 
 ```typescript
 #!/usr/bin/env node
+// Register tool handlers with the MCP server
+// Errors are returned as results so AI assistants can handle them gracefully
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -585,7 +595,7 @@ Resources allow AI assistants to read data from your server. Let's add resource 
 
 ### Create Resource Handlers
 
-Create `src/resources.ts`:
+Create `src/resources.ts`. Resources are read-only data sources that AI assistants can query. Unlike tools, resources don't perform actions - they just return data. The URI scheme (config://, data://, file://) helps categorize different resource types.
 
 ```typescript
 import * as fs from "fs/promises";
@@ -699,10 +709,12 @@ export async function listDynamicResources(): Promise<ResourceDefinition[]> {
 
 ### Register Resources with the Server
 
-Update `src/index.ts` to include resources:
+Update `src/index.ts` to include resources. Resources can be static (predefined) or dynamic (discovered at runtime, like files in a directory). The server combines both types when listing available resources.
 
 ```typescript
 #!/usr/bin/env node
+// Add resource handlers for read-only data access
+// Resources are listed and read separately from tools
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -806,9 +818,12 @@ Prompts provide reusable templates that AI assistants can use. Let's add prompt 
 
 ### Create Prompt Handlers
 
-Create `src/prompts.ts`:
+Create `src/prompts.ts`. Prompts are reusable templates that AI assistants can invoke with arguments. They're useful for standardizing complex tasks like code reviews, bug reports, or incident response workflows.
 
 ```typescript
+// Prompts provide reusable templates for common tasks
+// The AI fills in the arguments and receives a formatted prompt
+
 export interface PromptDefinition {
   name: string;
   description: string;
@@ -1102,10 +1117,12 @@ Please use this checklist to guide the incident response for the ${args.service}
 
 ### Register Prompts with the Server
 
-Update `src/index.ts` to include prompts:
+Update `src/index.ts` to include prompts. This final version includes all three MCP capabilities: tools, resources, and prompts. The capabilities object tells AI assistants what features this server supports.
 
 ```typescript
 #!/usr/bin/env node
+// Complete MCP server with tools, resources, and prompts
+// Each capability is enabled in the server configuration
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -1234,7 +1251,7 @@ main().catch((error) => {
 
 ### 1. Input Validation
 
-Always validate inputs using a schema library like Zod:
+Always validate inputs using a schema library like Zod. This prevents malformed data from causing errors and provides clear error messages to AI assistants when they call tools with invalid arguments.
 
 ```typescript
 import { z } from "zod";
@@ -1257,7 +1274,7 @@ export async function handleCreateUser(args: unknown): Promise<string> {
 
 ### 2. Error Handling
 
-Implement comprehensive error handling with meaningful messages:
+Implement comprehensive error handling with meaningful messages. Custom error classes help categorize failures, and the wrapper function ensures errors are logged for debugging while returning user-friendly messages to the AI.
 
 ```typescript
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
@@ -1322,7 +1339,7 @@ async function safeToolHandler(
 
 ### 3. Security Considerations
 
-Implement security measures to protect your MCP server:
+Implement security measures to protect your MCP server. Path traversal prevention stops directory escape attacks, rate limiting prevents abuse, and input sanitization protects against injection attacks.
 
 ```typescript
 import * as path from "path";
@@ -1384,9 +1401,12 @@ function validateApiKey(key: string | undefined): boolean {
 
 ### 4. Logging and Observability
 
-Add structured logging for debugging and monitoring:
+Add structured logging for debugging and monitoring. Logs go to stderr (not stdout) because the MCP protocol uses stdout for communication. Structured JSON logs make it easy to search and analyze issues.
 
 ```typescript
+// Structured logging for MCP servers
+// IMPORTANT: Use stderr for logs - stdout is reserved for MCP protocol messages
+
 enum LogLevel {
   DEBUG = 0,
   INFO = 1,
@@ -1468,10 +1488,13 @@ export async function handleToolWithLogging(
 
 ### 5. Configuration Management
 
-Use environment variables and configuration files:
+Use environment variables and configuration files. Zod validates configuration at startup, catching misconfiguration early. Default values ensure the server works out of the box while allowing customization.
 
 ```typescript
 import { z } from "zod";
+
+// Configuration schema with validation and defaults
+// Environment variables override defaults for deployment flexibility
 
 // Configuration schema
 const ConfigSchema = z.object({
@@ -1532,9 +1555,12 @@ export const config = loadConfig();
 
 ### 6. Graceful Shutdown
 
-Handle shutdown signals properly:
+Handle shutdown signals properly to clean up resources and prevent data loss. SIGINT (Ctrl+C) and SIGTERM (kill command) should both trigger graceful shutdown. Uncaught exceptions and unhandled promise rejections should be logged before exiting.
 
 ```typescript
+// Graceful shutdown with proper cleanup
+// Handle SIGINT, SIGTERM, and uncaught errors
+
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -1583,7 +1609,7 @@ async function main(): Promise<void> {
 
 ### Unit Tests
 
-Create `src/__tests__/tools.test.ts`:
+Create `src/__tests__/tools.test.ts`. Unit tests verify individual tool handlers work correctly with valid and invalid inputs. Using Vitest (or Jest) makes it easy to test async handlers and verify error conditions.
 
 ```typescript
 import { describe, it, expect } from "vitest";
@@ -1631,9 +1657,12 @@ describe("Tool Handlers", () => {
 
 ### Integration Testing
 
-Create a test script `scripts/test-server.ts`:
+Create a test script `scripts/test-server.ts`. Integration tests spawn the actual server process and communicate via the MCP protocol, verifying end-to-end functionality including serialization and transport.
 
 ```typescript
+// Integration test that spawns the server and sends MCP protocol messages
+// Tests the full request/response cycle over stdio
+
 import { spawn } from "child_process";
 
 interface MCPRequest {
@@ -1726,7 +1755,7 @@ testMCPServer();
 
 ### Claude Desktop Configuration
 
-Create or edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+Create or edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows). This tells Claude Desktop how to launch your MCP server and what environment variables to pass.
 
 ```json
 {
@@ -1745,7 +1774,7 @@ Create or edit `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 ### VS Code with Claude Extension
 
-Add to your VS Code settings:
+Add to your VS Code settings. Using `npx -y` downloads and runs the server if it's published to npm, making it easy for other developers to use your server without manual installation.
 
 ```json
 {
@@ -1765,7 +1794,7 @@ Add to your VS Code settings:
 
 ### Prepare for npm Publishing
 
-Update `package.json`:
+Update `package.json` with publishing metadata. The `files` array specifies which files to include in the npm package. The `prepublishOnly` script ensures the project is built before publishing.
 
 ```json
 {
@@ -1804,6 +1833,8 @@ Update `package.json`:
 ```
 
 ### Build and Publish
+
+Once your server is ready, build and publish it to npm so others can use it with `npx` or by installing it globally.
 
 ```bash
 # Build the project

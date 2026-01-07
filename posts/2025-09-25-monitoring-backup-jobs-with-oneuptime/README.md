@@ -119,28 +119,37 @@ This URL is specific to your backup job and includes a secret key for security.
 For simple backup scripts:
 
 **Bash Script:**
+
+This script wraps a PostgreSQL backup with heartbeat signals at start, success, and failure. The OneUptime monitor will alert if no heartbeat is received within the expected window (e.g., 24 hours for daily backups).
+
 ```bash
 #!/bin/bash
+# backup-postgres.sh - PostgreSQL backup with OneUptime monitoring
 
+# Your unique heartbeat URL from the OneUptime monitor
 HEARTBEAT_URL="https://your-domain.com/heartbeat/db_backup_abc123"
+
+# Capture start time for duration calculation
 BACKUP_START=$(date +%s)
 
-# Send start heartbeat
+# Send start heartbeat - lets OneUptime know backup has begun
 curl -X POST "$HEARTBEAT_URL" \
   -H "Content-Type: application/json" \
   -d "{\"status\":\"started\",\"timestamp\":\"$BACKUP_START\"}"
 
-# Perform backup
+# Perform the actual database backup
+# pg_dump exports the database to a SQL file
 if pg_dump mydb > backup.sql; then
+  # Backup succeeded - calculate metrics and send success heartbeat
   BACKUP_END=$(date +%s)
   DURATION=$((BACKUP_END - BACKUP_START))
-  
-  # Send success heartbeat
+
+  # Include duration and file size for tracking trends
   curl -X POST "$HEARTBEAT_URL" \
     -H "Content-Type: application/json" \
     -d "{\"status\":\"completed\",\"duration\":$DURATION,\"size\":$(stat -f%z backup.sql)}"
 else
-  # Send failure heartbeat
+  # Backup failed - send failure heartbeat to trigger alert
   curl -X POST "$HEARTBEAT_URL" \
     -H "Content-Type: application/json" \
     -d "{\"status\":\"failed\",\"error\":\"pg_dump failed\",\"timestamp\":\"$(date +%s)\"}"
@@ -148,39 +157,50 @@ fi
 ```
 
 **Python Script:**
+
+The Python version provides more robust error handling and makes it easier to extend with additional backup logic. The `send_heartbeat` function includes automatic retry and timeout handling.
+
 ```python
 import requests
 import time
 import subprocess
 
+# Heartbeat URL from your OneUptime incoming request monitor
 HEARTBEAT_URL = "https://your-domain.com/heartbeat/db_backup_abc123"
 
 def send_heartbeat(status, **kwargs):
+    """Send a heartbeat signal to OneUptime with status and metadata."""
+    # Build payload with status, timestamp, and any additional fields
     payload = {"status": status, "timestamp": int(time.time()), **kwargs}
     try:
+        # Timeout ensures backup script doesn't hang on network issues
         response = requests.post(HEARTBEAT_URL, json=payload, timeout=10)
         return response.status_code == 200
     except Exception as e:
+        # Log but don't fail the backup if heartbeat fails
         print(f"Failed to send heartbeat: {e}")
         return False
 
-# Start backup
+# Notify OneUptime that backup is starting
 send_heartbeat("started")
 
 try:
     start_time = time.time()
-    # Run backup command
-    result = subprocess.run(["pg_dump", "mydb"], 
+
+    # Execute pg_dump and capture output
+    # check=True raises CalledProcessError if pg_dump fails
+    result = subprocess.run(["pg_dump", "mydb"],
                           capture_output=True, text=True, check=True)
-    
+
+    # Calculate metrics for trend analysis
     duration = time.time() - start_time
     backup_size = len(result.stdout.encode('utf-8'))
-    
-    # Success
+
+    # Send success heartbeat with backup metrics
     send_heartbeat("completed", duration=duration, size=backup_size)
-    
+
 except subprocess.CalledProcessError as e:
-    # Failure
+    # Backup command failed - send failure heartbeat with error details
     send_heartbeat("failed", error=str(e), exit_code=e.returncode)
 ```
 

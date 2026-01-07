@@ -29,10 +29,10 @@ traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
 
 ### Shared Tracing Configuration
 
-Create a reusable tracing module for all services:
+Create a reusable tracing module that all services can import. This ensures consistent configuration and allows centralized updates.
 
 ```javascript
-// tracing.js
+// tracing.js - shared across all microservices
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
@@ -80,8 +80,11 @@ module.exports = { initTracing };
 
 ### Service A: API Gateway
 
+The API gateway is the entry point for requests. Auto-instrumentation automatically propagates trace context to downstream services via HTTP headers.
+
 ```javascript
 // gateway-service/index.js
+// Initialize tracing FIRST before any other imports
 require('./tracing').initTracing('api-gateway');
 
 const express = require('express');
@@ -120,6 +123,8 @@ app.listen(3000);
 ```
 
 ### Service B: Order Service
+
+The order service receives requests with trace context in headers. OpenTelemetry automatically extracts this context and creates child spans, maintaining the parent-child relationship across services.
 
 ```javascript
 // order-service/index.js
@@ -163,7 +168,7 @@ app.listen(3001);
 
 ### Manual Context Propagation
 
-When auto-instrumentation isn't available:
+When auto-instrumentation is not available (custom HTTP clients, legacy code), manually inject trace context into outgoing request headers.
 
 ```javascript
 const { trace, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
@@ -291,6 +296,8 @@ async function getOrder(orderId) {
 ```
 
 ## Message Queue Context Propagation
+
+Message queues (RabbitMQ, Kafka) decouple services but require explicit trace context propagation. Embed the trace context in message headers so consumers can link their processing to the original request.
 
 ### Publishing with Trace Context
 

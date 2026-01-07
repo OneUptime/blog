@@ -22,63 +22,78 @@ Most teams blend SDK + sidecar or agent.
 
 ## 2. SDK Baseline
 
-Install the OpenTelemetry SDK in your app and emit data to OTLP:
+Install the OpenTelemetry SDK in your app and emit data to OTLP. This initialization code should run before your application starts to capture all traces.
 
 ```ts
-// src/telemetry.ts
+// src/telemetry.ts - Initialize OpenTelemetry before importing your app
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 
+// Configure the SDK to export traces via gRPC to the collector
 const sdk = new NodeSDK({
-  traceExporter: new OTLPTraceExporter({ url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT })
+  traceExporter: new OTLPTraceExporter({
+    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT  // Points to collector
+  })
 });
 
+// Start the SDK - must be called before your app code runs
 sdk.start();
 ```
 
-Set env vars in Compose:
+Set env vars in Compose to configure where traces are sent and how the service is identified.
 
 ```yaml
 services:
   api:
     build: .
     environment:
+      # gRPC endpoint of the OpenTelemetry Collector
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-sidecar:4317
+      # Service name appears in trace visualizations
       - OTEL_SERVICE_NAME=payments-api
 ```
 
 ## 3. Sidecar Collector Pattern
 
-Add an OpenTelemetry Collector container alongside each service.
+Add an OpenTelemetry Collector container alongside each service. This pattern gives you per-service configuration and keeps telemetry traffic local.
 
 ```yaml
 services:
   api:
     image: ghcr.io/acme/api:latest
     depends_on:
-      - api-otel
+      - api-otel                    # Wait for collector to be ready
+
+  # Sidecar collector for the API service
   api-otel:
     image: otel/opentelemetry-collector-contrib:0.93.0
     command: ["--config=/etc/otel-config.yaml"]
     volumes:
-      - ./otel/api.yaml:/etc/otel-config.yaml
+      - ./otel/api.yaml:/etc/otel-config.yaml  # Service-specific config
 ```
 
-`./otel/api.yaml`:
+The collector configuration (`./otel/api.yaml`) defines how telemetry flows from your app to the backend.
 
 ```yaml
+# Receivers: How the collector ingests data
 receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: 0.0.0.0:4317
+        endpoint: 0.0.0.0:4317      # Listen for gRPC OTLP on port 4317
+
+# Processors: Transform data before export
 processors:
-  batch: {}
+  batch: {}                         # Batch data for efficient transmission
+
+# Exporters: Where to send the processed data
 exporters:
   otlphttp:
     endpoint: https://telemetry.oneuptime.com/v1
     headers:
-      Authorization: "Bearer ${ONEUPTIME_API_KEY}"
+      Authorization: "Bearer ${ONEUPTIME_API_KEY}"  # Auth via env var
+
+# Pipelines: Connect receivers -> processors -> exporters
 service:
   pipelines:
     traces:
@@ -91,20 +106,22 @@ Benefits: app SDK only talks to localhost, and you can inject processors (redact
 
 ## 4. Host/Swarm Agent Pattern
 
-On Docker Swarm or large Compose stacks, run a single Collector per node.
+On Docker Swarm or large Compose stacks, run a single Collector per node. This reduces the number of collector instances while still providing local endpoints for applications.
 
 ```yaml
 services:
   otel-agent:
     image: otel/opentelemetry-collector-contrib:0.93.0
     deploy:
-      mode: global
+      mode: global                  # Run exactly one instance per swarm node
     configs:
       - source: otel-config
         target: /etc/otel-config.yaml
     ports:
-      - 4317:4317/tcp
-      - 4318:4318/tcp
+      - 4317:4317/tcp               # gRPC OTLP endpoint
+      - 4318:4318/tcp               # HTTP OTLP endpoint
+
+# Swarm configs for centralized configuration management
 configs:
   otel-config:
     file: ./otel/agent.yaml
@@ -114,18 +131,22 @@ Applications export to `http://otel-agent:4318`. The agent fans data out to OneU
 
 ## 5. Instrument Logs Too
 
-Use the Collector `filelog` receiver or Docker logging drivers:
+Use the Collector `filelog` receiver to scrape container logs directly from disk and correlate them with traces.
 
 ```yaml
+# Receiver configuration for container logs
 receivers:
   filelog:
-    include: [/var/lib/docker/containers/*/*.log]
-    start_at: beginning
+    include: [/var/lib/docker/containers/*/*.log]  # Docker's default log location
+    start_at: beginning                             # Process existing logs on startup
+
+# Transform logs to add useful attributes
 processors:
   transform:
     log_statements:
       - context: log
         statements:
+          # Extract container ID from the file path and add as attribute
           - set(attributes.container_id, attributes["container.id"])
 ```
 
@@ -133,18 +154,23 @@ Ship transformed logs to OTLP, Loki, or any supported exporter. For JSON logs, s
 
 ## 6. Correlate Metrics and Traces
 
-Configure exemplar sampling:
+Configure exemplar sampling to link metrics to specific traces. This lets you jump from a spike in latency directly to the trace that caused it.
 
 ```yaml
+# Processors protect the collector from memory issues
 processors:
   memory_limiter:
-    check_interval: 1s
-    limit_mib: 512
+    check_interval: 1s             # How often to check memory usage
+    limit_mib: 512                 # Maximum memory before dropping data
+
+# Export metrics to OneUptime with queuing for reliability
 exporters:
   otlphttp/oneuptime:
     endpoint: https://oneuptime.com/otlp
     sending_queue:
-      queue_size: 2048
+      queue_size: 2048             # Buffer size for backpressure handling
+
+# Metrics pipeline connects receivers through processors to exporters
 service:
   pipelines:
     metrics:
@@ -163,10 +189,22 @@ Enable exemplars in your SDK (e.g., Prometheus client) so a high latency data po
 
 ## 8. Verify End-to-End
 
-1. `docker compose up -d`.
-2. Hit the API: `hey -z 30s http://localhost:8080/checkout`.
-3. Check Collector logs for `Export completed` messages.
-4. Confirm traces/metrics/logs in OneUptime dashboards.
+Follow this verification checklist to confirm telemetry is flowing correctly from your containers to your observability backend.
+
+1. Start the entire stack including collectors:
+   ```bash
+   docker compose up -d
+   ```
+
+2. Generate traffic to create telemetry data:
+   ```bash
+   # Use 'hey' (HTTP load generator) to send requests for 30 seconds
+   hey -z 30s http://localhost:8080/checkout
+   ```
+
+3. Check Collector logs for `Export completed` messages indicating successful data transmission.
+
+4. Confirm traces/metrics/logs appear in OneUptime dashboards.
 
 Automate this smoke test in CI so telemetry regressions get caught before prod.
 

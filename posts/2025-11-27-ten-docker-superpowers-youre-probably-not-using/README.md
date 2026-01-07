@@ -13,14 +13,21 @@ Docker has been around long enough that most teams treat it as solved tooling, y
 Ship only what you need. Use a heavy build stage for toolchains and a clean runtime stage so you do not leak compilers and caches into production layers.
 
 ```dockerfile
+# Stage 1: Full Node.js environment for building
 FROM node:22 AS build
 WORKDIR /app
+
+# Install dependencies (cached layer)
 COPY package*.json ./
 RUN npm ci
+
+# Build the application (e.g., compile TypeScript, bundle assets)
 COPY . .
 RUN npm run build
 
+# Stage 2: Minimal distroless image - no npm, no shell, just Node.js runtime
 FROM gcr.io/distroless/nodejs22
+# Copy only the compiled output from the build stage
 COPY --from=build /app/dist /app
 CMD ["server.js"]
 ```
@@ -29,9 +36,12 @@ Pair this with `--target` when you need to run CI tasks inside intermediate stag
 
 ## 2. BuildKit cache mounts turn `npm ci` into milliseconds
 
-Enable BuildKit (`DOCKER_BUILDKIT=1`) and add cache mounts so expensive steps reuse artifacts across builds.
+Enable BuildKit (`DOCKER_BUILDKIT=1`) and add cache mounts so expensive steps reuse artifacts across builds. The cache persists between builds on the same machine.
 
 ```dockerfile
+# Mount a persistent cache directory for npm packages
+# target: Where the cache is mounted inside the container
+# This cache survives between builds, making subsequent installs near-instant
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --prefer-offline
 ```
@@ -42,13 +52,22 @@ Treat cache mounts like shared volumes: never bake secrets into them and periodi
 
 Stop copying `.env` files into images. BuildKit can inject secrets at build time that never persist in the final layer.
 
+The following command builds an image while passing a secret file that will only be available during build, never stored in the image.
+
 ```bash
+# Build with a secret mounted from local filesystem
+# --secret id=npmrc: Unique identifier for the secret
+# src=$HOME/.npmrc: Path to the secret file on your machine
 docker build \
   --secret id=npmrc,src=$HOME/.npmrc \
   -t web:secure .
 ```
 
+In your Dockerfile, mount and use the secret during the RUN command. It exists only for that step.
+
 ```dockerfile
+# Mount the secret at /root/.npmrc during this command only
+# The secret is never written to any image layer
 RUN --mount=type=secret,id=npmrc target=/root/.npmrc \
     npm publish
 ```
@@ -63,13 +82,15 @@ Instead of juggling `docker-compose.dev.yml`, `*-prod.yml`, etc., define profile
 services:
   db:
     image: postgres:16
-    profiles: [core]
+    profiles: [core]           # Runs in all environments
+
   mailhog:
     image: mailhog/mailhog
-    profiles: [dev]
+    profiles: [dev]            # Only runs in development (email testing)
+
   worker:
     build: ./worker
-    profiles: [core, prod]
+    profiles: [core, prod]     # Runs in core and production environments
 ```
 
 Run `docker compose --profile core --profile dev up` during development and `--profile core --profile prod up -d` in staging. One file, zero drift.
@@ -79,12 +100,12 @@ Run `docker compose --profile core --profile dev up` during development and `--p
 When you need both amd64 and arm64 images (hello, Apple Silicon), `docker buildx bake` reads a declarative file and handles the matrix in parallel.
 
 ```hcl
-// docker-bake.hcl
+// docker-bake.hcl - Declarative multi-platform build configuration
 target "app" {
-  context = "."
-  dockerfile = "Dockerfile"
-  platforms = ["linux/amd64", "linux/arm64"]
-  tags = ["registry.example.com/app:latest"]
+  context = "."                            // Build context directory
+  dockerfile = "Dockerfile"                // Dockerfile to use
+  platforms = ["linux/amd64", "linux/arm64"]  // Build for Intel and ARM
+  tags = ["registry.example.com/app:latest"]  // Tag for the manifest list
 }
 ```
 
@@ -92,28 +113,38 @@ target "app" {
 
 ## 6. Healthchecks plus dependency awareness stop cascading startups
 
-Add `HEALTHCHECK` directives and wire dependencies via Compose’s `depends_on` with conditionals to avoid race conditions at launch.
+Add `HEALTHCHECK` directives and wire dependencies via Compose's `depends_on` with conditionals to avoid race conditions at launch.
+
+This Dockerfile instruction tells Docker how to verify the container is ready to serve traffic.
 
 ```dockerfile
+# Define how Docker should check if the container is healthy
+# --interval=30s: Check every 30 seconds
+# --timeout=5s: Give up if check takes longer than 5 seconds
+# --retries=3: Mark unhealthy after 3 consecutive failures
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD wget -qO- http://localhost:8080/health || exit 1
 ```
+
+In your Compose file, use `condition: service_healthy` to wait for dependencies to be truly ready, not just started.
 
 ```yaml
 services:
   api:
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_healthy  # Wait for db's HEALTHCHECK to pass
 ```
 
-Your orchestrator now waits for Postgres to pass its check before starting the API, preventing “works on my laptop” startup issues.
+Your orchestrator now waits for Postgres to pass its check before starting the API, preventing "works on my laptop" startup issues.
 
 ## 7. `docker scout cves` gives instant supply-chain feedback
 
 Docker Scout plugs into Hub or private registries and surfaces CVEs without leaving your terminal.
 
 ```bash
+# Scan an image for known vulnerabilities (CVEs)
+# Shows severity levels, affected packages, and fix recommendations
 docker scout cves my-api:latest
 ```
 
@@ -124,20 +155,28 @@ Combine Scout with the built-in SBOM export (`docker buildx imagetools inspect -
 PID 1 needs to reap zombies, and most workloads need fewer Linux capabilities than Docker grants by default.
 
 ```bash
-docker run --init \
-  --cap-drop=ALL --cap-add=NET_BIND_SERVICE \
-  --read-only --tmpfs /tmp:size=64m \
+docker run \
+  --init \                              # Add tini init to reap zombie processes
+  --cap-drop=ALL \                      # Remove all Linux capabilities
+  --cap-add=NET_BIND_SERVICE \          # Add back only what's needed (bind to port < 1024)
+  --read-only \                         # Make root filesystem read-only (security)
+  --tmpfs /tmp:size=64m \               # Writable temp directory with size limit
   my-api:latest
 ```
 
-These flags convert a “good enough” container into something you can actually defend during audits.
+These flags convert a "good enough" container into something you can actually defend during audits.
 
 ## 9. Debug prod parity locally with `docker run --network container:<id>`
 
 Need to poke a service that only binds to localhost inside its container? Launch a one-off toolbox container that shares the target network namespace.
 
 ```bash
+# Get the container ID of the running Redis container
 TARGET=$(docker ps --filter name=redis -q)
+
+# Launch a debug container sharing the target's network namespace
+# nicolaka/netshoot: Popular image with networking debug tools
+# 127.0.0.1 now refers to the Redis container's localhost
 docker run -it --network container:$TARGET nicolaka/netshoot redis-cli -h 127.0.0.1
 ```
 
@@ -148,6 +187,9 @@ No port-forwards, no Compose edits, just instant shell access for diagnostics.
 `docker events --filter type=container` is a real-time feed of start/stop cycles. Pipe it into `jq` or your observability stack to spot unhealthy workloads.
 
 ```bash
+# Stream all Docker events as JSON and filter for container deaths
+# --format '{{json .}}': Output as JSON for easy parsing
+# jq 'select(.status=="die")': Show only container exit/crash events
 docker events --format '{{json .}}' | jq 'select(.status=="die")'
 ```
 

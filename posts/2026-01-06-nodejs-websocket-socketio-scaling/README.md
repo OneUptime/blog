@@ -18,33 +18,41 @@ npm install socket.io socket.io-client
 
 ### Server
 
+This sets up a Socket.io server attached to an Express HTTP server. The configuration includes CORS for cross-origin connections and ping settings for connection health monitoring.
+
 ```javascript
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
+// Socket.io needs an HTTP server to attach to
 const httpServer = createServer(app);
 
+// Initialize Socket.io with configuration
 const io = new Server(httpServer, {
   cors: {
+    // Allow connections from these origins (frontend domains)
     origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
     methods: ['GET', 'POST'],
-    credentials: true,
+    credentials: true,  // Allow cookies/auth headers
   },
-  pingTimeout: 60000,
-  pingInterval: 25000,
+  pingTimeout: 60000,   // How long to wait for ping response before disconnecting
+  pingInterval: 25000,  // How often to send ping packets
 });
 
+// Handle new connections
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
+  // Listen for 'message' events from this client
   socket.on('message', (data) => {
     console.log('Message received:', data);
-    // Broadcast to all other clients
+    // Broadcast to all OTHER connected clients (not the sender)
     socket.broadcast.emit('message', data);
   });
 
+  // Handle disconnection - clean up resources
   socket.on('disconnect', (reason) => {
     console.log(`Client disconnected: ${socket.id}, reason: ${reason}`);
   });
@@ -57,34 +65,42 @@ httpServer.listen(3000, () => {
 
 ### Client
 
+The client automatically handles reconnection with exponential backoff. Configure transports to prefer WebSocket but fall back to HTTP polling if WebSocket is blocked.
+
 ```javascript
 import { io } from 'socket.io-client';
 
+// Connect to Socket.io server
 const socket = io('http://localhost:3000', {
-  transports: ['websocket', 'polling'],
-  reconnection: true,
-  reconnectionAttempts: 5,
-  reconnectionDelay: 1000,
-  reconnectionDelayMax: 5000,
+  transports: ['websocket', 'polling'],  // Try WebSocket first, fall back to polling
+  reconnection: true,                     // Auto-reconnect on disconnect
+  reconnectionAttempts: 5,                // Max reconnection attempts
+  reconnectionDelay: 1000,                // Start with 1s delay
+  reconnectionDelayMax: 5000,             // Max 5s between attempts
 });
 
+// Connection established
 socket.on('connect', () => {
   console.log('Connected:', socket.id);
 });
 
+// Receive messages from server or other clients
 socket.on('message', (data) => {
   console.log('Message:', data);
 });
 
+// Connection lost
 socket.on('disconnect', (reason) => {
   console.log('Disconnected:', reason);
+  // reason: 'io server disconnect', 'transport close', etc.
 });
 
+// Failed to connect
 socket.on('connect_error', (error) => {
   console.error('Connection error:', error.message);
 });
 
-// Send message
+// Send message to server
 socket.emit('message', { text: 'Hello!' });
 ```
 
@@ -92,43 +108,48 @@ socket.emit('message', { text: 'Hello!' });
 
 ### JWT Authentication
 
+Use Socket.io middleware to authenticate connections before they're established. The middleware has access to the handshake data including auth tokens. Invalid tokens reject the connection.
+
 ```javascript
 const jwt = require('jsonwebtoken');
 
+// Authentication middleware - runs before connection is established
 io.use((socket, next) => {
+  // Get token from auth object or Authorization header
   const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
 
   if (!token) {
-    return next(new Error('Authentication required'));
+    return next(new Error('Authentication required'));  // Rejects connection
   }
 
   try {
+    // Verify token and attach user data to socket
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    socket.user = decoded;
-    next();
+    socket.user = decoded;  // Available in all event handlers
+    next();  // Allow connection
   } catch (error) {
-    next(new Error('Invalid token'));
+    next(new Error('Invalid token'));  // Rejects connection
   }
 });
 
 io.on('connection', (socket) => {
   console.log(`User ${socket.user.id} connected`);
 
-  // Join user-specific room for targeted messages
+  // Auto-join user to their personal room for direct messages
   socket.join(`user:${socket.user.id}`);
 
-  // Join organization room if applicable
+  // Join organization room for team-wide broadcasts
   if (socket.user.orgId) {
     socket.join(`org:${socket.user.orgId}`);
   }
 });
 
-// Send to specific user
+// Helper: Send event to a specific user (wherever they're connected)
 function sendToUser(userId, event, data) {
   io.to(`user:${userId}`).emit(event, data);
 }
 
-// Send to organization
+// Helper: Send event to all users in an organization
 function sendToOrg(orgId, event, data) {
   io.to(`org:${orgId}`).emit(event, data);
 }
@@ -136,36 +157,44 @@ function sendToOrg(orgId, event, data) {
 
 ### Client with Authentication
 
+Pass the JWT token in the auth object when connecting. Handle token expiration by refreshing and reconnecting.
+
 ```javascript
+// Connect with authentication token
 const socket = io('http://localhost:3000', {
   auth: {
-    token: localStorage.getItem('accessToken'),
+    token: localStorage.getItem('accessToken'),  // Sent with handshake
   },
 });
 
-// Handle token refresh
+// Handle authentication errors (token expired or invalid)
 socket.on('connect_error', async (error) => {
   if (error.message === 'Invalid token') {
-    // Refresh token
+    // Token expired - refresh it
     const newToken = await refreshAccessToken();
-    socket.auth.token = newToken;
-    socket.connect();
+    socket.auth.token = newToken;  // Update token for next connection
+    socket.connect();               // Retry connection
   }
 });
 ```
 
 ## Rooms for Channels
 
+Rooms allow grouping sockets for targeted broadcasting. Use them for chat channels, document collaboration, or any feature where messages go to a subset of connected users.
+
 ```javascript
 io.on('connection', (socket) => {
-  // Join a chat room
+  // Join a chat room (e.g., chat channel, document, game)
   socket.on('join-room', (roomId) => {
-    // Validate user can join this room
+    // Always validate permissions before allowing room join
     if (!canUserJoinRoom(socket.user, roomId)) {
       return socket.emit('error', { message: 'Access denied' });
     }
 
+    // Join the room
     socket.join(roomId);
+
+    // Notify other room members (not the joining user)
     socket.to(roomId).emit('user-joined', {
       userId: socket.user.id,
       username: socket.user.name,
@@ -174,17 +203,18 @@ io.on('connection', (socket) => {
     console.log(`User ${socket.user.id} joined room ${roomId}`);
   });
 
-  // Leave a room
+  // Leave a room explicitly
   socket.on('leave-room', (roomId) => {
     socket.leave(roomId);
+    // Notify remaining room members
     socket.to(roomId).emit('user-left', {
       userId: socket.user.id,
     });
   });
 
-  // Message to room
+  // Send message to a room
   socket.on('room-message', ({ roomId, message }) => {
-    // Verify user is in room
+    // Security: verify sender is actually in the room
     if (!socket.rooms.has(roomId)) {
       return socket.emit('error', { message: 'Not in room' });
     }
@@ -196,12 +226,14 @@ io.on('connection', (socket) => {
       timestamp: new Date().toISOString(),
     };
 
+    // Send to all room members INCLUDING the sender
     io.to(roomId).emit('room-message', payload);
   });
 
-  // Handle disconnect - leave all rooms
+  // Clean up on disconnect - notify all rooms
   socket.on('disconnect', () => {
     for (const room of socket.rooms) {
+      // Skip the default room (socket's own ID)
       if (room !== socket.id) {
         socket.to(room).emit('user-left', {
           userId: socket.user.id,
@@ -214,7 +246,7 @@ io.on('connection', (socket) => {
 
 ## Horizontal Scaling with Redis Adapter
 
-Single Socket.io server can't scale horizontally because clients connected to different servers can't communicate. The Redis adapter solves this:
+A single Socket.io server cannot scale horizontally because clients connected to different servers cannot communicate with each other. The Redis adapter uses pub/sub to relay messages between servers, enabling true horizontal scaling.
 
 ```bash
 npm install @socket.io/redis-adapter redis
@@ -229,33 +261,37 @@ async function setupSocketIO(httpServer) {
     cors: { origin: '*' },
   });
 
-  // Create Redis clients for pub/sub
+  // Create two Redis clients: one for publishing, one for subscribing
+  // This is required because a Redis client in subscribe mode cannot publish
   const pubClient = createClient({
     url: process.env.REDIS_URL,
   });
-  const subClient = pubClient.duplicate();
+  const subClient = pubClient.duplicate();  // Clone with same config
 
+  // Connect both clients
   await Promise.all([pubClient.connect(), subClient.connect()]);
 
-  // Use Redis adapter
+  // Attach Redis adapter - all io.emit() calls now go through Redis
   io.adapter(createAdapter(pubClient, subClient));
 
   return io;
 }
 
-// Now you can run multiple Socket.io servers
-// All messages are broadcast via Redis pub/sub
+// With Redis adapter, you can run multiple Socket.io servers
+// A message emitted on Server A reaches clients connected to Server B
+// This works because all servers subscribe to the same Redis channels
 ```
 
 ### Sticky Sessions for Load Balancer
 
-With multiple servers, clients must consistently connect to the same server (for HTTP polling fallback):
+Socket.io starts with HTTP polling then upgrades to WebSocket. Both requests must reach the same server or the upgrade fails. Use sticky sessions (session affinity) to route all requests from a client to the same backend.
 
 **NGINX Configuration:**
 
 ```nginx
+# Define upstream servers with sticky sessions
 upstream socketio {
-    ip_hash;  # Sticky sessions based on client IP
+    ip_hash;  # Route based on client IP - same IP always goes to same server
     server app1:3000;
     server app2:3000;
     server app3:3000;
@@ -264,17 +300,22 @@ upstream socketio {
 server {
     listen 80;
 
+    # Handle Socket.io traffic
     location /socket.io/ {
         proxy_pass http://socketio;
+
+        # Required for WebSocket upgrade
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+
+        # Forward client information
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # WebSocket timeout
+        # Keep WebSocket connections alive for 24 hours
         proxy_read_timeout 86400;
     }
 }
@@ -282,24 +323,25 @@ server {
 
 ## Connection State Recovery
 
-Handle reconnections gracefully:
+Socket.io 4.6+ supports automatic state recovery after brief disconnections. The server remembers room memberships and pending messages, restoring state when the client reconnects.
 
 ```javascript
-// Server
+// Server - enable connection state recovery
 const io = new Server(httpServer, {
   connectionStateRecovery: {
-    maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
-    skipMiddlewares: true, // Skip auth on recovery
+    maxDisconnectionDuration: 2 * 60 * 1000, // Recover connections up to 2 minutes old
+    skipMiddlewares: true, // Skip auth middleware on recovery (already validated)
   },
 });
 
 io.on('connection', (socket) => {
   if (socket.recovered) {
-    // Connection was recovered
+    // Client reconnected within the recovery window
+    // Room memberships are automatically restored
     console.log(`User ${socket.user?.id} reconnected`);
-    // Rooms are automatically restored
+    // Any messages emitted during disconnection are delivered now
   } else {
-    // New connection
+    // Brand new connection - run normal setup
     console.log('New connection');
   }
 });
@@ -307,7 +349,7 @@ io.on('connection', (socket) => {
 
 ## Presence System
 
-Track online users:
+Track which users are online across multiple servers. Store presence in Redis so any server can check user status. Handle users with multiple connections (multiple tabs/devices).
 
 ```javascript
 // presence.js

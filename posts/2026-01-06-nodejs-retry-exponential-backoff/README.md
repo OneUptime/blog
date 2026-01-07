@@ -21,6 +21,8 @@ Network calls fail. Services go down. Timeouts happen. Retry logic makes your No
 
 ## Basic Retry Implementation
 
+This simple retry function uses exponential backoff - each retry waits twice as long as the previous one. A max delay cap prevents excessive waits.
+
 ```javascript
 async function retry(fn, options = {}) {
   const {
@@ -74,9 +76,13 @@ const result = await retry(
 
 ## Adding Jitter
 
-Jitter prevents multiple clients from retrying at the same time:
+Jitter prevents multiple clients from retrying at the same time (thundering herd problem). When many clients fail simultaneously, they would all retry at the same intervals without jitter, overwhelming the recovering service. Jitter adds randomness to spread out retries.
 
 ```javascript
+// Calculate delay with different jitter strategies
+// 'full' jitter: completely random between 0 and max delay
+// 'equal' jitter: half fixed, half random for more predictable bounds
+// 'decorrelated' jitter: AWS-style approach with wider variation
 function calculateDelay(baseDelay, attempt, options = {}) {
   const { factor = 2, maxDelay = 30000, jitter = 'full' } = options;
 
@@ -142,7 +148,11 @@ async function retryWithJitter(fn, options = {}) {
 
 ## Production-Ready Retry Class
 
+This comprehensive retry class handles real-world scenarios: HTTP status codes that indicate retryable errors, network error codes, and the Retry-After header that services use to tell clients when to retry. It also includes timeout handling using AbortController.
+
 ```javascript
+// Full-featured retry class for production use
+// Handles: network errors, HTTP status codes, Retry-After headers, timeouts
 class RetryableOperation {
   constructor(options = {}) {
     this.maxAttempts = options.maxAttempts || 3;
@@ -297,9 +307,13 @@ const data = await retry.execute(async ({ attempt, signal }) => {
 
 ## Circuit Breaker Pattern
 
-Circuit breakers prevent repeated calls to a failing service:
+Circuit breakers prevent repeated calls to a failing service by "opening" after a threshold of failures. Once open, calls fail immediately without hitting the service. After a timeout, the circuit enters "half-open" state to test if the service recovered. This protects both your application and the failing service.
 
 ```javascript
+// Circuit breaker with three states:
+// CLOSED: Normal operation, requests pass through
+// OPEN: Service is down, fail fast without calling
+// HALF_OPEN: Testing if service recovered with limited requests
 class CircuitBreaker {
   constructor(options = {}) {
     this.failureThreshold = options.failureThreshold || 5;
@@ -412,9 +426,11 @@ const data = await client.execute(async () => {
 
 ## Idempotency for Safe Retries
 
-Ensure retries don't cause duplicate side effects:
+When retrying operations that have side effects (like payments or creating records), you need idempotency to prevent duplicates. This class stores operation results by a unique key, so retrying the same operation returns the cached result instead of executing again.
 
 ```javascript
+// Idempotent retry wrapper that prevents duplicate side effects
+// Uses a key to track operations and return cached results on retry
 class IdempotentRetry {
   constructor(options = {}) {
     this.store = options.store || new Map(); // Use Redis in production
@@ -522,7 +538,11 @@ app.post('/payments', async (req, res) => {
 
 ## Retry with Timeout and Deadline
 
+Sometimes you need to retry until a deadline rather than a fixed number of attempts. This is useful for time-sensitive operations where you have a maximum acceptable latency. The retry loop continues as long as time remains, adjusting backoff delays to fit within the deadline.
+
 ```javascript
+// Deadline-based retry: keep trying until a time limit expires
+// Useful when you have an SLA or user-facing timeout to meet
 class DeadlineRetry {
   constructor(options = {}) {
     this.retry = new RetryableOperation(options);
@@ -591,9 +611,11 @@ const result = await deadlineRetry.executeUntilDeadline(
 
 ## Retry Metrics
 
-Track retry behavior for observability:
+Tracking retry behavior is essential for understanding system health. High retry rates may indicate upstream service issues, network problems, or misconfigured timeouts. These Prometheus metrics help you monitor retry patterns and set alerts.
 
 ```javascript
+// Prometheus metrics for retry observability
+// Track: total attempts, success/failure rates, and duration in retry loops
 const prometheus = require('prom-client');
 
 const retryAttempts = new prometheus.Counter({

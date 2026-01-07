@@ -97,35 +97,38 @@ Memorize this chain: **API → Scheduler → Kubelet → Pod.** Whenever somethi
 
 Let us run the same Node.js “quote API” from the Docker article. Namespaces keep the demo isolated from other workloads.
 
-Create a namespace:
+Create a namespace to isolate your demo workloads:
 
 ```bash
+# Namespaces provide logical separation between workloads
 kubectl create namespace demo
 ```
 
 Deployment YAML (`quote-api.yaml`):
+
+This Deployment tells Kubernetes to run 2 replicas of the quote-api container. The Deployment controller ensures that exactly 2 Pods are always running.
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: quote-api
-  namespace: demo
+  namespace: demo               # Deploy into the demo namespace
 spec:
-  replicas: 2
+  replicas: 2                   # Run 2 copies of this Pod
   selector:
     matchLabels:
-      app: quote-api
+      app: quote-api            # Find Pods with this label
   template:
     metadata:
       labels:
-        app: quote-api
+        app: quote-api          # Label applied to created Pods
     spec:
       containers:
         - name: api
           image: ghcr.io/example/quote-api:1.0.0
           ports:
-            - containerPort: 8080
+            - containerPort: 8080  # Port the container listens on
 ```
 
 Every section mirrors plain English:
@@ -134,10 +137,12 @@ Every section mirrors plain English:
 - `spec.replicas` declares how many copies you want.
 - `template.spec.containers` lists the image and ports.
 
-Apply it:
+Apply the manifest to create the Deployment in your cluster:
 
 ```bash
+# Create or update the Deployment from the YAML file
 kubectl apply -f quote-api.yaml
+# List Pods in the demo namespace - should show 2 Running Pods
 kubectl get pods -n demo
 ```
 
@@ -149,6 +154,8 @@ Pods receive random IPs that change every time they restart. A Service gives the
 
 `service.yaml`:
 
+A Service provides a stable DNS name and IP address for your Pods. It load-balances traffic across all Pods matching the label selector.
+
 ```yaml
 apiVersion: v1
 kind: Service
@@ -156,19 +163,22 @@ metadata:
   name: quote-api
   namespace: demo
 spec:
-  type: ClusterIP
+  type: ClusterIP               # Internal cluster IP (default type)
   selector:
-    app: quote-api
+    app: quote-api              # Route traffic to Pods with this label
   ports:
-    - port: 80
-      targetPort: 8080
+    - port: 80                  # Port the Service exposes
+      targetPort: 8080          # Port on the container to forward to
 ```
 
-Apply and test:
+Apply and test the Service using port-forwarding:
 
 ```bash
+# Create the Service
 kubectl apply -f service.yaml
+# Forward local port 8080 to Service port 80
 kubectl port-forward svc/quote-api -n demo 8080:80
+# In another terminal, test the endpoint
 curl http://localhost:8080
 ```
 
@@ -178,10 +188,12 @@ curl http://localhost:8080
 
 Rolling updates are the payoff: you edit one field, Kubernetes swaps out pods gradually, and users never see downtime.
 
-Update the image tag, then run:
+Update the image tag to trigger a rolling update. Kubernetes will gradually replace old Pods with new ones.
 
 ```bash
+# Update the container image - triggers a rolling update
 kubectl set image deployment/quote-api api=ghcr.io/example/quote-api:1.1.0 -n demo
+# Watch the rollout progress until all Pods are updated
 kubectl rollout status deployment/quote-api -n demo
 ```
 
@@ -198,6 +210,8 @@ Once the PVC is bound, pods mount it like a normal folder. If the pod reschedule
 
 ### Example: PostgreSQL with One Volume
 
+This example shows a StatefulSet running PostgreSQL with persistent storage. Unlike Deployments, StatefulSets give each Pod a stable identity and dedicated storage.
+
 ```yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -205,10 +219,10 @@ metadata:
   name: pg-data
   namespace: demo
 spec:
-  accessModes: [ReadWriteOnce]
+  accessModes: [ReadWriteOnce]    # Only one Pod can mount at a time
   resources:
     requests:
-      storage: 20Gi
+      storage: 20Gi               # Request 20GB of storage
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -216,7 +230,7 @@ metadata:
   name: pg
   namespace: demo
 spec:
-  serviceName: pg
+  serviceName: pg                 # Headless Service for DNS
   replicas: 1
   selector:
     matchLabels:
@@ -230,17 +244,17 @@ spec:
         - name: postgres
           image: postgres:16
           ports:
-            - containerPort: 5432
+            - containerPort: 5432   # PostgreSQL default port
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:
-                secretKeyRef:
+                secretKeyRef:       # Read password from a Secret
                   name: pg-secret
                   key: password
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql/data
-  volumeClaimTemplates:
+              mountPath: /var/lib/postgresql/data  # Where PostgreSQL stores data
+  volumeClaimTemplates:            # Creates a PVC for each Pod replica
     - metadata:
         name: data
       spec:
@@ -256,9 +270,10 @@ Key points, minus the jargon:
 2. The StatefulSet template mounts that disk at `/var/lib/postgresql/data`, so PostgreSQL writes real files there.
 3. If the pod restarts, Kubernetes reuses the same volume because the `volumeClaimTemplates` name matches.
 
-Create the referenced secret once with:
+Create the referenced secret before deploying the StatefulSet:
 
 ```bash
+# Create a Secret containing the PostgreSQL password
 kubectl create secret generic pg-secret --from-literal=password=supersecure -n demo
 ```
 

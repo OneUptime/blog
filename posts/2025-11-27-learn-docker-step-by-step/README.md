@@ -71,6 +71,9 @@ quote-api/
 ```
 
 `package.json`
+
+This file defines your Node.js project metadata and dependencies. The "express" package is a minimal web framework that makes it easy to create HTTP endpoints.
+
 ```json
 {
   "name": "quote-api",
@@ -86,41 +89,53 @@ quote-api/
 ```
 
 `server.js`
+
+This Express server creates a simple REST API that returns a random quote on each request. It reads the PORT from environment variables (useful for containers) and falls back to 8080 for local development.
+
 ```javascript
+// Import the Express framework for handling HTTP requests
 const express = require('express');
 const app = express();
+
+// Sample data - in a real app this might come from a database
 const quotes = [
   'Keep shipping. Iterate later.',
   'Logs tell you what happened; metrics tell you when.',
   'Backup plans are features, not chores.'
 ];
 
+// Define the root endpoint that returns a random quote as JSON
 app.get('/', (_req, res) => {
   const quote = quotes[Math.floor(Math.random() * quotes.length)];
   res.json({ quote });
 });
 
+// Use PORT from environment variable (container-friendly) or default to 8080
 const port = process.env.PORT || 8080;
 app.listen(port, () => console.log(`Listening on ${port}`));
 ```
 
 ### 2. Write the Dockerfile
 
+The Dockerfile defines how Docker builds your image layer by layer. Each instruction creates a new layer that gets cached, so ordering matters for build speed. We copy package files first so npm install only re-runs when dependencies change.
+
 ```dockerfile
-# Step 1: pick a base runtime
+# Step 1: Use Alpine-based Node.js for a smaller image (~50MB vs ~350MB)
 FROM node:22-alpine
 
-# Step 2: create app directory
+# Step 2: Set working directory - all subsequent commands run from here
 WORKDIR /app
 
-# Step 3: copy dependency manifests first for better caching
+# Step 3: Copy dependency manifests first (enables layer caching)
+# If package.json hasn't changed, Docker reuses the cached npm install layer
 COPY package*.json ./
 RUN npm install --only=production
 
-# Step 4: copy source code
+# Step 4: Copy application source code
+# This layer rebuilds whenever your code changes, but npm install stays cached
 COPY server.js ./
 
-# Step 5: document the port and run command
+# Step 5: Document the port (informational) and set the startup command
 EXPOSE 8080
 CMD ["node", "server.js"]
 ```
@@ -131,9 +146,11 @@ Key takeaways:
 
 ### 3. Build the Image
 
-Run from the project root:
+Run from the project root. The `-t` flag assigns a name and version tag to your image, and the `.` tells Docker to use the current directory as the build context.
 
 ```bash
+# Build the image and tag it with name:version
+# The dot (.) specifies the build context (current directory)
 docker build -t quote-api:1.0.0 .
 ```
 
@@ -141,7 +158,12 @@ You now have an immutable snapshot. Check it with `docker images quote-api`.
 
 ### 4. Run the Container
 
+This command starts a container from your image and maps port 8080 from inside the container to port 8080 on your machine, allowing you to access the API.
+
 ```bash
+# Run the container with port mapping
+# --rm: automatically remove container when it stops (keeps things clean)
+# -p 8080:8080: map host port 8080 to container port 8080
 docker run --rm -p 8080:8080 quote-api:1.0.0
 ```
 
@@ -157,18 +179,19 @@ docker run --rm -p 8080:8080 quote-api:1.0.0
 
 ### 6. Optional: Compose Adds a Database Later
 
-Once you understand the single-container flow, Docker Compose lets you describe multi-service setups declaratively:
+Once you understand the single-container flow, Docker Compose lets you describe multi-service setups declaratively. This single YAML file defines both your API and database, making the entire stack reproducible.
 
 ```yaml
+# docker-compose.yaml - defines multi-container applications
 services:
   api:
-    build: .
+    build: .                    # Build from Dockerfile in current directory
     ports:
-      - "8080:8080"
+      - "8080:8080"             # Expose API to host machine
   db:
-    image: postgres:16
+    image: postgres:16          # Use official PostgreSQL image
     environment:
-      POSTGRES_PASSWORD: example
+      POSTGRES_PASSWORD: example  # Required for PostgreSQL initialization
 ```
 
 Run `docker compose up` to get both containers in one command. The Compose file becomes shared documentation for teammates.

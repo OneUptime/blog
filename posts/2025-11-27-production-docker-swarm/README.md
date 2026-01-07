@@ -18,21 +18,23 @@ Swarm is still the easiest orchestrator to explain to ops teams that do not need
 
 ## 2. Rolling Updates with Health Checks
 
+This stack file configures zero-downtime deployments with automatic rollback if new containers fail health checks.
+
 ```yaml
 services:
   api:
     image: ghcr.io/acme/api:1.4.0
     deploy:
-      replicas: 6
+      replicas: 6                      # Run 6 instances across workers
       update_config:
-        parallelism: 2
-        order: start-first
-        failure_action: rollback
+        parallelism: 2                 # Update 2 containers at a time
+        order: start-first             # Start new before stopping old (zero downtime)
+        failure_action: rollback       # Auto-rollback if health checks fail
       healthcheck:
         test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
-        interval: 10s
-        timeout: 3s
-        retries: 3
+        interval: 10s                  # Check every 10 seconds
+        timeout: 3s                    # Fail if no response in 3 seconds
+        retries: 3                     # Mark unhealthy after 3 failures
 ```
 
 - `start-first` spins up a new task before stopping the old one (blue/green style).
@@ -44,38 +46,43 @@ services:
 2. **NFS/SMB** mounts via `driver_opts` for shared data.
 3. **CSI/third-party plugins** (Portworx, Rex-Ray) for cloud block storage.
 
-Example NFS volume:
+This example configures an NFS volume for PostgreSQL data that can be accessed by containers on any node in the swarm.
 
 ```yaml
 volumes:
   pgdata:
     driver_opts:
-      type: "nfs"
-      o: "addr=10.0.0.5,nolock,hard,timeo=600,retrans=3"
-      device: ":/exports/pgdata"
+      type: "nfs"                                   # Use NFS filesystem
+      o: "addr=10.0.0.5,nolock,hard,timeo=600,retrans=3"  # NFS mount options
+      device: ":/exports/pgdata"                    # NFS export path on server
 ```
 
 Document recovery steps: how to remount, how to rebuild nodes, where backups live.
 
 ## 4. Secrets and Configs
 
+Swarm provides built-in secrets management. Secrets are encrypted at rest and only available to services that need them.
+
 ```bash
+# Create a secret from stdin (pipe to avoid shell history)
 echo "supersecret" | docker secret create pg_password -
+
+# Create a config from a file (non-sensitive configuration)
 docker config create app_settings config/prod.yaml
 ```
 
-Reference them in stacks:
+Reference them in stacks to securely inject credentials and configuration files.
 
 ```yaml
 services:
   api:
     secrets:
-      - source: pg_password
-        target: pg_password
-        mode: 0400
+      - source: pg_password           # Reference the secret by name
+        target: pg_password           # Path inside container: /run/secrets/pg_password
+        mode: 0400                    # Read-only, owner only (secure)
     configs:
-      - source: app_settings
-        target: /app/config.yaml
+      - source: app_settings          # Reference the config by name
+        target: /app/config.yaml      # Mount at this path in the container
 ```
 
 Secrets mount as tmpfs, automatically scoped per service.

@@ -22,7 +22,10 @@ Document the mapping (team, namespace, owner) in Git to keep everyone aligned.
 
 ## 2. Create the Namespaces
 
+Create separate namespaces for each environment to isolate workloads. Each namespace acts as a virtual cluster with its own resource quotas, network policies, and RBAC bindings.
+
 ```bash
+# Create the three environment namespaces
 kubectl create namespace dev
 kubectl create namespace stage
 kubectl create namespace prod
@@ -31,8 +34,11 @@ kubectl create namespace prod
 Add labels so policies and automation can react to environment type:
 
 ```bash
+# Loop through each namespace and apply consistent labels/annotations
 for ns in dev stage prod; do
+  # Label helps NetworkPolicies and admission controllers identify environment
   kubectl label namespace "$ns" env="$ns" --overwrite
+  # Annotation tracks ownership for auditing
   kubectl annotate namespace "$ns" owner="platform-team" --overwrite
 done
 ```
@@ -43,26 +49,31 @@ Create a Role per namespace with only the verbs each team needs. Example: allow 
 
 `roles/dev-admin.yaml`
 
+This Role grants full CRUD permissions on common resources within the `dev` namespace only. Roles are namespace-scoped, so these permissions do not leak into stage or prod.
+
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  namespace: dev
+  namespace: dev                    # Role only applies within this namespace
   name: dev-admin
 rules:
-  - apiGroups: [""]
+  - apiGroups: [""]                 # Core API group (pods, services, etc.)
     resources: ["pods", "services", "configmaps", "secrets"]
     verbs: ["get", "list", "watch", "create", "update", "delete"]
-  - apiGroups: ["apps"]
+  - apiGroups: ["apps"]             # apps API group (deployments, etc.)
     resources: ["deployments", "statefulsets", "daemonsets"]
     verbs: ["get", "list", "watch", "create", "update", "delete"]
 ```
 
-Apply per namespace:
+Apply each Role to its corresponding namespace:
 
 ```bash
+# Full access for developers in dev
 kubectl apply -f roles/dev-admin.yaml
+# Similar role for stage (adjust verbs as needed)
 kubectl apply -f roles/stage-admin.yaml
+# Read-only for prod to prevent accidental changes
 kubectl apply -f roles/prod-readonly.yaml
 ```
 
@@ -74,26 +85,28 @@ Use RoleBindings so permissions stay namespace-scoped. Reference SSO groups (e.g
 
 `bindings/dev-admins.yaml`
 
+A RoleBinding connects a Role to users, groups, or service accounts. This binding grants the `dev-admin` Role to everyone in the `corp:k8s-devs` SSO group, but only within the `dev` namespace.
+
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: dev-admins
-  namespace: dev
+  namespace: dev                    # Binding is scoped to this namespace
 subjects:
   - kind: Group
-    name: corp:k8s-devs
+    name: corp:k8s-devs             # SSO/OIDC group from your identity provider
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: dev-admin
+  name: dev-admin                   # References the Role defined above
 ```
 
 Repeat for stage/prod with the correct groups. For automated workloads (e.g., GitHub Actions runner), create service accounts per namespace and bind them to custom Roles with only the verbs their deployments require.
 
 ## 5. Grant Cluster-Wide Read Access Safely
 
-Most engineers need to list namespaces or nodes while debugging. Use a limited `ClusterRole` + `ClusterRoleBinding` for read-only access:
+Most engineers need to list namespaces or nodes while debugging. This ClusterRole grants read-only access across all namespaces and resource types, making troubleshooting possible without risking accidental changes.
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -101,19 +114,21 @@ kind: ClusterRole
 metadata:
   name: cluster-readonly
 rules:
-  - apiGroups: ["*"]
-    resources: ["*"]
-    verbs: ["get", "list", "watch"]
+  - apiGroups: ["*"]                # All API groups
+    resources: ["*"]                # All resources (pods, nodes, secrets, etc.)
+    verbs: ["get", "list", "watch"] # Read-only verbs only
 ```
 
 Then bind to a `Group` such as `corp:k8s-viewers`. Pair this with namespace-specific RoleBindings for write actions so prod remains protected.
 
 ## 6. Verify Isolation with `kubectl auth can-i`
 
-Run checks from each user context:
+These commands test whether your current credentials (or an impersonated user) can perform specific actions. Run them to verify your RBAC rules work as intended before relying on them in production.
 
 ```bash
+# Should return "yes" for dev admins
 kubectl auth can-i delete deployments --namespace=dev
+# Should return "no" for dev admins (they only have read access to prod)
 kubectl auth can-i delete deployments --namespace=prod
 ```
 
@@ -121,10 +136,12 @@ Expect `yes` in dev for admin groups and `no` elsewhere. Automate these checks i
 
 ## 7. Automate Namespace Defaults
 
-Set per-context default namespaces so accidental `kubectl apply` commands do not hit prod:
+Set per-context default namespaces so accidental `kubectl apply` commands do not hit prod. Each context binds a cluster, user, and default namespace together.
 
 ```bash
+# Create a dev context that defaults to the dev namespace
 kubectl config set-context dev --cluster=cluster --user=dev --namespace=dev
+# Create a prod context - requires explicit switch to use
 kubectl config set-context prod --cluster=cluster --user=prod --namespace=prod
 ```
 

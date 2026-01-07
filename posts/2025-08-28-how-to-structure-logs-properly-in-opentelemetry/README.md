@@ -26,8 +26,10 @@ Traditional logging often produces isolated events that are difficult to correla
 
 ### The Problem with Unstructured Logs
 
+These unstructured log statements demonstrate the common anti-pattern of embedding data directly into message strings. When you need to analyze thousands of these logs, you can't filter by user, query duration ranges, or error types without complex regex parsing.
+
 ```typescript
-// ❌ Traditional unstructured logging
+// ❌ Traditional unstructured logging - hard to query and analyze
 console.log("User login failed for john@example.com with invalid password");
 console.log("Database query took 150ms for user lookup");
 console.log("Payment processing failed - card declined");
@@ -37,27 +39,30 @@ These logs lack context, correlation, and structure- making them nearly impossib
 
 ### The OpenTelemetry Solution
 
+Structured logging separates the log message from its data attributes. Each piece of information becomes a queryable field, enabling you to filter logs by user email, duration thresholds, error codes, or any combination of attributes.
+
 ```typescript
 // ✅ Structured logging with OpenTelemetry
+// Each attribute is a separate queryable field in your observability platform
 logger.info("User authentication failed", {
-  "user.email": "john@example.com",
-  "auth.failure_reason": "invalid_password",
-  "auth.attempt_count": 3,
-  "user.ip_address": "192.168.1.100"
+  "user.email": "john@example.com",       // Queryable: find all logs for a specific user
+  "auth.failure_reason": "invalid_password", // Filter by failure type
+  "auth.attempt_count": 3,                // Alert when attempts exceed threshold
+  "user.ip_address": "192.168.1.100"      // Track suspicious IPs
 });
 
 logger.debug("Database query executed", {
-  "db.operation": "SELECT",
-  "db.table": "users",
-  "db.duration_ms": 150,
-  "db.query_hash": "abc123"
+  "db.operation": "SELECT",               // Group by operation type
+  "db.table": "users",                    // Filter by table
+  "db.duration_ms": 150,                  // Create latency percentile charts
+  "db.query_hash": "abc123"               // Identify slow query patterns
 });
 
 logger.error("Payment processing failed", {
-  "payment.amount_usd": 99.99,
-  "payment.method": "credit_card",
-  "payment.failure_code": "card_declined",
-  "order.id": "order-789"
+  "payment.amount_usd": 99.99,            // Calculate failed payment volume
+  "payment.method": "credit_card",        // Analyze failures by method
+  "payment.failure_code": "card_declined", // Group by failure reason
+  "order.id": "order-789"                 // Correlate with order details
 });
 ```
 
@@ -66,6 +71,8 @@ logger.error("Payment processing failed", {
 ## Setting Up OpenTelemetry Logging in Node.js
 
 ### Installation
+
+Install the OpenTelemetry SDK along with auto-instrumentation packages and Winston for logging. The auto-instrumentations package automatically captures telemetry from common Node.js libraries.
 
 ```bash
 npm install @opentelemetry/api \
@@ -78,8 +85,10 @@ npm install @opentelemetry/api \
 
 ### Basic OpenTelemetry Logging Setup
 
+This configuration initializes OpenTelemetry with log export to an OTLP endpoint. The key integration is the `WinstonInstrumentation` which automatically injects trace and span IDs into every Winston log entry, enabling correlation between logs and distributed traces.
+
 ```typescript
-// telemetry.ts
+// telemetry.ts - Initialize OpenTelemetry with logging support
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPLogExporter } from '@opentelemetry/exporter-otlp-http';
@@ -88,23 +97,24 @@ import { Resource } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { WinstonInstrumentation } from '@opentelemetry/instrumentation-winston';
 
-// Create an OTLP HTTP exporter for logs
+// Configure OTLP exporter to send logs to your observability backend
 const logExporter = new OTLPLogExporter({
-  url: 'https://oneuptime.com/otlp/v1/logs',
+  url: 'https://oneuptime.com/otlp/v1/logs',  // OTLP HTTP endpoint
   headers: {
-    'x-oneuptime-token': process.env.ONEUPTIME_OTLP_TOKEN,
+    'x-oneuptime-token': process.env.ONEUPTIME_OTLP_TOKEN,  // Auth token
   },
 });
 
-// Create a log processor with the OTLP exporter
+// Batch processor improves performance by grouping logs before sending
 const logProcessor = new BatchLogRecordProcessor(logExporter, {
-  exportTimeoutMillis: 5000,
-  maxExportBatchSize: 100,
-  scheduledDelayMillis: 2000,
+  exportTimeoutMillis: 5000,      // Max time to wait for export
+  maxExportBatchSize: 100,        // Max logs per batch
+  scheduledDelayMillis: 2000,     // Time between batch exports
 });
 
-// Initialize the SDK with logging support
+// Initialize the OpenTelemetry SDK with service metadata and instrumentations
 const sdk = new NodeSDK({
+  // Resource attributes identify your service in the observability platform
   resource: new Resource({
     [SemanticResourceAttributes.SERVICE_NAME]: 'my-node-app',
     [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
@@ -112,11 +122,14 @@ const sdk = new NodeSDK({
     [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
   }),
   instrumentations: [
+    // Auto-instrument common Node.js libraries (http, express, pg, etc.)
     getNodeAutoInstrumentations(),
+    // Winston instrumentation automatically adds trace context to logs
     new WinstonInstrumentation({
-      // Enable correlation with traces
+      // logHook runs for each log entry within an active span
       logHook: (span, record) => {
         if (span && span.spanContext().traceId) {
+          // Inject trace IDs for log-to-trace correlation
           record['trace_id'] = span.spanContext().traceId;
           record['span_id'] = span.spanContext().spanId;
         }
@@ -126,7 +139,7 @@ const sdk = new NodeSDK({
   logRecordProcessor: logProcessor,
 });
 
-// Start the SDK
+// Start telemetry collection - call this before your app starts
 sdk.start();
 
 console.log('OpenTelemetry logging initialized with OneUptime OTLP exporter');
@@ -134,23 +147,26 @@ console.log('OpenTelemetry logging initialized with OneUptime OTLP exporter');
 
 ### Winston Logger Configuration
 
+This Winston configuration creates a production-ready logger that automatically injects OpenTelemetry trace context. The custom `correlationFormat` extracts trace and span IDs from the active span, enabling you to click from a log entry directly to its distributed trace.
+
 ```typescript
-// logger.ts
+// logger.ts - Winston logger with OpenTelemetry trace correlation
 import winston from 'winston';
 import { trace, context } from '@opentelemetry/api';
 
-// Custom format for OpenTelemetry correlation
+// Custom Winston format that injects OpenTelemetry trace context
 const correlationFormat = winston.format((info) => {
-  // Get the active span to correlate logs with traces
+  // Look up the currently active span from OpenTelemetry context
   const activeSpan = trace.getActiveSpan();
   if (activeSpan) {
     const spanContext = activeSpan.spanContext();
-    info.trace_id = spanContext.traceId;
-    info.span_id = spanContext.spanId;
-    info.trace_flags = spanContext.traceFlags;
+    // These IDs enable log-to-trace correlation in your observability UI
+    info.trace_id = spanContext.traceId;   // Links to distributed trace
+    info.span_id = spanContext.spanId;     // Links to specific operation
+    info.trace_flags = spanContext.traceFlags;  // Sampling decision
   }
 
-  // Add service information
+  // Include service metadata for filtering in multi-service environments
   info.service = {
     name: process.env.SERVICE_NAME || 'my-node-app',
     version: process.env.SERVICE_VERSION || '1.0.0',
@@ -160,31 +176,34 @@ const correlationFormat = winston.format((info) => {
   return info;
 });
 
-// Create the Winston logger with OpenTelemetry integration
+// Create Winston logger with combined formatting and multiple transports
 const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
+  level: process.env.LOG_LEVEL || 'info',  // Configurable via environment
   format: winston.format.combine(
+    // ISO 8601 timestamp for consistent time parsing
     winston.format.timestamp({
       format: 'YYYY-MM-DDTHH:mm:ss.SSSZ'
     }),
-    correlationFormat(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
+    correlationFormat(),                    // Inject trace context
+    winston.format.errors({ stack: true }), // Include stack traces for errors
+    winston.format.json()                   // Output as JSON for parsing
   ),
   defaultMeta: {
-    component: 'application'
+    component: 'application'  // Default field added to all logs
   },
   transports: [
+    // Console transport with colors for local development
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
         winston.format.simple()
       )
     }),
+    // File transport with rotation for production
     new winston.transports.File({
       filename: 'logs/app.log',
-      maxsize: 10000000, // 10MB
-      maxFiles: 5,
+      maxsize: 10000000,  // Rotate at 10MB
+      maxFiles: 5,        // Keep 5 rotated files
     }),
   ],
 });
@@ -198,37 +217,44 @@ export { logger };
 
 ### 1. Trace and Span Correlation
 
-The most powerful feature of OpenTelemetry logging is automatic correlation with traces and spans:
+The most powerful feature of OpenTelemetry logging is automatic correlation with traces and spans. This `StructuredLogger` class provides methods that automatically extract trace context from the current execution and attach it to log entries, enabling seamless navigation between logs and traces.
 
 ```typescript
-// structured-logger.ts
+// structured-logger.ts - Logger wrapper with automatic trace correlation
 import { logger } from './logger';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 export class StructuredLogger {
-  // Log within an active span context
+  /**
+   * Log a message with automatic trace context from the active span.
+   * Use this for all logging within traced operations.
+   */
   static logInSpan(level: string, message: string, attributes: Record<string, any> = {}) {
     const activeSpan = trace.getActiveSpan();
-    
+
     if (activeSpan) {
-      // Add span context to log attributes
+      // Extract trace context for correlation in observability UI
       const spanContext = activeSpan.spanContext();
-      attributes.trace_id = spanContext.traceId;
-      attributes.span_id = spanContext.spanId;
-      
-      // Add span information
+      attributes.trace_id = spanContext.traceId;  // Links to distributed trace
+      attributes.span_id = spanContext.spanId;    // Links to specific span
+
+      // Include span name for context without querying traces
       attributes.span_name = activeSpan.getAttributes()['span.name'] || 'unknown';
     }
-    
+
+    // Delegate to Winston logger with enriched attributes
     logger[level](message, attributes);
   }
 
-  // Log with explicit correlation
+  /**
+   * Log with explicit trace correlation IDs.
+   * Use when logging outside of an active span context (e.g., from queued jobs).
+   */
   static logWithCorrelation(
-    level: string, 
-    message: string, 
-    traceId: string, 
-    spanId: string, 
+    level: string,
+    message: string,
+    traceId: string,
+    spanId: string,
     attributes: Record<string, any> = {}
   ) {
     logger[level](message, {
@@ -238,18 +264,21 @@ export class StructuredLogger {
     });
   }
 
-  // Business event logging with correlation
+  /**
+   * Log business domain events with consistent structure.
+   * Use for important business milestones: user signups, orders, payments, etc.
+   */
   static logBusinessEvent(
-    event: string, 
-    entityType: string, 
-    entityId: string, 
+    event: string,
+    entityType: string,
+    entityId: string,
     attributes: Record<string, any> = {}
   ) {
     this.logInSpan('info', `Business event: ${event}`, {
-      event_type: 'business',
-      event_name: event,
-      entity_type: entityType,
-      entity_id: entityId,
+      event_type: 'business',     // Differentiates from technical logs
+      event_name: event,          // e.g., 'user_created', 'order_placed'
+      entity_type: entityType,    // e.g., 'user', 'order', 'payment'
+      entity_id: entityId,        // Primary key of the entity
       ...attributes,
     });
   }
@@ -258,25 +287,30 @@ export class StructuredLogger {
 
 ### 2. Semantic Attributes and Conventions
 
-Follow OpenTelemetry semantic conventions for consistent attribute naming:
+OpenTelemetry defines semantic conventions for common telemetry attributes. Using these standard names ensures consistency across services, languages, and teams. This `SemanticLogger` class wraps common operations with properly named attributes.
 
 ```typescript
-// semantic-logging.ts
+// semantic-logging.ts - Logging helpers using OpenTelemetry semantic conventions
 import { StructuredLogger } from './structured-logger';
 import { SemanticAttributes } from '@opentelemetry/semantic-conventions';
 
 export class SemanticLogger {
-  // HTTP request logging
+  /**
+   * Log HTTP request completion with standard semantic attributes.
+   * Captures method, URL, status, timing, and size for request analysis.
+   */
   static logHttpRequest(req: any, res: any, duration: number, error?: Error) {
     const attributes = {
-      [SemanticAttributes.HTTP_METHOD]: req.method,
-      [SemanticAttributes.HTTP_URL]: req.url,
-      [SemanticAttributes.HTTP_STATUS_CODE]: res.statusCode,
+      // Standard OTel semantic attributes for HTTP
+      [SemanticAttributes.HTTP_METHOD]: req.method,       // GET, POST, etc.
+      [SemanticAttributes.HTTP_URL]: req.url,             // Full request URL
+      [SemanticAttributes.HTTP_STATUS_CODE]: res.statusCode,  // 200, 404, 500, etc.
       [SemanticAttributes.HTTP_RESPONSE_SIZE]: res.get('content-length') || 0,
       [SemanticAttributes.HTTP_REQUEST_SIZE]: req.get('content-length') || 0,
       [SemanticAttributes.USER_AGENT_ORIGINAL]: req.get('user-agent'),
-      'http.duration_ms': duration,
-      'http.route': req.route?.path,
+      // Custom attributes for latency analysis
+      'http.duration_ms': duration,                       // Request processing time
+      'http.route': req.route?.path,                      // Route pattern for grouping
     };
 
     if (error) {
@@ -289,7 +323,10 @@ export class SemanticLogger {
     }
   }
 
-  // Database operation logging
+  /**
+   * Log database operations with semantic attributes.
+   * Enables query performance analysis and error tracking by table/operation.
+   */
   static logDatabaseOperation(
     operation: string,
     table: string,
@@ -298,10 +335,11 @@ export class SemanticLogger {
     error?: Error
   ) {
     const attributes = {
-      [SemanticAttributes.DB_OPERATION]: operation,
-      [SemanticAttributes.DB_SQL_TABLE]: table,
-      'db.duration_ms': duration,
-      'db.rows_affected': rowsAffected || 0,
+      // Standard OTel semantic attributes for databases
+      [SemanticAttributes.DB_OPERATION]: operation,  // SELECT, INSERT, UPDATE, DELETE
+      [SemanticAttributes.DB_SQL_TABLE]: table,      // Table name for filtering
+      'db.duration_ms': duration,                    // Query execution time
+      'db.rows_affected': rowsAffected || 0,         // For mutation tracking
     };
 
     if (error) {
@@ -309,11 +347,15 @@ export class SemanticLogger {
       attributes.error_message = error.message;
       StructuredLogger.logInSpan('error', 'Database operation failed', attributes);
     } else {
+      // Use debug level for routine DB operations to reduce noise
       StructuredLogger.logInSpan('debug', 'Database operation completed', attributes);
     }
   }
 
-  // User action logging
+  /**
+   * Log user actions for audit trails and behavior analysis.
+   * Use for significant user interactions like logins, settings changes, etc.
+   */
   static logUserAction(
     userId: string,
     action: string,
@@ -321,10 +363,10 @@ export class SemanticLogger {
     metadata: Record<string, any> = {}
   ) {
     StructuredLogger.logInSpan('info', 'User action performed', {
-      'user.id': userId,
-      'user.action': action,
-      'user.resource': resource,
-      event_type: 'user_action',
+      'user.id': userId,           // Who performed the action
+      'user.action': action,       // What they did (e.g., 'login', 'update_profile')
+      'user.resource': resource,   // What they acted on
+      event_type: 'user_action',   // Categorize for filtering
       ...metadata,
     });
   }
@@ -333,8 +375,10 @@ export class SemanticLogger {
 
 ### 3. Express.js Middleware Integration
 
+This middleware automatically logs every HTTP request with timing, trace correlation, and the request ID that's returned to clients. It wraps `res.end` to capture the response after the route handler completes, enabling accurate duration measurement.
+
 ```typescript
-// middleware/logging-middleware.ts
+// middleware/logging-middleware.ts - Automatic request logging for Express
 import { Request, Response, NextFunction } from 'express';
 import { SemanticLogger } from '../semantic-logging';
 import { trace, context } from '@opentelemetry/api';
@@ -393,8 +437,10 @@ function generateCorrelationId(): string {
 
 ### 1. Contextual Log Enrichment
 
+AsyncLocalStorage allows you to maintain request-scoped context without explicitly passing it through every function call. This enricher automatically adds user ID, tenant ID, and correlation IDs to all logs within a request's execution flow.
+
 ```typescript
-// context-enricher.ts
+// context-enricher.ts - Request-scoped logging context using AsyncLocalStorage
 import { AsyncLocalStorage } from 'async_hooks';
 import { logger } from './logger';
 
@@ -460,8 +506,10 @@ export function contextMiddleware(req: any, res: Response, next: NextFunction) {
 
 ### 2. Error Logging with Stack Traces
 
+This error logger not only captures error details in logs but also marks the active OpenTelemetry span as errored, ensuring errors appear in both your log search and trace analysis views with synchronized context.
+
 ```typescript
-// error-logging.ts
+// error-logging.ts - Unified error logging for logs and traces
 import { StructuredLogger } from './structured-logger';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 
@@ -527,8 +575,10 @@ export class ErrorLogger {
 
 ### 3. Performance Logging
 
+These performance helpers wrap operations with high-precision timing using `process.hrtime.bigint()`. They automatically log the operation duration on both success and failure, making it easy to identify slow operations and build performance dashboards.
+
 ```typescript
-// performance-logging.ts
+// performance-logging.ts - Timing helpers for operation performance tracking
 import { StructuredLogger } from './structured-logger';
 
 export class PerformanceLogger {
@@ -608,8 +658,10 @@ export class PerformanceLogger {
 
 ### 1. User Service with Comprehensive Logging
 
+This real-world service demonstrates how to combine the logging utilities into a cohesive implementation. Notice how business events, database operations, and errors are all logged with consistent structure and automatic trace correlation.
+
 ```typescript
-// services/user-service.ts
+// services/user-service.ts - Example service with comprehensive structured logging
 import { SemanticLogger } from '../semantic-logging';
 import { ErrorLogger } from '../error-logging';
 import { PerformanceLogger } from '../performance-logging';
@@ -776,8 +828,10 @@ export class UserService {
 
 ### 2. API Route with Full Logging
 
+This Express route handler shows the complete pattern: creating a span for the request, logging at the start and end, setting span attributes for trace analysis, and ensuring errors are properly captured and logged.
+
 ```typescript
-// routes/users.ts
+// routes/users.ts - API endpoint with full observability integration
 import { Router, Request, Response } from 'express';
 import { UserService } from '../services/user-service';
 import { ContextEnricher } from '../context-enricher';

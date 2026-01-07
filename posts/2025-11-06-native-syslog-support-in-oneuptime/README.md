@@ -29,19 +29,23 @@ The native syslog endpoint lives alongside our OpenTelemetry pipeline, so you st
 2. **Send syslog payloads** to `https://oneuptime.com/syslog/v1/logs` (replace the hostname if you self-host). We accept newline-delimited text, JSON arrays, or gzipped payloads.
 3. **Optionally specify the service name** with `x-oneuptime-service-name`. Otherwise we fall back to the syslog `APP-NAME`, hostname, or a default `Syslog` service.
 
-Quick sanity check with `curl`:
+Test the integration with a quick `curl` command. This sends a sample RFC5424 syslog message with structured data to verify your setup works before configuring production systems:
 
 ```bash
+# Send a test syslog message to OneUptime
+# The message format follows RFC5424: <PRI>VERSION TIMESTAMP HOSTNAME APP-NAME PROCID MSGID [STRUCTURED-DATA] MSG
 curl \
   -X POST https://oneuptime.com/syslog/v1/logs \
   -H "Content-Type: application/json" \
-  -H "x-oneuptime-token: <YOUR_TELEMETRY_KEY>" \
-  -H "x-oneuptime-service-name: prod-network" \
+  -H "x-oneuptime-token: <YOUR_TELEMETRY_KEY>" \       # Your telemetry ingestion key
+  -H "x-oneuptime-service-name: prod-network" \        # Service name for filtering in UI
   -d '{
     "messages": [
       "<134>1 2025-11-06T02:12:04Z edge-fw-01 paloalto 4021 0 [event@32473 src=192.0.2.10 dst=198.51.100.8 action=allow] SSL inbound inspection active"
     ]
   }'
+# PRI 134 = facility 16 (local0) + severity 6 (info)
+# Structured data [event@32473 ...] contains firewall event details
 ```
 
 Behind the scenes, OneUptime parses each message, stores the original raw line in `syslog.raw`, and adds attributes like `syslog.severity.name`, `syslog.facility.name`, `syslog.appName`, and any structured values present. Those attributes are queryable without extra parsing steps.
@@ -52,50 +56,67 @@ Behind the scenes, OneUptime parses each message, stores the original raw line i
 
 ### 1. Network and security appliances
 
-Most network gear still exposes configuration changes, ACL hits, and threat detections exclusively over syslog. Point your existing relay (Palo Alto, Fortinet, Cisco ASA, Juniper, pfSense, and more) directly to OneUptime, or keep an internal relay and forward over HTTPS:
+Most network gear still exposes configuration changes, ACL hits, and threat detections exclusively over syslog. Point your existing relay (Palo Alto, Fortinet, Cisco ASA, Juniper, pfSense, and more) directly to OneUptime, or keep an internal relay and forward over HTTPS.
+
+The following rsyslog configuration uses the HTTP output module to batch syslog messages into JSON format and forward them securely to OneUptime. Add this to your rsyslog config (e.g., `/etc/rsyslog.d/oneuptime.conf`):
 
 ```bash
-# rsyslog snippet that batches messages into JSON and posts to OneUptime
+# rsyslog configuration for forwarding to OneUptime
+# Requires rsyslog 8.x+ with omhttp module
+
+# Load the HTTP output module for HTTPS forwarding
 module(load="omhttp")
 
+# Define JSON template that wraps raw syslog messages
+# This format matches OneUptime's expected payload structure
 template(name="OneUptimeJSON" type="list") {
   constant(value="{\"messages\":[\"")
-  property(name="rawmsg")
+  property(name="rawmsg")              # Include the full raw syslog line
   constant(value="\"]}")
 }
 
+# Forward all messages to OneUptime via HTTPS
 action(
   type="omhttp"
   server="oneuptime.com"
   serverport="443"
-  usehttps="on"
-  endpoint="/syslog/v1/logs"
+  usehttps="on"                        # Enable TLS encryption
+  endpoint="/syslog/v1/logs"           # Syslog ingestion endpoint
   header="Content-Type: application/json"
-  header="x-oneuptime-token: <TOKEN>"
-  header="x-oneuptime-service-name: perimeter-firewall"
-  template="OneUptimeJSON"
+  header="x-oneuptime-token: <TOKEN>"  # Replace with your ingestion key
+  header="x-oneuptime-service-name: perimeter-firewall"  # Identifies the source
+  template="OneUptimeJSON"             # Use our JSON wrapper template
 )
 ```
 
 ### 2. Linux servers and cron jobs
 
-Many cron jobs and legacy daemons still log solely through the kernel/syslog facility. Forwarding `/var/log/syslog` or journald entries keeps operational breadcrumbs in one place. Systemd hosts can rely on the journald → syslog bridge:
+Many cron jobs and legacy daemons still log solely through the kernel/syslog facility. Forwarding `/var/log/syslog` or journald entries keeps operational breadcrumbs in one place. Systemd hosts can rely on the journald → syslog bridge.
+
+This configuration reads logs from systemd's journal and forwards them to OneUptime, capturing logs from all services on the host:
 
 ```bash
 # /etc/rsyslog.d/oneuptime.conf
+# Forward systemd journal entries to OneUptime
+
+# Import journal entries into rsyslog
+# StateFile tracks the read position for reliable delivery
 module(load="imjournal" StateFile="imjournal.state")
+
+# Load HTTP output module for HTTPS forwarding
 module(load="omhttp")
 
+# Forward all journal entries to OneUptime
 action(
   type="omhttp"
   server="oneuptime.com"
   serverport="443"
-  usehttps="on"
+  usehttps="on"                        # Secure transport
   endpoint="/syslog/v1/logs"
   header="Content-Type: application/json"
-  header="x-oneuptime-token: <TOKEN>"
-  header="x-oneuptime-service-name: linux-fleet"
-  template="OneUptimeJSON"
+  header="x-oneuptime-token: <TOKEN>"  # Your ingestion key
+  header="x-oneuptime-service-name: linux-fleet"  # Groups all Linux hosts
+  template="OneUptimeJSON"             # Use the JSON template defined earlier
 )
 ```
 
@@ -103,27 +124,34 @@ Because we map severity codes, you can alert on `syslog.severity.name = "error"`
 
 ### 3. Kubernetes ingress controllers and edge nodes
 
-If you already run Fluent Bit or Fluentd, keep them for container logs and add a lightweight syslog sink for hosts or appliances at the edge. Fluent Bit’s `syslog` input pairs with the HTTP output:
+If you already run Fluent Bit or Fluentd, keep them for container logs and add a lightweight syslog sink for hosts or appliances at the edge. Fluent Bit's `syslog` input pairs with the HTTP output.
+
+This Fluent Bit configuration listens for syslog messages on TCP port 5140 and forwards them to OneUptime. Deploy this as a DaemonSet to collect syslog from bare-metal nodes or as a standalone receiver for network appliances:
 
 ```ini
-[INPUT]
-    Name              syslog
-    Mode              tcp
-    Listen            0.0.0.0
-    Port              5140
+# Fluent Bit configuration for syslog forwarding to OneUptime
+# Save as fluent-bit.conf
 
+# INPUT: Listen for incoming syslog messages
+[INPUT]
+    Name              syslog         # Use the syslog input plugin
+    Mode              tcp            # Accept TCP connections (use 'udp' for UDP)
+    Listen            0.0.0.0        # Listen on all interfaces
+    Port              5140           # Standard syslog-over-TCP port
+
+# OUTPUT: Forward to OneUptime via HTTPS
 [OUTPUT]
-    Name              http
-    Match             *
-    Host              oneuptime.com
-    Port              443
+    Name              http           # HTTP output plugin
+    Match             *              # Forward all messages
+    Host              oneuptime.com  # OneUptime endpoint
+    Port              443            # HTTPS port
     URI               /syslog/v1/logs
-    Format            json
-    json_date_key     time
+    Format            json           # Send as JSON payload
+    json_date_key     time           # Include timestamp in JSON
     Header            Content-Type application/json
-    Header            x-oneuptime-token <TOKEN>
-    Header            x-oneuptime-service-name edge-ingress
-    tls               On
+    Header            x-oneuptime-token <TOKEN>      # Your ingestion key
+    Header            x-oneuptime-service-name edge-ingress  # Service identifier
+    tls               On             # Enable TLS encryption
 ```
 
 This setup lets you ingest syslog from bare-metal workers or hardware load balancers without creating another logging stack.
