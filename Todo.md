@@ -549,3 +549,101 @@ A comprehensive list of Istio blog topics covering installation, traffic managem
 - [ ] 44. **How to Optimize Istio for gRPC Services** - HTTP/2 tuning, load balancing, and health checks
 
 ---
+
+# MetalLB "How to" Blog Topics
+
+A comprehensive list of MetalLB blog topics covering installation, configuration, traffic management, high availability, troubleshooting, and integration with observability tools for bare-metal Kubernetes clusters.
+
+---
+
+## 🚀 Installation & Setup
+
+- [ ] 1. **How to Install MetalLB on Bare-Metal Kubernetes with kubeadm** - Step-by-step installation using manifests or Helm on production clusters
+- [ ] 2. **How to Install MetalLB with Helm for GitOps Workflows** - Declarative installation with Helm charts and ArgoCD/Flux integration
+- [ ] 3. **How to Migrate from kube-proxy NodePort to MetalLB LoadBalancer** - Transitioning services from NodePort to proper load balancing
+- [ ] 4. **How to Configure MetalLB with K3s for Lightweight Kubernetes** - MetalLB setup for edge and IoT Kubernetes deployments
+
+---
+
+## 🔧 Configuration & IP Management
+
+- [ ] 5. **How to Configure Multiple IP Address Pools in MetalLB** - Organizing IP pools by environment, team, or service type
+- [ ] 6. **How to Request Specific IP Addresses from MetalLB** - Using loadBalancerIP and annotations for static IP assignment
+- [ ] 7. **How to Share IP Addresses Across Multiple Services in MetalLB** - IP sharing with service selectors for efficient IP utilization
+- [ ] 8. **How to Configure MetalLB with IPv6 and Dual-Stack Networking** - Setting up IPv6-only and dual-stack load balancing
+- [ ] 9. **How to Manage MetalLB IP Pools with Custom Resource Definitions** - IPAddressPool and L2Advertisement configuration deep dive
+
+---
+
+## 🌐 Layer 2 Mode
+
+- [ ] 10. **How to Configure MetalLB Layer 2 Mode for Simple Load Balancing** - ARP-based load balancing without BGP complexity
+- [ ] 11. **How to Troubleshoot MetalLB Layer 2 ARP Issues** - Debugging IP conflicts, ARP storms, and failover delays
+- [ ] 12. **How to Configure L2Advertisement for Subnet-Specific Announcements** - Targeting specific interfaces and networks for L2 mode
+- [ ] 13. **How to Handle MetalLB Layer 2 Failover and Leader Election** - Understanding speaker pod behavior and failover timing
+
+---
+
+## 📡 BGP Mode
+
+- [ ] 14. **How to Configure MetalLB BGP Mode for Production Load Balancing** - BGP peering with routers for true ECMP load balancing
+- [ ] 15. **How to Integrate MetalLB with FRRouting (FRR) for BGP** - Setting up BGP sessions with FRR on bare-metal infrastructure
+- [ ] 16. **How to Configure MetalLB BGP with Multiple Upstream Routers** - Redundant BGP peering for high availability
+- [ ] 17. **How to Use BGP Communities with MetalLB for Traffic Engineering** - Tagging routes for policy-based routing decisions
+- [ ] 18. **How to Configure MetalLB BGPPeer with BFD for Fast Failover** - Bidirectional Forwarding Detection for sub-second failover
+
+---
+
+## 🛡️ High Availability & Resilience
+
+- [ ] 19. **How to Configure MetalLB for High Availability Across Multiple Nodes** - Speaker pod distribution and node failure handling
+- [ ] 20. **How to Set Up MetalLB with External Traffic Policy Local** - Preserving client IP addresses and avoiding extra hops
+- [ ] 21. **How to Configure Health Checks for MetalLB-Exposed Services** - Ensuring traffic only goes to healthy endpoints
+- [ ] 22. **How to Handle MetalLB During Kubernetes Node Maintenance** - Graceful draining and IP address migration
+
+---
+
+## 📊 Observability & Monitoring
+
+- [ ] 23. **How to Monitor MetalLB with Prometheus and Grafana** - Metrics collection, alerting rules, and dashboard setup
+- [ ] 24. **How to Integrate MetalLB Metrics with OneUptime** - Centralized observability for load balancer health
+- [ ] 25. **How to Debug MetalLB with Speaker Logs and Events** - Troubleshooting IP assignment and advertisement issues
+- [ ] 26. **How to Set Up Alerts for MetalLB IP Pool Exhaustion** - Proactive monitoring for IP address availability
+
+---
+
+## 🔐 Security & Network Policies
+
+- [ ] 27. **How to Secure MetalLB with Kubernetes Network Policies** - Restricting access to load-balanced services
+- [ ] 28. **How to Configure MetalLB with Calico for Advanced Network Policies** - Combining MetalLB with Calico BGP and policies
+- [ ] 29. **How to Use MetalLB with Cilium for eBPF-Based Load Balancing** - Integrating MetalLB announcements with Cilium datapath
+
+---
+
+## 🛠️ Troubleshooting & Debugging
+
+- [ ] 30. **How to Troubleshoot MetalLB Services Stuck in Pending State** - Diagnosing IP allocation failures and configuration errors
+- [ ] 31. **How to Debug MetalLB BGP Session Failures** - Common BGP peering issues and resolution steps
+- [ ] 32. **How to Diagnose MetalLB Traffic Not Reaching Pods** - Tracing network path from external clients to pods
+- [ ] 33. **How to Recover from MetalLB IP Address Conflicts** - Handling duplicate IP assignments and external conflicts
+
+---
+
+## 🔌 Integration Guides
+
+- [ ] 34. **How to Use MetalLB with Ingress-NGINX for External Access** - Combining MetalLB with Ingress controllers for HTTP routing
+- [ ] 35. **How to Configure MetalLB with Istio Ingress Gateway** - Exposing Istio mesh services with MetalLB
+- [ ] 36. **How to Set Up MetalLB with HAProxy Ingress Controller** - Alternative ingress controller integration
+- [ ] 37. **How to Use MetalLB with cert-manager for Automated TLS** - End-to-end TLS setup for bare-metal services
+- [ ] 38. **How to Configure MetalLB for Multi-Cluster Load Balancing** - Cross-cluster service discovery and failover
+
+---
+
+## ⚡ Performance & Optimization
+
+- [ ] 39. **How to Optimize MetalLB for High-Throughput Workloads** - Tuning for maximum packets per second
+- [ ] 40. **How to Benchmark MetalLB Layer 2 vs BGP Mode Performance** - Measuring latency and throughput differences
+- [ ] 41. **How to Configure MetalLB Speaker Resource Limits** - CPU and memory tuning for speaker pods
+- [ ] 42. **How to Reduce MetalLB Failover Time in Production** - Minimizing service disruption during node failures
+
+---
