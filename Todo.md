@@ -399,3 +399,63 @@ A comprehensive list of OpenTelemetry blog topics covering language-specific ins
 - [ ] 24. **How to Export OpenTelemetry Data to Multiple Destinations Simultaneously** - Multi-vendor strategies and data routing patterns
 
 ---
+
+# eBPF "How to" Blog Topics
+
+A comprehensive list of eBPF blog topics covering security, networking, observability, profiling, development, and Kubernetes integration.
+
+---
+
+## 🔐 Security & Runtime Protection
+
+- [ ] 1. **How to Detect Container Escapes with eBPF and Falco** - Runtime threat detection for Kubernetes
+- [ ] 2. **How to Implement Runtime Application Self-Protection (RASP) with eBPF** - Blocking exploits at the kernel level
+- [ ] 3. **How to Audit System Calls with eBPF for Compliance** - Tracking file access, network connections, and privilege escalation
+- [ ] 4. **How to Block Malicious Network Traffic with eBPF XDP** - DDoS mitigation and packet filtering at wire speed
+
+---
+
+## 🌐 Networking
+
+- [ ] 5. **How to Replace iptables with eBPF for Kubernetes Networking (Cilium)** - Modern CNI without kube-proxy
+- [ ] 6. **How to Implement Service Mesh Without Sidecars Using eBPF** - Cilium service mesh vs Istio/Linkerd
+- [ ] 7. **How to Debug Kubernetes Network Issues with eBPF Tools** - Using pwru, retsnoop, and Hubble
+- [ ] 8. **How to Load Balance at Layer 4 with eBPF XDP** - High-performance load balancing without userspace
+
+---
+
+## 📊 Observability & Profiling
+
+- [ ] 9. **How to Profile Production Applications with eBPF Continuous Profilers** - Pyroscope, Parca, and Polar Signals setup
+- [ ] 10. **How to Trace Syscalls and Function Latency with bpftrace** - One-liners for debugging production issues
+- [ ] 11. **How to Monitor TCP Retransmits and Network Latency with eBPF** - Detecting network degradation before users do
+- [ ] 12. **How to Collect Kernel-Level Metrics with eBPF for Prometheus** - Custom exporters without overhead
+
+---
+
+## 🛠️ Development & Tooling
+
+- [ ] 13. **How to Write Your First eBPF Program with libbpf and C** - Hello world for kernel tracing
+- [ ] 14. **How to Build eBPF Tools in Go with cilium/ebpf** - The modern Go library for eBPF development
+- [ ] 15. **How to Build eBPF Tools in Rust with Aya** - Memory-safe eBPF development
+- [ ] 16. **How to Debug eBPF Programs with bpftool and Verifier Errors** - Troubleshooting common eBPF issues
+
+---
+
+## ☸️ Kubernetes & Cloud Native
+
+- [ ] 17. **How to Enforce Kubernetes Network Policies with eBPF (Cilium)** - Zero-trust networking at scale
+- [ ] 18. **How to Implement Kubernetes Pod Security with eBPF** - Tetragon for runtime enforcement
+- [ ] 19. **How to Monitor Kubernetes DNS with eBPF** - Tracing CoreDNS queries without packet capture
+- [ ] 20. **How to Reduce Kubernetes Sidecar Overhead with eBPF** - Observability without proxy containers
+
+---
+
+## ⚡ Performance & Optimization
+
+- [ ] 21. **How to Identify Slow Disk I/O with eBPF** - Block layer tracing with biolatency and biosnoop
+- [ ] 22. **How to Find Memory Allocation Hotspots with eBPF** - Heap profiling without instrumentation
+- [ ] 23. **How to Trace Lock Contention with eBPF** - Finding mutex and spinlock bottlenecks
+- [ ] 24. **How to Measure Function Execution Time with eBPF uprobes** - Application-level tracing without code changes
+
+---
