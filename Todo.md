@@ -275,3 +275,67 @@ A comprehensive list of Ubuntu-focused blog topics covering system administratio
 - [ ] 44. **How to Set Up Ansible for Ubuntu Server Automation**
 
 ---
+
+# Ceph "How to" Blog Topics
+
+A comprehensive list of Ceph blog topics covering installation, operations, performance tuning, data management, security, and troubleshooting for bare-metal and Kubernetes environments.
+
+---
+
+## 🚀 Installation & Setup
+
+- [ ] 1. **How to Deploy Ceph with Rook on Bare-Metal Kubernetes** - Step-by-step installation, disk provisioning, and initial cluster configuration
+- [ ] 2. **How to Set Up a Ceph Cluster on Ubuntu for Production** - Manual deployment with cephadm for standalone or non-Kubernetes environments
+- [ ] 3. **How to Configure Ceph CSI Driver for Dynamic Volume Provisioning** - StorageClasses, PVCs, and RBD/CephFS integration
+
+---
+
+## 🔧 Operations & Management
+
+- [ ] 4. **How to Monitor Ceph Cluster Health with Prometheus and Grafana** - Metrics collection, alerting rules, and dashboard setup
+- [ ] 5. **How to Expand a Ceph Cluster by Adding New OSDs** - Adding disks and nodes without downtime
+- [ ] 6. **How to Replace a Failed OSD in Ceph Without Data Loss** - Recovery procedures and rebalancing strategies
+- [ ] 7. **How to Configure Ceph CRUSH Maps for Failure Domain Isolation** - Rack, host, and datacenter-aware placement rules
+
+---
+
+## ⚡ Performance Tuning
+
+- [ ] 8. **How to Tune Ceph for SSD and NVMe Storage** - BlueStore configuration, cache sizing, and WAL/DB placement
+- [ ] 9. **How to Optimize Ceph RBD Performance for Database Workloads** - Block size tuning, caching, and IOPS optimization
+- [ ] 10. **How to Benchmark Ceph Storage with fio and rados bench** - Performance testing and bottleneck identification
+
+---
+
+## 💾 Data Management
+
+- [ ] 11. **How to Set Up Ceph Object Storage (RGW) as an S3 Alternative** - S3-compatible storage with bucket policies and user management
+- [ ] 12. **How to Configure CephFS for Shared File Storage in Kubernetes** - Multi-pod ReadWriteMany volumes with metadata server setup
+- [ ] 13. **How to Implement Ceph Snapshots and Clones for Data Protection** - RBD snapshots, CephFS snapshots, and backup strategies
+- [ ] 14. **How to Replicate Ceph Data Across Datacenters with RBD Mirroring** - Disaster recovery and geo-redundancy
+
+---
+
+## 🔐 Security & Hardening
+
+- [ ] 15. **How to Secure Ceph with Encryption at Rest** - dm-crypt integration and key management
+- [ ] 16. **How to Configure Ceph Authentication with Cephx** - User creation, capability management, and key rotation
+- [ ] 17. **How to Implement Network Isolation for Ceph Public and Cluster Networks** - VLAN separation and firewall rules
+
+---
+
+## 🛠️ Troubleshooting & Recovery
+
+- [ ] 18. **How to Troubleshoot Common Ceph Cluster Issues** - Slow OSDs, placement groups stuck, and health warnings
+- [ ] 19. **How to Recover a Ceph Cluster from OSD Failures** - Data recovery procedures and pg repair
+- [ ] 20. **How to Debug Ceph Performance Issues with ceph tell and ceph daemon** - Real-time diagnostics and profiling
+
+---
+
+## 🔌 Integration Guides
+
+- [ ] 21. **How to Integrate Ceph with OpenTelemetry for Observability** - Tracing and metrics for storage operations
+- [ ] 22. **How to Back Up Kubernetes PVCs to Ceph Object Storage with Velero** - Backup and restore workflows
+- [ ] 23. **How to Run PostgreSQL on Ceph RBD with High Availability** - Database storage best practices on Ceph
+
+---
