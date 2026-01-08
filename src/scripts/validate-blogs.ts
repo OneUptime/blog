@@ -8,7 +8,8 @@
  * 2. Each Blogs.json entry has a corresponding directory in posts/
  * 3. Each blog post has a README.md with correct format (Title, Author, Tags, Description)
  * 4. Each blog post has a social-media.png image
- * 5. Generates Tags.md automatically from all tags in Blogs.json (sorted alphabetically)
+ * 5. Sorts Blogs.json by date (oldest first, newest last)
+ * 6. Generates Tags.md automatically from all tags in Blogs.json (sorted alphabetically)
  *
  * Run with: npm run validate
  */
@@ -284,6 +285,38 @@ function generateTagsMd(blogsJson: BlogEntry[]): void {
 }
 
 /**
+ * Extract date from post field (format: YYYY-MM-DD-title)
+ */
+function extractDateFromPost(post: string): Date {
+  const match = post.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) {
+    return new Date(match[1]);
+  }
+  // Return a very old date if no date found, so it goes to the beginning
+  return new Date('1970-01-01');
+}
+
+/**
+ * Sort Blogs.json by date (oldest first, newest last) and save
+ */
+function sortBlogsByDate(blogsJson: BlogEntry[]): BlogEntry[] {
+  logHeader('Sorting Blogs.json by date');
+
+  const sortedBlogs = [...blogsJson].sort((a, b) => {
+    const dateA = extractDateFromPost(a.post);
+    const dateB = extractDateFromPost(b.post);
+    return dateA.getTime() - dateB.getTime();
+  });
+
+  // Write sorted blogs back to Blogs.json
+  fs.writeFileSync(BLOGS_JSON, JSON.stringify(sortedBlogs, null, 2) + '\n', 'utf8');
+
+  logSuccess(`Sorted ${BLOGS_JSON} by date (oldest first, newest last)`);
+
+  return sortedBlogs;
+}
+
+/**
  * Validate all blog posts format
  */
 function validateAllPosts(postsDir: string[]): BlogIssue[] {
@@ -395,10 +428,13 @@ function main(): void {
 
   // Read Blogs.json
   const blogsJson = readBlogsJson();
-  const blogPosts = blogsJson.map((b) => b.post);
+
+  // Sort Blogs.json by date (oldest first, newest last)
+  const sortedBlogs = sortBlogsByDate(blogsJson);
+  const blogPosts = sortedBlogs.map((b) => b.post);
 
   // Generate Tags.md from Blogs.json
-  generateTagsMd(blogsJson);
+  generateTagsMd(sortedBlogs);
 
   // Get all directories in posts/
   const postsDir = getPostDirectories();
