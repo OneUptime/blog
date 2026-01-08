@@ -8,6 +8,7 @@
  * 2. Each Blogs.json entry has a corresponding directory in posts/
  * 3. Each blog post has a README.md with correct format (Title, Author, Tags, Description)
  * 4. Each blog post has a social-media.png image
+ * 5. Generates Tags.md automatically from all tags in Blogs.json (sorted alphabetically)
  *
  * Run with: npm run validate
  */
@@ -18,6 +19,7 @@ import * as path from 'path';
 // Constants
 const POSTS_DIR = 'posts';
 const BLOGS_JSON = 'Blogs.json';
+const TAGS_MD = 'Tags.md';
 
 // Types
 interface BlogEntry {
@@ -252,6 +254,36 @@ function checkSocialMedia(dir: string): FormatIssue | null {
 }
 
 /**
+ * Extract all unique tags from Blogs.json and generate Tags.md
+ */
+function generateTagsMd(blogsJson: BlogEntry[]): void {
+  logHeader('Generating Tags.md');
+
+  // Extract all tags from all blog entries
+  const allTags: Set<string> = new Set();
+  for (const blog of blogsJson) {
+    if (blog.tags && Array.isArray(blog.tags)) {
+      for (const tag of blog.tags) {
+        allTags.add(tag);
+      }
+    }
+  }
+
+  // Sort tags alphabetically (case-insensitive)
+  const sortedTags = Array.from(allTags).sort((a, b) =>
+    a.toLowerCase().localeCompare(b.toLowerCase())
+  );
+
+  // Generate Tags.md content
+  const content = `# Tags\n\n${sortedTags.map((tag) => `- ${tag}`).join('\n')}\n`;
+
+  // Write to Tags.md
+  fs.writeFileSync(TAGS_MD, content, 'utf8');
+
+  logSuccess(`Generated ${TAGS_MD} with ${sortedTags.length} unique tags`);
+}
+
+/**
  * Validate all blog posts format
  */
 function validateAllPosts(postsDir: string[]): BlogIssue[] {
@@ -364,6 +396,9 @@ function main(): void {
   // Read Blogs.json
   const blogsJson = readBlogsJson();
   const blogPosts = blogsJson.map((b) => b.post);
+
+  // Generate Tags.md from Blogs.json
+  generateTagsMd(blogsJson);
 
   // Get all directories in posts/
   const postsDir = getPostDirectories();
