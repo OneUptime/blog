@@ -51,12 +51,12 @@ Observability is critical for maintaining reliable systems. Here's where costs c
 
 #### Complete Observability Platforms
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[OneUptime](https://github.com/OneUptime/oneuptime)** | Complete observability platform with monitoring, status pages, incident management, on-call scheduling, and OpenTelemetry support | Full observability stack in one platform | 4.5k+ |
-| **[SigNoz](https://github.com/SigNoz/signoz)** | Full-stack APM with traces, metrics, and logs | Teams wanting a Datadog alternative | 18k+ |
-| **[Grafana Stack](https://github.com/grafana/grafana)** | Visualization platform that integrates with multiple data sources | Teams building custom observability | 65k+ |
-| **[Uptrace](https://github.com/uptrace/uptrace)** | APM with distributed tracing and metrics | OpenTelemetry-native teams | 3k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[OneUptime](https://github.com/OneUptime/oneuptime)** | Complete observability platform with monitoring, status pages, incident management, on-call scheduling, and OpenTelemetry support | Full observability stack in one platform |
+| **[SigNoz](https://github.com/SigNoz/signoz)** | Full-stack APM with traces, metrics, and logs | Teams wanting a Datadog alternative |
+| **[Grafana Stack](https://github.com/grafana/grafana)** | Visualization platform that integrates with multiple data sources | Teams building custom observability |
+| **[Uptrace](https://github.com/uptrace/uptrace)** | APM with distributed tracing and metrics | OpenTelemetry-native teams |
 
 #### Metrics & Time-Series Databases
 
@@ -101,15 +101,15 @@ Observability is critical for maintaining reliable systems. Here's where costs c
 
 Understanding how users interact with your product is crucial for making data-driven decisions.
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[PostHog](https://github.com/PostHog/posthog)** | Product analytics, session recording, feature flags, A/B testing | All-in-one product analytics | 20k+ |
-| **[Plausible](https://github.com/plausible/analytics)** | Privacy-friendly website analytics | GDPR-compliant analytics | 20k+ |
-| **[Umami](https://github.com/umami-software/umami)** | Simple, fast, privacy-focused analytics | Website analytics | 22k+ |
-| **[Matomo](https://github.com/matomo-org/matomo)** | Google Analytics alternative | Enterprise analytics | 20k+ |
-| **[Countly](https://github.com/Countly/countly-server)** | Product analytics for mobile and web | Mobile app analytics | 5k+ |
-| **[OpenReplay](https://github.com/openreplay/openreplay)** | Session replay and product analytics | Debugging user issues | 9k+ |
-| **[Fathom Lite](https://github.com/usefathom/fathom)** | Simple website analytics | Privacy-first websites | 8k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[PostHog](https://github.com/PostHog/posthog)** | Product analytics, session recording, feature flags, A/B testing | All-in-one product analytics |
+| **[Plausible](https://github.com/plausible/analytics)** | Privacy-friendly website analytics | GDPR-compliant analytics |
+| **[Umami](https://github.com/umami-software/umami)** | Simple, fast, privacy-focused analytics | Website analytics |
+| **[Matomo](https://github.com/matomo-org/matomo)** | Google Analytics alternative | Enterprise analytics |
+| **[Countly](https://github.com/Countly/countly-server)** | Product analytics for mobile and web | Mobile app analytics |
+| **[OpenReplay](https://github.com/openreplay/openreplay)** | Session replay and product analytics | Debugging user issues |
+| **[Fathom Lite](https://github.com/usefathom/fathom)** | Simple website analytics | Privacy-first websites |
 
 **Recommended Stack:** PostHog for product analytics + Plausible for public website analytics.
 
@@ -133,13 +133,13 @@ Ship features safely with controlled rollouts and experimentation.
 
 Manage customer relationships without expensive per-seat licenses.
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[Twenty](https://github.com/twentyhq/twenty)** | Modern CRM, Salesforce alternative | Modern teams wanting flexibility | 20k+ |
-| **[Erxes](https://github.com/erxes/erxes)** | Growth marketing and CRM platform | Marketing-focused CRM | 3k+ |
-| **[SuiteCRM](https://github.com/salesagility/SuiteCRM)** | Enterprise-ready CRM | Enterprise sales teams | 4k+ |
-| **[Krayin](https://github.com/krayin/laravel-crm)** | Laravel-based CRM | PHP developers | 10k+ |
-| **[Monica](https://github.com/monicahq/monica)** | Personal relationship manager | Small teams and individuals | 21k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[Twenty](https://github.com/twentyhq/twenty)** | Modern CRM, Salesforce alternative | Modern teams wanting flexibility |
+| **[Erxes](https://github.com/erxes/erxes)** | Growth marketing and CRM platform | Marketing-focused CRM |
+| **[SuiteCRM](https://github.com/salesagility/SuiteCRM)** | Enterprise-ready CRM | Enterprise sales teams |
+| **[Krayin](https://github.com/krayin/laravel-crm)** | Laravel-based CRM | PHP developers |
+| **[Monica](https://github.com/monicahq/monica)** | Personal relationship manager | Small teams and individuals |
 
 **Recommended:** Twenty for modern teams, SuiteCRM for enterprise features.
 
@@ -149,14 +149,14 @@ Manage customer relationships without expensive per-seat licenses.
 
 Provide excellent customer support without per-agent pricing.
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[Chatwoot](https://github.com/chatwoot/chatwoot)** | Omnichannel customer engagement | Multi-channel support | 21k+ |
-| **[Zammad](https://github.com/zammad/zammad)** | Web-based help desk and ticketing | IT service management | 4k+ |
-| **[Peppermint](https://github.com/Peppermint-Lab/peppermint)** | Ticket management system | Small support teams | 1.5k+ |
-| **[FreeScout](https://github.com/freescout-helpdesk/freescout)** | Help Scout alternative | Email-based support | 3k+ |
-| **[osTicket](https://github.com/osTicket/osTicket)** | Widely-used support ticket system | Traditional helpdesk | 3k+ |
-| **[UVDesk](https://github.com/uvdesk/community-skeleton)** | Helpdesk and support system | E-commerce support | 8k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[Chatwoot](https://github.com/chatwoot/chatwoot)** | Omnichannel customer engagement | Multi-channel support |
+| **[Zammad](https://github.com/zammad/zammad)** | Web-based help desk and ticketing | IT service management |
+| **[Peppermint](https://github.com/Peppermint-Lab/peppermint)** | Ticket management system | Small support teams |
+| **[FreeScout](https://github.com/freescout-helpdesk/freescout)** | Help Scout alternative | Email-based support |
+| **[osTicket](https://github.com/osTicket/osTicket)** | Widely-used support ticket system | Traditional helpdesk |
+| **[UVDesk](https://github.com/uvdesk/community-skeleton)** | Helpdesk and support system | E-commerce support |
 
 **Recommended:** Chatwoot for modern omnichannel support, Zammad for IT service management.
 
@@ -189,15 +189,15 @@ Replace Slack and Microsoft Teams with open alternatives.
 
 Organize work without expensive per-user pricing.
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[Plane](https://github.com/makeplane/plane)** | Modern project management (Jira alternative) | Agile teams | 30k+ |
-| **[Taiga](https://github.com/taigaio/taiga)** | Agile project management | Scrum/Kanban teams | 13k+ |
-| **[Focalboard](https://github.com/mattermost/focalboard)** | Notion/Trello alternative | Personal and team boards | 21k+ |
-| **[Leantime](https://github.com/Leantime/leantime)** | Strategic project management | Non-technical stakeholders | 4k+ |
-| **[Vikunja](https://github.com/go-vikunja/vikunja)** | Todo and task management | Personal task management | 1k+ |
-| **[OpenProject](https://github.com/opf/openproject)** | Enterprise project management | Large organizations | 9k+ |
-| **[WeKan](https://github.com/wekan/wekan)** | Kanban board | Simple Kanban workflows | 19k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[Plane](https://github.com/makeplane/plane)** | Modern project management (Jira alternative) | Agile teams |
+| **[Taiga](https://github.com/taigaio/taiga)** | Agile project management | Scrum/Kanban teams |
+| **[Focalboard](https://github.com/mattermost/focalboard)** | Notion/Trello alternative | Personal and team boards |
+| **[Leantime](https://github.com/Leantime/leantime)** | Strategic project management | Non-technical stakeholders |
+| **[Vikunja](https://github.com/go-vikunja/vikunja)** | Todo and task management | Personal task management |
+| **[OpenProject](https://github.com/opf/openproject)** | Enterprise project management | Large organizations |
+| **[WeKan](https://github.com/wekan/wekan)** | Kanban board | Simple Kanban workflows |
 
 **Recommended:** Plane for modern agile teams, OpenProject for enterprise project management.
 
@@ -233,12 +233,12 @@ Reach your audience without per-contact pricing.
 
 #### Email Marketing
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[Listmonk](https://github.com/knadh/listmonk)** | High-performance newsletter and mailing list | Newsletters | 15k+ |
-| **[Mautic](https://github.com/mautic/mautic)** | Marketing automation platform | Full marketing automation | 7k+ |
-| **[Postal](https://github.com/postalserver/postal)** | Mail delivery platform | Transactional email | 14k+ |
-| **[Mailtrain](https://github.com/Mailtrain-org/mailtrain)** | Newsletter app | Simple newsletters | 6k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[Listmonk](https://github.com/knadh/listmonk)** | High-performance newsletter and mailing list | Newsletters |
+| **[Mautic](https://github.com/mautic/mautic)** | Marketing automation platform | Full marketing automation |
+| **[Postal](https://github.com/postalserver/postal)** | Mail delivery platform | Transactional email |
+| **[Mailtrain](https://github.com/Mailtrain-org/mailtrain)** | Newsletter app | Simple newsletters |
 
 #### Transactional Email
 
@@ -287,16 +287,16 @@ The foundation of your application data.
 
 Secure your applications with modern authentication.
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[Keycloak](https://github.com/keycloak/keycloak)** | Identity and access management | Enterprise SSO | 23k+ |
-| **[Authentik](https://github.com/goauthentik/authentik)** | Identity provider and SSO | Modern identity management | 13k+ |
-| **[Authelia](https://github.com/authelia/authelia)** | Authentication and authorization server | Self-hosted SSO | 21k+ |
-| **[Ory](https://github.com/ory/kratos)** | Identity infrastructure (Kratos, Hydra, Keto) | Microservices auth | 11k+ |
-| **[SuperTokens](https://github.com/supertokens/supertokens-core)** | Open-source Auth0 alternative | Application auth | 13k+ |
-| **[Logto](https://github.com/logto-io/logto)** | Auth0 alternative with beautiful UI | Consumer apps | 9k+ |
-| **[Zitadel](https://github.com/zitadel/zitadel)** | Identity management platform | B2B applications | 9k+ |
-| **[Casdoor](https://github.com/casdoor/casdoor)** | UI-first identity platform | Quick deployment | 10k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[Keycloak](https://github.com/keycloak/keycloak)** | Identity and access management | Enterprise SSO |
+| **[Authentik](https://github.com/goauthentik/authentik)** | Identity provider and SSO | Modern identity management |
+| **[Authelia](https://github.com/authelia/authelia)** | Authentication and authorization server | Self-hosted SSO |
+| **[Ory](https://github.com/ory/kratos)** | Identity infrastructure (Kratos, Hydra, Keto) | Microservices auth |
+| **[SuperTokens](https://github.com/supertokens/supertokens-core)** | Open-source Auth0 alternative | Application auth |
+| **[Logto](https://github.com/logto-io/logto)** | Auth0 alternative with beautiful UI | Consumer apps |
+| **[Zitadel](https://github.com/zitadel/zitadel)** | Identity management platform | B2B applications |
+| **[Casdoor](https://github.com/casdoor/casdoor)** | UI-first identity platform | Quick deployment |
 
 **Recommended:** Keycloak for enterprise, Authentik for modern teams, SuperTokens for applications.
 
@@ -346,13 +346,13 @@ Automate your development workflows.
 
 Host your code and manage contributions.
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[Gitea](https://github.com/go-gitea/gitea)** | Lightweight Git service | Self-hosted GitHub | 45k+ |
-| **[GitLab](https://gitlab.com/gitlab-org/gitlab)** | Complete DevOps platform | Full DevOps lifecycle | 24k+ |
-| **[Forgejo](https://codeberg.org/forgejo/forgejo)** | Community-driven Gitea fork | Community governance | 5k+ |
-| **[OneDev](https://github.com/theonedev/onedev)** | Git server with CI/CD | All-in-one solution | 13k+ |
-| **[Gogs](https://github.com/gogs/gogs)** | Painless self-hosted Git | Minimal resource usage | 45k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[Gitea](https://github.com/go-gitea/gitea)** | Lightweight Git service | Self-hosted GitHub |
+| **[GitLab](https://gitlab.com/gitlab-org/gitlab)** | Complete DevOps platform | Full DevOps lifecycle |
+| **[Forgejo](https://codeberg.org/forgejo/forgejo)** | Community-driven Gitea fork | Community governance |
+| **[OneDev](https://github.com/theonedev/onedev)** | Git server with CI/CD | All-in-one solution |
+| **[Gogs](https://github.com/gogs/gogs)** | Painless self-hosted Git | Minimal resource usage |
 
 ---
 
@@ -392,13 +392,13 @@ Run and manage your applications.
 
 Build backends faster with these Firebase alternatives.
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[Supabase](https://github.com/supabase/supabase)** | Firebase alternative with PostgreSQL | Full-stack applications | 73k+ |
-| **[Appwrite](https://github.com/appwrite/appwrite)** | Backend platform for web and mobile | Cross-platform apps | 45k+ |
-| **[PocketBase](https://github.com/pocketbase/pocketbase)** | Backend in a single file | Simple backends | 40k+ |
-| **[Nhost](https://github.com/nhost/nhost)** | GraphQL backend platform | GraphQL applications | 8k+ |
-| **[Parse](https://github.com/parse-community/parse-server)** | Backend framework | Mobile backends | 21k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[Supabase](https://github.com/supabase/supabase)** | Firebase alternative with PostgreSQL | Full-stack applications |
+| **[Appwrite](https://github.com/appwrite/appwrite)** | Backend platform for web and mobile | Cross-platform apps |
+| **[PocketBase](https://github.com/pocketbase/pocketbase)** | Backend in a single file | Simple backends |
+| **[Nhost](https://github.com/nhost/nhost)** | GraphQL backend platform | GraphQL applications |
+| **[Parse](https://github.com/parse-community/parse-server)** | Backend framework | Mobile backends |
 
 **Recommended:** Supabase for PostgreSQL-based backends, PocketBase for simplicity.
 
@@ -408,14 +408,14 @@ Build backends faster with these Firebase alternatives.
 
 Build internal tools quickly.
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[Appsmith](https://github.com/appsmithorg/appsmith)** | Low-code internal tool builder | Admin panels | 34k+ |
-| **[ToolJet](https://github.com/ToolJet/ToolJet)** | Low-code platform | Internal tools | 32k+ |
-| **[Budibase](https://github.com/Budibase/budibase)** | Low-code platform | Business apps | 22k+ |
-| **[Refine](https://github.com/refinedev/refine)** | React-based internal tool framework | React developers | 28k+ |
-| **[NocoDB](https://github.com/nocodb/nocodb)** | Airtable alternative | Spreadsheet databases | 49k+ |
-| **[n8n](https://github.com/n8n-io/n8n)** | Workflow automation | Process automation | 47k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[Appsmith](https://github.com/appsmithorg/appsmith)** | Low-code internal tool builder | Admin panels |
+| **[ToolJet](https://github.com/ToolJet/ToolJet)** | Low-code platform | Internal tools |
+| **[Budibase](https://github.com/Budibase/budibase)** | Low-code platform | Business apps |
+| **[Refine](https://github.com/refinedev/refine)** | React-based internal tool framework | React developers |
+| **[NocoDB](https://github.com/nocodb/nocodb)** | Airtable alternative | Spreadsheet databases |
+| **[n8n](https://github.com/n8n-io/n8n)** | Workflow automation | Process automation |
 
 ---
 
@@ -434,13 +434,13 @@ Let customers schedule meetings and appointments.
 
 Collect data from users and customers.
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[Formbricks](https://github.com/formbricks/formbricks)** | Survey and form platform | In-app surveys | 8k+ |
-| **[Heyform](https://github.com/heyform/heyform)** | Form builder | Conversational forms | 7k+ |
-| **[Typebot](https://github.com/baptisteArno/typebot.io)** | Conversational form builder | Chat-based forms | 7k+ |
-| **[OhMyForm](https://github.com/ohmyform/ohmyform)** | Form management | Simple forms | 3k+ |
-| **[Tally Alternative: SurveyJS](https://github.com/surveyjs/survey-library)** | Survey library | Developer surveys | 4k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[Formbricks](https://github.com/formbricks/formbricks)** | Survey and form platform | In-app surveys |
+| **[Heyform](https://github.com/heyform/heyform)** | Form builder | Conversational forms |
+| **[Typebot](https://github.com/baptisteArno/typebot.io)** | Conversational form builder | Chat-based forms |
+| **[OhMyForm](https://github.com/ohmyform/ohmyform)** | Form management | Simple forms |
+| **[Tally Alternative: SurveyJS](https://github.com/surveyjs/survey-library)** | Survey library | Developer surveys |
 
 ---
 
@@ -461,12 +461,12 @@ Manage files and documents.
 
 Build online stores and accept payments.
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[Medusa](https://github.com/medusajs/medusa)** | Headless commerce platform | Shopify alternative | 25k+ |
-| **[Saleor](https://github.com/saleor/saleor)** | GraphQL-first e-commerce | Enterprise e-commerce | 21k+ |
-| **[Vendure](https://github.com/vendure-ecommerce/vendure)** | Headless commerce framework | Custom storefronts | 6k+ |
-| **[Bagisto](https://github.com/bagisto/bagisto)** | Laravel e-commerce | PHP developers | 14k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[Medusa](https://github.com/medusajs/medusa)** | Headless commerce platform | Shopify alternative |
+| **[Saleor](https://github.com/saleor/saleor)** | GraphQL-first e-commerce | Enterprise e-commerce |
+| **[Vendure](https://github.com/vendure-ecommerce/vendure)** | Headless commerce framework | Custom storefronts |
+| **[Bagisto](https://github.com/bagisto/bagisto)** | Laravel e-commerce | PHP developers |
 
 ---
 
@@ -497,13 +497,13 @@ Manage your website content.
 
 Analyze and visualize your data.
 
-| Tool | Description | Best For | GitHub Stars |
-|------|-------------|----------|--------------|
-| **[Metabase](https://github.com/metabase/metabase)** | Business intelligence | Self-service analytics | 38k+ |
-| **[Apache Superset](https://github.com/apache/superset)** | Data exploration platform | Data visualization | 62k+ |
-| **[Redash](https://github.com/getredash/redash)** | Query and visualize data | SQL users | 26k+ |
-| **[Lightdash](https://github.com/lightdash/lightdash)** | BI for dbt users | dbt analytics | 4k+ |
-| **[Evidence](https://github.com/evidence-dev/evidence)** | Code-based BI | Developer BI | 4k+ |
+| Tool | Description | Best For |
+|------|-------------|----------|
+| **[Metabase](https://github.com/metabase/metabase)** | Business intelligence | Self-service analytics |
+| **[Apache Superset](https://github.com/apache/superset)** | Data exploration platform | Data visualization |
+| **[Redash](https://github.com/getredash/redash)** | Query and visualize data | SQL users |
+| **[Lightdash](https://github.com/lightdash/lightdash)** | BI for dbt users | dbt analytics |
+| **[Evidence](https://github.com/evidence-dev/evidence)** | Code-based BI | Developer BI |
 
 ---
 
@@ -580,82 +580,6 @@ Enterprise-grade solutions:
 - **Infrastructure:** Kubernetes + ArgoCD + Terraform
 - **Security:** Vault + Trivy + Falco
 - **API Management:** Kong or APISIX
-
----
-
-## Deployment Strategies
-
-### Docker Compose for Small Teams
-
-Most open-source tools provide Docker Compose files for quick deployment. Here's an example structure for a basic startup stack:
-
-```yaml
-# docker-compose.yml
-# This Docker Compose file sets up a basic startup stack with PostgreSQL,
-# KeyDB (Redis alternative), OneUptime for observability, and Gitea for Git.
-
-version: '3.8'
-
-services:
-  # PostgreSQL database for application data
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-
-  # KeyDB - High-performance Redis alternative for caching
-  keydb:
-    image: eqalpha/keydb:latest
-    restart: unless-stopped
-
-  # OneUptime for monitoring, status pages, and incident management
-  # See: https://github.com/OneUptime/oneuptime
-  oneuptime:
-    image: oneuptime/oneuptime:latest
-    ports:
-      - "80:80"
-    environment:
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/oneuptime
-    depends_on:
-      - postgres
-    restart: unless-stopped
-
-  # Gitea for Git hosting
-  gitea:
-    image: gitea/gitea:latest
-    ports:
-      - "3000:3000"
-      - "22:22"
-    volumes:
-      - gitea_data:/data
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
-  gitea_data:
-```
-
-### Kubernetes for Production
-
-For production deployments, use Helm charts provided by most projects:
-
-```bash
-# Example: Installing OneUptime via Helm
-# First, add the OneUptime Helm repository
-helm repo add oneuptime https://helm.oneuptime.com
-
-# Update your local Helm chart repository cache
-helm repo update
-
-# Install OneUptime with custom values
-helm install oneuptime oneuptime/oneuptime \
-  --namespace observability \
-  --create-namespace \
-  --set global.storageClass=standard
-```
 
 ---
 
