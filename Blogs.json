@@ -8081,5 +8081,21 @@
       "Encryption"
     ],
     "post": "2026-01-08-wireguard-cluster-communication"
+  },
+  {
+    "title": "The Complete Open-Source Startup Stack: 100+ Tools to Build, Scale, and Monitor Your Startup",
+    "description": "A comprehensive guide to open-source alternatives for every tool your startup needs. From product analytics to customer support, discover how to build a powerful, cost-effective technology stack with open-source software.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Open Source",
+      "Startups",
+      "DevOps",
+      "Observability",
+      "Tools",
+      "Self-Hosting",
+      "Cost Optimization",
+      "SaaS"
+    ],
+    "post": "2026-01-08-complete-open-source-startup-stack"
   }
 ]
