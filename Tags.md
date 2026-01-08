@@ -13,7 +13,6 @@
 - Ambient Mesh
 - Ansible
 - API
-- Api
 - Api Design
 - Api Gateway
 - API Key
@@ -27,7 +26,6 @@
 - ARP
 - Async
 - asyncio
-- Asyncio
 - Auditing
 - Authentication
 - Authorization
@@ -53,7 +51,6 @@
 - Bare Metal
 - Bash
 - BCC
-- Bcc
 - Beginner
 - Benchmarking
 - Best Practices
@@ -94,7 +91,6 @@
 - Chi
 - Chrony
 - CI/CD
-- Ci/Cd
 - Cilium
 - cilium/ebpf
 - Circuit Breaker
@@ -115,7 +111,6 @@
 - Cluster Autoscaler
 - Cluster Networking
 - CNI
-- Cni
 - CO-RE
 - Cobra
 - Code Generation
@@ -141,7 +136,6 @@
 - Context Cancellation
 - Context Propagation
 - CoreDNS
-- Coredns
 - Correlation
 - CORS
 - Cost Optimization
@@ -165,7 +159,6 @@
 - Data Protection
 - Database
 - DataDog
-- Datadog
 - Ddos Protection
 - Deadlines
 - Debugging
@@ -179,7 +172,6 @@
 - Development
 - Devices
 - DevOps
-- Devops
 - Dhcpv6
 - Direct Connect
 - Disaster Recovery
@@ -189,7 +181,6 @@
 - Distributed Tracing
 - Django
 - DNS
-- Dns
 - Dnssec
 - Dnssec Keygen
 - Dnssec Signzone
@@ -199,7 +190,6 @@
 - Dual Stack
 - Dual-Stack
 - eBPF
-- Ebpf
 - Echo
 - Edge
 - Egress Gateway
@@ -258,7 +248,6 @@
 - Godaddy
 - Golang
 - gomock
-- Gomock
 - Google Domains
 - Gorilla
 - GORM
@@ -270,14 +259,12 @@
 - Grafana
 - GraphQL
 - gRPC
-- Grpc
 - Grpc Gateway
 - Grpc Health Probe
 - Grpc Spring Boot Starter
 - Grpc Web
 - Gzip
 - HAProxy
-- Haproxy
 - HashiCorp Vault
 - Headers
 - Headless Services
@@ -290,9 +277,7 @@
 - Histograms
 - Hot Reloading
 - HPA
-- Hpa
 - HTTP
-- Http
 - Http/2
 - Http2
 - Https
@@ -327,7 +312,6 @@
 - Ipsec
 - Iptables
 - IPv6
-- Ipv6
 - iSCSI
 - Istio
 - Jaeger
@@ -338,7 +322,6 @@
 - Jobs
 - JSON
 - JWT
-- Jwt
 - K3s
 - Kafka
 - Karpenter
@@ -391,7 +374,6 @@
 - MetalLB
 - Metrics
 - Microk8s
-- MicroK8s
 - Microservices
 - Microsoft Teams
 - Middleware
@@ -404,7 +386,6 @@
 - MongoDB
 - Monitoring
 - mTLS
-- Mtls
 - MTTD
 - MTTR
 - Multi Cluster
@@ -430,7 +411,6 @@
 - NFS
 - Nftables
 - NGINX
-- Nginx
 - Node Draining
 - Node Selection
 - Node.Js
@@ -447,17 +427,14 @@
 - Observability
 - OCI
 - On-call
-- On-Call
 - OneUptime
 - OOMKilled
 - OPA
 - Open Source
 - OpenAPI
-- Openapi
 - Openlit
 - OpenStack
 - OpenTelemetry
-- Opentelemetry
 - Operations
 - Operators
 - Optimization
@@ -489,7 +466,6 @@
 - PostgreSQL
 - Postmortems
 - pprof
-- Pprof
 - Prettier
 - Private Cloud
 - Private Networking
@@ -601,7 +577,6 @@
 - Sse
 - SSH
 - SSL
-- Ssl
 - Standards
 - Startups
 - StatefulSet
@@ -620,7 +595,6 @@
 - Systems Programming
 - Table-Driven Tests
 - TCP
-- Tcp
 - TCP Tuning
 - TCP/IP
 - Tcpdump
@@ -640,20 +614,17 @@
 - Timeouts
 - Timing Analysis
 - TLS
-- Tls
 - Tls Termination
 - Toil
 - Token Bucket
 - Tokens
 - tokio
-- Tokio
 - Tonic
 - Tooling
 - Tools
 - Trace Context
 - Traces
 - Tracing
-- tracing
 - Traefik
 - Traffic Analysis
 - Traffic Engineering
@@ -668,7 +639,6 @@
 - Twelve-Factor
 - Type Safety
 - TypeScript
-- Typescript
 - Ubuntu
 - UDP
 - Unit Testing
@@ -685,7 +655,6 @@
 - VLAN
 - VPA
 - VPN
-- Vpn
 - VS Code
 - Waf
 - WASM
@@ -699,7 +668,6 @@
 - Websocket Alternative
 - Wire
 - WireGuard
-- Wireguard
 - wiremock
 - Wireshark
 - Worker Pool

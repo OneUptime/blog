@@ -256,22 +256,27 @@ function checkSocialMedia(dir: string): FormatIssue | null {
 
 /**
  * Extract all unique tags from Blogs.json and generate Tags.md
+ * Deduplicates tags case-insensitively (keeps first occurrence)
  */
 function generateTagsMd(blogsJson: BlogEntry[]): void {
   logHeader('Generating Tags.md');
 
-  // Extract all tags from all blog entries
-  const allTags: Set<string> = new Set();
+  // Extract all tags, deduplicating case-insensitively
+  // Map key is lowercase tag, value is the original tag (first occurrence)
+  const tagMap: Map<string, string> = new Map();
   for (const blog of blogsJson) {
     if (blog.tags && Array.isArray(blog.tags)) {
       for (const tag of blog.tags) {
-        allTags.add(tag);
+        const lowerTag = tag.toLowerCase();
+        if (!tagMap.has(lowerTag)) {
+          tagMap.set(lowerTag, tag);
+        }
       }
     }
   }
 
-  // Sort tags alphabetically (case-insensitive)
-  const sortedTags = Array.from(allTags).sort((a, b) =>
+  // Get unique tags and sort alphabetically (case-insensitive)
+  const sortedTags = Array.from(tagMap.values()).sort((a, b) =>
     a.toLowerCase().localeCompare(b.toLowerCase())
   );
 
