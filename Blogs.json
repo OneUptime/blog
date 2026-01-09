@@ -8097,5 +8097,20 @@
       "SaaS"
     ],
     "post": "2026-01-08-complete-open-source-startup-stack"
+  },
+  {
+    "title": "How AI Agents is Revolutionizing Open Source Software",
+    "description": "Discover how AI coding assistants are transforming open source software by enabling anyone to customize, modify, and extend codebases to their exact needs - and why this creates an insurmountable advantage over closed-source alternatives.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI",
+      "Open Source",
+      "Software Development",
+      "Customization",
+      "Machine Learning",
+      "Developer Productivity",
+      "Automation"
+    ],
+    "post": "2026-01-09-how-ai-helps-open-source-succeed"
   }
 ]

@@ -169,6 +169,7 @@
 - Deployment
 - Deprecation
 - Design Patterns
+- Developer Productivity
 - Development
 - Devices
 - DevOps
