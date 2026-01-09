@@ -8112,5 +8112,19 @@
       "Automation"
     ],
     "post": "2026-01-09-how-ai-helps-open-source-succeed"
+  },
+  {
+    "title": "How Streams Work in Node.js: From Beginner to Advanced",
+    "description": "A comprehensive course on Node.js Streams - from basic concepts and simple examples to advanced real-world patterns like file processing, HTTP streaming, and data pipelines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Streams",
+      "Performance",
+      "Backend",
+      "JavaScript",
+      "Tutorial"
+    ],
+    "post": "2026-01-09-nodejs-streams-complete-guide"
   }
 ]

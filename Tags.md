@@ -586,6 +586,7 @@
 - Status Page
 - Storage
 - Streaming
+- Streams
 - Structured Logging
 - Supply Chain
 - Swarm
