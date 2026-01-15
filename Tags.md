@@ -3,29 +3,48 @@
 - @Grpc/Grpc Js
 - 2FA
 - A/B Testing
+- A11y
 - Access Control
 - Access Logging
+- Accessibility
+- Accessibility Testing
 - Address Assignment
 - Admission Controllers
 - AI
 - Alerting
 - Alerts
 - Ambient Mesh
+- Analysis
+- Analytics
+- Android
+- Animations
 - Ansible
+- Anycast
 - API
 - Api Design
 - Api Gateway
 - API Key
+- API Mocking
 - Api Versioning
 - APM
+- Apollo Client
+- App Center
+- App Protection
+- App Signing
+- App Store
 - AppArmor
+- Applications
 - Architecture
 - Arena Allocators
 - ArgoCD
+- ARIA
 - ARM64
 - ARP
+- Assets
 - Async
 - asyncio
+- AsyncStorage
+- Attacks
 - Auditing
 - Authentication
 - Authorization
@@ -35,13 +54,18 @@
 - AWS
 - AWS Lambda
 - AWS SQS
+- axe-core
 - Axum
 - Aya
 - Azure
+- Azure DNS
 - Azure Functions
+- Babel
 - Backend
 - Backend Development
+- Background Fetch
 - Background Jobs
+- Background Sync
 - Background Tasks
 - Backup
 - Backward Compatibility
@@ -49,26 +73,34 @@
 - Baggage
 - Bandwidth
 - Bare Metal
+- Bare Workflow
 - Bash
 - BCC
 - Beginner
 - Benchmarking
 - Best Practices
+- Beta Testing
 - BFD
 - BGP
 - Bidirectional
 - Bidirectional Streaming
 - Binary Size
 - Bind
+- Biometric Authentication
 - Blue-Green Deployment
 - BlueStore
 - borg
+- Bottom Sheet
 - bpftrace
+- Bridge
 - Browser
 - BTF
 - Buf
+- Build Automation
 - Build Optimization
+- Build Tools
 - BuildKit
+- Bundle Size
 - C
 - Caching
 - Calico
@@ -83,12 +115,15 @@
 - Cert Manager
 - cert-manager
 - Certificate Monitoring
+- Certificate Pinning
 - Certificates
 - Chain Of Trust
 - Channels
 - Chaos Engineering
 - Chat Application
 - Chi
+- Chromatic
+- Chrome DevTools
 - Chrony
 - CI/CD
 - Cilium
@@ -106,15 +141,20 @@
 - client-go
 - Cloud
 - Cloud Connectivity
+- Cloud DNS
 - Cloud Native
 - Cloudflare
+- CLS
 - Cluster Autoscaler
 - Cluster Networking
 - CNI
 - CO-RE
 - Cobra
 - Code Generation
+- Code Protection
 - Code Signing
+- Code Splitting
+- CodePush
 - Collector
 - Command Line
 - Communities
@@ -133,30 +173,43 @@
 - Container Runtime
 - containerd
 - Containers
+- Content Security Policy
+- Context API
 - Context Cancellation
 - Context Propagation
+- Core Web Vitals
 - CoreDNS
 - Correlation
 - CORS
 - Cost Optimization
 - CPU
 - CQRS
+- Crash Reporting
 - CrashLoopBackOff
 - CRD
 - Cron
+- Cross-Platform
 - CRUSH
 - Cryptography
+- CSP
 - Culture
 - Cursor Based Pagination
+- Custom Components
 - Custom Controllers
 - Custom Metrics
 - Customer Experience
 - Customer Support
 - Customization
+- Cypress
+- DANE
 - Dashboard
+- Data Fetching
 - Data Locality
+- Data Persistence
 - Data Processing
 - Data Protection
+- Data Sync
+- Data Synchronization
 - Database
 - DataDog
 - Ddos Protection
@@ -164,33 +217,45 @@
 - Debugging
 - Decentralization
 - Deep Learning
+- Deep Linking
 - Dependencies
 - Dependency Injection
 - Deployment
 - Deprecation
 - Design Patterns
+- Detox
 - Developer Productivity
 - Development
 - Devices
 - DevOps
+- DevTools
 - Dhcpv6
 - Direct Connect
 - Disaster Recovery
+- Discriminated Unions
 - Disk I/O
 - Distributed Systems
 - Distributed Testing
 - Distributed Tracing
 - Django
+- DKIM
+- DMARC
 - DNS
+- DNS64
+- dnsmasq
 - Dnssec
 - Dnssec Keygen
 - Dnssec Signzone
+- DNSViz
 - Docker
 - Docker Compose
 - Domain Security
+- Drawer Navigation
 - Dual Stack
 - Dual-Stack
+- E2E Testing
 - eBPF
+- ECDSA
 - Echo
 - Edge
 - Egress Gateway
@@ -205,40 +270,59 @@
 - Error Budgets
 - Error Details
 - Error Handling
+- Error Tracking
 - Eslint
 - etcd
 - Event Sourcing
 - Event-Driven
+- Events
 - Exemplars
+- Expo
 - Exponential Backoff
 - Exporters
+- Express
 - Extensibility
 - External Dns
 - External Services
 - External-DNS
+- Face ID
 - fail2ban
 - Failover
 - Falco
 - Fan-In
 - Fan-Out
 - FastAPI
+- Fastlane
 - Fault Injection
 - Fault Tolerance
+- FCM
 - Feature Flags
 - Federation
+- FID
+- File Download
 - File I/O
 - File System
 - File Upload
+- Fingerprint
 - FinOps
+- Firebase
 - Firewall
 - Flamegraph
 - Flask
+- FlatList
+- Flipper
 - FluxCD
+- Focus Management
+- Font Scaling
+- Forms
 - Frontend
 - FRR
 - Fuzzing
 - Gateway
 - GCP
+- Generics
+- Gesture Handler
+- Gestures
 - Getting Started
 - Ghz
 - Gin
@@ -250,7 +334,9 @@
 - Godaddy
 - Golang
 - gomock
+- Google Cloud
 - Google Domains
+- Google Play Console
 - Gorilla
 - GORM
 - Goroutines
@@ -265,20 +351,25 @@
 - Grpc Health Probe
 - Grpc Spring Boot Starter
 - Grpc Web
+- gRPC-Web
 - Gzip
 - HAProxy
+- Hardening
 - HashiCorp Vault
 - Headers
 - Headless Services
 - Health Checks
 - Heartbeat
 - Helm
+- Hermes
 - Hexagonal Architecture
 - High Availability
 - High Throughput
 - Histograms
+- Hooks
 - Hot Reloading
 - HPA
+- HSM
 - HTTP
 - Http/2
 - Http2
@@ -286,19 +377,25 @@
 - httptest
 - Hubble
 - Hybrid Cloud
+- Hydration
 - Hystrix
 - Identity
 - Identity Providers
+- Image Caching
 - Incident Management
 - Incident Response
+- Inclusive Design
 - Incoming Email
 - Incoming Request
+- Infinite Scroll
 - Infrastructure
 - Infrastructure as Code
 - Ingress
 - Ingress Gateway
 - Ingressroute
+- Injection
 - Inline Signing
+- Input Sanitization
 - Input Validation
 - Installation
 - Integration
@@ -308,6 +405,7 @@
 - Interceptors
 - Interoperability
 - IOPS
+- iOS
 - IoT
 - IP Management
 - IP Monitoring
@@ -318,9 +416,12 @@
 - iSCSI
 - Istio
 - Jaeger
+- Jailbreak Detection
 - Java
 - JavaScript
+- JavaScript Engine
 - Jenkins
+- Jest
 - Job Queue
 - Jobs
 - JSON
@@ -333,7 +434,10 @@
 - Keepalived
 - Kernel
 - Key Management
+- Keyboard Navigation
+- Keychain
 - Kiali
+- Kotlin
 - Ksk
 - Kube Proxy
 - kube-bench
@@ -344,8 +448,12 @@
 - kubectl
 - Kubernetes
 - Landlock
+- Large Lists
 - Latency
 - Layer 2
+- Layouts
+- Lazy Loading
+- LCP
 - Leadership
 - Learning Resource
 - Let's Encrypt
@@ -354,13 +462,17 @@
 - Linkerd
 - Linux
 - Linux Kernel
+- Lists
+- Live Updates
 - Liveness Probes
 - LLM
 - LLM Observability
 - Load Balancer
 - Load Balancing
 - Load Testing
+- Loading States
 - Local Preference
+- Local Storage
 - Locality
 - Locust
 - Logging
@@ -368,45 +480,62 @@
 - LVM
 - Lynis
 - Machine Learning
+- Maestro
 - Maintenance
 - Management
 - MCP
 - Memory
+- Memory Leaks
 - Memory-Mapped Files
 - Messaging
 - MetalLB
 - Metrics
+- Metro
 - Microk8s
 - Microservices
 - Microsoft Teams
 - Middleware
 - Migration
 - Migrations
+- MMKV
+- Mobile Development
+- Mobile Testing
+- Mock Service Worker
 - Mockgen
 - Mocking
 - Model Context Protocol
 - Modernization
 - MongoDB
 - Monitoring
+- MSW
 - mTLS
 - MTTD
 - MTTR
+- MTU
 - Multi Cluster
 - Multi-Cluster
 - Multi-Region
 - Multi-Site
+- Multi-Stage Build
 - Multi-tenancy
 - Multi-tenant
 - Multiprocessing
+- Multithreading
 - musl
 - Mutual Tls
 - MySQL
 - Namecheap
 - NAS
+- NAT64
+- Native Module
+- Native Modules
+- Native UI
 - NATS
+- Nested Navigation
 - Netcat
 - Netplan
 - Network Configuration
+- Network Debugging
 - Network Latency
 - Network Monitoring
 - Network Policies
@@ -420,30 +549,40 @@
 - NodeJS
 - Nodelocal Dns
 - NodePort
+- NSEC
+- NSEC3
 - NTP
 - NVIDIA
 - NVMe
 - OAuth
+- OAuth 2.0
 - Oauth2
+- Obfuscation
 - Object Pooling
 - Object Storage
+- Objective-C
 - Observability
 - OCI
+- Offline
+- Offline-First
 - On-call
 - OneUptime
 - OOMKilled
 - OPA
 - Open Source
 - OpenAPI
+- OpenDNSSEC
 - Openlit
 - OpenStack
 - OpenTelemetry
 - Operations
 - Operators
+- Optimistic Updates
 - Optimization
 - Organizational Design
 - ORM
 - OSDs
+- OTA Updates
 - OWASP
 - Ownership
 - Package Management
@@ -452,12 +591,18 @@
 - Pagination
 - Parallel Processing
 - PASETO
+- Path Aliases
+- Patterns
 - Performance
 - Performance Analysis
+- Permissions
+- Persistence
 - Persistent Volumes
 - PII
 - PKCE
+- Planning
 - Platform Strategy
+- Platform-Specific
 - Playwright
 - Plugins
 - Pod Communication
@@ -468,8 +613,11 @@
 - Portability
 - PostgreSQL
 - Postmortems
+- PowerDNS
 - pprof
 - Prettier
+- Preview Deployments
+- Privacy
 - Private Cloud
 - Private Networking
 - Process
@@ -479,18 +627,27 @@
 - Productivity
 - Profiling
 - Programming
+- Progressive Web App
+- Project Setup
 - Project Structure
 - Prometheus
+- Props
+- Protection
 - Protobuf
 - Protoc
 - Protocol Buffers
 - Proxy
 - PSS
+- PTR
 - Pubsub
+- Pull Requests
+- Pull-to-Refresh
+- Push Notifications
 - PWA
 - Pyroscope
 - pytest
 - Python
+- QA
 - Quality Assurance
 - Quotas
 - RabbitMQ
@@ -500,31 +657,53 @@
 - rayon
 - RBAC
 - React
+- React 18
+- React Hook Form
+- React Native
+- React Navigation
+- React Query
+- react-window
+- React.memo
 - Readiness Probes
 - Real Time
+- Real User Monitoring
 - Real-time
+- Reanimated
 - Redis
 - Redundancy
+- Redux
+- Redux Toolkit
+- Refresh Tokens
 - Registrar
+- Regression Testing
+- Release Management
 - Releases
 - Reliability
 - Replication
 - Repository Pattern
 - Resilience
 - Resource Management
+- Responsive Design
 - Rest
 - REST API
 - restic
 - Retries
 - Retry
 - Retry Logic
+- Reusability
+- Reverse DNS
+- Reverse Engineering
 - Reverse Proxy
 - RGW
 - Rook
+- Root Detection
+- Route 53
 - Route53
 - Router Advertisement
 - Routing
 - Rpc
+- RSA
+- RUM
 - Runbooks
 - Runtime
 - Runtime Security
@@ -535,14 +714,18 @@
 - Samba
 - Sampling
 - Sandboxing
+- Scalability
 - Scaling
 - Scheduled Maintenance
 - Scheduling
 - Schema
 - Scopes
+- Screen Reader
+- Screen Sizes
 - Sealed Secrets
 - seccomp
 - Secrets Management
+- Secure Storage
 - Security
 - Self-Hosting
 - Semantic Conventions
@@ -550,16 +733,21 @@
 - Server Administration
 - Server Configuration
 - Server Sent Events
+- Server State
 - Server Streaming
+- Server-Sent Events
+- Server-Side Rendering
 - Serverless
 - Service Catalog
 - Service Discovery
 - Service Mesh
+- Service Worker
 - ServiceEntry
 - Shared Storage
 - Sidecar
 - Signals
 - Site Reliability Engineering
+- Skeleton Loading
 - Slaac
 - Slack
 - Sli
@@ -567,12 +755,18 @@
 - Slo
 - SLOs
 - Snappy
+- Snapshot Testing
+- Social Login
+- Socket.IO
 - Software Development
+- SPA
 - Span Links
+- SPF
 - Spot Instances
 - Spring Boot
 - SQL
 - sqlc
+- SQLite
 - SQLx
 - SRE
 - Ss
@@ -580,24 +774,41 @@
 - Sse
 - SSH
 - SSL
+- SSL Pinning
+- SSR
+- Stack Navigation
 - Standards
+- Startup Time
 - Startups
+- State
+- State Management
 - StatefulSet
 - Static IP
 - Status Codes
 - Status Page
 - Storage
+- Storybook
 - Streaming
+- Streaming SSR
 - Streams
+- Strict Mode
 - Structured Logging
 - Supply Chain
+- Suspense
 - Swarm
+- Swift
+- Sync
+- Synchronization
 - Synthetic Monitoring
 - Syslog
 - System Administration
 - systemd
 - Systems Programming
+- Tab Navigation
 - Table-Driven Tests
+- Tablet
+- TalkBack
+- TanStack Query
 - TCP
 - TCP Tuning
 - TCP/IP
@@ -610,7 +821,9 @@
 - tenacity
 - Terraform
 - Testcontainers
+- TestFlight
 - Testing
+- Testing Library
 - Tests
 - Tetragon
 - Throttling
@@ -626,9 +839,12 @@
 - Tonic
 - Tooling
 - Tools
+- Touch
+- Touch ID
 - Trace Context
 - Traces
 - Tracing
+- Tracking
 - Traefik
 - Traffic Analysis
 - Traffic Engineering
@@ -637,26 +853,53 @@
 - Traffic Policy
 - Traffic Splitting
 - Transcoding
+- Transitions
+- Tree Shaking
 - Troubleshooting
+- TTFB
 - Tuning
+- Tunneling
 - Tutorial
 - Twelve-Factor
+- Type Definitions
 - Type Safety
 - TypeScript
+- Typography
 - Ubuntu
 - UDP
+- UFW
+- UI Components
+- UI Testing
+- UI/UX
+- Unbound
 - Unit Testing
+- Unit Tests
+- Universal Links
 - unsafe
 - Upgrade
 - Uptime Monitoring
+- useCallback
+- useMemo
+- User Behavior
+- User Experience
+- User Interactions
+- User Journey
+- User Preferences
+- User Sessions
+- UX
 - Validation
 - Velero
 - Vendor Lock-in
+- ViewManager
 - Viper
 - Virtual Machines
+- Virtualization
+- Visual Regression
 - Visualization
 - Vite
+- Vitest
 - VLAN
+- VoiceOver
 - VPA
 - VPN
 - VS Code
@@ -666,10 +909,15 @@
 - Web Architecture
 - Web Development
 - Web Performance
+- Web Push
+- Web Vitals
+- Web Workers
 - WebAssembly
 - Webhooks
+- Webpack
 - WebSocket
 - Websocket Alternative
+- WebSockets
 - Wire
 - WireGuard
 - wiremock
@@ -679,10 +927,13 @@
 - Workflows
 - Workloads
 - XDP
+- XSS
 - Zero Downtime
 - Zero Trust
 - ZFS
 - Zipkin
+- Zod
 - Zone Signing
 - Zsk
 - ztunnel
+- Zustand
