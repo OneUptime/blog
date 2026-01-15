@@ -8126,5 +8126,21 @@
       "Tutorial"
     ],
     "post": "2026-01-09-nodejs-streams-complete-guide"
+  },
+  {
+    "title": "How to Use Incoming Email Monitor in OneUptime",
+    "description": "A comprehensive guide to monitoring email-based alerts with OneUptime's Incoming Email Monitor. Learn how to capture alerts from legacy systems, third-party services, and IoT devices that send notifications via email.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Email",
+      "Monitoring",
+      "Incoming Email",
+      "Alerts",
+      "DevOps",
+      "Reliability",
+      "Uptime Monitoring",
+      "Automation"
+    ],
+    "post": "2026-01-15-incoming-email-monitor-oneuptime"
   }
 ]

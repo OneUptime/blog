@@ -194,6 +194,7 @@
 - Echo
 - Edge
 - Egress Gateway
+- Email
 - Encryption
 - Engineering Culture
 - Environments
@@ -290,6 +291,7 @@
 - Identity Providers
 - Incident Management
 - Incident Response
+- Incoming Email
 - Incoming Request
 - Infrastructure
 - Infrastructure as Code
