@@ -14083,5 +14083,22 @@
       "Tutorial"
     ],
     "post": "2026-01-15-write-debug-bash-scripts-ubuntu"
+  },
+  {
+    "title": "How efficient are containers vs virtual machines? A deep dive into density advantages",
+    "description": "A deep technical dive into why you can run 10x more containers than VMs on identical hardware. We explore kernel sharing, memory architecture, CPU overhead, and the fundamental design decisions that make containers dramatically more efficient.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Containers",
+      "Virtual Machines",
+      "Docker",
+      "Kubernetes",
+      "Infrastructure",
+      "Performance",
+      "DevOps",
+      "Virtualization",
+      "Linux"
+    ],
+    "post": "2026-01-16-containers-vs-vms-density-efficiency-comparison"
   }
 ]
