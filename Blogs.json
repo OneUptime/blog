@@ -11245,5 +11245,2843 @@
       "Frontend"
     ],
     "post": "2026-01-15-websockets-react-real-time-applications"
+  },
+  {
+    "title": "How to Add and Remove PPAs on Ubuntu",
+    "description": "Learn how to safely add, manage, and remove Personal Package Archives (PPAs) on Ubuntu for third-party software.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "PPA",
+      "APT",
+      "Repositories",
+      "Package Management",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-add-remove-ppas-ubuntu"
+  },
+  {
+    "title": "How to Analyze System Performance with perf on Ubuntu",
+    "description": "Complete guide to using Linux perf tool for system performance analysis on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "perf",
+      "Performance",
+      "Profiling",
+      "Linux",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-analyze-performance-perf-ubuntu"
+  },
+  {
+    "title": "How to Automate Interactive Commands with expect on Ubuntu",
+    "description": "Complete guide to using expect for automating interactive command-line programs on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "expect",
+      "Automation",
+      "Interactive",
+      "Scripting",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-automate-interactive-commands-expect-ubuntu"
+  },
+  {
+    "title": "How to Build a GraphQL API Server on Ubuntu",
+    "description": "A comprehensive guide to building a production-ready GraphQL API server on Ubuntu with Node.js, covering schema design, resolvers, authentication, subscriptions, and deployment.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GraphQL",
+      "NodeJS",
+      "Ubuntu",
+      "Apollo Server",
+      "API",
+      "PostgreSQL",
+      "Prisma",
+      "Authentication",
+      "WebSockets",
+      "DevOps"
+    ],
+    "post": "2026-01-15-build-graphql-api-server-ubuntu"
+  },
+  {
+    "title": "How to Build a REST API with Node.js on Ubuntu",
+    "description": "A comprehensive guide to building production-ready REST APIs using Node.js and Express on Ubuntu, covering everything from setup to deployment.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Express",
+      "REST API",
+      "Ubuntu",
+      "JavaScript",
+      "Backend Development",
+      "API Development",
+      "MongoDB",
+      "JWT",
+      "PM2"
+    ],
+    "post": "2026-01-15-build-rest-api-nodejs-ubuntu"
+  },
+  {
+    "title": "How to Change Hostname on Ubuntu Server",
+    "description": "Quick guide to changing the hostname on Ubuntu servers using hostnamectl, with tips for cloud instances and cluster environments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Hostname",
+      "Server",
+      "Configuration",
+      "System Administration",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-change-hostname-ubuntu"
+  },
+  {
+    "title": "How to Check Ubuntu Version and System Information",
+    "description": "Quick reference for checking Ubuntu version, kernel info, hardware specs, and system details using command-line tools.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "System Information",
+      "Version",
+      "Administration",
+      "CLI",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-check-ubuntu-version-system-info"
+  },
+  {
+    "title": "How to Clear APT Cache and Free Disk Space on Ubuntu",
+    "description": "Learn how to safely reclaim disk space on Ubuntu by clearing package caches, removing old kernels, and cleaning up system files.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "APT",
+      "Disk Space",
+      "Cleanup",
+      "System Administration",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-clear-apt-cache-free-disk-space-ubuntu"
+  },
+  {
+    "title": "How to Clone Disks with dd on Ubuntu",
+    "description": "Complete guide to cloning disks and partitions using dd command on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "dd",
+      "Disk Clone",
+      "Backup",
+      "System Migration",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-clone-disks-dd-ubuntu"
+  },
+  {
+    "title": "How to Compile a Custom Linux Kernel on Ubuntu",
+    "description": "Complete guide to downloading, configuring, and compiling a custom Linux kernel on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Kernel",
+      "Compilation",
+      "Linux",
+      "Performance",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-compile-custom-kernel-ubuntu"
+  },
+  {
+    "title": "How to Configure Apache Virtual Hosts on Ubuntu",
+    "description": "Complete guide to configuring Apache virtual hosts on Ubuntu for hosting multiple websites on a single server.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Apache",
+      "Virtual Hosts",
+      "Web Server",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-apache-virtual-hosts-ubuntu"
+  },
+  {
+    "title": "How to Configure auditd for System Auditing on Ubuntu",
+    "description": "Complete guide to configuring Linux Audit System (auditd) on Ubuntu for security monitoring and compliance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "auditd",
+      "Auditing",
+      "Security",
+      "Compliance",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-auditd-system-auditing-ubuntu"
+  },
+  {
+    "title": "How to Configure a C/C++ Development Environment on Ubuntu",
+    "description": "Complete guide to setting up C and C++ development tools on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "C",
+      "C++",
+      "Development",
+      "GCC",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-c-cpp-development-ubuntu"
+  },
+  {
+    "title": "How to Configure CPU Governor and Power Management on Ubuntu",
+    "description": "Complete guide to configuring CPU frequency scaling and power management on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "CPU Governor",
+      "Power Management",
+      "Performance",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-cpu-governor-power-management-ubuntu"
+  },
+  {
+    "title": "How to Configure kubectl for Kubernetes on Ubuntu",
+    "description": "Complete guide to installing and configuring kubectl for Kubernetes cluster management on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "kubectl",
+      "Kubernetes",
+      "K8s",
+      "DevOps",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-kubectl-kubernetes-ubuntu"
+  },
+  {
+    "title": "How to Configure Kubernetes Persistent Volumes",
+    "description": "A comprehensive guide to configuring Kubernetes Persistent Volumes on Ubuntu, covering static and dynamic provisioning, NFS, StorageClasses, CSI drivers, Longhorn, backups, and troubleshooting.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Storage",
+      "Ubuntu",
+      "Persistent Volumes",
+      "DevOps",
+      "How-To",
+      "CSI",
+      "NFS",
+      "Longhorn"
+    ],
+    "post": "2026-01-15-configure-kubernetes-persistent-volumes-ubuntu"
+  },
+  {
+    "title": "How to Configure Logrotate for Log Management on Ubuntu",
+    "description": "Master log rotation on Ubuntu with logrotate to manage log file sizes, automate cleanup, and prevent disk space issues.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Logrotate",
+      "Logs",
+      "System Administration",
+      "Maintenance",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-logrotate-ubuntu"
+  },
+  {
+    "title": "How to Configure mDNS with Avahi on Ubuntu",
+    "description": "A comprehensive guide to setting up and configuring mDNS with Avahi on Ubuntu for zero-configuration networking and automatic service discovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "mDNS",
+      "Avahi",
+      "Networking",
+      "Service Discovery",
+      "Zeroconf",
+      "Linux",
+      "DNS",
+      "Local Network"
+    ],
+    "post": "2026-01-15-configure-mdns-avahi-ubuntu"
+  },
+  {
+    "title": "How to Configure Multipath I/O on Ubuntu",
+    "description": "Complete guide to configuring device-mapper multipath on Ubuntu for redundant storage paths.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Multipath",
+      "MPIO",
+      "Storage",
+      "SAN",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-multipath-io-ubuntu"
+  },
+  {
+    "title": "How to Configure Multiple Monitors on Ubuntu",
+    "description": "Complete guide to setting up and managing multiple monitors on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Multiple Monitors",
+      "Display",
+      "Desktop",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-multiple-monitors-ubuntu"
+  },
+  {
+    "title": "How to Configure NAT and IP Forwarding on Ubuntu",
+    "description": "Complete guide to setting up NAT (Network Address Translation) and IP forwarding on Ubuntu to share internet connections.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "NAT",
+      "Networking",
+      "Firewall",
+      "Router",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-nat-ip-forwarding-ubuntu"
+  },
+  {
+    "title": "How to Configure Nginx Rate Limiting on Ubuntu",
+    "description": "Learn how to configure Nginx rate limiting on Ubuntu to protect your web servers and APIs from abuse, DDoS attacks, and resource exhaustion.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "Ubuntu",
+      "Rate Limiting",
+      "Web Server",
+      "Security",
+      "DDoS Protection",
+      "API Protection",
+      "DevOps"
+    ],
+    "post": "2026-01-15-configure-nginx-rate-limiting-ubuntu"
+  },
+  {
+    "title": "How to Configure Pacemaker and Corosync Cluster on Ubuntu",
+    "description": "Complete guide to setting up a Pacemaker/Corosync high availability cluster on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Pacemaker",
+      "Corosync",
+      "Cluster",
+      "High Availability",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-pacemaker-corosync-cluster-ubuntu"
+  },
+  {
+    "title": "How to Configure PAM Authentication on Ubuntu",
+    "description": "Complete guide to configuring Pluggable Authentication Modules (PAM) on Ubuntu for flexible authentication policies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "PAM",
+      "Authentication",
+      "Security",
+      "Linux",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-pam-authentication-ubuntu"
+  },
+  {
+    "title": "How to Configure Pi-hole Ad Blocker on Ubuntu",
+    "description": "Complete guide to installing Pi-hole network-wide ad blocking on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Pi-hole",
+      "DNS",
+      "Ad Blocker",
+      "Network",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-pihole-ad-blocker-ubuntu"
+  },
+  {
+    "title": "How to Configure PostgreSQL Patroni Cluster on Ubuntu",
+    "description": "Complete guide to setting up a highly available PostgreSQL cluster using Patroni on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "PostgreSQL",
+      "Patroni",
+      "High Availability",
+      "Cluster",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-postgresql-patroni-cluster-ubuntu"
+  },
+  {
+    "title": "How to Configure Rootkit Detection with rkhunter on Ubuntu",
+    "description": "Complete guide to installing and configuring rkhunter for rootkit detection on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "rkhunter",
+      "Rootkit",
+      "Security",
+      "Malware Detection",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-rkhunter-rootkit-detection-ubuntu"
+  },
+  {
+    "title": "How to Configure Roundcube Webmail on Ubuntu",
+    "description": "Complete guide to installing and configuring Roundcube webmail on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Roundcube",
+      "Webmail",
+      "Email",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-roundcube-webmail-ubuntu"
+  },
+  {
+    "title": "How to Configure SELinux on Ubuntu",
+    "description": "Complete guide to installing and configuring SELinux mandatory access control on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "SELinux",
+      "Security",
+      "MAC",
+      "Access Control",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-selinux-ubuntu"
+  },
+  {
+    "title": "How to Configure SNMP on Ubuntu",
+    "description": "Complete guide to configuring SNMP agent and manager on Ubuntu for network monitoring.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "SNMP",
+      "Network Monitoring",
+      "Management",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-snmp-ubuntu"
+  },
+  {
+    "title": "How to Configure Snort Intrusion Detection on Ubuntu",
+    "description": "Complete guide to installing and configuring Snort network intrusion detection system on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Snort",
+      "IDS",
+      "Network Security",
+      "Intrusion Detection",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-snort-intrusion-detection-ubuntu"
+  },
+  {
+    "title": "How to Configure SpamAssassin on Ubuntu",
+    "description": "Complete guide to installing and configuring SpamAssassin for email spam filtering on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "SpamAssassin",
+      "Spam Filter",
+      "Email",
+      "Security",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-configure-spamassassin-ubuntu"
+  },
+  {
+    "title": "How to Configure Split-Horizon DNS on Ubuntu",
+    "description": "A complete guide to implementing Split-Horizon DNS on Ubuntu using BIND9 views and dnsmasq, enabling different DNS responses for internal and external networks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "DNS",
+      "BIND9",
+      "Networking",
+      "Linux",
+      "Infrastructure",
+      "Security"
+    ],
+    "post": "2026-01-15-configure-split-horizon-dns-ubuntu"
+  },
+  {
+    "title": "How to Configure Syslog with TLS on Ubuntu",
+    "description": "A comprehensive guide to securing your syslog infrastructure with TLS encryption on Ubuntu, covering rsyslog, syslog-ng, mutual TLS, and high availability configurations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Syslog",
+      "TLS",
+      "Security",
+      "Encryption",
+      "Rsyslog",
+      "DevOps",
+      "Linux",
+      "Logging"
+    ],
+    "post": "2026-01-15-configure-syslog-tls-ubuntu"
+  },
+  {
+    "title": "How to Configure VLANs on Ubuntu",
+    "description": "A comprehensive guide to configuring VLANs on Ubuntu, covering Netplan, ifupdown, inter-VLAN routing, Docker integration, and troubleshooting.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "VLANs",
+      "Networking",
+      "Linux",
+      "Network Administration",
+      "Netplan",
+      "Docker",
+      "Network Segmentation"
+    ],
+    "post": "2026-01-15-configure-vlans-ubuntu"
+  },
+  {
+    "title": "How to Configure Wake-on-LAN on Ubuntu",
+    "description": "A complete guide to configuring Wake-on-LAN on Ubuntu, from BIOS settings to sending magic packets and building a WoL web interface.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Linux",
+      "Networking",
+      "Wake-on-LAN",
+      "Remote Management",
+      "Power Management",
+      "Server Administration"
+    ],
+    "post": "2026-01-15-configure-wake-on-lan-ubuntu"
+  },
+  {
+    "title": "How to Create a Bootable USB Drive on Ubuntu",
+    "description": "Complete guide to creating bootable USB drives on Ubuntu for OS installation and live systems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Bootable USB",
+      "ISO",
+      "Installation Media",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-create-bootable-usb-drive-ubuntu"
+  },
+  {
+    "title": "How to Create and Manage LXC/LXD Containers on Ubuntu",
+    "description": "Complete guide to using LXD for system containers on Ubuntu, providing lightweight virtualization with full OS experience.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "LXC",
+      "LXD",
+      "Containers",
+      "Virtualization",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-create-manage-lxc-lxd-containers-ubuntu"
+  },
+  {
+    "title": "How to Create and Manage Users and Groups on Ubuntu",
+    "description": "Complete guide to user and group management on Ubuntu including creating users, managing permissions, and implementing security best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Users",
+      "Groups",
+      "Security",
+      "System Administration",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-create-manage-users-groups-ubuntu"
+  },
+  {
+    "title": "How to Create and Schedule Cron Jobs on Ubuntu",
+    "description": "Master cron job scheduling on Ubuntu with this comprehensive guide covering syntax, examples, logging, and troubleshooting common issues.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Cron",
+      "Automation",
+      "Scheduling",
+      "System Administration",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-create-schedule-cron-jobs-ubuntu"
+  },
+  {
+    "title": "How to Create System Images with Clonezilla on Ubuntu",
+    "description": "Complete guide to creating and restoring system images using Clonezilla on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Clonezilla",
+      "System Image",
+      "Backup",
+      "Disaster Recovery",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-create-system-images-clonezilla-ubuntu"
+  },
+  {
+    "title": "How to Debug Network Issues with tcpdump on Ubuntu",
+    "description": "Complete guide to using tcpdump for network troubleshooting and packet analysis on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "tcpdump",
+      "Network",
+      "Debugging",
+      "Packet Capture",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-debug-network-tcpdump-ubuntu"
+  },
+  {
+    "title": "How to Downgrade Packages on Ubuntu",
+    "description": "Step-by-step guide to safely downgrading packages to previous versions on Ubuntu when updates cause issues.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "APT",
+      "Package Management",
+      "Downgrade",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-downgrade-packages-ubuntu"
+  },
+  {
+    "title": "How to Enable SSH on Ubuntu Desktop",
+    "description": "Quick guide to enabling and securing SSH access on Ubuntu Desktop for remote administration and file transfers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "SSH",
+      "Remote Access",
+      "Desktop",
+      "Security",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-enable-ssh-ubuntu-desktop"
+  },
+  {
+    "title": "How to Enable Wayland on Ubuntu",
+    "description": "Complete guide to enabling and using Wayland display server on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Wayland",
+      "Display Server",
+      "GNOME",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-enable-wayland-ubuntu"
+  },
+  {
+    "title": "How to Encrypt Disk Partitions with LUKS on Ubuntu",
+    "description": "Complete guide to encrypting disk partitions using LUKS on Ubuntu for data security.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "LUKS",
+      "Encryption",
+      "Security",
+      "Disk Encryption",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-encrypt-disk-luks-ubuntu"
+  },
+  {
+    "title": "How to Fix Broken Packages on Ubuntu",
+    "description": "Comprehensive guide to diagnosing and fixing broken, held, and conflicting packages on Ubuntu using APT.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "APT",
+      "Package Management",
+      "Troubleshooting",
+      "System Administration",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-fix-broken-packages-ubuntu"
+  },
+  {
+    "title": "How to Generate and Use SSH Keys on Ubuntu",
+    "description": "Complete guide to generating SSH key pairs, managing keys, and configuring key-based authentication for secure remote access on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "SSH",
+      "Security",
+      "Authentication",
+      "Keys",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-generate-use-ssh-keys-ubuntu"
+  },
+  {
+    "title": "How to Hold and Unhold Packages on Ubuntu",
+    "description": "Learn to prevent specific packages from being upgraded on Ubuntu using apt-mark hold and other methods.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "APT",
+      "Package Management",
+      "Hold",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-hold-packages-ubuntu"
+  },
+  {
+    "title": "How to Install Android Studio on Ubuntu",
+    "description": "Complete guide to installing Android Studio and setting up Android development on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Android Studio",
+      "Android Development",
+      "Mobile",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-android-studio-ubuntu"
+  },
+  {
+    "title": "How to Install Apache ActiveMQ on Ubuntu",
+    "description": "Complete guide to installing and configuring Apache ActiveMQ message broker on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "ActiveMQ",
+      "Message Queue",
+      "JMS",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-apache-activemq-ubuntu"
+  },
+  {
+    "title": "How to Install Apache APISIX on Ubuntu",
+    "description": "A complete guide to installing, configuring, and operating Apache APISIX API gateway on Ubuntu with etcd, plugins, authentication, and monitoring.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache APISIX",
+      "API Gateway",
+      "Ubuntu",
+      "DevOps",
+      "Microservices",
+      "Load Balancing",
+      "Security",
+      "Observability"
+    ],
+    "post": "2026-01-15-install-apache-apisix-ubuntu"
+  },
+  {
+    "title": "How to Install Apache Pulsar on Ubuntu",
+    "description": "Complete guide to installing and configuring Apache Pulsar distributed messaging on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Apache Pulsar",
+      "Message Queue",
+      "Streaming",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-apache-pulsar-ubuntu"
+  },
+  {
+    "title": "How to Install Azure CLI on Ubuntu",
+    "description": "Complete guide to installing and using Azure CLI on Ubuntu for cloud management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Azure",
+      "CLI",
+      "Cloud",
+      "Microsoft",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-azure-cli-ubuntu"
+  },
+  {
+    "title": "How to Install Calico CNI on Kubernetes",
+    "description": "A comprehensive guide to installing, configuring, and managing Calico CNI on Ubuntu Kubernetes clusters, covering network policies, BGP peering, eBPF dataplane, and troubleshooting.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Calico",
+      "CNI",
+      "Networking",
+      "Ubuntu",
+      "Network Policies",
+      "BGP",
+      "eBPF",
+      "Security",
+      "DevOps"
+    ],
+    "post": "2026-01-15-install-calico-cni-kubernetes-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Apache Web Server on Ubuntu",
+    "description": "Complete guide to installing, configuring, and securing Apache HTTP Server on Ubuntu with virtual hosts, SSL, and performance tuning.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Apache",
+      "Web Server",
+      "HTTP",
+      "Configuration",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-apache-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure AWS CLI on Ubuntu",
+    "description": "Complete guide to installing and configuring AWS CLI for cloud management on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "AWS",
+      "CLI",
+      "Cloud",
+      "DevOps",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-aws-cli-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Caddy on Ubuntu",
+    "description": "Complete guide to installing Caddy web server on Ubuntu with automatic HTTPS and easy configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Caddy",
+      "Web Server",
+      "Reverse Proxy",
+      "HTTPS",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-caddy-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Apache Cassandra on Ubuntu",
+    "description": "Complete guide to installing Apache Cassandra distributed NoSQL database on Ubuntu for scalable data storage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Cassandra",
+      "NoSQL",
+      "Database",
+      "Distributed",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-cassandra-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Ceph Storage on Ubuntu",
+    "description": "Complete guide to installing and configuring Ceph distributed storage system on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Ceph",
+      "Distributed Storage",
+      "Object Storage",
+      "Block Storage",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-ceph-storage-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure ClickHouse on Ubuntu",
+    "description": "Complete guide to installing ClickHouse column-oriented database on Ubuntu for real-time analytics and big data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "ClickHouse",
+      "Analytics",
+      "Database",
+      "OLAP",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-clickhouse-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Cockpit for Ubuntu Server Management",
+    "description": "Set up Cockpit web-based interface for easy Ubuntu server management, monitoring, and administration through your browser.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Cockpit",
+      "Server Management",
+      "Web UI",
+      "Administration",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-cockpit-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure CockroachDB on Ubuntu",
+    "description": "Complete guide to installing CockroachDB distributed SQL database on Ubuntu for scalable, resilient applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "CockroachDB",
+      "Distributed Database",
+      "PostgreSQL",
+      "SQL",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-cockroachdb-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure HashiCorp Consul on Ubuntu",
+    "description": "Complete guide to installing HashiCorp Consul on Ubuntu for service discovery, configuration, and service mesh.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Consul",
+      "HashiCorp",
+      "Service Discovery",
+      "Configuration",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-consul-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure etcd on Ubuntu",
+    "description": "Complete guide to installing etcd distributed key-value store on Ubuntu for configuration management and service discovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "etcd",
+      "Key-Value Store",
+      "Distributed Systems",
+      "Kubernetes",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-etcd-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Fluent Bit on Ubuntu",
+    "description": "Set up Fluent Bit as a lightweight log processor and forwarder on Ubuntu for cloud-native observability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Fluent Bit",
+      "Logging",
+      "Observability",
+      "Cloud Native",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-fluent-bit-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Gitea on Ubuntu",
+    "description": "Complete guide to installing Gitea self-hosted Git service on Ubuntu for private code repositories.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Gitea",
+      "Git",
+      "DevOps",
+      "Self-hosted",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-gitea-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Grafana Loki on Ubuntu",
+    "description": "Set up Grafana Loki for scalable log aggregation with Promtail agent and Grafana visualization.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Grafana",
+      "Loki",
+      "Logging",
+      "Observability",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-grafana-loki-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Graylog on Ubuntu",
+    "description": "Complete guide to setting up Graylog for centralized log management with Elasticsearch and MongoDB on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Graylog",
+      "Logging",
+      "SIEM",
+      "Observability",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-graylog-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Harbor on Ubuntu",
+    "description": "Complete guide to installing Harbor container registry on Ubuntu for secure enterprise Docker image storage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Harbor",
+      "Container Registry",
+      "Docker",
+      "DevOps",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-harbor-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure HashiCorp Vault on Ubuntu",
+    "description": "Complete guide to installing HashiCorp Vault on Ubuntu for secure secrets management and encryption as a service.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Vault",
+      "HashiCorp",
+      "Secrets",
+      "Security",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-hashicorp-vault-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure i3 Window Manager on Ubuntu",
+    "description": "Complete guide to installing and configuring i3 tiling window manager on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "i3",
+      "Window Manager",
+      "Tiling",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-i3-window-manager-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure InfluxDB on Ubuntu",
+    "description": "Complete guide to installing InfluxDB time-series database on Ubuntu for storing metrics, events, and IoT data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "InfluxDB",
+      "Time Series",
+      "Database",
+      "Metrics",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-influxdb-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Jenkins on Ubuntu",
+    "description": "Complete guide to installing Jenkins CI/CD server on Ubuntu for automated builds, tests, and deployments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Jenkins",
+      "CI/CD",
+      "DevOps",
+      "Automation",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-jenkins-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Kafka on Ubuntu",
+    "description": "Comprehensive guide to installing Apache Kafka on Ubuntu for high-throughput distributed streaming and event-driven architectures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Kafka",
+      "Streaming",
+      "Message Queue",
+      "Big Data",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-kafka-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Memcached on Ubuntu",
+    "description": "Learn how to install, configure, and optimize Memcached for high-performance distributed memory caching on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Memcached",
+      "Caching",
+      "Performance",
+      "Memory",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-memcached-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure MinIO on Ubuntu",
+    "description": "Complete guide to installing MinIO on Ubuntu for S3-compatible object storage in your infrastructure.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "MinIO",
+      "Object Storage",
+      "S3",
+      "Cloud Native",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-minio-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Nagios on Ubuntu",
+    "description": "Complete guide to installing Nagios Core on Ubuntu for infrastructure monitoring, alerting, and system health checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Nagios",
+      "Monitoring",
+      "Infrastructure",
+      "Observability",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-nagios-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Neo4j on Ubuntu",
+    "description": "Complete guide to installing Neo4j graph database on Ubuntu for relationship-centric data storage and analysis.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Neo4j",
+      "Graph Database",
+      "NoSQL",
+      "Database",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-neo4j-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Neovim on Ubuntu",
+    "description": "Complete guide to installing and configuring Neovim as a development IDE on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Neovim",
+      "Editor",
+      "Vim",
+      "Development",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-neovim-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Netdata on Ubuntu",
+    "description": "Set up Netdata for real-time performance monitoring with beautiful dashboards and zero configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Netdata",
+      "Monitoring",
+      "Real-time",
+      "Observability",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-netdata-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Nginx as a Web Server on Ubuntu",
+    "description": "Comprehensive guide to installing, configuring, and optimizing Nginx web server on Ubuntu for high-performance web hosting.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Nginx",
+      "Web Server",
+      "HTTP",
+      "Reverse Proxy",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-nginx-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure OpenLDAP on Ubuntu",
+    "description": "Complete guide to installing and configuring OpenLDAP directory server on Ubuntu for centralized authentication.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "OpenLDAP",
+      "LDAP",
+      "Directory Services",
+      "Authentication",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-openldap-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure OpenVPN Server on Ubuntu",
+    "description": "Complete guide to setting up an OpenVPN server on Ubuntu with certificate authentication and secure client configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "OpenVPN",
+      "VPN",
+      "Security",
+      "Network",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-openvpn-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure PHP-FPM on Ubuntu",
+    "description": "Complete guide to installing and optimizing PHP-FPM on Ubuntu for web applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "PHP",
+      "PHP-FPM",
+      "Web Development",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-php-fpm-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Podman on Ubuntu",
+    "description": "Learn how to install and use Podman as a daemonless Docker alternative for running containers on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Podman",
+      "Containers",
+      "Docker Alternative",
+      "DevOps",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-podman-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure SonarQube on Ubuntu",
+    "description": "Complete guide to installing SonarQube on Ubuntu for continuous code quality and security analysis.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "SonarQube",
+      "Code Quality",
+      "DevOps",
+      "Security",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-sonarqube-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Squid Proxy Server on Ubuntu",
+    "description": "Complete guide to setting up Squid as a forward proxy, caching server, or access control gateway on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Squid",
+      "Proxy",
+      "Caching",
+      "Network",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-squid-proxy-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Traefik on Ubuntu",
+    "description": "Complete guide to installing Traefik edge router on Ubuntu for dynamic reverse proxy and load balancing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Traefik",
+      "Reverse Proxy",
+      "Load Balancer",
+      "Cloud Native",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-traefik-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure Zabbix on Ubuntu",
+    "description": "Complete guide to installing Zabbix Server on Ubuntu for enterprise-grade infrastructure monitoring and alerting.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Zabbix",
+      "Monitoring",
+      "Infrastructure",
+      "Observability",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-configure-zabbix-ubuntu"
+  },
+  {
+    "title": "How to Install Docker Compose on Ubuntu",
+    "description": "Step-by-step guide to installing Docker Compose on Ubuntu for managing multi-container Docker applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Docker",
+      "Docker Compose",
+      "Containers",
+      "DevOps",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-docker-compose-ubuntu"
+  },
+  {
+    "title": "How to Install Elasticsearch on Ubuntu",
+    "description": "Complete guide to installing, configuring, and securing Elasticsearch on Ubuntu for search and analytics use cases.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Elasticsearch",
+      "Search",
+      "Database",
+      "Observability",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-elasticsearch-ubuntu"
+  },
+  {
+    "title": "How to Install the ELK Stack on Ubuntu",
+    "description": "Complete guide to installing and configuring the ELK Stack (Elasticsearch, Logstash, Kibana) for log analytics on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "ELK Stack",
+      "Elasticsearch",
+      "Logstash",
+      "Kibana",
+      "Logging",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-elk-stack-ubuntu"
+  },
+  {
+    "title": "How to Install Emby Media Server on Ubuntu",
+    "description": "A complete guide to installing, configuring, and optimizing Emby Media Server on Ubuntu for streaming your personal media collection across all devices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Emby",
+      "Media Server",
+      "Ubuntu",
+      "Linux",
+      "Streaming",
+      "Self-Hosted",
+      "Home Server",
+      "Transcoding",
+      "DLNA"
+    ],
+    "post": "2026-01-15-install-emby-media-server-ubuntu"
+  },
+  {
+    "title": "How to Install Filebeat for Log Shipping on Ubuntu",
+    "description": "A comprehensive guide to installing, configuring, and optimizing Filebeat on Ubuntu for shipping logs to Elasticsearch, Logstash, Kafka, and other destinations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Filebeat",
+      "Logging",
+      "Ubuntu",
+      "Elasticsearch",
+      "Logstash",
+      "DevOps",
+      "Observability",
+      "Log Shipping",
+      "Elastic Stack"
+    ],
+    "post": "2026-01-15-install-filebeat-log-shipping-ubuntu"
+  },
+  {
+    "title": "How to Install Flatpak on Ubuntu",
+    "description": "Set up Flatpak on Ubuntu for accessing a vast library of sandboxed applications from Flathub.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Flatpak",
+      "Package Management",
+      "Applications",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-flatpak-ubuntu"
+  },
+  {
+    "title": "How to Install GNOME Desktop on Ubuntu Server",
+    "description": "Complete guide to installing GNOME desktop environment on Ubuntu Server.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "GNOME",
+      "Desktop",
+      "GUI",
+      "Server",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-gnome-desktop-ubuntu-server"
+  },
+  {
+    "title": "How to Install GPU Drivers (NVIDIA/AMD) on Ubuntu",
+    "description": "Complete guide to installing NVIDIA and AMD GPU drivers on Ubuntu for graphics and compute workloads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "GPU",
+      "NVIDIA",
+      "AMD",
+      "Drivers",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-gpu-drivers-ubuntu"
+  },
+  {
+    "title": "How to Install Home Assistant on Ubuntu",
+    "description": "A comprehensive guide to installing, configuring, and optimizing Home Assistant on Ubuntu for complete smart home automation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Home Assistant",
+      "Ubuntu",
+      "Smart Home",
+      "IoT",
+      "Docker",
+      "Home Automation",
+      "Zigbee",
+      "Z-Wave",
+      "Self-Hosted"
+    ],
+    "post": "2026-01-15-install-home-assistant-ubuntu"
+  },
+  {
+    "title": "How to Install Istio Service Mesh on Kubernetes",
+    "description": "A comprehensive guide to installing and configuring Istio service mesh on Ubuntu Kubernetes clusters, covering traffic management, security, and observability features.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Istio",
+      "Service Mesh",
+      "Kubernetes",
+      "Ubuntu",
+      "Microservices",
+      "Traffic Management",
+      "mTLS",
+      "Observability",
+      "DevOps"
+    ],
+    "post": "2026-01-15-install-istio-service-mesh-kubernetes-ubuntu"
+  },
+  {
+    "title": "How to Install Java (OpenJDK) on Ubuntu",
+    "description": "A complete guide to installing OpenJDK on Ubuntu, managing multiple Java versions, and configuring JAVA_HOME for development.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Java",
+      "OpenJDK",
+      "JDK",
+      "Development",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-java-openjdk-ubuntu"
+  },
+  {
+    "title": "How to Install Jellyfin Media Server on Ubuntu",
+    "description": "A complete guide to installing, configuring, and optimizing Jellyfin Media Server on Ubuntu for personal media streaming.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Jellyfin",
+      "Media Server",
+      "Ubuntu",
+      "Linux",
+      "Self-Hosted",
+      "Streaming",
+      "Docker",
+      "VAAPI",
+      "NVENC"
+    ],
+    "post": "2026-01-15-install-jellyfin-media-server-ubuntu"
+  },
+  {
+    "title": "How to Install Jitsi Meet for Video Conferencing on Ubuntu",
+    "description": "Complete guide to installing Jitsi Meet video conferencing platform on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Jitsi Meet",
+      "Video Conferencing",
+      "WebRTC",
+      "Self-Hosted",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-jitsi-meet-ubuntu"
+  },
+  {
+    "title": "How to Install Kong API Gateway on Ubuntu",
+    "description": "A comprehensive guide to installing, configuring, and managing Kong API Gateway on Ubuntu with database and DB-less modes, authentication, plugins, and monitoring.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kong",
+      "API Gateway",
+      "Ubuntu",
+      "Microservices",
+      "Load Balancing",
+      "Authentication",
+      "Rate Limiting",
+      "DevOps"
+    ],
+    "post": "2026-01-15-install-kong-api-gateway-ubuntu"
+  },
+  {
+    "title": "How to Install Kubernetes Dashboard on Ubuntu",
+    "description": "A complete guide to installing, configuring, and securing Kubernetes Dashboard on Ubuntu for visual cluster management and monitoring.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Ubuntu",
+      "Dashboard",
+      "DevOps",
+      "Monitoring",
+      "Web UI",
+      "Cluster Management"
+    ],
+    "post": "2026-01-15-install-kubernetes-dashboard-ubuntu"
+  },
+  {
+    "title": "How to Install a LAMP Stack (Linux, Apache, MySQL, PHP) on Ubuntu",
+    "description": "A comprehensive guide to installing and configuring a complete LAMP stack on Ubuntu for hosting dynamic web applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "LAMP",
+      "Apache",
+      "MySQL",
+      "PHP",
+      "Web Server",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-lamp-stack-ubuntu"
+  },
+  {
+    "title": "How to Install a LEMP Stack (Linux, Nginx, MySQL, PHP) on Ubuntu",
+    "description": "Step-by-step guide to installing and configuring a complete LEMP stack on Ubuntu for hosting PHP applications with Nginx.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "LEMP",
+      "Nginx",
+      "MySQL",
+      "PHP",
+      "Web Server",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-lemp-stack-ubuntu"
+  },
+  {
+    "title": "How to Install Linkerd Service Mesh on Kubernetes",
+    "description": "A comprehensive guide to installing and configuring Linkerd service mesh on Ubuntu Kubernetes clusters, covering CLI installation, Helm deployment, traffic management, and observability features.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Linkerd",
+      "Service Mesh",
+      "Ubuntu",
+      "mTLS",
+      "Observability",
+      "Microservices",
+      "DevOps"
+    ],
+    "post": "2026-01-15-install-linkerd-service-mesh-kubernetes-ubuntu"
+  },
+  {
+    "title": "How to Install Mailcow Dockerized on Ubuntu",
+    "description": "Complete guide to installing Mailcow Dockerized mail server solution on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Mailcow",
+      "Docker",
+      "Mail Server",
+      "Email",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-mailcow-dockerized-ubuntu"
+  },
+  {
+    "title": "How to Install and Manage Snap Packages on Ubuntu",
+    "description": "Complete guide to using Snap packages on Ubuntu for installing, updating, and managing containerized applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Snap",
+      "Package Management",
+      "Applications",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-manage-snap-packages-ubuntu"
+  },
+  {
+    "title": "How to Install and Configure MariaDB on Ubuntu",
+    "description": "Complete guide to installing, configuring, and securing MariaDB database server on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "MariaDB",
+      "Database",
+      "MySQL",
+      "SQL",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-mariadb-ubuntu"
+  },
+  {
+    "title": "How to Install Multiple Python Versions on Ubuntu with pyenv",
+    "description": "Master Python version management on Ubuntu using pyenv to install, switch between, and manage multiple Python versions for different projects.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Python",
+      "pyenv",
+      "Development",
+      "Version Management",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-multiple-python-versions-pyenv-ubuntu"
+  },
+  {
+    "title": "How to Install Nextcloud on Ubuntu",
+    "description": "Complete guide to installing Nextcloud private cloud storage on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Nextcloud",
+      "Cloud Storage",
+      "Self-Hosted",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-nextcloud-ubuntu"
+  },
+  {
+    "title": "How to Install Node.js on Ubuntu Using NVM",
+    "description": "Learn how to install and manage multiple Node.js versions on Ubuntu using NVM (Node Version Manager) for flexible development environments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Node.js",
+      "NVM",
+      "JavaScript",
+      "Development",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-nodejs-nvm-ubuntu"
+  },
+  {
+    "title": "How to Install ntopng for Network Monitoring on Ubuntu",
+    "description": "A complete guide to installing, configuring, and using ntopng for comprehensive network traffic monitoring and analysis on Ubuntu systems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "ntopng",
+      "network monitoring",
+      "Ubuntu",
+      "traffic analysis",
+      "NetFlow",
+      "sFlow",
+      "network security",
+      "InfluxDB",
+      "SNMP"
+    ],
+    "post": "2026-01-15-install-ntopng-network-monitoring-ubuntu"
+  },
+  {
+    "title": "How to Install Plex Media Server on Ubuntu",
+    "description": "A complete guide to installing, configuring, and optimizing Plex Media Server on Ubuntu for streaming your personal media collection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Plex",
+      "Media Server",
+      "Self-Hosted",
+      "Linux",
+      "Streaming",
+      "Home Server"
+    ],
+    "post": "2026-01-15-install-plex-media-server-ubuntu"
+  },
+  {
+    "title": "How to Install Portainer for Docker Management on Ubuntu",
+    "description": "Set up Portainer's web interface for easy Docker container, image, and network management on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Portainer",
+      "Docker",
+      "Container Management",
+      "Web UI",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-portainer-docker-ubuntu"
+  },
+  {
+    "title": "How to Install Rust and Cargo on Ubuntu",
+    "description": "Complete guide to installing Rust programming language and Cargo package manager on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Rust",
+      "Cargo",
+      "Development",
+      "Programming",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-rust-cargo-ubuntu"
+  },
+  {
+    "title": "How to Install Sonarr and Radarr on Ubuntu",
+    "description": "A complete guide to installing and configuring Sonarr, Radarr, and Prowlarr on Ubuntu for automated TV show and movie management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Sonarr",
+      "Radarr",
+      "Prowlarr",
+      "Media Server",
+      "Automation",
+      "Linux",
+      "Self-Hosted"
+    ],
+    "post": "2026-01-15-install-sonarr-radarr-ubuntu"
+  },
+  {
+    "title": "How to Install Suricata IDS/IPS on Ubuntu",
+    "description": "Complete guide to installing and configuring Suricata intrusion detection and prevention system on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Suricata",
+      "IDS",
+      "IPS",
+      "Network Security",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-suricata-ids-ips-ubuntu"
+  },
+  {
+    "title": "How to Install and Use Terraform Cloud Agent on Ubuntu",
+    "description": "Complete guide to installing Terraform Cloud Agent for private infrastructure automation on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Terraform",
+      "Cloud Agent",
+      "IaC",
+      "DevOps",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-terraform-cloud-agent-ubuntu"
+  },
+  {
+    "title": "How to Install and Use GDB Debugger on Ubuntu",
+    "description": "Complete guide to using GNU Debugger (GDB) for debugging programs on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "GDB",
+      "Debugging",
+      "C",
+      "C++",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-use-gdb-debugger-ubuntu"
+  },
+  {
+    "title": "How to Install and Use tmux on Ubuntu",
+    "description": "Master tmux terminal multiplexer on Ubuntu for managing multiple sessions, persistent remote connections, and improved productivity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "tmux",
+      "Terminal",
+      "Productivity",
+      "CLI",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-use-tmux-ubuntu"
+  },
+  {
+    "title": "How to Install VirtualBox on Ubuntu",
+    "description": "Step-by-step guide to installing Oracle VirtualBox on Ubuntu for running virtual machines and testing environments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "VirtualBox",
+      "Virtualization",
+      "Virtual Machines",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-virtualbox-ubuntu"
+  },
+  {
+    "title": "How to Install Visual Studio Code on Ubuntu",
+    "description": "Complete guide to installing and configuring Visual Studio Code on Ubuntu for development.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "VS Code",
+      "IDE",
+      "Development",
+      "Editor",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-visual-studio-code-ubuntu"
+  },
+  {
+    "title": "How to Install Wiki.js on Ubuntu",
+    "description": "Complete guide to installing Wiki.js documentation platform on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Wiki.js",
+      "Documentation",
+      "Knowledge Base",
+      "Self-Hosted",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-wikijs-ubuntu"
+  },
+  {
+    "title": "How to Install Wine for Running Windows Apps on Ubuntu",
+    "description": "Complete guide to installing and configuring Wine for running Windows applications on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Wine",
+      "Windows",
+      "Compatibility",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-wine-windows-apps-ubuntu"
+  },
+  {
+    "title": "How to Install XFCE Desktop on Ubuntu",
+    "description": "Complete guide to installing XFCE lightweight desktop environment on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "XFCE",
+      "Desktop",
+      "Lightweight",
+      "GUI",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-install-xfce-desktop-ubuntu"
+  },
+  {
+    "title": "Essential iproute2 Commands on Ubuntu",
+    "description": "Complete guide to iproute2 commands (ip, ss, tc) for modern Linux network configuration and management on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Networking",
+      "iproute2",
+      "ip command",
+      "Linux",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-iproute2-commands-ubuntu"
+  },
+  {
+    "title": "How to Manage Systemd Journal Size on Ubuntu",
+    "description": "A comprehensive guide to controlling systemd journal disk usage on Ubuntu through configuration, vacuuming, retention policies, and monitoring strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Systemd",
+      "Linux",
+      "Journal",
+      "Logging",
+      "DevOps",
+      "Server Administration",
+      "Disk Management"
+    ],
+    "post": "2026-01-15-manage-systemd-journal-size-ubuntu"
+  },
+  {
+    "title": "How to Mount and Automount External Drives on Ubuntu",
+    "description": "Learn how to mount external drives manually and configure automatic mounting on boot using fstab and systemd on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Storage",
+      "Mount",
+      "Filesystems",
+      "System Administration",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-mount-automount-external-drives-ubuntu"
+  },
+  {
+    "title": "How to Mount S3 Buckets with s3fs on Ubuntu",
+    "description": "Complete guide to mounting Amazon S3 buckets as local filesystems on Ubuntu using s3fs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "S3",
+      "s3fs",
+      "Cloud Storage",
+      "AWS",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-mount-s3-buckets-s3fs-ubuntu"
+  },
+  {
+    "title": "Essential Network Troubleshooting Tools on Ubuntu",
+    "description": "Comprehensive guide to network troubleshooting tools on Ubuntu for diagnosing connectivity, performance, and configuration issues.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Networking",
+      "Troubleshooting",
+      "Diagnostics",
+      "Tools",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-network-troubleshooting-tools-ubuntu"
+  },
+  {
+    "title": "How to Recover Deleted Files with TestDisk on Ubuntu",
+    "description": "Complete guide to recovering deleted files and lost partitions using TestDisk on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "TestDisk",
+      "PhotoRec",
+      "File Recovery",
+      "Data Recovery",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-recover-deleted-files-testdisk-ubuntu"
+  },
+  {
+    "title": "How to Run OpenSCAP Compliance Scans on Ubuntu",
+    "description": "Complete guide to using OpenSCAP for security compliance scanning on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "OpenSCAP",
+      "Compliance",
+      "Security",
+      "SCAP",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-run-openscap-compliance-scans-ubuntu"
+  },
+  {
+    "title": "How to Set Up Amanda Backup Server on Ubuntu",
+    "description": "Complete guide to setting up Amanda network backup solution on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Amanda",
+      "Backup",
+      "Network Backup",
+      "Enterprise",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-amanda-backup-server-ubuntu"
+  },
+  {
+    "title": "How to Set Up Bacula Backup Server on Ubuntu",
+    "description": "Complete guide to setting up Bacula enterprise backup system on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Bacula",
+      "Backup",
+      "Disaster Recovery",
+      "Enterprise",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-bacula-backup-server-ubuntu"
+  },
+  {
+    "title": "How to Set Up Bitwarden/Vaultwarden on Ubuntu",
+    "description": "Complete guide to setting up Vaultwarden (Bitwarden-compatible) password manager on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Bitwarden",
+      "Vaultwarden",
+      "Password Manager",
+      "Self-Hosted",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-bitwarden-vaultwarden-ubuntu"
+  },
+  {
+    "title": "How to Set Up cgroups v2 for Resource Control on Ubuntu",
+    "description": "Complete guide to using cgroups v2 for process resource management on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "cgroups",
+      "Resource Control",
+      "Containers",
+      "Linux",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-cgroups-v2-resource-control-ubuntu"
+  },
+  {
+    "title": "How to Set Up ClamAV Antivirus on Ubuntu",
+    "description": "Complete guide to installing and configuring ClamAV antivirus on Ubuntu for malware protection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "ClamAV",
+      "Antivirus",
+      "Security",
+      "Malware",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-clamav-antivirus-ubuntu"
+  },
+  {
+    "title": "How to Set Up a Print Server (CUPS) on Ubuntu",
+    "description": "Complete guide to setting up CUPS as a network print server on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "CUPS",
+      "Print Server",
+      "Printing",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-cups-print-server-ubuntu"
+  },
+  {
+    "title": "How to Set Up a DHCP Server on Ubuntu",
+    "description": "Complete guide to installing and configuring ISC DHCP Server on Ubuntu for automatic IP address assignment.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "DHCP",
+      "Networking",
+      "Server",
+      "Infrastructure",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-dhcp-server-ubuntu"
+  },
+  {
+    "title": "How to Set Up DKIM, SPF, and DMARC Records on Ubuntu",
+    "description": "Complete guide to configuring email authentication with DKIM, SPF, and DMARC on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "DKIM",
+      "SPF",
+      "DMARC",
+      "Email Security",
+      "DNS",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-dkim-spf-dmarc-ubuntu"
+  },
+  {
+    "title": "How to Set Up dnsmasq as a Local DNS Server on Ubuntu",
+    "description": "Complete guide to setting up dnsmasq for local DNS and DHCP services on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "dnsmasq",
+      "DNS",
+      "DHCP",
+      "Network",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-dnsmasq-local-dns-ubuntu"
+  },
+  {
+    "title": "How to Set Up .NET SDK on Ubuntu",
+    "description": "Complete guide to installing .NET SDK and developing .NET applications on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      ".NET",
+      "C#",
+      "Development",
+      "Microsoft",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-dotnet-sdk-ubuntu"
+  },
+  {
+    "title": "How to Set Up DRBD for Disk Replication on Ubuntu",
+    "description": "Complete guide to setting up DRBD network-based disk replication on Ubuntu for high availability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "DRBD",
+      "Disk Replication",
+      "High Availability",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-drbd-disk-replication-ubuntu"
+  },
+  {
+    "title": "How to Set Up Duplicity for Encrypted Backups on Ubuntu",
+    "description": "Complete guide to setting up Duplicity for encrypted incremental backups on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Duplicity",
+      "Encrypted Backup",
+      "GPG",
+      "Cloud Backup",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-duplicity-encrypted-backups-ubuntu"
+  },
+  {
+    "title": "How to Set Up Email Notifications with Postfix on Ubuntu",
+    "description": "Configure Postfix on Ubuntu to send email notifications for system alerts, monitoring, and application events.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Postfix",
+      "Email",
+      "SMTP",
+      "Notifications",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-email-notifications-postfix-ubuntu"
+  },
+  {
+    "title": "How to Set Up Floating/Virtual IPs on Ubuntu",
+    "description": "Complete guide to configuring floating and virtual IP addresses on Ubuntu for high availability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Virtual IP",
+      "Floating IP",
+      "High Availability",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-floating-virtual-ips-ubuntu"
+  },
+  {
+    "title": "How to Set Up Flutter Development Environment on Ubuntu",
+    "description": "Complete guide to setting up Flutter for cross-platform development on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Flutter",
+      "Dart",
+      "Mobile Development",
+      "Cross-Platform",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-flutter-development-ubuntu"
+  },
+  {
+    "title": "How to Set Up Galera Cluster for MySQL on Ubuntu",
+    "description": "Complete guide to setting up Galera Cluster for MySQL/MariaDB multi-master replication on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Galera",
+      "MySQL",
+      "MariaDB",
+      "Cluster",
+      "High Availability",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-galera-cluster-mysql-ubuntu"
+  },
+  {
+    "title": "How to Set Up a Git Server on Ubuntu",
+    "description": "Complete guide to setting up a private Git server on Ubuntu for secure, self-hosted version control without external services.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Git",
+      "Version Control",
+      "Self-Hosted",
+      "DevOps",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-git-server-ubuntu"
+  },
+  {
+    "title": "How to Set Up GlusterFS Distributed Storage on Ubuntu",
+    "description": "Complete guide to setting up GlusterFS distributed file system on Ubuntu for scalable shared storage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "GlusterFS",
+      "Distributed Storage",
+      "Cluster",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-glusterfs-distributed-storage-ubuntu"
+  },
+  {
+    "title": "How to Set Up a Go (Golang) Development Environment on Ubuntu",
+    "description": "Complete guide to setting up a Go development environment on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Go",
+      "Golang",
+      "Development",
+      "Programming",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-go-development-environment-ubuntu"
+  },
+  {
+    "title": "How to Set Up Google Cloud SDK (gcloud) on Ubuntu",
+    "description": "Complete guide to installing and configuring Google Cloud SDK on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Google Cloud",
+      "gcloud",
+      "CLI",
+      "Cloud",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-google-cloud-sdk-ubuntu"
+  },
+  {
+    "title": "How to Set Up HTTPS with Let's Encrypt and Certbot on Ubuntu",
+    "description": "Comprehensive guide to securing your websites with free SSL/TLS certificates from Let's Encrypt using Certbot on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "HTTPS",
+      "SSL",
+      "Let's Encrypt",
+      "Certbot",
+      "Security",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-https-letsencrypt-certbot-ubuntu"
+  },
+  {
+    "title": "How to Set Up iRedMail on Ubuntu",
+    "description": "Complete guide to setting up iRedMail all-in-one mail server solution on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "iRedMail",
+      "Mail Server",
+      "Email",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-iredmail-ubuntu"
+  },
+  {
+    "title": "How to Set Up Jupyter Notebook on Ubuntu",
+    "description": "Complete guide to installing and configuring Jupyter Notebook on Ubuntu for data science.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Jupyter",
+      "Python",
+      "Data Science",
+      "Notebook",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-jupyter-notebook-ubuntu"
+  },
+  {
+    "title": "How to Set Up KDE Plasma Desktop on Ubuntu",
+    "description": "Complete guide to installing and configuring KDE Plasma desktop environment on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "KDE",
+      "Plasma",
+      "Desktop",
+      "GUI",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-kde-plasma-desktop-ubuntu"
+  },
+  {
+    "title": "How to Set Up Keepalived for VRRP/Failover on Ubuntu",
+    "description": "Complete guide to setting up Keepalived for high availability with virtual IP failover on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Keepalived",
+      "VRRP",
+      "High Availability",
+      "Failover",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-keepalived-vrrp-failover-ubuntu"
+  },
+  {
+    "title": "How to Set Up Keycloak for Single Sign-On (SSO) on Ubuntu",
+    "description": "Complete guide to installing and configuring Keycloak identity and access management on Ubuntu for SSO.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Keycloak",
+      "SSO",
+      "Identity Management",
+      "OAuth",
+      "OIDC",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-keycloak-sso-ubuntu"
+  },
+  {
+    "title": "How to Set Up KVM/QEMU Virtualization on Ubuntu",
+    "description": "Complete guide to setting up KVM virtualization on Ubuntu for running virtual machines with near-native performance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "KVM",
+      "QEMU",
+      "Virtualization",
+      "Virtual Machines",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-kvm-qemu-virtualization-ubuntu"
+  },
+  {
+    "title": "How to Set Up a Full Mail Server with Postfix and Dovecot on Ubuntu",
+    "description": "Complete guide to setting up a production mail server with Postfix MTA and Dovecot IMAP/POP3 on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Postfix",
+      "Dovecot",
+      "Mail Server",
+      "Email",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-mail-server-postfix-dovecot-ubuntu"
+  },
+  {
+    "title": "How to Set Up Mattermost on Ubuntu",
+    "description": "Complete guide to setting up Mattermost team messaging platform on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Mattermost",
+      "Team Chat",
+      "Collaboration",
+      "Self-Hosted",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-mattermost-ubuntu"
+  },
+  {
+    "title": "How to Set Up NATS Messaging Server on Ubuntu",
+    "description": "Complete guide to installing and configuring NATS messaging system on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "NATS",
+      "Messaging",
+      "Pub/Sub",
+      "Microservices",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-nats-messaging-server-ubuntu"
+  },
+  {
+    "title": "How to Set Up Network Bonding/Teaming on Ubuntu",
+    "description": "Configure network interface bonding on Ubuntu for increased bandwidth, redundancy, and high availability using Netplan.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Network",
+      "Bonding",
+      "Teaming",
+      "High Availability",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-network-bonding-ubuntu"
+  },
+  {
+    "title": "How to Set Up a Network Bridge on Ubuntu",
+    "description": "Complete guide to creating network bridges on Ubuntu for VMs, containers, and network connectivity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Networking",
+      "Bridge",
+      "Virtualization",
+      "Infrastructure",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-network-bridge-ubuntu"
+  },
+  {
+    "title": "How to Set Up Nginx Virtual Hosts (Server Blocks) on Ubuntu",
+    "description": "Complete guide to configuring Nginx server blocks on Ubuntu for hosting multiple websites on a single server.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Nginx",
+      "Virtual Hosts",
+      "Server Blocks",
+      "Web Server",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-nginx-virtual-hosts-ubuntu"
+  },
+  {
+    "title": "How to Set Up OSSEC HIDS on Ubuntu",
+    "description": "Complete guide to installing and configuring OSSEC Host-based Intrusion Detection System on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "OSSEC",
+      "HIDS",
+      "Intrusion Detection",
+      "Security",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-ossec-hids-ubuntu"
+  },
+  {
+    "title": "How to Set Up Outline Wiki on Ubuntu",
+    "description": "Complete guide to setting up Outline knowledge base and wiki on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Outline",
+      "Wiki",
+      "Documentation",
+      "Self-Hosted",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-outline-wiki-ubuntu"
+  },
+  {
+    "title": "How to Set Up a Private Docker Registry on Ubuntu",
+    "description": "Complete guide to setting up a secure private Docker registry on Ubuntu for storing and distributing container images.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Docker",
+      "Registry",
+      "Containers",
+      "DevOps",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-private-docker-registry-ubuntu"
+  },
+  {
+    "title": "How to Set Up a PXE Boot Server on Ubuntu",
+    "description": "Complete guide to setting up PXE (Preboot Execution Environment) boot server on Ubuntu for network-based OS installation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "PXE",
+      "Network Boot",
+      "TFTP",
+      "Server",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-pxe-boot-server-ubuntu"
+  },
+  {
+    "title": "How to Set Up Python Virtual Environments (venv) on Ubuntu",
+    "description": "Complete guide to creating and managing Python virtual environments on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Python",
+      "venv",
+      "Virtual Environment",
+      "Development",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-python-virtual-environments-ubuntu"
+  },
+  {
+    "title": "How to Set Up RabbitMQ Message Broker on Ubuntu",
+    "description": "Complete guide to installing, configuring, and managing RabbitMQ message broker on Ubuntu for reliable message queuing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "RabbitMQ",
+      "Message Queue",
+      "Messaging",
+      "Microservices",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-rabbitmq-ubuntu"
+  },
+  {
+    "title": "How to Set Up Rclone for Cloud Storage Sync on Ubuntu",
+    "description": "Complete guide to using Rclone for syncing and managing cloud storage on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Rclone",
+      "Cloud Storage",
+      "Sync",
+      "Backup",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-rclone-cloud-storage-sync-ubuntu"
+  },
+  {
+    "title": "How to Set Up Redis Pub/Sub on Ubuntu",
+    "description": "Complete guide to using Redis publish/subscribe messaging on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Redis",
+      "Pub/Sub",
+      "Messaging",
+      "Real-time",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-redis-pubsub-ubuntu"
+  },
+  {
+    "title": "How to Set Up Ruby with rbenv on Ubuntu",
+    "description": "Complete guide to installing and managing Ruby versions with rbenv on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Ruby",
+      "rbenv",
+      "Development",
+      "Rails",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-ruby-rbenv-ubuntu"
+  },
+  {
+    "title": "How to Set Up a Seedbox on Ubuntu",
+    "description": "A comprehensive guide to building a fully-featured seedbox on Ubuntu with multiple torrent clients, VPN integration, automation, and monitoring.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Seedbox",
+      "Linux",
+      "Torrents",
+      "qBittorrent",
+      "Deluge",
+      "rTorrent",
+      "VPN",
+      "Server",
+      "Self-Hosting"
+    ],
+    "post": "2026-01-15-setup-seedbox-ubuntu"
+  },
+  {
+    "title": "How to Set Up a SOCKS5 Proxy Server on Ubuntu",
+    "description": "Complete guide to setting up a SOCKS5 proxy server on Ubuntu using Dante for secure network traffic forwarding.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "SOCKS5",
+      "Proxy",
+      "Networking",
+      "Security",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-socks5-proxy-ubuntu"
+  },
+  {
+    "title": "How to Set Up a Speed Test Server on Ubuntu",
+    "description": "A complete guide to deploying your own network speed test server on Ubuntu using LibreSpeed, including PHP/Nginx configuration, Docker deployment, result logging, and API integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Networking",
+      "LibreSpeed",
+      "Self-Hosted",
+      "Performance",
+      "Linux",
+      "DevOps",
+      "Infrastructure"
+    ],
+    "post": "2026-01-15-setup-speed-test-server-ubuntu"
+  },
+  {
+    "title": "How to Set Up Steam and Proton for Gaming on Ubuntu",
+    "description": "Complete guide to setting up Steam with Proton for playing Windows games on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Steam",
+      "Proton",
+      "Gaming",
+      "Linux Gaming",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-steam-proton-gaming-ubuntu"
+  },
+  {
+    "title": "How to Set Up and Manage SWAP Space on Ubuntu",
+    "description": "Learn how to create, configure, and optimize swap space on Ubuntu for better memory management and system stability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "SWAP",
+      "Memory",
+      "System Administration",
+      "Performance",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-swap-space-ubuntu"
+  },
+  {
+    "title": "How to Set Up a TFTP Server on Ubuntu",
+    "description": "Complete guide to installing and configuring a TFTP server on Ubuntu for network device configuration and file transfers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "TFTP",
+      "Server",
+      "Networking",
+      "File Transfer",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-tftp-server-ubuntu"
+  },
+  {
+    "title": "How to Set Up Tripwire for File Integrity Monitoring on Ubuntu",
+    "description": "Complete guide to setting up Tripwire file integrity monitoring on Ubuntu for security compliance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Tripwire",
+      "File Integrity",
+      "Security",
+      "FIM",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-tripwire-file-integrity-monitoring-ubuntu"
+  },
+  {
+    "title": "How to Set Up Unbound as a Recursive DNS Resolver on Ubuntu",
+    "description": "Complete guide to setting up Unbound as a validating, recursive, caching DNS resolver on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Unbound",
+      "DNS",
+      "Recursive Resolver",
+      "Privacy",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-unbound-recursive-dns-ubuntu"
+  },
+  {
+    "title": "How to Set Up a VNC Server for Remote Desktop on Ubuntu",
+    "description": "Complete guide to setting up TigerVNC or TightVNC server on Ubuntu for secure remote desktop access over SSH tunnels.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "VNC",
+      "Remote Desktop",
+      "GUI",
+      "Server",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-vnc-server-ubuntu"
+  },
+  {
+    "title": "How to Set Up Wazuh Security Platform on Ubuntu",
+    "description": "Complete guide to installing Wazuh unified security platform on Ubuntu for threat detection and compliance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Wazuh",
+      "SIEM",
+      "Security",
+      "XDR",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-wazuh-security-platform-ubuntu"
+  },
+  {
+    "title": "How to Set Up a Webhooks Server on Ubuntu",
+    "description": "Complete guide to setting up a webhooks server for automation on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Webhooks",
+      "Automation",
+      "API",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-webhooks-server-ubuntu"
+  },
+  {
+    "title": "How to Set Up Remote Desktop with XRDP on Ubuntu",
+    "description": "Complete guide to setting up XRDP server for Windows-compatible remote desktop on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "XRDP",
+      "Remote Desktop",
+      "RDP",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-setup-xrdp-remote-desktop-ubuntu"
+  },
+  {
+    "title": "How to Upgrade Ubuntu to a Newer Version (22.04 to 24.04)",
+    "description": "A step-by-step guide to safely upgrading Ubuntu from 22.04 LTS to 24.04 LTS with pre-upgrade checks and rollback strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Upgrade",
+      "System Administration",
+      "LTS",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-upgrade-ubuntu-22-04-to-24-04"
+  },
+  {
+    "title": "How to Use GoAccess for Web Log Analysis on Ubuntu",
+    "description": "A comprehensive guide to installing and using GoAccess for real-time web log analysis on Ubuntu, covering terminal dashboards, HTML reports, custom log formats, and GeoIP integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GoAccess",
+      "Log Analysis",
+      "Ubuntu",
+      "Nginx",
+      "Apache",
+      "Web Server",
+      "Monitoring",
+      "DevOps",
+      "Linux"
+    ],
+    "post": "2026-01-15-use-goaccess-web-log-analysis-ubuntu"
+  },
+  {
+    "title": "How to Use Helm for Kubernetes on Ubuntu",
+    "description": "A comprehensive guide to installing, configuring, and using Helm package manager for Kubernetes on Ubuntu to simplify application deployment and management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Helm",
+      "Kubernetes",
+      "Ubuntu",
+      "Package Manager",
+      "DevOps",
+      "Container Orchestration",
+      "Charts",
+      "Cloud Native"
+    ],
+    "post": "2026-01-15-use-helm-kubernetes-package-manager-ubuntu"
+  },
+  {
+    "title": "How to Use inotifywait for File Monitoring on Ubuntu",
+    "description": "Complete guide to using inotifywait for real-time file system monitoring on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "inotify",
+      "File Monitoring",
+      "Automation",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-use-inotifywait-file-monitoring-ubuntu"
+  },
+  {
+    "title": "How to Use Logwatch for Log Analysis on Ubuntu",
+    "description": "A comprehensive guide to installing, configuring, and using Logwatch for automated log analysis and daily system reports on Ubuntu servers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Linux",
+      "Logging",
+      "Log Analysis",
+      "Logwatch",
+      "System Administration",
+      "DevOps",
+      "Monitoring"
+    ],
+    "post": "2026-01-15-use-logwatch-log-analysis-ubuntu"
+  },
+  {
+    "title": "How to Use strace for Troubleshooting on Ubuntu",
+    "description": "Complete guide to using strace for debugging applications and system issues on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "strace",
+      "Debugging",
+      "System Calls",
+      "Troubleshooting",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-use-strace-troubleshooting-ubuntu"
+  },
+  {
+    "title": "How to Use systemd Timers Instead of Cron on Ubuntu",
+    "description": "Complete guide to using systemd timers for task scheduling on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "systemd",
+      "Timers",
+      "Scheduling",
+      "Cron Alternative",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-use-systemd-timers-ubuntu"
+  },
+  {
+    "title": "How to Use Timeshift for System Snapshots on Ubuntu",
+    "description": "Complete guide to using Timeshift for creating and restoring system snapshots on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Timeshift",
+      "Snapshots",
+      "Backup",
+      "System Restore",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-use-timeshift-system-snapshots-ubuntu"
+  },
+  {
+    "title": "How to Use Wireshark for Network Analysis on Ubuntu",
+    "description": "A comprehensive guide to installing, configuring, and using Wireshark for deep network packet analysis and troubleshooting on Ubuntu Linux systems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Wireshark",
+      "Network Analysis",
+      "Ubuntu",
+      "Linux",
+      "Packet Capture",
+      "Security",
+      "Troubleshooting",
+      "tshark",
+      "Protocol Analysis"
+    ],
+    "post": "2026-01-15-use-wireshark-network-analysis-ubuntu"
+  },
+  {
+    "title": "How to Write and Debug Bash Scripts on Ubuntu",
+    "description": "Complete guide to writing, debugging, and best practices for Bash scripts on Ubuntu.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ubuntu",
+      "Bash",
+      "Scripting",
+      "Shell",
+      "Automation",
+      "Tutorial"
+    ],
+    "post": "2026-01-15-write-debug-bash-scripts-ubuntu"
   }
 ]
