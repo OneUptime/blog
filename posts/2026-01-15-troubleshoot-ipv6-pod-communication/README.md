@@ -902,7 +902,6 @@ spec:
                   ping6 -c 3 2001:4860:4860::8888 || exit 1
                   echo "IPv6 connectivity OK"
           restartPolicy: OnFailure
-EOF
 ```
 
 ---
