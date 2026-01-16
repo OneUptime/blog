@@ -15270,5 +15270,21 @@
       "Linux"
     ],
     "post": "2026-01-16-docker-wsl2-windows"
+  },
+  {
+    "title": "Decentralize the Internet: Open Source Alternatives to Cloudflare Products",
+    "description": "Cloudflare powers a troubling percentage of the internet. When they go down, so does everyone else. Here are open source and self-hosted alternatives for CDN, DDoS protection, DNS, and edge services that put you back in control.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloudflare",
+      "Open Source",
+      "Self-Hosting",
+      "Decentralization",
+      "Reliability",
+      "Security",
+      "Cdn",
+      "Ddos Protection"
+    ],
+    "post": "2026-01-16-decentralize-the-internet-cloudflare-alternatives"
   }
 ]
