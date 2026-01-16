@@ -20,8 +20,10 @@
 - Amanda
 - Ambient Mesh
 - AMD
+- AMQP
 - Analysis
 - Analytics
+- Anchors
 - Android
 - Android Development
 - Android Studio
@@ -48,6 +50,7 @@
 - App Signing
 - App Store
 - AppArmor
+- Apple Silicon
 - Applications
 - APT
 - Architecture
@@ -93,10 +96,12 @@
 - Bandwidth
 - Bare Metal
 - Bare Workflow
+- Base Images
 - Bash
 - BCC
 - Beginner
 - Benchmarking
+- Benchmarks
 - Best Practices
 - Beta Testing
 - BFD
@@ -106,6 +111,7 @@
 - Big Data
 - Binary Size
 - Bind
+- Bind Mounts
 - BIND9
 - Biometric Authentication
 - Bitwarden
@@ -121,6 +127,7 @@
 - Browser
 - BTF
 - Buf
+- Build
 - Build Automation
 - Build Optimization
 - Build Tools
@@ -129,11 +136,14 @@
 - C
 - C#
 - C++
+- Cache
 - Caching
 - Caddy
+- cAdvisor
 - Calico
 - Calicoctl
 - Canary Deployment
+- Capabilities
 - Capacity Planning
 - Cardinality
 - Cargo
@@ -154,6 +164,7 @@
 - Chaos Engineering
 - Charts
 - Chat Application
+- Checkpoint
 - Chi
 - Chromatic
 - Chrome DevTools
@@ -162,6 +173,7 @@
 - Cilium
 - cilium/ebpf
 - Circuit Breaker
+- CIS
 - CIS Benchmark
 - ClamAV
 - clap
@@ -200,6 +212,7 @@
 - Code Signing
 - Code Splitting
 - CodePush
+- Colima
 - Collaboration
 - Collector
 - Command Line
@@ -209,6 +222,7 @@
 - Compilation
 - Compliance
 - Components
+- Compose
 - Compression
 - Concurrency
 - Configuration
@@ -226,12 +240,14 @@
 - containerd
 - Containers
 - Content Security Policy
+- Content Trust
 - Context API
 - Context Cancellation
 - Context Propagation
 - Core Web Vitals
 - CoreDNS
 - Corosync
+- Corporate
 - Correlation
 - CORS
 - Cost Optimization
@@ -241,6 +257,7 @@
 - Crash Reporting
 - CrashLoopBackOff
 - CRD
+- CRIU
 - Cron
 - Cron Alternative
 - Cross-Platform
@@ -258,11 +275,13 @@
 - Customer Support
 - Customization
 - Cypress
+- Daemon
 - DANE
 - Dart
 - Dashboard
 - Data Fetching
 - Data Locality
+- Data Management
 - Data Persistence
 - Data Processing
 - Data Protection
@@ -286,15 +305,18 @@
 - Deprecation
 - Design Patterns
 - Desktop
+- Desktop Applications
 - Detox
 - Developer Productivity
 - Development
 - Devices
 - DevOps
+- DevSecOps
 - DevTools
 - DHCP
 - Dhcpv6
 - Diagnostics
+- DinD
 - Direct Connect
 - Directory Services
 - Disaster Recovery
@@ -327,6 +349,9 @@
 - Docker
 - Docker Alternative
 - Docker Compose
+- Docker Context
+- Docker Swarm
+- Dockerfile
 - Documentation
 - Domain Security
 - Dovecot
@@ -334,6 +359,7 @@
 - Drawer Navigation
 - DRBD
 - Drivers
+- DRY
 - Dual Stack
 - Dual-Stack
 - Duplicity
@@ -346,6 +372,7 @@
 - Egress Gateway
 - Elastic Stack
 - Elasticsearch
+- ELK
 - ELK Stack
 - Email
 - Email Security
@@ -354,6 +381,7 @@
 - Encryption
 - Engineering Culture
 - Enterprise
+- Environment Variables
 - Environments
 - Envoy
 - EnvoyFilter
@@ -374,6 +402,7 @@
 - Exponential Backoff
 - Exporters
 - Express
+- Extends
 - Extensibility
 - External Dns
 - External Services
@@ -401,6 +430,7 @@
 - File Transfer
 - File Upload
 - Filebeat
+- Filesystem
 - Filesystems
 - FIM
 - Fingerprint
@@ -494,6 +524,7 @@
 - Home Server
 - Hooks
 - Hostname
+- Hot Reload
 - Hot Reloading
 - How-To
 - HPA
@@ -515,6 +546,8 @@
 - Identity Providers
 - IDS
 - Image Caching
+- Image Size
+- Images
 - Incident Management
 - Incident Response
 - Inclusive Design
@@ -554,6 +587,7 @@
 - Ipsec
 - Iptables
 - IPv6
+- IPvlan
 - iRedMail
 - iSCSI
 - ISO
@@ -605,7 +639,10 @@
 - kubectl
 - Kubernetes
 - KVM
+- L2
+- L3
 - LAMP
+- LAN
 - Landlock
 - Large Lists
 - Latency
@@ -657,6 +694,7 @@
 - Lynis
 - MAC
 - Machine Learning
+- Macvlan
 - Maestro
 - Mail Server
 - Mailcow
@@ -686,6 +724,7 @@
 - Migration
 - Migrations
 - MinIO
+- Mirroring
 - MMKV
 - Mobile
 - Mobile Development
@@ -706,8 +745,11 @@
 - MTU
 - Multi Cluster
 - Multi-Cluster
+- Multi-Host
 - Multi-Region
+- Multi-Registry
 - Multi-Site
+- Multi-Stage
 - Multi-Stage Build
 - Multi-tenancy
 - Multi-tenant
@@ -736,6 +778,7 @@
 - Netplan
 - Network
 - Network Administration
+- Network Aliases
 - Network Analysis
 - Network Backup
 - Network Boot
@@ -757,6 +800,7 @@
 - NodeJS
 - Nodelocal Dns
 - NodePort
+- Non-Root
 - NoSQL
 - Notebook
 - Notifications
@@ -805,6 +849,7 @@
 - OSSEC
 - OTA Updates
 - Outline
+- Overlay
 - OWASP
 - Ownership
 - Pacemaker
@@ -832,6 +877,7 @@
 - PHP-FPM
 - Pi-hole
 - PII
+- Pipelines
 - PKCE
 - Planning
 - Plasma
@@ -846,9 +892,11 @@
 - Pod Security
 - Podman
 - Policy
+- Port Mapping
 - Port Monitoring
 - Portability
 - Portainer
+- Ports
 - Postfix
 - PostgreSQL
 - Postmortems
@@ -890,6 +938,7 @@
 - Pubsub
 - Pull Requests
 - Pull-to-Refresh
+- Pulumi
 - Push Notifications
 - PWA
 - PXE
@@ -907,6 +956,7 @@
 - Radarr
 - RAID
 - Rails
+- Rancher
 - Rate Limiting
 - rayon
 - RBAC
@@ -921,6 +971,7 @@
 - React Query
 - react-window
 - React.memo
+- Read-Only
 - Readiness Probes
 - Real Time
 - Real User Monitoring
@@ -938,6 +989,7 @@
 - Release Management
 - Releases
 - Reliability
+- Remote
 - Remote Access
 - Remote Desktop
 - Remote Management
@@ -951,6 +1003,7 @@
 - Rest
 - REST API
 - restic
+- Restore
 - Retries
 - Retry
 - Retry Logic
@@ -963,6 +1016,7 @@
 - Rook
 - Root Detection
 - Rootkit
+- Rootless
 - Roundcube
 - Route 53
 - Route53
@@ -976,6 +1030,7 @@
 - Ruby
 - RUM
 - Runbooks
+- Runner
 - Runtime
 - Runtime Security
 - Rust
@@ -989,11 +1044,13 @@
 - Sandboxing
 - Scalability
 - Scaling
+- Scanning
 - SCAP
 - Scheduled Maintenance
 - Scheduling
 - Schema
 - Scopes
+- Scratch
 - Screen Reader
 - Screen Sizes
 - Scripting
@@ -1032,6 +1089,7 @@
 - Sidecar
 - SIEM
 - Signals
+- Signing
 - Site Reliability Engineering
 - Skeleton Loading
 - Slaac
@@ -1049,6 +1107,7 @@
 - SNMP
 - Snort
 - Social Login
+- Socket
 - Socket.IO
 - SOCKS5
 - Software Development
@@ -1146,9 +1205,11 @@
 - Timeouts
 - Timers
 - Timeshift
+- Timezone
 - Timing Analysis
 - TLS
 - Tls Termination
+- tmpfs
 - tmux
 - Toil
 - Token Bucket
@@ -1172,9 +1233,11 @@
 - Traffic Policy
 - Traffic Splitting
 - Transcoding
+- Transfer
 - Transitions
 - Tree Shaking
 - Tripwire
+- Trivy
 - Troubleshooting
 - tshark
 - TTFB
@@ -1192,6 +1255,7 @@
 - UI Components
 - UI Testing
 - UI/UX
+- Ulimits
 - Unbound
 - Unit Testing
 - Unit Tests
@@ -1216,6 +1280,7 @@
 - Velero
 - Vendor Lock-in
 - venv
+- Verification
 - Version
 - Version Control
 - Version Management
@@ -1237,13 +1302,17 @@
 - VLANs
 - VNC
 - VoiceOver
+- Volumes
 - VPA
 - VPN
 - VRRP
 - VS Code
+- Vulnerability Scanning
 - Waf
 - Wake-on-LAN
 - WASM
+- Watch
+- Watchtower
 - Wayland
 - Wazuh
 - Web Application Firewall
@@ -1276,11 +1345,14 @@
 - Worker Threads
 - Workflows
 - Workloads
+- WSL2
+- X11
 - XDP
 - XDR
 - XFCE
 - XRDP
 - XSS
+- YAML
 - Z-Wave
 - Zabbix
 - Zero Downtime
