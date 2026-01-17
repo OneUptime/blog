@@ -10,6 +10,12 @@
  * 4. Each blog post has a social-media.png image
  * 5. Sorts Blogs.json by date (oldest first, newest last)
  * 6. Generates Tags.md automatically from all tags in Blogs.json (sorted alphabetically)
+ * 7. Cross-validates README.md content against Blogs.json entries (title, description, author, tags)
+ * 8. Validates author exists in Authors.json
+ * 9. Validates directory name date format (YYYY-MM-DD prefix)
+ * 10. Checks for duplicate posts
+ * 11. Validates tags are not empty and have no duplicates
+ * 12. Validates minimum description length
  *
  * Run with: npm run validate
  */
@@ -20,7 +26,10 @@ import * as path from 'path';
 // Constants
 const POSTS_DIR = 'posts';
 const BLOGS_JSON = 'Blogs.json';
+const AUTHORS_JSON = 'Authors.json';
 const TAGS_MD = 'Tags.md';
+const MIN_DESCRIPTION_LENGTH = 50;
+const DATE_PREFIX_REGEX = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])-/;
 
 // Types
 interface BlogEntry {
@@ -29,6 +38,15 @@ interface BlogEntry {
   authorGitHubUsername: string;
   tags: string[];
   post: string;
+}
+
+interface AuthorEntry {
+  authorName: string;
+  authorBio: string;
+}
+
+interface AuthorsJson {
+  [username: string]: AuthorEntry;
 }
 
 interface FormatIssue {
@@ -78,6 +96,11 @@ function checkRequiredFiles(): void {
     process.exit(1);
   }
 
+  if (!fs.existsSync(AUTHORS_JSON)) {
+    logError(`${AUTHORS_JSON} not found in the current directory.`);
+    process.exit(1);
+  }
+
   if (!fs.existsSync(POSTS_DIR)) {
     logError(`${POSTS_DIR}/ directory not found.`);
     process.exit(1);
@@ -96,6 +119,181 @@ function readBlogsJson(): BlogEntry[] {
     logError(`Failed to parse ${BLOGS_JSON}: ${error.message}`);
     logError('Make sure the JSON is valid. You can use a JSON validator to check for syntax errors.');
     process.exit(1);
+  }
+}
+
+/**
+ * Read and parse Authors.json
+ */
+function readAuthorsJson(): AuthorsJson {
+  try {
+    const content = fs.readFileSync(AUTHORS_JSON, 'utf8');
+    return JSON.parse(content) as AuthorsJson;
+  } catch (e) {
+    const error = e as Error;
+    logError(`Failed to parse ${AUTHORS_JSON}: ${error.message}`);
+    logError('Make sure the JSON is valid. You can use a JSON validator to check for syntax errors.');
+    process.exit(1);
+  }
+}
+
+/**
+ * Validate directory name format (must start with YYYY-MM-DD-)
+ */
+function validateDirectoryDateFormat(postsDir: string[]): void {
+  logHeader('Validating directory name date format');
+  const invalidDirs = postsDir.filter((dir) => !DATE_PREFIX_REGEX.test(dir));
+
+  if (invalidDirs.length > 0) {
+    hasErrors = true;
+    logError(
+      `Found ${invalidDirs.length} director${invalidDirs.length === 1 ? 'y' : 'ies'} with invalid date format:\n`
+    );
+    invalidDirs.forEach((dir) => {
+      console.log(`  - ${colors.red}${dir}${colors.reset}`);
+    });
+    console.log(`
+${colors.bold}How to fix:${colors.reset}
+  Directory names must start with a valid date in YYYY-MM-DD format.
+  Example: 2025-01-15-my-blog-post-title
+`);
+  } else {
+    logSuccess('All directory names have valid date format (YYYY-MM-DD-)');
+  }
+}
+
+/**
+ * Check for duplicate posts in Blogs.json
+ */
+function checkDuplicatePosts(blogsJson: BlogEntry[]): void {
+  logHeader('Checking for duplicate posts');
+  const postCounts = new Map<string, number>();
+  
+  for (const blog of blogsJson) {
+    postCounts.set(blog.post, (postCounts.get(blog.post) || 0) + 1);
+  }
+  
+  const duplicates = Array.from(postCounts.entries()).filter(([_, count]) => count > 1);
+  
+  if (duplicates.length > 0) {
+    hasErrors = true;
+    logError(`Found ${duplicates.length} duplicate post${duplicates.length === 1 ? '' : 's'} in ${BLOGS_JSON}:\n`);
+    duplicates.forEach(([post, count]) => {
+      console.log(`  - ${colors.red}${post}${colors.reset} (appears ${count} times)`);
+    });
+    console.log(`
+${colors.bold}How to fix:${colors.reset}
+  Remove duplicate entries from ${BLOGS_JSON}. Each post should only appear once.
+`);
+  } else {
+    logSuccess('No duplicate posts found in Blogs.json');
+  }
+}
+
+/**
+ * Validate authors exist in Authors.json
+ */
+function validateAuthors(blogsJson: BlogEntry[], authorsJson: AuthorsJson): void {
+  logHeader('Validating authors against Authors.json');
+  const invalidAuthors: Array<{ post: string; author: string }> = [];
+  
+  for (const blog of blogsJson) {
+    if (!authorsJson[blog.authorGitHubUsername]) {
+      invalidAuthors.push({ post: blog.post, author: blog.authorGitHubUsername });
+    }
+  }
+  
+  if (invalidAuthors.length > 0) {
+    hasErrors = true;
+    logError(`Found ${invalidAuthors.length} post${invalidAuthors.length === 1 ? '' : 's'} with invalid authors:\n`);
+    invalidAuthors.forEach(({ post, author }) => {
+      console.log(`  - ${colors.red}${post}${colors.reset}: author "${author}" not in ${AUTHORS_JSON}`);
+    });
+    console.log(`
+${colors.bold}How to fix:${colors.reset}
+  Either add the author to ${AUTHORS_JSON}:
+
+  "${invalidAuthors[0]?.author || 'username'}": {
+    "authorName": "Full Name",
+    "authorBio": "Author bio text"
+  }
+
+  Or fix the authorGitHubUsername in ${BLOGS_JSON} to match an existing author.
+`);
+  } else {
+    logSuccess('All authors are valid and exist in Authors.json');
+  }
+}
+
+/**
+ * Validate Blogs.json entry fields
+ */
+function validateBlogEntries(blogsJson: BlogEntry[]): void {
+  logHeader('Validating Blogs.json entry fields');
+  const issues: Array<{ post: string; problems: string[] }> = [];
+  
+  for (const blog of blogsJson) {
+    const problems: string[] = [];
+    
+    // Check for empty or missing title
+    if (!blog.title || blog.title.trim().length === 0) {
+      problems.push('Missing or empty title');
+    } else if (blog.title !== blog.title.trim()) {
+      problems.push('Title has leading/trailing whitespace');
+    }
+    
+    // Check for empty or short description
+    if (!blog.description || blog.description.trim().length === 0) {
+      problems.push('Missing or empty description');
+    } else if (blog.description.trim().length < MIN_DESCRIPTION_LENGTH) {
+      problems.push(`Description too short (${blog.description.trim().length} chars, minimum ${MIN_DESCRIPTION_LENGTH})`);
+    } else if (blog.description !== blog.description.trim()) {
+      problems.push('Description has leading/trailing whitespace');
+    }
+    
+    // Check for empty tags
+    if (!blog.tags || !Array.isArray(blog.tags) || blog.tags.length === 0) {
+      problems.push('Missing or empty tags array');
+    } else {
+      // Check for empty tag strings
+      const emptyTags = blog.tags.filter((t) => !t || t.trim().length === 0);
+      if (emptyTags.length > 0) {
+        problems.push(`Found ${emptyTags.length} empty tag${emptyTags.length === 1 ? '' : 's'}`);
+      }
+      
+      // Check for duplicate tags (case-insensitive)
+      const lowerTags = blog.tags.map((t) => t.toLowerCase());
+      const uniqueLowerTags = new Set(lowerTags);
+      if (lowerTags.length !== uniqueLowerTags.size) {
+        problems.push('Tags contain duplicates (case-insensitive)');
+      }
+    }
+    
+    // Check for empty author
+    if (!blog.authorGitHubUsername || blog.authorGitHubUsername.trim().length === 0) {
+      problems.push('Missing or empty authorGitHubUsername');
+    }
+    
+    // Check for empty post
+    if (!blog.post || blog.post.trim().length === 0) {
+      problems.push('Missing or empty post field');
+    }
+    
+    if (problems.length > 0) {
+      issues.push({ post: blog.post || '(unknown)', problems });
+    }
+  }
+  
+  if (issues.length > 0) {
+    hasErrors = true;
+    logError(`Found ${issues.length} post${issues.length === 1 ? '' : 's'} with field issues:\n`);
+    issues.forEach(({ post, problems }) => {
+      console.log(`  ${colors.bold}${post}${colors.reset}`);
+      problems.forEach((p) => console.log(`    - ${colors.red}${p}${colors.reset}`));
+    });
+    console.log('');
+  } else {
+    logSuccess('All Blogs.json entries have valid fields');
   }
 }
 
@@ -171,9 +369,9 @@ ${colors.bold}How to fix:${colors.reset}
 }
 
 /**
- * Validate README.md format for a single blog post
+ * Validate README.md format for a single blog post and cross-validate with Blogs.json
  */
-function validateReadme(dir: string): FormatIssue[] {
+function validateReadme(dir: string, blogEntry: BlogEntry | undefined): FormatIssue[] {
   const readmePath = path.join(POSTS_DIR, dir, 'README.md');
   const issues: FormatIssue[] = [];
 
@@ -196,6 +394,17 @@ function validateReadme(dir: string): FormatIssue[] {
       message: 'Missing or incorrect title format',
       fix: 'First line must be a title starting with "# " (hash followed by space)',
     });
+  } else {
+    const readmeTitle = lines[0].substring(2).trim();
+    
+    // Cross-validate title with Blogs.json
+    if (blogEntry && readmeTitle !== blogEntry.title) {
+      issues.push({
+        type: 'error',
+        message: `Title mismatch: README has "${readmeTitle}" but Blogs.json has "${blogEntry.title}"`,
+        fix: 'Update either README.md or Blogs.json so titles match exactly',
+      });
+    }
   }
 
   // Check for Author line
@@ -212,6 +421,19 @@ function validateReadme(dir: string): FormatIssue[] {
       message: 'Author line may not have proper GitHub link format',
       fix: 'Use format: Author: [githubusername](https://www.github.com/githubusername)',
     });
+  } else if (blogEntry) {
+    // Cross-validate author with Blogs.json
+    const authorMatch = authorLine.match(/\[([^\]]+)\]/);
+    if (authorMatch) {
+      const readmeAuthor = authorMatch[1];
+      if (readmeAuthor !== blogEntry.authorGitHubUsername) {
+        issues.push({
+          type: 'error',
+          message: `Author mismatch: README has "${readmeAuthor}" but Blogs.json has "${blogEntry.authorGitHubUsername}"`,
+          fix: 'Update either README.md or Blogs.json so authors match exactly',
+        });
+      }
+    }
   }
 
   // Check for Tags line
@@ -222,6 +444,26 @@ function validateReadme(dir: string): FormatIssue[] {
       message: 'Missing Tags line',
       fix: 'Add a line: Tags: Tag1, Tag2, Tag3',
     });
+  } else if (blogEntry) {
+    // Cross-validate tags with Blogs.json
+    const readmeTags = tagsLine
+      .substring(5)
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+    const blogJsonTags = blogEntry.tags || [];
+    
+    // Sort both arrays for comparison
+    const sortedReadmeTags = [...readmeTags].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    const sortedBlogTags = [...blogJsonTags].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    
+    if (JSON.stringify(sortedReadmeTags) !== JSON.stringify(sortedBlogTags)) {
+      issues.push({
+        type: 'error',
+        message: `Tags mismatch: README has [${readmeTags.join(', ')}] but Blogs.json has [${blogJsonTags.join(', ')}]`,
+        fix: 'Update either README.md or Blogs.json so tags match exactly',
+      });
+    }
   }
 
   // Check for Description line
@@ -232,6 +474,16 @@ function validateReadme(dir: string): FormatIssue[] {
       message: 'Missing Description line',
       fix: 'Add a line: Description: One liner description of the post',
     });
+  } else if (blogEntry) {
+    // Cross-validate description with Blogs.json
+    const readmeDesc = descLine.substring(12).trim();
+    if (readmeDesc !== blogEntry.description) {
+      issues.push({
+        type: 'error',
+        message: `Description mismatch between README and Blogs.json`,
+        fix: 'Update either README.md or Blogs.json so descriptions match exactly',
+      });
+    }
   }
 
   return issues;
@@ -324,15 +576,22 @@ function sortBlogsByDate(blogsJson: BlogEntry[]): BlogEntry[] {
 /**
  * Validate all blog posts format
  */
-function validateAllPosts(postsDir: string[]): BlogIssue[] {
-  logHeader('Validating README.md format');
+function validateAllPosts(postsDir: string[], blogsJson: BlogEntry[]): BlogIssue[] {
+  logHeader('Validating README.md format and cross-validation');
   const formatIssues: BlogIssue[] = [];
+  
+  // Create a map for quick lookup
+  const blogMap = new Map<string, BlogEntry>();
+  for (const blog of blogsJson) {
+    blogMap.set(blog.post, blog);
+  }
 
   for (const dir of postsDir) {
     const issues: FormatIssue[] = [];
+    const blogEntry = blogMap.get(dir);
 
-    // Validate README.md
-    const readmeIssues = validateReadme(dir);
+    // Validate README.md with cross-validation
+    const readmeIssues = validateReadme(dir, blogEntry);
     issues.push(...readmeIssues);
 
     // Check social-media.png
@@ -433,6 +692,9 @@ function main(): void {
 
   // Read Blogs.json
   const blogsJson = readBlogsJson();
+  
+  // Read Authors.json
+  const authorsJson = readAuthorsJson();
 
   // Sort Blogs.json by date (oldest first, newest last)
   const sortedBlogs = sortBlogsByDate(blogsJson);
@@ -444,10 +706,22 @@ function main(): void {
   // Get all directories in posts/
   const postsDir = getPostDirectories();
 
+  // Validate directory name date format
+  validateDirectoryDateFormat(postsDir);
+  
+  // Check for duplicate posts
+  checkDuplicatePosts(sortedBlogs);
+  
+  // Validate authors against Authors.json
+  validateAuthors(sortedBlogs, authorsJson);
+  
+  // Validate Blogs.json entry fields
+  validateBlogEntries(sortedBlogs);
+
   // Run validations
   const missingInJson = checkMissingInJson(postsDir, blogPosts);
   const missingDirs = checkMissingDirs(postsDir, blogPosts);
-  const formatIssues = validateAllPosts(postsDir);
+  const formatIssues = validateAllPosts(postsDir, sortedBlogs);
 
   // Display format issues
   displayFormatIssues(formatIssues);
