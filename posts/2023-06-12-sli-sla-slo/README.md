@@ -4,7 +4,7 @@ Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: Learning Resource, Site Reliability Engineering
 
-Description: Here's the difference between SLI, SLO, and SLA. 
+Description: Here's the difference between SLI, SLO, and SLA explained simply.
 
 ### SLA - Service level agreement.
 
