@@ -1013,6 +1013,7 @@
 - Reverse Proxy
 - RGW
 - rkhunter
+- Rollback
 - Rook
 - Root Detection
 - Rootkit

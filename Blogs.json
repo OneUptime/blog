@@ -15286,5 +15286,109 @@
       "Ddos Protection"
     ],
     "post": "2026-01-16-decentralize-the-internet-cloudflare-alternatives"
+  },
+  {
+    "title": "How to Install Helm on macOS, Linux, and Windows",
+    "description": "Step-by-step installation guide for Helm on all platforms, including verification steps and common troubleshooting tips for beginners.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Helm",
+      "Kubernetes",
+      "DevOps",
+      "Getting Started",
+      "Installation"
+    ],
+    "post": "2026-01-17-helm-install-macos-linux-windows"
+  },
+  {
+    "title": "How to Add and Manage Helm Repositories",
+    "description": "Learn how to add, update, search, and remove Helm repositories to discover and install charts from public and private sources.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Helm",
+      "Kubernetes",
+      "DevOps",
+      "Charts",
+      "Repositories"
+    ],
+    "post": "2026-01-17-helm-add-manage-repositories"
+  },
+  {
+    "title": "How to Install Applications Using Helm Charts",
+    "description": "Learn how to install popular applications like nginx-ingress, cert-manager, and Prometheus using Helm charts with customization examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Helm",
+      "Kubernetes",
+      "DevOps",
+      "Charts",
+      "Deployment"
+    ],
+    "post": "2026-01-17-helm-install-applications-charts"
+  },
+  {
+    "title": "How to Upgrade and Rollback Helm Releases Safely",
+    "description": "Master Helm upgrade strategies, atomic upgrades, rollback procedures, and version history management for safe production deployments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Helm",
+      "Kubernetes",
+      "DevOps",
+      "Releases",
+      "Rollback"
+    ],
+    "post": "2026-01-17-helm-upgrade-rollback-releases"
+  },
+  {
+    "title": "How to Use Helm Values Files for Multi-Environment Deployments",
+    "description": "Master Helm values files to manage dev, staging, and production configurations with values file layering, --set overrides, and secrets management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Helm",
+      "Kubernetes",
+      "DevOps",
+      "Configuration",
+      "Environments"
+    ],
+    "post": "2026-01-17-helm-values-files-multi-environment"
+  },
+  {
+    "title": "How to Debug and Troubleshoot Failed Helm Releases",
+    "description": "Master Helm troubleshooting with helm status, helm history, helm get, template rendering issues, and recovering stuck releases.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Helm",
+      "Kubernetes",
+      "DevOps",
+      "Troubleshooting",
+      "Debugging"
+    ],
+    "post": "2026-01-17-helm-debug-troubleshoot-releases"
+  },
+  {
+    "title": "How to Uninstall Helm Releases and Clean Up Resources",
+    "description": "Learn proper Helm uninstallation, handling stuck resources, CRD cleanup, and managing orphaned resources for clean cluster maintenance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Helm",
+      "Kubernetes",
+      "DevOps",
+      "Cleanup",
+      "Maintenance"
+    ],
+    "post": "2026-01-17-helm-uninstall-cleanup-resources"
+  },
+  {
+    "title": "How to Use Helm Hooks for Pre/Post Install and Upgrade Jobs",
+    "description": "Learn to use Helm hooks for database migrations, backup jobs, health checks, and other lifecycle operations with practical examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Helm",
+      "Kubernetes",
+      "DevOps",
+      "Hooks",
+      "Automation"
+    ],
+    "post": "2026-01-17-helm-hooks-pre-post-install-upgrade"
   }
 ]

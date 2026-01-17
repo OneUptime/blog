@@ -5,30 +5,30 @@
 These are popular Helm topics that people frequently search for:
 
 ### Beginner / Getting Started
-1. **How to Install Helm on macOS, Linux, and Windows**
+1. ~~**How to Install Helm on macOS, Linux, and Windows**~~ ✅
    - Step-by-step installation guide for all platforms, including verification and common issues
 
-2. **How to Add and Manage Helm Repositories**
+2. ~~**How to Add and Manage Helm Repositories**~~ ✅
    - Adding repos (bitnami, ingress-nginx, etc.), updating, searching, and removing repositories
 
-3. **How to Install Applications Using Helm Charts**
+3. ~~**How to Install Applications Using Helm Charts**~~ ✅
    - Installing popular apps (nginx-ingress, cert-manager, prometheus) with customization examples
 
 ### Intermediate / Day-to-Day Operations
-4. **How to Upgrade and Rollback Helm Releases Safely**
+4. ~~**How to Upgrade and Rollback Helm Releases Safely**~~ ✅
    - Upgrade strategies, atomic upgrades, rollback procedures, and version history management
 
-5. **How to Use Helm Values Files for Multi-Environment Deployments**
+5. ~~**How to Use Helm Values Files for Multi-Environment Deployments**~~ ✅
    - Managing dev/staging/prod configurations with values files, --set overrides, and secrets
 
-6. **How to Debug and Troubleshoot Failed Helm Releases**
+6. ~~**How to Debug and Troubleshoot Failed Helm Releases**~~ ✅
    - Using `helm status`, `helm history`, `helm get`, template rendering issues, and stuck releases
 
-7. **How to Uninstall Helm Releases and Clean Up Resources**
+7. ~~**How to Uninstall Helm Releases and Clean Up Resources**~~ ✅
    - Proper uninstallation, handling stuck resources, CRDs cleanup, and orphaned resources
 
 ### Advanced / Production-Ready
-8. **How to Use Helm Hooks for Pre/Post Install and Upgrade Jobs**
+8. ~~**How to Use Helm Hooks for Pre/Post Install and Upgrade Jobs**~~ ✅
    - Database migrations, backup jobs, health checks using Helm hooks with practical examples
 
 9. **How to Create a Private Helm Chart Repository**
