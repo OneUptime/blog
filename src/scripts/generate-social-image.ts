@@ -75,9 +75,9 @@ const ROOT_DIR = path.resolve(SCRIPT_DIR, '../..');
 const TEMPLATE_PATH = path.join(ROOT_DIR, 'social-media-image-template.png');
 
 const TITLE_CONFIG: TitleConfig = {
-  x: 60,
+  x: 75,
   y: 260,
-  maxWidth: 1160,
+  maxWidth: 1130,
   lineHeight: 85,
   fontSize: 68,
   fontFamily: FONT_FAMILY,
