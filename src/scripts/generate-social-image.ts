@@ -38,33 +38,35 @@ const colors = {
   green: '\x1b[32m',
   yellow: '\x1b[33m',
   blue: '\x1b[34m',
+  cyan: '\x1b[36m',
   reset: '\x1b[0m',
   bold: '\x1b[1m',
 } as const;
 
-// Register system fonts for proper rendering
-const FONT_PATHS: string[] = [
-  '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
-  '/Library/Fonts/Arial Bold.ttf',
-  '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-  'C:\\Windows\\Fonts\\arialbd.ttf',
-];
+// Font configuration
+const SCRIPT_DIR_FONTS = path.resolve(__dirname, '../fonts');
+const FONT_FAMILY = 'Poppins';
 
-function registerFonts(): boolean {
-  for (const fontPath of FONT_PATHS) {
-    if (fs.existsSync(fontPath)) {
-      GlobalFonts.registerFromPath(fontPath, 'TitleFont');
+// Load Poppins font from the fonts directory
+function loadFont(): boolean {
+  if (fs.existsSync(SCRIPT_DIR_FONTS)) {
+    GlobalFonts.loadFontsFromDir(SCRIPT_DIR_FONTS);
+    const families = GlobalFonts.families;
+    const poppinsFont = families.find(f => f.family === FONT_FAMILY);
+    if (poppinsFont) {
+      console.log(`${colors.cyan}Font loaded:${colors.reset} ${FONT_FAMILY}`);
       return true;
     }
   }
   return false;
 }
 
-const fontRegistered = registerFonts();
-if (!fontRegistered) {
-  console.warn(
-    `${colors.yellow}Warning:${colors.reset} Could not find a suitable system font. Text may not render correctly.`
+const fontLoaded = loadFont();
+if (!fontLoaded) {
+  console.error(
+    `${colors.red}Error:${colors.reset} Poppins font not found. Please ensure Poppins-Bold.ttf exists in src/fonts/`
   );
+  process.exit(1);
 }
 
 // Configuration
@@ -74,11 +76,11 @@ const TEMPLATE_PATH = path.join(ROOT_DIR, 'social-media-image-template.png');
 
 const TITLE_CONFIG: TitleConfig = {
   x: 60,
-  y: 280,
+  y: 260,
   maxWidth: 1160,
-  lineHeight: 75,
-  fontSize: 58,
-  fontFamily: 'TitleFont',
+  lineHeight: 85,
+  fontSize: 68,
+  fontFamily: FONT_FAMILY,
   color: '#000000',
 };
 
@@ -161,7 +163,8 @@ async function generateSocialImage(blogFolderPath: string): Promise<string> {
   ctx.drawImage(template, 0, 0);
 
   // Configure text style
-  ctx.font = `bold ${TITLE_CONFIG.fontSize}px ${TITLE_CONFIG.fontFamily}`;
+  const fontString = `700 ${TITLE_CONFIG.fontSize}px "${TITLE_CONFIG.fontFamily}"`;
+  ctx.font = fontString;
   ctx.fillStyle = TITLE_CONFIG.color;
   ctx.textBaseline = 'top';
 
@@ -253,6 +256,9 @@ ${colors.bold}Examples:${colors.reset}
   npm run generate-social-image
   npm run generate-social-image -- posts/2025-01-01-my-post
   npm run generate-social-image -- --all
+
+${colors.bold}Font:${colors.reset}
+  Uses Poppins Bold (src/fonts/Poppins-Bold.ttf)
 `);
 }
 
