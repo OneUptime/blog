@@ -4,6 +4,7 @@
   "description": "OneUptime Blog utilities",
   "scripts": {
     "generate-social-image": "npx ts-node src/scripts/generate-social-image.ts",
+    "regenerate-all-social-images": "find posts -name 'social-media.png' -delete && npx ts-node src/scripts/generate-social-image.ts --all",
     "validate": "npx ts-node src/scripts/validate-blogs.ts",
     "build": "tsc",
     "generate-social-image:js": "node dist/scripts/generate-social-image.js",
