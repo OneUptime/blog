@@ -15,9 +15,11 @@
 - Administration
 - Admission Controllers
 - AI
+- Airflow
 - Alerting
 - Alerts
 - Amanda
+- Ambassador
 - Ambient Mesh
 - AMD
 - AMQP
@@ -55,6 +57,8 @@
 - APT
 - Architecture
 - Arena Allocators
+- Argo
+- Argo Workflows
 - ArgoCD
 - ARIA
 - ARM64
@@ -64,6 +68,7 @@
 - asyncio
 - AsyncStorage
 - Attacks
+- Audit
 - auditd
 - Auditing
 - Authentication
@@ -74,6 +79,7 @@
 - Avahi
 - AWS
 - AWS Lambda
+- AWS Route53
 - AWS SQS
 - axe-core
 - Axum
@@ -116,6 +122,7 @@
 - Biometric Authentication
 - Bitwarden
 - Block Storage
+- Blue-Green
 - Blue-Green Deployment
 - BlueStore
 - Bonding
@@ -133,6 +140,7 @@
 - Build Tools
 - BuildKit
 - Bundle Size
+- Business Continuity
 - C
 - C#
 - C++
@@ -142,6 +150,7 @@
 - cAdvisor
 - Calico
 - Calicoctl
+- Canary
 - Canary Deployment
 - Capabilities
 - Capacity Planning
@@ -261,6 +270,7 @@
 - Cron
 - Cron Alternative
 - Cross-Platform
+- Crossplane
 - CRUSH
 - Cryptography
 - CSI
@@ -271,6 +281,7 @@
 - Custom Components
 - Custom Controllers
 - Custom Metrics
+- Custom Resources
 - Customer Experience
 - Customer Support
 - Customization
@@ -279,6 +290,7 @@
 - DANE
 - Dart
 - Dashboard
+- Data Engineering
 - Data Fetching
 - Data Locality
 - Data Management
@@ -296,6 +308,7 @@
 - Deadlines
 - Debugging
 - Decentralization
+- Declarative
 - Deep Learning
 - Deep Linking
 - Deluge
@@ -358,16 +371,19 @@
 - Downgrade
 - Drawer Navigation
 - DRBD
+- Drift Detection
 - Drivers
 - DRY
 - Dual Stack
 - Dual-Stack
 - Duplicity
+- Dynamic Discovery
 - E2E Testing
 - eBPF
 - ECDSA
 - Echo
 - Edge
+- Edge Stack
 - Editor
 - Egress Gateway
 - Elastic Stack
@@ -377,6 +393,7 @@
 - Email
 - Email Security
 - Emby
+- Emissary
 - Encrypted Backup
 - Encryption
 - Engineering Culture
@@ -394,6 +411,7 @@
 - Eslint
 - etcd
 - Event Sourcing
+- Event Streaming
 - Event-Driven
 - Events
 - Exemplars
@@ -405,8 +423,10 @@
 - Extends
 - Extensibility
 - External Dns
+- External Secrets
 - External Services
 - External-DNS
+- FaaS
 - Face ID
 - fail2ban
 - Failover
@@ -441,19 +461,24 @@
 - Flask
 - FlatList
 - Flatpak
+- Fleet
 - Flipper
 - Floating IP
 - Fluent Bit
+- Fluentd
 - Flutter
+- Flux
 - FluxCD
 - Focus Management
 - Font Scaling
 - Forms
 - Frontend
 - FRR
+- Functions
 - Fuzzing
 - Galera
 - Gaming
+- Gatekeeper
 - Gateway
 - GCC
 - gcloud
@@ -473,6 +498,7 @@
 - GlusterFS
 - GNOME
 - Go
+- Go Templates
 - GoAccess
 - Gobreaker
 - Godaddy
@@ -502,6 +528,7 @@
 - gRPC-Web
 - GUI
 - Gzip
+- HA
 - HAProxy
 - Harbor
 - Hardening
@@ -512,6 +539,7 @@
 - Health Checks
 - Heartbeat
 - Helm
+- Helmfile
 - Hermes
 - Hexagonal Architecture
 - HIDS
@@ -562,6 +590,7 @@
 - Ingressroute
 - Injection
 - Inline Signing
+- InnoDB Cluster
 - inotify
 - Input Sanitization
 - Input Validation
@@ -591,6 +620,7 @@
 - iRedMail
 - iSCSI
 - ISO
+- Isolation
 - Istio
 - Jaeger
 - Jailbreak Detection
@@ -607,6 +637,7 @@
 - Jobs
 - Journal
 - JSON
+- JSON Schema
 - Jupyter
 - JWT
 - K3s
@@ -626,6 +657,7 @@
 - Keys
 - Kiali
 - Kibana
+- Knative
 - Knowledge Base
 - Kong
 - Kotlin
@@ -638,13 +670,16 @@
 - Kubecost
 - kubectl
 - Kubernetes
+- Kustomize
 - KVM
+- Kyverno
 - L2
 - L3
 - LAMP
 - LAN
 - Landlock
 - Large Lists
+- Large-Scale
 - Latency
 - Layer 2
 - Layouts
@@ -657,6 +692,7 @@
 - Let's Encrypt
 - Lets Encrypt
 - libbpf
+- Library Charts
 - LibreSpeed
 - Lightweight
 - Linkerd
@@ -744,7 +780,9 @@
 - MTTR
 - MTU
 - Multi Cluster
+- Multi-Cloud
 - Multi-Cluster
+- Multi-Environment
 - Multi-Host
 - Multi-Region
 - Multi-Registry
@@ -832,6 +870,7 @@
 - Open Source
 - OpenAPI
 - OpenDNSSEC
+- OpenFaaS
 - OpenJDK
 - OpenLDAP
 - Openlit
@@ -840,9 +879,11 @@
 - OpenTelemetry
 - OpenVPN
 - Operations
+- Operator
 - Operators
 - Optimistic Updates
 - Optimization
+- Orchestration
 - Organizational Design
 - ORM
 - OSDs
@@ -877,6 +918,7 @@
 - PHP-FPM
 - Pi-hole
 - PII
+- Pipeline
 - Pipelines
 - PKCE
 - Planning
@@ -897,6 +939,7 @@
 - Portability
 - Portainer
 - Ports
+- Post Rendering
 - Postfix
 - PostgreSQL
 - Postmortems
@@ -910,6 +953,7 @@
 - Printing
 - Prisma
 - Privacy
+- Private
 - Private Cloud
 - Private Networking
 - Process
@@ -930,6 +974,7 @@
 - Protocol Analysis
 - Protocol Buffers
 - Proton
+- Provenance
 - Prowlarr
 - Proxy
 - PSS
@@ -995,8 +1040,10 @@
 - Remote Management
 - Replication
 - Repositories
+- Repository
 - Repository Pattern
 - Resilience
+- Resource Adoption
 - Resource Control
 - Resource Management
 - Responsive Design
@@ -1008,12 +1055,14 @@
 - Retry
 - Retry Logic
 - Reusability
+- Reusable
 - Reverse DNS
 - Reverse Engineering
 - Reverse Proxy
 - RGW
 - rkhunter
 - Rollback
+- Rollouts
 - Rook
 - Root Detection
 - Rootkit
@@ -1067,6 +1116,7 @@
 - Self-Hosting
 - SELinux
 - Semantic Conventions
+- SemVer
 - Serialization
 - Server
 - Server Administration
@@ -1114,6 +1164,7 @@
 - Software Development
 - SonarQube
 - Sonarr
+- SOPS
 - SPA
 - Spam Filter
 - SpamAssassin
@@ -1136,6 +1187,7 @@
 - SSO
 - SSR
 - Stack Navigation
+- Standardization
 - Standards
 - Startup Time
 - Startups
@@ -1154,6 +1206,7 @@
 - Streams
 - Strict Mode
 - Structured Logging
+- Subcharts
 - Supply Chain
 - Suricata
 - Suspense
@@ -1185,9 +1238,11 @@
 - Team Chat
 - Team Management
 - Teaming
+- Tekton
 - Telemetry
 - Telemetry Pipeline
 - Templates
+- Tempo
 - tenacity
 - Terminal
 - Terraform
@@ -1257,6 +1312,7 @@
 - UI Testing
 - UI/UX
 - Ulimits
+- Umbrella Charts
 - Unbound
 - Unit Testing
 - Unit Tests
@@ -1276,6 +1332,7 @@
 - UX
 - VAAPI
 - Validation
+- Values
 - Vault
 - Vaultwarden
 - Velero
@@ -1285,6 +1342,7 @@
 - Version
 - Version Control
 - Version Management
+- Versioning
 - Video Conferencing
 - ViewManager
 - Vim
@@ -1344,6 +1402,7 @@
 - Wireshark
 - Worker Pool
 - Worker Threads
+- Workflow
 - Workflows
 - Workloads
 - WSL2
