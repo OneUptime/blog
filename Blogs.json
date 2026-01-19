@@ -17780,5 +17780,20 @@
       "DevSecOps"
     ],
     "post": "2026-01-19-kubernetes-pod-security-contexts"
+  },
+  {
+    "title": "Demystifying Docker Base Images: Why Ubuntu in a Container Isn't Really Ubuntu",
+    "description": "A deep dive into how OS base images like Ubuntu work in Docker containers. Learn why containers share the host kernel, how they differ from VMs, why they're so efficient, and how many you can theoretically run on a single machine.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Containers",
+      "Linux",
+      "DevOps",
+      "Virtualization",
+      "Ubuntu",
+      "Base Images"
+    ],
+    "post": "2026-01-19-how-os-base-images-work-in-docker"
   }
 ]
