@@ -364,6 +364,7 @@
 - Detox
 - Developer Experience
 - Developer Productivity
+- Developer Tools
 - Development
 - Devices
 - DevOps
@@ -725,6 +726,7 @@
 - Kibana
 - Knative
 - Knowledge Base
+- Knowledge Management
 - Kong
 - Kotlin
 - KSK
@@ -816,6 +818,7 @@
 - Malware Detection
 - Management
 - MariaDB
+- Markdown
 - Mattermost
 - MCP
 - mDNS
@@ -926,6 +929,7 @@
 - Non-Root
 - NoSQL
 - Notary
+- Note-Taking
 - Notebook
 - Notifications
 - NSEC
@@ -1019,6 +1023,7 @@
 - Pipelines
 - PKCE
 - PKI
+- Plain Text
 - Planning
 - Plasma
 - Platform Strategy
