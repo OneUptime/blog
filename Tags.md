@@ -15,9 +15,11 @@
 - Administration
 - Admission Control
 - Admission Controllers
+- Admission Webhooks
 - AI
 - Air-Gapped
 - Airflow
+- AKS
 - Alerting
 - Alerts
 - Aliases
@@ -73,6 +75,7 @@
 - ARIA
 - ARM64
 - ARP
+- ASP.NET Core
 - Assets
 - Async
 - Asynchronous Programming
@@ -87,6 +90,8 @@
 - Authentication
 - Authorization
 - Auto-Instrumentation
+- Auto-Repair
+- Auto-Upgrade
 - Automation
 - Autoscaling
 - Avahi
@@ -227,6 +232,7 @@
 - Cluster
 - Cluster Autoscaler
 - Cluster Management
+- Cluster Migration
 - cluster-networking
 - CNI
 - CO-RE
@@ -255,6 +261,7 @@
 - Configuration
 - Configuration Management
 - Conflicts
+- Conftest
 - Connection Draining
 - Connection Pooling
 - connection states
@@ -266,6 +273,7 @@
 - Container Registry
 - Container Runtime
 - containerd
+- Containerization
 - Containers
 - Content Security Policy
 - Content Trust
@@ -273,6 +281,9 @@
 - context cancellation
 - Context Propagation
 - Continuous Deployment
+- Control Plane
+- Controllers
+- Coordination
 - Cordon
 - Core Web Vitals
 - CoreDNS
@@ -288,6 +299,7 @@
 - Crash Reporting
 - CrashLoopBackOff
 - CRD
+- CRDs
 - CRIU
 - Cron
 - Cron Alternative
@@ -310,6 +322,7 @@
 - Customer Support
 - Customization
 - Cypress
+- DaemonSets
 - DANE
 - Dart
 - Dashboard
@@ -349,6 +362,7 @@
 - Desktop
 - Desktop Applications
 - Detox
+- Developer Experience
 - Developer Productivity
 - Development
 - Devices
@@ -419,6 +433,7 @@
 - Editor
 - EFK Stack
 - Egress Gateway
+- EKS
 - Elastic Stack
 - Elasticsearch
 - ELK
@@ -517,9 +532,11 @@
 - Garbage Collection
 - Gatekeeper
 - Gateway
+- Gateway API
 - GCC
 - gcloud
 - GCP
+- GCP Cloud DNS
 - GDB
 - Generics
 - Gesture Handler
@@ -533,6 +550,7 @@
 - GitLab
 - GitLab CI
 - GitOps
+- GKE
 - GlusterFS
 - GNOME
 - Go
@@ -598,6 +616,7 @@
 - HTTP
 - HTTP/2
 - HTTP2
+- HTTPRoute
 - HTTPS
 - httptest
 - Hubble
@@ -711,6 +730,7 @@
 - KSK
 - kube-bench
 - kube-proxy
+- kube-state-metrics
 - kube-vip
 - kubeadm
 - Kubebuilder
@@ -734,6 +754,7 @@
 - Lazy Loading
 - LCP
 - LDAP
+- Leader Election
 - Leadership
 - Learning Resource
 - LEMP
@@ -766,6 +787,7 @@
 - Local Preference
 - Local Storage
 - Locality
+- Locality-Aware Routing
 - locust
 - Log Analysis
 - Log Shipping
@@ -846,11 +868,13 @@
 - Multi-Stage Build
 - Multi-tenancy
 - Multi-tenant
+- Multi-Zone
 - Multipath
 - Multiple Monitors
 - Multiprocessing
 - Multithreading
 - musl
+- Mutation
 - Mutual TLS
 - MySQL
 - Nagios
@@ -894,6 +918,7 @@
 - Node Maintenance
 - Node Management
 - Node Selection
+- Node Services
 - Node.js
 - NodeJS
 - nodelocal-dns
@@ -925,11 +950,13 @@
 - Offline-First
 - OIDC
 - OLAP
+- OLM
 - On-call
 - OneUptime
 - OOMKilled
 - OPA
 - OPA Gatekeeper
+- Open Policy Agent
 - Open Source
 - OpenAPI
 - OpenDNSSEC
@@ -946,6 +973,7 @@
 - Operations
 - Operator
 - Operator SDK
+- OperatorHub
 - Operators
 - Optimistic Updates
 - Optimization
@@ -973,6 +1001,7 @@
 - Path Aliases
 - Patroni
 - Patterns
+- PDB
 - perf
 - Performance
 - performance analysis
@@ -989,6 +1018,7 @@
 - Pipeline
 - Pipelines
 - PKCE
+- PKI
 - Planning
 - Plasma
 - Platform Strategy
@@ -1000,6 +1030,7 @@
 - pod communication
 - Pod Disruption Budget
 - Pod Eviction
+- Pod Lifecycle
 - Pod Placement
 - Pod Priority
 - Pod Security
@@ -1010,6 +1041,8 @@
 - Poetry
 - Policy
 - Policy as Code
+- Policy Enforcement
+- Policy Testing
 - Port Mapping
 - Port Monitoring
 - Portability
@@ -1023,9 +1056,12 @@
 - PowerDNS
 - PPA
 - pprof
+- Pre-Flight Checks
+- Preemptible Nodes
 - Preemption
 - Prettier
 - Preview Deployments
+- Preview Environments
 - Print Server
 - Printing
 - Prisma
@@ -1201,7 +1237,9 @@
 - Secrets Management
 - Secure Storage
 - Security
+- securityContext
 - Seedbox
+- Self-Healing
 - Self-hosted
 - Self-Hosting
 - SELinux
@@ -1222,9 +1260,11 @@
 - Service Catalog
 - Service Discovery
 - Service Mesh
+- Service Topology
 - Service Worker
 - ServiceEntry
 - ServiceMonitor
+- Services
 - sFlow
 - Shared Storage
 - Shell
@@ -1356,6 +1396,7 @@
 - thiserror
 - throttling
 - Tiling
+- Tilt
 - Time Series
 - Time Synchronization
 - Timeouts
@@ -1377,6 +1418,7 @@
 - tonic
 - Tooling
 - Tools
+- Topology Spread
 - Torrents
 - Touch
 - Touch ID
