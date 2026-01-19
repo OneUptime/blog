@@ -16671,5 +16671,623 @@
       "Multi-Environment"
     ],
     "post": "2026-01-17-helmfile-multiple-releases"
+  },
+  {
+    "title": "How to Set Up Pod Security Standards (PSS) in Kubernetes",
+    "description": "Replacing deprecated PodSecurityPolicies with the new Pod Security Admission controller - a complete guide to securing your Kubernetes workloads with Pod Security Standards.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Pod Security Standards",
+      "PSS",
+      "DevOps",
+      "Compliance"
+    ],
+    "post": "2026-01-19-kubernetes-pod-security-standards-pss"
+  },
+  {
+    "title": "How to Implement Kubernetes RBAC Best Practices for Multi-Tenant Clusters",
+    "description": "Deep dive into Role, ClusterRole, RoleBinding patterns for securing multi-tenant Kubernetes clusters with least-privilege access control.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "RBAC",
+      "Multi-Tenant",
+      "Access Control",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-rbac-multi-tenant-best-practices"
+  },
+  {
+    "title": "How to Secure Kubernetes Secrets with External Secrets Operator and HashiCorp Vault",
+    "description": "Integration patterns for secret management using External Secrets Operator with HashiCorp Vault, AWS Secrets Manager, and other providers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Secrets Management",
+      "HashiCorp Vault",
+      "External Secrets Operator",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-external-secrets-vault-integration"
+  },
+  {
+    "title": "How to Set Up OPA Gatekeeper for Kubernetes Policy Enforcement",
+    "description": "Policy-as-code for Kubernetes admission control using OPA Gatekeeper - from installation to production-ready constraint templates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "OPA Gatekeeper",
+      "Policy as Code",
+      "Admission Control",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-opa-gatekeeper-policy-enforcement"
+  },
+  {
+    "title": "How to Troubleshoot Kubernetes DNS Issues (CoreDNS)",
+    "description": "Common DNS problems and debugging techniques - from resolution failures to performance tuning and CoreDNS configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "DNS",
+      "CoreDNS",
+      "Troubleshooting",
+      "Networking",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-coredns-troubleshooting-guide"
+  },
+  {
+    "title": "How to Set Up Kubernetes LoadBalancer Services Without Cloud Provider",
+    "description": "Running Kubernetes on bare metal or on-premises? Learn how to expose services with LoadBalancer type using MetalLB, kube-vip, PureLB, and other alternatives for production-ready load balancing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "LoadBalancer",
+      "MetalLB",
+      "Bare Metal",
+      "Networking",
+      "kube-vip",
+      "PureLB",
+      "OpenELB"
+    ],
+    "post": "2026-01-19-kubernetes-loadbalancer-without-cloud-provider"
+  },
+  {
+    "title": "How to Back Up and Restore Kubernetes Clusters with Velero",
+    "description": "Learn how to implement comprehensive backup and disaster recovery for Kubernetes clusters using Velero, covering backing up resources, persistent volumes, scheduled backups, and cross-cluster restores.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Velero",
+      "Backup",
+      "Disaster Recovery",
+      "DR",
+      "Migration",
+      "S3",
+      "Persistent Volumes"
+    ],
+    "post": "2026-01-19-kubernetes-velero-backup-restore"
+  },
+  {
+    "title": "How to Debug CrashLoopBackOff Pods in Kubernetes",
+    "description": "CrashLoopBackOff is one of the most common issues in Kubernetes. This guide walks through a systematic approach to diagnosing and fixing pods that keep crashing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "CrashLoopBackOff",
+      "Debugging",
+      "Troubleshooting",
+      "Pods",
+      "Logs",
+      "kubectl"
+    ],
+    "post": "2026-01-19-kubernetes-debug-crashloopbackoff"
+  },
+  {
+    "title": "How to Set Up ArgoCD for GitOps in Kubernetes",
+    "description": "Implement GitOps for your Kubernetes clusters with ArgoCD - install, connect Git repositories, deploy applications declaratively, and manage multiple environments using Git as your source of truth.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "ArgoCD",
+      "GitOps",
+      "CI/CD",
+      "Continuous Deployment",
+      "Helm",
+      "Kustomize",
+      "Git"
+    ],
+    "post": "2026-01-19-kubernetes-argocd-gitops-setup"
+  },
+  {
+    "title": "How to Right-Size Kubernetes Resource Requests and Limits",
+    "description": "Learn how to properly configure CPU and memory requests and limits in Kubernetes using VPA recommendations, profiling techniques, and strategies to balance performance with cost efficiency.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Resources",
+      "VPA",
+      "Vertical Pod Autoscaler",
+      "CPU",
+      "Memory",
+      "Cost Optimization",
+      "Performance"
+    ],
+    "post": "2026-01-19-kubernetes-resource-requests-limits-rightsizing"
+  },
+  {
+    "title": "How to Install Kubernetes in Air-Gapped Environments",
+    "description": "Learn how to install and operate Kubernetes clusters in air-gapped environments without internet access using private registries and offline packages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Air-Gapped",
+      "Offline",
+      "Installation",
+      "Security",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-airgapped-installation"
+  },
+  {
+    "title": "How to Implement Kubernetes Audit Logging for Compliance",
+    "description": "Learn how to configure Kubernetes audit logging to meet compliance requirements, track API activity, and detect security threats.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Audit Logging",
+      "Compliance",
+      "Security",
+      "RBAC",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-audit-logging-compliance"
+  },
+  {
+    "title": "How to Implement Blue-Green and Canary Deployments in Kubernetes",
+    "description": "Learn how to implement blue-green and canary deployment strategies in Kubernetes for safe, zero-downtime releases with easy rollback capabilities.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Blue-Green",
+      "Canary",
+      "Deployments",
+      "Progressive Delivery",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-blue-green-canary-deployments"
+  },
+  {
+    "title": "How to Build Custom Kubernetes Operators",
+    "description": "Learn how to build custom Kubernetes operators to automate complex application management using the Operator SDK and controller-runtime.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Operators",
+      "Custom Resources",
+      "Go",
+      "Operator SDK",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-build-custom-operators"
+  },
+  {
+    "title": "How to Manage TLS Certificates with cert-manager in Kubernetes",
+    "description": "Learn how to automate TLS certificate management in Kubernetes using cert-manager with Let's Encrypt, self-signed, and CA-based certificates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "cert-manager",
+      "TLS",
+      "SSL",
+      "Certificates",
+      "Let's Encrypt",
+      "Security"
+    ],
+    "post": "2026-01-19-kubernetes-cert-manager-tls-certificates"
+  },
+  {
+    "title": "How to Set Up Kubernetes Service Discovery with Consul",
+    "description": "Learn how to integrate HashiCorp Consul with Kubernetes for service discovery, service mesh capabilities, and multi-platform connectivity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Consul",
+      "Service Discovery",
+      "Service Mesh",
+      "HashiCorp",
+      "Networking"
+    ],
+    "post": "2026-01-19-kubernetes-consul-service-discovery"
+  },
+  {
+    "title": "How to Set Up Cross-Cluster Service Discovery in Kubernetes",
+    "description": "Learn how to implement cross-cluster service discovery to enable seamless communication between services running in different Kubernetes clusters.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Service Discovery",
+      "Submariner",
+      "Service Mesh",
+      "Networking"
+    ],
+    "post": "2026-01-19-kubernetes-cross-cluster-service-discovery"
+  },
+  {
+    "title": "How to Debug ImagePullBackOff Errors in Kubernetes",
+    "description": "Learn how to diagnose and fix ImagePullBackOff errors in Kubernetes including registry authentication, image tags, and network issues.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Troubleshooting",
+      "ImagePullBackOff",
+      "Container Registry",
+      "Docker",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-debug-imagepullbackoff"
+  },
+  {
+    "title": "How to Debug OOMKilled Errors in Kubernetes",
+    "description": "Learn how to diagnose and fix OOMKilled errors in Kubernetes by analyzing memory usage, setting appropriate limits, and implementing memory monitoring.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Troubleshooting",
+      "OOMKilled",
+      "Memory",
+      "Resource Management",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-debug-oomkilled"
+  },
+  {
+    "title": "How to Drain and Cordon Kubernetes Nodes for Maintenance",
+    "description": "Learn how to safely perform Kubernetes node maintenance using drain and cordon commands, including handling DaemonSets, PodDisruptionBudgets, and local storage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Node Maintenance",
+      "Drain",
+      "Cordon",
+      "Operations",
+      "Upgrades",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-drain-cordon-node-maintenance"
+  },
+  {
+    "title": "How to Set Up Kubernetes Federation Across Clusters",
+    "description": "Learn how to federate multiple Kubernetes clusters for unified management, cross-cluster service discovery, and disaster recovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Federation",
+      "Multi-Cluster",
+      "KubeFed",
+      "High Availability",
+      "Disaster Recovery"
+    ],
+    "post": "2026-01-19-kubernetes-federation-multi-cluster"
+  },
+  {
+    "title": "How to Set Up Flux CD for GitOps in Kubernetes",
+    "description": "Learn how to implement GitOps workflows using Flux CD to automatically synchronize your Kubernetes cluster state with Git repositories.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Flux CD",
+      "GitOps",
+      "CI/CD",
+      "Continuous Deployment",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-flux-cd-gitops"
+  },
+  {
+    "title": "How to Build Helm Charts from Scratch",
+    "description": "Learn how to create Helm charts from scratch with proper structure, templates, values, dependencies, and best practices for Kubernetes application deployment.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Helm",
+      "Charts",
+      "Package Management",
+      "Templates",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-helm-charts-from-scratch"
+  },
+  {
+    "title": "How to Implement Distributed Tracing with Jaeger in Kubernetes",
+    "description": "Learn how to deploy Jaeger for distributed tracing in Kubernetes and instrument your applications to trace requests across microservices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Jaeger",
+      "Distributed Tracing",
+      "OpenTelemetry",
+      "Observability",
+      "Microservices"
+    ],
+    "post": "2026-01-19-kubernetes-jaeger-distributed-tracing"
+  },
+  {
+    "title": "How to Run Batch Jobs and CronJobs in Kubernetes",
+    "description": "Learn how to configure and manage Kubernetes Jobs and CronJobs for batch processing, scheduled tasks, and one-time operations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Jobs",
+      "CronJobs",
+      "Batch Processing",
+      "Scheduling",
+      "Automation"
+    ],
+    "post": "2026-01-19-kubernetes-jobs-cronjobs-batch-processing"
+  },
+  {
+    "title": "How to Set Up Kubernetes Cluster Logging with Fluentd and Fluent Bit",
+    "description": "Learn how to implement centralized logging in Kubernetes using Fluentd or Fluent Bit to collect, process, and ship logs to Elasticsearch, Loki, or other backends.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Logging",
+      "Fluentd",
+      "Fluent Bit",
+      "Elasticsearch",
+      "Observability",
+      "EFK Stack"
+    ],
+    "post": "2026-01-19-kubernetes-logging-fluentd-fluent-bit"
+  },
+  {
+    "title": "How to Configure Node Affinity and Anti-Affinity in Kubernetes",
+    "description": "Learn how to use node affinity, anti-affinity, and pod affinity rules to control where your Kubernetes pods are scheduled for optimal performance and reliability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Node Affinity",
+      "Anti-Affinity",
+      "Scheduling",
+      "DevOps",
+      "Pod Placement"
+    ],
+    "post": "2026-01-19-kubernetes-node-affinity-anti-affinity"
+  },
+  {
+    "title": "How to Optimize Kubernetes Pod Startup Time",
+    "description": "Learn techniques to reduce Kubernetes pod startup time including image optimization, startup probes, init container improvements, and preloading strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Performance",
+      "Pod Startup",
+      "Container Images",
+      "Init Containers",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-optimize-pod-startup-time"
+  },
+  {
+    "title": "How to Configure Kubernetes Pod-to-Pod Communication Across Namespaces",
+    "description": "Learn how to configure pod-to-pod communication across Kubernetes namespaces including network isolation, cross-namespace service access, and network policies for secure multi-tenant clusters.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Networking",
+      "Namespaces",
+      "Network Policies",
+      "Service Discovery",
+      "DNS"
+    ],
+    "post": "2026-01-19-kubernetes-pod-communication-across-namespaces"
+  },
+  {
+    "title": "How to Handle Kubernetes Pod Evictions and Resource Pressure",
+    "description": "Learn how to troubleshoot and prevent Kubernetes pod evictions caused by memory, disk, and PID resource pressure, including configuring eviction thresholds and monitoring strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Pod Eviction",
+      "Resource Pressure",
+      "Node Conditions",
+      "Memory",
+      "Disk",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-pod-evictions-resource-pressure"
+  },
+  {
+    "title": "How to Configure Pod Priority and Preemption in Kubernetes",
+    "description": "Learn how to configure pod priority classes and preemption in Kubernetes to ensure critical workloads are scheduled when resources are scarce.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Pod Priority",
+      "Preemption",
+      "Scheduling",
+      "Resource Management",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-pod-priority-preemption"
+  },
+  {
+    "title": "How to Profile Kubernetes Application CPU and Memory Usage",
+    "description": "Learn how to profile and analyze CPU and memory usage of applications running in Kubernetes to identify performance bottlenecks and optimize resource allocation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Profiling",
+      "Performance",
+      "CPU",
+      "Memory",
+      "Optimization",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-profile-cpu-memory-usage"
+  },
+  {
+    "title": "How to Configure Prometheus ServiceMonitor for Kubernetes",
+    "description": "Learn how to configure Prometheus ServiceMonitor and PodMonitor resources to automatically discover and scrape metrics from your Kubernetes applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Prometheus",
+      "ServiceMonitor",
+      "Monitoring",
+      "Observability",
+      "Metrics"
+    ],
+    "post": "2026-01-19-kubernetes-prometheus-servicemonitor"
+  },
+  {
+    "title": "How to Resize Persistent Volumes in Kubernetes Without Downtime",
+    "description": "Learn how to expand Kubernetes Persistent Volumes without downtime using volume expansion features, including online resizing, storage class configuration, and handling different CSI drivers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Persistent Volumes",
+      "PVC",
+      "Storage",
+      "Volume Expansion",
+      "CSI",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-resize-persistent-volumes"
+  },
+  {
+    "title": "How to Set Up Kubernetes Resource Quotas and Limit Ranges",
+    "description": "Learn how to implement Kubernetes resource quotas and limit ranges to manage cluster resources effectively in multi-tenant environments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Resource Quotas",
+      "Limit Ranges",
+      "Multi-Tenancy",
+      "Resource Management",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-resource-quotas-limit-ranges"
+  },
+  {
+    "title": "How to Implement Sidecar and Ambassador Patterns in Kubernetes",
+    "description": "Master the sidecar and ambassador container patterns in Kubernetes for logging, proxying, configuration, and extending application functionality.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Sidecar",
+      "Ambassador",
+      "Design Patterns",
+      "Microservices",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-sidecar-ambassador-patterns"
+  },
+  {
+    "title": "How to Use Skaffold for Kubernetes Development Workflow",
+    "description": "Master Skaffold for streamlined Kubernetes development with automatic builds, deployments, and hot-reload capabilities for rapid iteration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Skaffold",
+      "Development",
+      "DevOps",
+      "CI/CD",
+      "Local Development"
+    ],
+    "post": "2026-01-19-kubernetes-skaffold-development-workflow"
+  },
+  {
+    "title": "How to Set Up StatefulSets for Databases in Kubernetes",
+    "description": "Learn how to properly run stateful databases in Kubernetes using StatefulSets with stable network identities, persistent storage, and ordered deployment for MySQL, PostgreSQL, and MongoDB.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "StatefulSets",
+      "Databases",
+      "PostgreSQL",
+      "MySQL",
+      "MongoDB",
+      "Persistent Storage"
+    ],
+    "post": "2026-01-19-kubernetes-statefulsets-databases"
+  },
+  {
+    "title": "How to Configure Taints and Tolerations in Kubernetes",
+    "description": "Master Kubernetes taints and tolerations to control pod scheduling, dedicate nodes for specific workloads, and manage node lifecycle events.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Taints",
+      "Tolerations",
+      "Scheduling",
+      "Node Management",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-taints-tolerations-scheduling"
+  },
+  {
+    "title": "How to Debug Locally with Telepresence in Kubernetes",
+    "description": "Learn how to use Telepresence to connect your local development environment to a remote Kubernetes cluster for seamless debugging and testing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Telepresence",
+      "Debugging",
+      "Development",
+      "Local Development",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-telepresence-local-debugging"
+  },
+  {
+    "title": "How to Troubleshoot Kubernetes Networking Issues",
+    "description": "A comprehensive guide to diagnosing and resolving common Kubernetes networking issues including pod connectivity, service discovery, and CNI problems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Networking",
+      "Troubleshooting",
+      "DNS",
+      "CNI",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-troubleshoot-networking"
+  },
+  {
+    "title": "How to Upgrade Kubernetes Clusters with Zero Downtime",
+    "description": "Learn how to perform Kubernetes cluster upgrades with zero downtime using proper planning, rolling updates, and rollback strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Upgrades",
+      "Zero Downtime",
+      "Rolling Updates",
+      "High Availability",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-upgrade-zero-downtime"
+  },
+  {
+    "title": "How to Run Windows Containers in Kubernetes",
+    "description": "Learn how to run Windows containers alongside Linux containers in Kubernetes by configuring Windows node pools and deploying Windows workloads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Windows",
+      "Containers",
+      "Hybrid",
+      "Multi-OS",
+      "DevOps"
+    ],
+    "post": "2026-01-19-kubernetes-windows-containers"
   }
 ]

@@ -13,8 +13,10 @@
 - Ad Blocker
 - Address Assignment
 - Administration
+- Admission Control
 - Admission Controllers
 - AI
+- Air-Gapped
 - Airflow
 - Alerting
 - Alerts
@@ -34,6 +36,7 @@
 - Android Studio
 - Animations
 - Ansible
+- Anti-Affinity
 - Antivirus
 - Anycast
 - anyhow
@@ -78,6 +81,7 @@
 - AsyncStorage
 - Attacks
 - Audit
+- Audit Logging
 - auditd
 - Auditing
 - Authentication
@@ -115,6 +119,7 @@
 - bare-metal
 - Base Images
 - Bash
+- Batch Processing
 - BCC
 - Beginner
 - Benchmarking
@@ -255,6 +260,7 @@
 - connection states
 - connections
 - Consul
+- Container Images
 - Container Management
 - Container Orchestration
 - Container Registry
@@ -266,6 +272,8 @@
 - Context API
 - context cancellation
 - Context Propagation
+- Continuous Deployment
+- Cordon
 - Core Web Vitals
 - CoreDNS
 - Corosync
@@ -283,6 +291,7 @@
 - CRIU
 - Cron
 - Cron Alternative
+- CronJobs
 - Cross-Platform
 - Crossplane
 - CRUSH
@@ -317,6 +326,7 @@
 - Data Synchronization
 - Database
 - Database Testing
+- Databases
 - DataDog
 - dd
 - DDoS Protection
@@ -353,6 +363,7 @@
 - Directory Services
 - Disaster Recovery
 - Discriminated Unions
+- Disk
 - Disk Clone
 - Disk Encryption
 - Disk I/O
@@ -389,6 +400,8 @@
 - Domain Security
 - Dovecot
 - Downgrade
+- DR
+- Drain
 - Drawer Navigation
 - DRBD
 - Drift Detection
@@ -404,6 +417,7 @@
 - Edge
 - Edge Stack
 - Editor
+- EFK Stack
 - Egress Gateway
 - Elastic Stack
 - Elasticsearch
@@ -443,6 +457,7 @@
 - Extensibility
 - External DNS
 - External Secrets
+- External Secrets Operator
 - External Services
 - External-DNS
 - FaaS
@@ -487,6 +502,7 @@
 - Fluentd
 - Flutter
 - Flux
+- Flux CD
 - FluxCD
 - Focus Management
 - Font Scaling
@@ -585,6 +601,7 @@
 - HTTPS
 - httptest
 - Hubble
+- Hybrid
 - Hybrid Cloud
 - hybrid-cloud
 - Hydration
@@ -599,6 +616,7 @@
 - IDS
 - Image Caching
 - Image Signing
+- ImagePullBackOff
 - Images
 - Immutable
 - Incident Management
@@ -613,6 +631,7 @@
 - Ingress
 - Ingress Gateway
 - ingressroute
+- Init Containers
 - Injection
 - Inline Signing
 - InnoDB Cluster
@@ -692,10 +711,12 @@
 - KSK
 - kube-bench
 - kube-proxy
+- kube-vip
 - kubeadm
 - Kubebuilder
 - Kubecost
 - kubectl
+- KubeFed
 - Kubernetes
 - Kustomize
 - KVM
@@ -722,6 +743,7 @@
 - Library Charts
 - LibreSpeed
 - Lightweight
+- Limit Ranges
 - Linkerd
 - Linux
 - Linux Gaming
@@ -737,7 +759,9 @@
 - load-balancer
 - load-balancing
 - load-testing
+- LoadBalancer
 - Loading States
+- Local Development
 - Local Network
 - Local Preference
 - Local Storage
@@ -815,6 +839,7 @@
 - Multi-Cluster
 - Multi-Environment
 - Multi-Host
+- Multi-OS
 - Multi-Region
 - Multi-Registry
 - Multi-Site
@@ -830,6 +855,7 @@
 - MySQL
 - Nagios
 - Namecheap
+- Namespaces
 - NAS
 - NAT
 - NAT64
@@ -862,7 +888,11 @@
 - NFS
 - nftables
 - NGINX
+- Node Affinity
+- Node Conditions
 - Node Draining
+- Node Maintenance
+- Node Management
 - Node Selection
 - Node.js
 - NodeJS
@@ -899,9 +929,11 @@
 - OneUptime
 - OOMKilled
 - OPA
+- OPA Gatekeeper
 - Open Source
 - OpenAPI
 - OpenDNSSEC
+- OpenELB
 - OpenFaaS
 - OpenJDK
 - OpenLDAP
@@ -913,6 +945,7 @@
 - OpenVPN
 - Operations
 - Operator
+- Operator SDK
 - Operators
 - Optimistic Updates
 - Optimization
@@ -945,6 +978,7 @@
 - performance analysis
 - Permissions
 - Persistence
+- Persistent Storage
 - Persistent Volumes
 - PhotoRec
 - PHP
@@ -965,11 +999,17 @@
 - PM2
 - pod communication
 - Pod Disruption Budget
+- Pod Eviction
+- Pod Placement
+- Pod Priority
 - Pod Security
 - Pod Security Standards
+- Pod Startup
 - Podman
+- Pods
 - Poetry
 - Policy
+- Policy as Code
 - Port Mapping
 - Port Monitoring
 - Portability
@@ -983,6 +1023,7 @@
 - PowerDNS
 - PPA
 - pprof
+- Preemption
 - Prettier
 - Preview Deployments
 - Print Server
@@ -1000,6 +1041,7 @@
 - Productivity
 - Profiling
 - Programming
+- Progressive Delivery
 - Progressive Web App
 - Project Setup
 - Project Structure
@@ -1023,7 +1065,9 @@
 - Pull Requests
 - Pull-to-Refresh
 - Pulumi
+- PureLB
 - Push Notifications
+- PVC
 - PWA
 - PXE
 - py-spy
@@ -1086,6 +1130,9 @@
 - Resource Adoption
 - Resource Control
 - Resource Management
+- Resource Pressure
+- Resource Quotas
+- Resources
 - responses
 - Responsive Design
 - rest
@@ -1177,6 +1224,7 @@
 - Service Mesh
 - Service Worker
 - ServiceEntry
+- ServiceMonitor
 - sFlow
 - Shared Storage
 - Shell
@@ -1185,6 +1233,7 @@
 - Signing
 - SIGTERM
 - Site Reliability Engineering
+- Skaffold
 - Skeleton Loading
 - SLAAC
 - Slack
@@ -1238,6 +1287,7 @@
 - State
 - State Management
 - StatefulSet
+- StatefulSets
 - Static IP
 - Static Linking
 - status codes
@@ -1252,6 +1302,7 @@
 - Strict Mode
 - Structured Logging
 - Subcharts
+- Submariner
 - Supply Chain
 - Suricata
 - Suspense
@@ -1273,6 +1324,7 @@
 - Tab Navigation
 - Table-Driven Tests
 - Tablet
+- Taints
 - TalkBack
 - TanStack Query
 - TCP
@@ -1286,6 +1338,7 @@
 - Tekton
 - Telemetry
 - Telemetry Pipeline
+- Telepresence
 - Templates
 - Tempo
 - Tenacity
@@ -1320,6 +1373,7 @@
 - Tokens
 - tokio
 - tokio-retry
+- Tolerations
 - tonic
 - Tooling
 - Tools
@@ -1371,6 +1425,7 @@
 - Universal Links
 - unsafe
 - Upgrade
+- Upgrades
 - Uptime Monitoring
 - useCallback
 - useMemo
@@ -1395,6 +1450,7 @@
 - Version Control
 - Version Management
 - Versioning
+- Vertical Pod Autoscaler
 - Video Conferencing
 - ViewManager
 - Vim
@@ -1413,6 +1469,7 @@
 - VLANs
 - VNC
 - VoiceOver
+- Volume Expansion
 - Volumes
 - VPA
 - VPN
