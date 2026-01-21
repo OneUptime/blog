@@ -5,63 +5,63 @@
 These are frequently searched ClickHouse topics. Already covered: "How to Install and Configure ClickHouse on Ubuntu"
 
 ### Getting Started & Setup
-- [ ] **How to Set Up ClickHouse Cluster for High Availability** - Configuring replication, ZooKeeper/ClickHouse Keeper, and distributed tables
-- [ ] **How to Run ClickHouse in Docker and Kubernetes** - Container deployment patterns, Helm charts, and operator usage
-- [ ] **How to Connect to ClickHouse from Python, Node.js, and Go** - Client libraries, connection pooling, and best practices
+- [x] **How to Set Up ClickHouse Cluster for High Availability** - Configuring replication, ZooKeeper/ClickHouse Keeper, and distributed tables
+- [x] **How to Run ClickHouse in Docker and Kubernetes** - Container deployment patterns, Helm charts, and operator usage
+- [x] **How to Connect to ClickHouse from Python, Node.js, and Go** - Client libraries, connection pooling, and best practices
 
 ### Data Modeling & Schema Design
-- [ ] **How to Design ClickHouse Table Schemas for Time-Series Data** - MergeTree engines, partitioning, and ordering keys
-- [ ] **How to Choose the Right ClickHouse Table Engine** - MergeTree vs ReplacingMergeTree vs AggregatingMergeTree vs SummingMergeTree
-- [ ] **How to Model Nested and Array Data in ClickHouse** - Working with complex data types, JSON, and nested structures
-- [ ] **How to Migrate from PostgreSQL/MySQL to ClickHouse** - Data migration strategies, schema conversion, and dual-write patterns
+- [x] **How to Design ClickHouse Table Schemas for Time-Series Data** - MergeTree engines, partitioning, and ordering keys
+- [x] **How to Choose the Right ClickHouse Table Engine** - MergeTree vs ReplacingMergeTree vs AggregatingMergeTree vs SummingMergeTree
+- [x] **How to Model Nested and Array Data in ClickHouse** - Working with complex data types, JSON, and nested structures
+- [x] **How to Migrate from PostgreSQL/MySQL to ClickHouse** - Data migration strategies, schema conversion, and dual-write patterns
 
 ### Query Optimization & Performance
-- [ ] **How to Optimize ClickHouse Queries for Better Performance** - Query profiling, EXPLAIN, and common optimization techniques
-- [ ] **How to Use ClickHouse Materialized Views for Real-Time Aggregations** - Pre-aggregating data for dashboard queries
-- [ ] **How to Index Data in ClickHouse with Skip Indexes** - minmax, set, bloom_filter, and ngrambf_v1 indexes
-- [ ] **How to Handle High-Cardinality Data in ClickHouse** - Strategies for dimensions with millions of unique values
-- [ ] **How to Speed Up ClickHouse Joins with Dictionaries** - Using external dictionaries for dimension lookups
+- [x] **How to Optimize ClickHouse Queries for Better Performance** - Query profiling, EXPLAIN, and common optimization techniques
+- [x] **How to Use ClickHouse Materialized Views for Real-Time Aggregations** - Pre-aggregating data for dashboard queries
+- [x] **How to Index Data in ClickHouse with Skip Indexes** - minmax, set, bloom_filter, and ngrambf_v1 indexes
+- [x] **How to Handle High-Cardinality Data in ClickHouse** - Strategies for dimensions with millions of unique values
+- [x] **How to Speed Up ClickHouse Joins with Dictionaries** - Using external dictionaries for dimension lookups
 
 ### Data Ingestion
-- [ ] **How to Ingest Data into ClickHouse from Kafka** - Real-time streaming with Kafka engine and kafka-connect
-- [ ] **How to Bulk Insert Data into ClickHouse Efficiently** - Batch inserts, async inserts, and buffer tables
-- [ ] **How to Stream OpenTelemetry Data to ClickHouse** - Using ClickHouse as an observability backend
-- [ ] **How to Load CSV, JSON, and Parquet Files into ClickHouse** - File formats, S3 integration, and URL table function
+- [x] **How to Ingest Data into ClickHouse from Kafka** - Real-time streaming with Kafka engine and kafka-connect
+- [x] **How to Bulk Insert Data into ClickHouse Efficiently** - Batch inserts, async inserts, and buffer tables
+- [x] **How to Stream OpenTelemetry Data to ClickHouse** - Using ClickHouse as an observability backend
+- [x] **How to Load CSV, JSON, and Parquet Files into ClickHouse** - File formats, S3 integration, and URL table function
 
 ### Operations & Administration
-- [ ] **How to Back Up and Restore ClickHouse Databases** - clickhouse-backup, snapshots, and disaster recovery
-- [ ] **How to Monitor ClickHouse Performance with system Tables** - Using system.query_log, system.parts, and system.metrics
-- [ ] **How to Manage ClickHouse Users and Access Control** - RBAC, quotas, and row-level security
-- [ ] **How to Upgrade ClickHouse Without Downtime** - Rolling upgrades and version compatibility
-- [ ] **How to Configure ClickHouse Memory and Resource Limits** - max_memory_usage, query complexity limits, and resource isolation
+- [x] **How to Back Up and Restore ClickHouse Databases** - clickhouse-backup, snapshots, and disaster recovery
+- [x] **How to Monitor ClickHouse Performance with system Tables** - Using system.query_log, system.parts, and system.metrics
+- [x] **How to Manage ClickHouse Users and Access Control** - RBAC, quotas, and row-level security
+- [x] **How to Upgrade ClickHouse Without Downtime** - Rolling upgrades and version compatibility
+- [x] **How to Configure ClickHouse Memory and Resource Limits** - max_memory_usage, query complexity limits, and resource isolation
 
 ### Scaling & Distributed Queries
-- [ ] **How to Shard Data Across ClickHouse Nodes** - Distributed tables, sharding keys, and rebalancing
-- [ ] **How to Scale ClickHouse Reads with Replicas** - Read scaling patterns and load balancing
-- [ ] **How to Handle Large Mutations in ClickHouse** - ALTER TABLE, TTL, and data lifecycle management
+- [x] **How to Shard Data Across ClickHouse Nodes** - Distributed tables, sharding keys, and rebalancing
+- [x] **How to Scale ClickHouse Reads with Replicas** - Read scaling patterns and load balancing
+- [x] **How to Handle Large Mutations in ClickHouse** - ALTER TABLE, TTL, and data lifecycle management
 
 ### Integration & Use Cases
-- [ ] **How to Use ClickHouse as a Backend for Grafana Dashboards** - Grafana plugin setup and query optimization
-- [ ] **How to Build a Real-Time Analytics Dashboard with ClickHouse** - End-to-end architecture for analytics applications
-- [ ] **How to Store and Query Logs in ClickHouse** - Log management with ClickHouse as a logging backend
-- [ ] **How to Use ClickHouse for Funnel and Cohort Analysis** - windowFunnel, retention, and user analytics functions
-- [ ] **How to Integrate ClickHouse with Apache Superset** - BI visualization and self-service analytics
+- [x] **How to Use ClickHouse as a Backend for Grafana Dashboards** - Grafana plugin setup and query optimization
+- [x] **How to Build a Real-Time Analytics Dashboard with ClickHouse** - End-to-end architecture for analytics applications
+- [x] **How to Store and Query Logs in ClickHouse** - Log management with ClickHouse as a logging backend
+- [x] **How to Use ClickHouse for Funnel and Cohort Analysis** - windowFunnel, retention, and user analytics functions
+- [x] **How to Integrate ClickHouse with Apache Superset** - BI visualization and self-service analytics
 
 ### Troubleshooting
-- [ ] **How to Debug Slow Queries in ClickHouse** - Query profiling, flamegraphs, and bottleneck identification
-- [ ] **How to Fix "Memory Limit Exceeded" Errors in ClickHouse** - Memory tuning and query optimization
-- [ ] **How to Troubleshoot ClickHouse Replication Lag** - Diagnosing and fixing replica synchronization issues
-- [ ] **How to Handle "Too Many Parts" Errors in ClickHouse** - Merge management and insert optimization
-- [ ] **How to Fix "DB::Exception: Too many simultaneous queries" in ClickHouse** - Connection limits and query queuing
-- [ ] **How to Recover from Corrupted ClickHouse Data** - Data recovery, detach/attach, and checksum verification
+- [x] **How to Debug Slow Queries in ClickHouse** - Query profiling, flamegraphs, and bottleneck identification
+- [x] **How to Fix "Memory Limit Exceeded" Errors in ClickHouse** - Memory tuning and query optimization
+- [x] **How to Troubleshoot ClickHouse Replication Lag** - Diagnosing and fixing replica synchronization issues
+- [x] **How to Handle "Too Many Parts" Errors in ClickHouse** - Merge management and insert optimization
+- [x] **How to Fix "DB::Exception: Too many simultaneous queries" in ClickHouse** - Connection limits and query queuing
+- [x] **How to Recover from Corrupted ClickHouse Data** - Data recovery, detach/attach, and checksum verification
 
 ### Advanced Features
-- [ ] **How to Use ClickHouse Projections for Query Acceleration** - Pre-sorted data views for specific query patterns
-- [ ] **How to Implement CDC (Change Data Capture) with ClickHouse** - Tracking changes with ReplacingMergeTree and versioning
-- [ ] **How to Use ClickHouse Window Functions for Analytics** - ROW_NUMBER, LAG, LEAD, running totals, and moving averages
-- [ ] **How to Query External Data Sources from ClickHouse** - MySQL, PostgreSQL, S3, and HDFS table engines
-- [ ] **How to Use ClickHouse Keeper Instead of ZooKeeper** - Native coordination service setup and migration
-- [ ] **How to Implement Deduplication in ClickHouse** - ReplacingMergeTree, FINAL, and argMax patterns
+- [x] **How to Use ClickHouse Projections for Query Acceleration** - Pre-sorted data views for specific query patterns
+- [x] **How to Implement CDC (Change Data Capture) with ClickHouse** - Tracking changes with ReplacingMergeTree and versioning
+- [x] **How to Use ClickHouse Window Functions for Analytics** - ROW_NUMBER, LAG, LEAD, running totals, and moving averages
+- [x] **How to Query External Data Sources from ClickHouse** - MySQL, PostgreSQL, S3, and HDFS table engines
+- [x] **How to Use ClickHouse Keeper Instead of ZooKeeper** - Native coordination service setup and migration
+- [x] **How to Implement Deduplication in ClickHouse** - ReplacingMergeTree, FINAL, and argMax patterns
 - [ ] **How to Use ClickHouse for Geospatial Queries** - Point-in-polygon, distance calculations, and H3 indexes
 - [ ] **How to Implement Full-Text Search in ClickHouse** - tokenbf_v1, ngrambf_v1 indexes, and text analysis
 - [ ] **How to Use ClickHouse Parametric Functions** - sequenceMatch, sequenceCount for user behavior analysis

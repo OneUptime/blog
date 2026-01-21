@@ -16,6 +16,8 @@
 - Admission Control
 - Admission Controllers
 - Admission Webhooks
+- AggregatingMergeTree
+- Aggregations
 - AI
 - Air-Gapped
 - Airflow
@@ -25,6 +27,7 @@
 - Aliases
 - Allocator
 - Alpine
+- ALTER TABLE
 - Alternatives
 - Amanda
 - Ambassador
@@ -69,12 +72,14 @@
 - APT
 - Architecture
 - Arena
+- argMax
 - Argo
 - Argo Workflows
 - ArgoCD
 - ARIA
 - ARM64
 - ARP
+- Arrays
 - ASP.NET Core
 - Assets
 - Async
@@ -133,6 +138,7 @@
 - Beta Testing
 - BFD
 - BGP
+- BI
 - bidirectional
 - bidirectional streaming
 - Big Data
@@ -144,6 +150,7 @@
 - Bitwarden
 - Block Storage
 - Blocking
+- bloom_filter
 - Blue-Green
 - Blue-Green Deployment
 - BlueStore
@@ -161,6 +168,7 @@
 - Build Optimization
 - Build Tools
 - BuildKit
+- Bulk Insert
 - Bundle Size
 - Business Continuity
 - C
@@ -179,6 +187,7 @@
 - Cardinality
 - Cargo
 - Cassandra
+- CDC
 - cdn
 - Celery
 - Ceph
@@ -190,6 +199,7 @@
 - Certificates
 - cgroups
 - Chain of Trust
+- Change Data Capture
 - Channels
 - Chaos Engineering
 - Charts
@@ -212,9 +222,12 @@
 - Cleanup
 - CLI
 - ClickHouse
+- ClickHouse Keeper
+- clickhouse-backup
 - Client Authentication
 - Client Development
 - Client IP
+- Client Libraries
 - client-go
 - Client-Side Load Balancing
 - client-streaming
@@ -234,6 +247,7 @@
 - Cluster Management
 - Cluster Migration
 - cluster-networking
+- Clustering
 - CNI
 - CO-RE
 - Cobra
@@ -245,6 +259,7 @@
 - Code Signing
 - Code Splitting
 - CodePush
+- Cohort Analysis
 - Colima
 - Collaboration
 - Collector
@@ -263,6 +278,7 @@
 - Conflicts
 - Conftest
 - Connection Draining
+- Connection Limits
 - Connection Pooling
 - connection states
 - connections
@@ -290,6 +306,7 @@
 - Corosync
 - Corporate
 - Correlation
+- Corruption
 - CORS
 - Cost Optimization
 - cProfile
@@ -311,6 +328,7 @@
 - CSI
 - CSP
 - CSRF
+- CSV
 - Culture
 - CUPS
 - cursor-based pagination
@@ -326,13 +344,21 @@
 - DANE
 - Dart
 - Dashboard
+- Dashboards
 - Data Engineering
 - Data Fetching
+- Data Import
+- Data Ingestion
+- Data Lifecycle
 - Data Locality
 - Data Management
+- Data Migration
+- Data Modeling
 - Data Persistence
+- Data Pipeline
 - Data Processing
 - Data Protection
+- Data Quality
 - Data Recovery
 - Data Science
 - Data Sync
@@ -350,6 +376,7 @@
 - Debugging
 - Decentralization
 - Declarative
+- Deduplication
 - Deep Learning
 - Deep Linking
 - Deluge
@@ -373,6 +400,7 @@
 - DHCP
 - DHCPv6
 - Diagnostics
+- Dictionaries
 - DinD
 - direct-connect
 - Directory Services
@@ -391,6 +419,7 @@
 - Distributed Database
 - Distributed Storage
 - Distributed Systems
+- Distributed Tables
 - Distributed Tracing
 - distributed-testing
 - Distroless
@@ -438,6 +467,7 @@
 - Elastic Stack
 - Elasticsearch
 - ELK
+- ELK Alternative
 - ELK Stack
 - Email
 - Email Security
@@ -459,18 +489,21 @@
 - Error Tracking
 - ESLint
 - etcd
+- ETL
 - Event Sourcing
 - Event Streaming
 - Event-Driven
 - Events
 - Exemplars
 - expect
+- EXPLAIN
 - Expo
 - Exponential Backoff
 - Exporters
 - Express
 - Extends
 - Extensibility
+- External Data
 - External DNS
 - External Secrets
 - External Secrets Operator
@@ -492,6 +525,7 @@
 - Federation
 - FID
 - File Download
+- File Formats
 - File I/O
 - File Integrity
 - File Monitoring
@@ -503,6 +537,7 @@
 - Filesystem
 - Filesystems
 - FIM
+- FINAL
 - Fingerprint
 - FinOps
 - Firebase
@@ -527,6 +562,7 @@
 - Frontend
 - FRR
 - Functions
+- Funnel Analysis
 - Fuzzing
 - Galera
 - Gaming
@@ -590,6 +626,7 @@
 - Hardening
 - HashiCorp
 - HashiCorp Vault
+- HDFS
 - Headers
 - Headless Services
 - Health Checks
@@ -600,6 +637,7 @@
 - Hexagonal Architecture
 - HIDS
 - High Availability
+- High Cardinality
 - High Throughput
 - high-availability
 - Histograms
@@ -644,6 +682,7 @@
 - Inclusive Design
 - Incoming Email
 - Incoming Request
+- Indexing
 - Infinite Scroll
 - InfluxDB
 - Infrastructure
@@ -658,6 +697,8 @@
 - inotify
 - Input Sanitization
 - Input Validation
+- Insert Idempotency
+- Insert Optimization
 - Installation
 - Installation Media
 - Integration
@@ -700,6 +741,7 @@
 - JMS
 - Job Queue
 - Jobs
+- Joins
 - Journal
 - JSON
 - JSON Schema
@@ -745,6 +787,7 @@
 - Kyverno
 - L2
 - L3
+- LAG
 - LAMP
 - LAN
 - Landlock
@@ -756,6 +799,7 @@
 - Lazy Loading
 - LCP
 - LDAP
+- LEAD
 - Leader Election
 - Leadership
 - Learning Resource
@@ -792,6 +836,7 @@
 - Locality-Aware Routing
 - locust
 - Log Analysis
+- Log Management
 - Log Shipping
 - Logging
 - Logrotate
@@ -819,6 +864,7 @@
 - Management
 - MariaDB
 - Markdown
+- Materialized Views
 - Mattermost
 - MCP
 - mDNS
@@ -827,6 +873,8 @@
 - Memory
 - Memory Leaks
 - Memory-Mapped Files
+- Merges
+- MergeTree
 - Message Queue
 - Messaging
 - MetalLB
@@ -840,6 +888,7 @@
 - Migration
 - Migrations
 - MinIO
+- minmax
 - Mirroring
 - MMKV
 - Mobile
@@ -853,6 +902,7 @@
 - MongoDB
 - Monitoring
 - Mount
+- Moving Averages
 - MPIO
 - MSW
 - MTBF
@@ -878,6 +928,7 @@
 - Multithreading
 - musl
 - Mutation
+- Mutations
 - Mutual TLS
 - MySQL
 - Nagios
@@ -892,6 +943,7 @@
 - NATS
 - Neo4j
 - Neovim
+- Nested Data
 - Nested Navigation
 - netcat
 - Netdata
@@ -1000,6 +1052,9 @@
 - pagination
 - PAM
 - Parallel Processing
+- Parquet
+- Partitioning
+- Parts
 - PASETO
 - Password Manager
 - Path Aliases
@@ -1077,6 +1132,7 @@
 - Privilege Dropping
 - Process
 - Product
+- Product Analytics
 - Product Development
 - Production
 - Productivity
@@ -1086,6 +1142,7 @@
 - Progressive Web App
 - Project Setup
 - Project Structure
+- Projections
 - Prometheus
 - Props
 - Protection
@@ -1120,6 +1177,9 @@
 - qBittorrent
 - QEMU
 - Quality Assurance
+- Query Optimization
+- Query Queuing
+- query_log
 - Quotas
 - RabbitMQ
 - Race Detection
@@ -1143,9 +1203,11 @@
 - React Query
 - react-window
 - React.memo
+- Read Scaling
 - Readiness Probes
 - Real User Monitoring
 - Real-time
+- Real-Time Analytics
 - Reanimated
 - Recursive Resolver
 - Redis
@@ -1163,6 +1225,7 @@
 - Remote Access
 - Remote Desktop
 - Remote Management
+- ReplacingMergeTree
 - Replication
 - Repositories
 - Repository
@@ -1180,6 +1243,7 @@
 - REST API
 - restic
 - Restore
+- retention
 - Retries
 - Retry
 - Retry Logic
@@ -1193,6 +1257,7 @@
 - rkhunter
 - Rollback
 - Rolling Updates
+- Rolling Upgrade
 - Rollouts
 - Rook
 - Root Detection
@@ -1203,6 +1268,7 @@
 - Router
 - Router Advertisement
 - Routing
+- ROW_NUMBER
 - RPC
 - RSA
 - Rsyslog
@@ -1211,6 +1277,7 @@
 - RUM
 - Runbooks
 - Runners
+- Running Totals
 - Runtime
 - Runtime Security
 - Rust
@@ -1230,6 +1297,7 @@
 - Scheduled Maintenance
 - Scheduling
 - Schema
+- Schema Design
 - Scopes
 - Scratch
 - Screen Reader
@@ -1247,6 +1315,7 @@
 - Self-Healing
 - Self-hosted
 - Self-Hosting
+- Self-Service
 - SELinux
 - Semantic Conventions
 - SemVer
@@ -1270,7 +1339,9 @@
 - ServiceEntry
 - ServiceMonitor
 - Services
+- set
 - sFlow
+- Sharding
 - Shared Storage
 - Shell
 - Sidecar
@@ -1280,6 +1351,7 @@
 - Site Reliability Engineering
 - Skaffold
 - Skeleton Loading
+- Skip Indexes
 - SLAAC
 - Slack
 - SLI
@@ -1348,6 +1420,8 @@
 - Structured Logging
 - Subcharts
 - Submariner
+- SummingMergeTree
+- Superset
 - Supply Chain
 - Suricata
 - Suspense
@@ -1364,9 +1438,11 @@
 - System Information
 - System Migration
 - System Restore
+- System Tables
 - systemd
 - Systems Programming
 - Tab Navigation
+- Table Engines
 - Table-Driven Tests
 - Tablet
 - Taints
@@ -1404,6 +1480,7 @@
 - Tilt
 - Time Series
 - Time Synchronization
+- Time-Series
 - Timeouts
 - Timers
 - Timeshift
@@ -1449,6 +1526,7 @@
 - Troubleshooting
 - tshark
 - TTFB
+- TTL
 - Tuning
 - Tunneling
 - Tutorial
@@ -1476,6 +1554,7 @@
 - Uptime Monitoring
 - useCallback
 - useMemo
+- User Analytics
 - User Behavior
 - User Experience
 - User Interactions
@@ -1550,7 +1629,9 @@
 - WebSockets
 - Wiki
 - Wiki.js
+- Window Functions
 - Window Manager
+- windowFunnel
 - Windows
 - Wine
 - Wire
@@ -1582,6 +1663,7 @@
 - Zipkin
 - Zod
 - Zone Signing
+- ZooKeeper
 - ZSK
 - ztunnel
 - Zustand
