@@ -25940,5 +25940,183 @@
       "Cost Optimization"
     ],
     "post": "2026-01-21-elk-to-loki-migration"
+  },
+  {
+    "title": "How to Use Avro with Kafka",
+    "description": "A comprehensive guide to using Apache Avro with Kafka for efficient, schema-based serialization with backward and forward compatibility.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "Avro",
+      "Schema Registry",
+      "Serialization",
+      "Data Contracts"
+    ],
+    "post": "2026-01-21-kafka-avro"
+  },
+  {
+    "title": "How to Use Protobuf with Kafka",
+    "description": "A comprehensive guide to using Protocol Buffers with Apache Kafka for efficient, strongly-typed message serialization with schema evolution support.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "Protocol Buffers",
+      "Protobuf",
+      "Schema Registry",
+      "Serialization"
+    ],
+    "post": "2026-01-21-kafka-protobuf"
+  },
+  {
+    "title": "How to Use JSON Schema with Kafka",
+    "description": "A comprehensive guide to using JSON Schema with Apache Kafka for schema validation and evolution while maintaining the readability of JSON messages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "JSON Schema",
+      "Schema Registry",
+      "Validation",
+      "Data Contracts"
+    ],
+    "post": "2026-01-21-kafka-json-schema"
+  },
+  {
+    "title": "How to Handle Schema Evolution in Kafka",
+    "description": "A comprehensive guide to handling schema evolution in Apache Kafka, covering backward, forward, and full compatibility modes with practical migration strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "Schema Evolution",
+      "Schema Registry",
+      "Compatibility",
+      "Avro",
+      "Protobuf"
+    ],
+    "post": "2026-01-21-kafka-schema-evolution"
+  },
+  {
+    "title": "How to Implement Saga Pattern with Kafka",
+    "description": "A comprehensive guide to implementing the Saga pattern with Apache Kafka for managing distributed transactions across microservices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "Saga Pattern",
+      "Distributed Transactions",
+      "Microservices",
+      "Event-Driven Architecture",
+      "Compensation"
+    ],
+    "post": "2026-01-21-kafka-saga-pattern"
+  },
+  {
+    "title": "How to Design Event Schemas for Kafka",
+    "description": "A comprehensive guide to designing event schemas for Apache Kafka, covering naming conventions, versioning strategies, and best practices for maintainable event-driven systems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "Event Schema Design",
+      "Event-Driven Architecture",
+      "Domain Events",
+      "Best Practices"
+    ],
+    "post": "2026-01-21-kafka-event-schemas"
+  },
+  {
+    "title": "How to Implement Event Versioning in Kafka",
+    "description": "A comprehensive guide to implementing event versioning in Apache Kafka, covering strategies for handling breaking changes, version migrations, and maintaining backward compatibility.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "Event Versioning",
+      "Schema Evolution",
+      "Event-Driven Architecture",
+      "Breaking Changes",
+      "Migration"
+    ],
+    "post": "2026-01-21-kafka-event-versioning"
+  },
+  {
+    "title": "How to Fix Kafka NotLeaderForPartition Errors",
+    "description": "A comprehensive guide to diagnosing and fixing Kafka NotLeaderForPartition errors, covering leader election issues, metadata refresh problems, and configuration solutions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "NotLeaderForPartition",
+      "Troubleshooting",
+      "Leader Election",
+      "Metadata Refresh",
+      "Error Handling"
+    ],
+    "post": "2026-01-21-kafka-notleaderforpartition"
+  },
+  {
+    "title": "How to Debug Kafka Producer Timeout Errors",
+    "description": "A comprehensive guide to diagnosing and fixing Kafka producer timeout errors, covering network issues, broker problems, and configuration tuning.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "Producer Timeout",
+      "Troubleshooting",
+      "Performance",
+      "Network Issues",
+      "Configuration"
+    ],
+    "post": "2026-01-21-kafka-producer-timeout"
+  },
+  {
+    "title": "How to Troubleshoot Kafka Connect Failures",
+    "description": "A comprehensive guide to troubleshooting Kafka Connect failures, covering connector errors, task failures, and common issues with source and sink connectors.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "Kafka Connect",
+      "Troubleshooting",
+      "Connectors",
+      "Error Handling",
+      "Debugging"
+    ],
+    "post": "2026-01-21-kafka-connect-troubleshooting"
+  },
+  {
+    "title": "Kafka vs AWS Kinesis: Managed vs Self-Hosted Streaming",
+    "description": "A comprehensive comparison of Apache Kafka and AWS Kinesis, covering architecture differences, pricing, scalability, and use cases to help you choose the right streaming platform.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "AWS Kinesis",
+      "Streaming Comparison",
+      "Managed Services",
+      "Self-Hosted",
+      "Event Streaming"
+    ],
+    "post": "2026-01-21-kafka-vs-kinesis"
+  },
+  {
+    "title": "How to Migrate from RabbitMQ to Kafka",
+    "description": "A comprehensive guide to migrating from RabbitMQ to Apache Kafka, covering architectural differences, migration strategies, and implementation patterns for a smooth transition.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "RabbitMQ",
+      "Migration",
+      "Message Queue",
+      "Event Streaming",
+      "Architecture"
+    ],
+    "post": "2026-01-21-rabbitmq-to-kafka-migration"
+  },
+  {
+    "title": "Confluent Cloud vs AWS MSK vs Self-Hosted Kafka",
+    "description": "A comprehensive comparison of managed Kafka options including Confluent Cloud, AWS MSK, and self-hosted Kafka, covering features, pricing, operational overhead, and use cases.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Kafka",
+      "Confluent Cloud",
+      "AWS MSK",
+      "Managed Kafka",
+      "Cloud Comparison",
+      "Self-Hosted"
+    ],
+    "post": "2026-01-21-kafka-managed-comparison"
   }
 ]

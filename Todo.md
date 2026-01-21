@@ -504,31 +504,31 @@ These are frequently searched Kafka topics. Already covered: "How to Install and
 
 ### Schema Management
 - [x] **How to Set Up Confluent Schema Registry** - Schema storage and compatibility
-- [ ] **How to Use Avro with Kafka** - Serialization and schema evolution
-- [ ] **How to Use Protobuf with Kafka** - Protocol buffers for Kafka messages
-- [ ] **How to Use JSON Schema with Kafka** - Schema validation for JSON messages
-- [ ] **How to Handle Schema Evolution in Kafka** - Backward, forward, and full compatibility
+- [x] **How to Use Avro with Kafka** - Serialization and schema evolution
+- [x] **How to Use Protobuf with Kafka** - Protocol buffers for Kafka messages
+- [x] **How to Use JSON Schema with Kafka** - Schema validation for JSON messages
+- [x] **How to Handle Schema Evolution in Kafka** - Backward, forward, and full compatibility
 
 ### Event-Driven Architecture
 - [x] **How to Implement Event Sourcing with Kafka** - Event store and replay patterns
 - [x] **How to Build CQRS with Kafka** - Command and query separation
-- [ ] **How to Implement Saga Pattern with Kafka** - Distributed transaction coordination
-- [ ] **How to Design Event Schemas for Kafka** - Event modeling best practices
-- [ ] **How to Implement Event Versioning in Kafka** - Breaking changes and migration
+- [x] **How to Implement Saga Pattern with Kafka** - Distributed transaction coordination
+- [x] **How to Design Event Schemas for Kafka** - Event modeling best practices
+- [x] **How to Implement Event Versioning in Kafka** - Breaking changes and migration
 
 ### Troubleshooting
 - [x] **How to Debug Kafka Consumer Group Issues** - Rebalancing, lag, and stuck consumers
 - [x] **How to Troubleshoot Kafka Under-Replicated Partitions** - Replication lag and broker issues
-- [ ] **How to Fix Kafka "NotLeaderForPartition" Errors** - Leader election and metadata refresh
-- [ ] **How to Debug Kafka Producer Timeout Errors** - Network, broker, and configuration issues
-- [ ] **How to Troubleshoot Kafka Connect Failures** - Connector errors and task failures
+- [x] **How to Fix Kafka "NotLeaderForPartition" Errors** - Leader election and metadata refresh
+- [x] **How to Debug Kafka Producer Timeout Errors** - Network, broker, and configuration issues
+- [x] **How to Troubleshoot Kafka Connect Failures** - Connector errors and task failures
 
 ### Comparisons & Migrations
 - [x] **Kafka vs RabbitMQ: Which Message Broker to Choose** - Architecture and use case comparison
 - [x] **Kafka vs Pulsar: Streaming Platform Comparison** - Features and performance analysis
-- [ ] **Kafka vs AWS Kinesis: Managed vs Self-Hosted Streaming** - Cost and capability comparison
-- [ ] **How to Migrate from RabbitMQ to Kafka** - Migration patterns and considerations
-- [ ] **Confluent Cloud vs AWS MSK vs Self-Hosted Kafka** - Managed Kafka comparison
+- [x] **Kafka vs AWS Kinesis: Managed vs Self-Hosted Streaming** - Cost and capability comparison
+- [x] **How to Migrate from RabbitMQ to Kafka** - Migration patterns and considerations
+- [x] **Confluent Cloud vs AWS MSK vs Self-Hosted Kafka** - Managed Kafka comparison
 
 ---
 

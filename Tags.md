@@ -142,7 +142,9 @@
 - AWS
 - AWS CloudWatch
 - AWS ElastiCache
+- AWS Kinesis
 - AWS Lambda
+- AWS MSK
 - AWS Route53
 - AWS S3
 - AWS SQS
@@ -221,6 +223,7 @@
 - borg
 - Bottom Sheet
 - bpftrace
+- Breaking Changes
 - Bridge
 - Broker Configuration
 - Broker Failure
@@ -322,6 +325,7 @@
 - Cloud
 - Cloud Agent
 - Cloud Backup
+- Cloud Comparison
 - Cloud Database
 - Cloud DNS
 - Cloud Logging
@@ -377,6 +381,7 @@
 - Configuration
 - Configuration Management
 - Conflicts
+- Confluent Cloud
 - Conftest
 - Connection
 - Connection Draining
@@ -385,6 +390,7 @@
 - Connection Pooling
 - connection states
 - connections
+- Connectors
 - Consul
 - Consumer
 - Consumer Configuration
@@ -486,6 +492,7 @@
 - Data at Rest
 - Data Center
 - Data Consistency
+- Data Contracts
 - Data Deletion
 - Data Engineering
 - Data Enrichment
@@ -717,10 +724,12 @@
 - Event Bus
 - Event Processing
 - Event Replay
+- Event Schema Design
 - Event Sourcing
 - Event Store
 - Event Streaming
 - Event Time
+- Event Versioning
 - Event-Driven
 - Event-Driven Architecture
 - Events
@@ -1261,6 +1270,7 @@
 - Maintenance
 - Malware
 - Malware Detection
+- Managed Kafka
 - Managed Service
 - Managed Services
 - Management
@@ -1301,6 +1311,7 @@
 - Messaging
 - Metabase
 - Metadata
+- Metadata Refresh
 - MetalLB
 - Metrics
 - Metrics Correlation
@@ -1400,6 +1411,7 @@
 - Network Boot
 - Network Configuration
 - Network Debugging
+- Network Issues
 - network latency
 - network monitoring
 - Network Optimization
@@ -1434,6 +1446,7 @@
 - Note-Taking
 - Notebook
 - Notifications
+- NotLeaderForPartition
 - NSEC
 - NSEC3
 - ntopng
@@ -1654,6 +1667,7 @@
 - Process Management
 - Producer
 - Producer Configuration
+- Producer Timeout
 - Producer Tuning
 - Product
 - Product Analytics
@@ -2099,6 +2113,7 @@
 - Stream Processing
 - Stream Selectors
 - Streaming
+- Streaming Comparison
 - Streaming Replication
 - Streaming SSR
 - Streams
