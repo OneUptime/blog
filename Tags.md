@@ -83,6 +83,7 @@
 - API versioning
 - APIs
 - APM
+- Apollo
 - Apollo Client
 - Apollo Server
 - App Center
@@ -102,6 +103,7 @@
 - Argo
 - Argo Workflows
 - ArgoCD
+- Arguments
 - ARIA
 - ARM64
 - ARP
@@ -149,6 +151,7 @@
 - AWS S3
 - AWS SQS
 - axe-core
+- Axios
 - axum
 - Aya
 - Azure
@@ -163,6 +166,7 @@
 - Background Jobs
 - Background Sync
 - Background Tasks
+- BackgroundJobs
 - backoff
 - Backup
 - Backup Testing
@@ -190,6 +194,7 @@
 - Benchmarking
 - Benchmarks
 - Best Practices
+- BestPractices
 - Beta Testing
 - BFD
 - BGP
@@ -231,6 +236,7 @@
 - BTF
 - Buf
 - Buffered I/O
+- Buffers
 - Build Automation
 - Build Optimization
 - Build Tools
@@ -260,6 +266,7 @@
 - cAdvisor
 - Calico
 - calicoctl
+- Callbacks
 - Canary
 - Canary Deployment
 - Capabilities
@@ -290,8 +297,10 @@
 - Chat Applications
 - Checkpoint
 - Chi
+- ChildProcess
 - Chromatic
 - Chrome DevTools
+- ChromeDevTools
 - Chrony
 - Chunking
 - Chunks
@@ -364,6 +373,8 @@
 - Command Line
 - Command Query Separation
 - Command Queue
+- CommandLine
+- CommonJS
 - Communities
 - Compaction
 - Compare-and-Swap
@@ -457,6 +468,7 @@
 - Cross-Index
 - Cross-Platform
 - Crossplane
+- CrossPlatform
 - CRUSH
 - Cryptography
 - CSI
@@ -645,9 +657,11 @@
 - Document Security
 - Document Storage
 - Documentation
+- Documents
 - Domain Events
 - Domain Security
 - DoS
+- dotenv
 - Dovecot
 - Downgrade
 - Downsampling
@@ -704,18 +718,22 @@
 - Enterprise Analytics
 - Enterprise Backup
 - Enterprise Security
+- Environment
 - Environment Variables
 - Environments
 - Envoy
 - EnvoyFilter
 - Erasure Coding
 - errgroup
+- Error
 - Error Analysis
 - Error Budget
 - Error Budgets
 - error details
 - Error Handling
 - Error Tracking
+- ErrorHandling
+- ES6
 - ESLint
 - etcd
 - ETL
@@ -732,6 +750,7 @@
 - Event Versioning
 - Event-Driven
 - Event-Driven Architecture
+- EventEmitter
 - Events
 - Eviction
 - Eviction Policies
@@ -744,7 +763,9 @@
 - EXPLAIN ANALYZE
 - Expo
 - Exponential Backoff
+- Export
 - Exporters
+- exports
 - Express
 - Express.js
 - Extends
@@ -791,8 +812,10 @@
 - File Transfer
 - File Upload
 - Filebeat
+- FileHandling
 - Filesystem
 - Filesystems
+- FileUpload
 - Filtering
 - Filters
 - FIM
@@ -899,6 +922,7 @@
 - Grafana Loki
 - Grafana Tempo
 - Graph Database
+- Graphics
 - GraphQL
 - Graylog
 - Grok
@@ -924,6 +948,7 @@
 - Headless Services
 - Health Checks
 - Healthcare
+- HeapMemory
 - Heartbeat
 - Helm
 - Helmfile
@@ -954,6 +979,7 @@
 - Hot Reload
 - Hot Reloading
 - Hot-Warm-Cold
+- HotReload
 - How-To
 - HPA
 - HSET
@@ -992,6 +1018,7 @@
 - Images
 - Immutable
 - Implementation
+- Import
 - Incident Management
 - Incident Response
 - Inclusive Design
@@ -1037,6 +1064,7 @@
 - Inventory
 - Inventory Management
 - Inverted Index
+- IO
 - IOPS
 - iOS
 - IoT
@@ -1066,6 +1094,7 @@
 - Jellyfin
 - Jenkins
 - Jest
+- Jimp
 - Jitsi Meet
 - JMS
 - JMX
@@ -1081,6 +1110,7 @@
 - Job Recovery
 - Job Scheduling
 - Jobs
+- Joi
 - JOIN
 - Joins
 - Journal
@@ -1213,6 +1243,7 @@
 - Location Data
 - Location-Based Services
 - Lock Management
+- Lockfile
 - Locks
 - locust
 - Log Analysis
@@ -1262,6 +1293,7 @@
 - M1
 - MAC
 - Machine Learning
+- macOS
 - Macvlan
 - Maestro
 - Magic Link
@@ -1342,6 +1374,7 @@
 - MongoDB
 - Monitoring
 - Monorepo
+- Morgan
 - Mount
 - MOVED
 - Moving Average
@@ -1354,6 +1387,7 @@
 - MTTD
 - MTTR
 - MTU
+- Multer
 - MULTI
 - Multi-Cloud
 - Multi-Cluster
@@ -1438,6 +1472,7 @@
 - NodeJS
 - nodelocal-dns
 - Nodemailer
+- Nodemon
 - NodePort
 - Nodes
 - Non-Root
@@ -1447,6 +1482,7 @@
 - Notebook
 - Notifications
 - NotLeaderForPartition
+- NPM
 - NSEC
 - NSEC3
 - ntopng
@@ -1525,6 +1561,9 @@
 - Pacemaker
 - Package Management
 - Package Manager
+- package.json
+- PackageManagement
+- PackageManager
 - packet analysis
 - Packet Capture
 - page tokens
@@ -1543,8 +1582,10 @@
 - Partitions
 - Parts
 - PASETO
+- Passport
 - Password Manager
 - Passwordless
+- Path
 - Path Aliases
 - Path Analysis
 - Patroni
@@ -1553,6 +1594,7 @@
 - Patterns
 - PCI DSS
 - PDB
+- PDF
 - PDF Generation
 - PDFKit
 - Percentiles
@@ -1631,6 +1673,7 @@
 - Portability
 - Portainer
 - Ports
+- POST
 - Post Rendering
 - Postfix
 - PostGIS
@@ -1684,6 +1727,7 @@
 - Project Structure
 - Projections
 - Prometheus
+- Promises
 - PromQL
 - Promtail
 - Props
@@ -1731,6 +1775,7 @@
 - Query Queuing
 - Query Tuning
 - query_log
+- Queue
 - Queue Management
 - Queue Ordering
 - Queue Visualization
@@ -1829,6 +1874,7 @@
 - Request Coalescing
 - Request Deduplication
 - Request Tracking
+- require
 - Reservations
 - Resilience
 - Resource Adoption
@@ -1934,6 +1980,7 @@
 - Screen Reader
 - Screen Sizes
 - Scripting
+- Scripts
 - Scroll
 - Sealed Secrets
 - Search
@@ -1968,6 +2015,7 @@
 - Sensor Data
 - Sensors
 - Sentinel
+- Sequelize
 - sequenceCount
 - sequenceMatch
 - Sequential Processing
@@ -2148,6 +2196,7 @@
 - System Migration
 - System Restore
 - System Tables
+- SystemAdmin
 - systemd
 - Systems Programming
 - Tab Navigation
@@ -2165,6 +2214,7 @@
 - Task Automation
 - Task Queue
 - Task Scheduling
+- Tasks
 - TCP
 - TCP Tuning
 - TCP/IP
@@ -2308,11 +2358,13 @@
 - Unauthorized Access
 - Unbound
 - Under-Replicated Partitions
+- Uninstall
 - Unique Collections
 - Unique Visitors
 - Unit Testing
 - Unit Tests
 - unit-testing
+- UnitTests
 - Universal Links
 - unsafe
 - Unstructured Logs
