@@ -1458,69 +1458,6 @@ Based on actual frequently asked questions from Stack Overflow, these are 1000 m
 1379. How to Fix "Overflow when adding" at Compile Time
 1380. How to Use PhantomData in Rust
 
-## Go Common Issues & Patterns (60 posts)
-
-1381. ~~How to Type Convert Slices in Go~~
-1382. ~~How to Understand Struct Tags in Go~~
-1383. ~~How to Fix json.Marshal Returning "{}" for Structs~~
-1384. ~~How to Export Fields for JSON Marshaling in Go~~
-1385. ~~How to Fix "Cannot use X as type" Pointer Receiver Errors~~
-1386. ~~How to Modify Values While Iterating in Go~~
-1387. ~~How to Parse Dynamic JSON in Go~~
-1388. ~~How to Bundle Static Resources in Go Binaries~~
-1389. ~~How to Understand Constant Types in Go~~
-1390. ~~How to Unmarshal JSON with Unknown Fields in Go~~
-1391. ~~How to Do Type Assertions in Go~~
-1392. ~~How to Call Functions by Name (Reflection) in Go~~
-1393. ~~How to Understand go build vs go install~~
-1394. ~~How to Optimize Template Performance in Go~~
-1395. ~~How to Understand Map Iteration Order in Go~~
-1396. ~~How to Implement Enums in Go~~
-1397. ~~How to Set Up GOPATH and GOROOT Correctly~~
-1398. ~~How to Fix "undefined" Errors in Go~~
-1399. ~~How to Handle nil Pointers in Go~~
-1400. ~~How to Use Interfaces Effectively in Go~~
-1401. ~~How to Fix "invalid memory address or nil pointer dereference"~~
-1402. ~~How to Use Channels for Goroutine Communication~~
-1403. ~~How to Fix "all goroutines are asleep - deadlock"~~
-1404. ~~How to Use sync.WaitGroup for Concurrent Operations~~
-1405. ~~How to Fix "cannot take address of" Errors in Go~~
-1406. ~~How to Use defer Properly in Go~~
-1407. ~~How to Fix "index out of range" Panics in Go~~
-1408. ~~How to Work with Slices Efficiently in Go~~
-1409. ~~How to Fix "concurrent map writes" Panics~~
-1410. ~~How to Use sync.Mutex for Thread Safety~~
-1411. ~~How to Fix "package X is not in GOROOT" Errors~~
-1412. ~~How to Work with Time and Duration in Go~~
-1413. ~~How to Fix "imported and not used" Errors~~
-1414. ~~How to Use Error Wrapping in Go~~
-1415. ~~How to Fix "cannot convert" Type Errors in Go~~
-1416. ~~How to Use Context for Request Cancellation~~
-1417. ~~How to Fix "method has pointer receiver" Issues~~
-1418. ~~How to Use HTTP Client Timeouts in Go~~
-1419. ~~How to Fix "cannot range over" Errors in Go~~
-1420. ~~How to Use Embedding for Composition in Go~~
-1421. ~~How to Fix "multiple-value in single-value context" Errors~~
-1422. ~~How to Use init() Functions in Go~~
-1423. ~~How to Fix "cannot assign to" Errors in Go~~
-1424. ~~How to Use Table-Driven Tests in Go~~
-1425. ~~How to Fix "type X has no field or method" Errors~~
-1426. ~~How to Use Benchmarks in Go Testing~~
-1427. ~~How to Fix "cannot use X (type Y) as type Z" Errors~~
-1428. ~~How to Use go generate for Code Generation~~
-1429. ~~How to Fix "syntax error: unexpected" in Go~~
-1430. ~~How to Use Build Tags in Go~~
-1431. ~~How to Fix "declared and not used" Errors~~
-1432. ~~How to Use Vendoring in Go~~
-1433. ~~How to Fix "cannot refer to unexported name" Errors~~
-1434. ~~How to Use Go Modules for Dependency Management~~
-1435. ~~How to Fix "ambiguous import" Errors in Go~~
-1436. ~~How to Use Structured Logging in Go~~
-1437. ~~How to Fix "invalid operation" Errors in Go~~
-1438. ~~How to Use Graceful Shutdown in Go HTTP Servers~~
-1439. ~~How to Fix "cannot use X as type any" Errors~~
-1440. ~~How to Use Generics Effectively in Go~~
-
 ## PostgreSQL Common Issues & Queries (60 posts)
 
 1441. How to Create Crosstab (Pivot Table) Queries in PostgreSQL
