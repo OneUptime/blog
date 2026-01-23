@@ -40,110 +40,118 @@ For LLMs, tracking operation sequences (traces) is vital, especially when using 
 
 ### Implementing Automatic Instrumentation with OpenLIT
 
-OpenLIT automates telemetry data capture, simplifying the process for developers. Here’s a step-by-step guide to setting it up:
-1. Install the OpenLIT SDK:
-    First, you must install the following package:
+OpenLIT automates telemetry data capture, simplifying the process for developers. Instead of manually instrumenting every LLM call, OpenLIT hooks into popular libraries like OpenAI, LangChain, and LlamaIndex to automatically capture traces, metrics, and metadata. Here's a step-by-step guide to setting it up:
 
-    This command installs the OpenLIT SDK, which provides automatic instrumentation for LLM applications.
+#### Step 1: Install the OpenLIT SDK
 
-    ```shell
-    # Install the OpenLIT SDK for automatic LLM instrumentation
-    # This package captures telemetry data from popular AI/ML libraries
-    pip install openlit
-    ```
+The OpenLIT SDK is a Python package that provides automatic instrumentation for LLM applications. It captures detailed telemetry data including request/response payloads, token counts, latency measurements, and cost estimates from popular AI/ML libraries.
 
-2. Get your OneUptime OpenTelemetry Credentials
-    1. Sign in to your OneUptime account.
-    2. Click on "More" in the Navigation bar and click on "Project Settings".
-    3. On the Telemetry Ingestion Key page, click on "Create Ingestion Key" to create a token.
+```shell
+# Install the OpenLIT SDK for automatic LLM instrumentation
+# This package captures telemetry data from popular AI/ML libraries
+pip install openlit
+```
+
+#### Step 2: Get your OneUptime OpenTelemetry Credentials
+
+Before you can send telemetry data to OneUptime, you need to create an ingestion key that authenticates your application.
+
+1. Sign in to your OneUptime account.
+2. Click on "More" in the Navigation bar and click on "Project Settings".
+3. On the Telemetry Ingestion Key page, click on "Create Ingestion Key" to create a token.
     
-    ![](https://oneuptime.com/docs/static/images/TelemetryIngestionKeys.png)
+![](https://oneuptime.com/docs/static/images/TelemetryIngestionKeys.png)
 
-    4. Once you created a token, click on "View" to view and copy the token.
+4. Once you created a token, click on "View" to view and copy the token.
 
-    ![](https://oneuptime.com/docs/static/images/TelemetryIngestionKeyView.png)
+![](https://oneuptime.com/docs/static/images/TelemetryIngestionKeyView.png)
 
-3. Set Environment Variables:
-    OpenTelemetry Environment variables for OneUptime can be set as follows in linux.
+#### Step 3: Set Environment Variables
 
-    These environment variables configure where your telemetry data is sent and authenticate your requests with OneUptime.
+OpenTelemetry uses environment variables to configure the exporter endpoint and authentication. These variables tell your application where to send telemetry data (the OTLP endpoint) and how to authenticate with OneUptime (via the service token).
 
-    ```shell
-    # Set the OpenTelemetry collector endpoint for OneUptime
-    # This is where all traces and metrics will be sent
-    export OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp.oneuptime.com"
+```shell
+# Set the OpenTelemetry collector endpoint for OneUptime
+# This is where all traces and metrics will be sent
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp.oneuptime.com"
 
-    # Set the authentication header with your OneUptime service token
-    # Replace YOUR_ONEUPTIME_SERVICE_TOKEN with the token from step 2
-    export OTEL_EXPORTER_OTLP_HEADERS="x-oneuptime-token=YOUR_ONEUPTIME_SERVICE_TOKEN"
-    ```
+# Set the authentication header with your OneUptime service token
+# Replace YOUR_ONEUPTIME_SERVICE_TOKEN with the token from step 2
+export OTEL_EXPORTER_OTLP_HEADERS="x-oneuptime-token=YOUR_ONEUPTIME_SERVICE_TOKEN"
+```
 
-    If you're self-hosting oneuptime, this can be changed to your self hosted OpenTelemetry collector endpoint (eg: http(s)://<your-oneuptime-host>/otlp)
+If you're self-hosting OneUptime, change the endpoint to your self-hosted OpenTelemetry collector endpoint (e.g., `http(s)://<your-oneuptime-host>/otlp`).
 
-4. Initialize the SDK:
-    You will need to add the following to the LLM Application code.
+#### Step 4: Initialize the SDK
 
-    This minimal initialization enables automatic instrumentation for all supported LLM libraries in your application.
+Add the OpenLIT initialization code at the very start of your application, before importing any LLM libraries. This ensures that OpenLIT can properly hook into the libraries and capture all telemetry data. The `init()` function sets up automatic instrumentation for all supported AI/ML libraries including OpenAI, Anthropic, LangChain, LlamaIndex, and vector databases.
 
-    ```python
-    # Import the OpenLIT SDK
-    import openlit
+```python
+# Import the OpenLIT SDK
+import openlit
 
-    # Initialize OpenLIT - this automatically instruments LLM calls
-    # Must be called before any LLM library imports for best results
-    openlit.init()
-    ```
+# Initialize OpenLIT - this automatically instruments LLM calls
+# Must be called before any LLM library imports for best results
+openlit.init()
+```
 
-    Optionally, you can customize the application name and environment by setting the `application_name` and `environment` attributes when initializing OpenLIT in your application. These variables configure the OTel attributes `service.name` and `deployment.environment`, respectively. For more details on other configuration settings, check out the OpenLIT GitHub Repository.
+You can customize the service identification by setting the `application_name` and `environment` parameters. These values map to OpenTelemetry resource attributes (`service.name` and `deployment.environment`), which help you identify your service in the OneUptime dashboard and filter traces by environment.
 
-    This customization helps identify your service in the OneUptime dashboard and distinguishes between deployment environments.
+```python
+# Initialize with custom service name and environment
+# application_name: Sets the service.name attribute in traces
+# environment: Sets the deployment.environment attribute (e.g., Production, Staging)
+openlit.init(application_name="YourAppName", environment="Production")
+```
 
-    ```python
-    # Initialize with custom service name and environment
-    # application_name: Sets the service.name attribute in traces
-    # environment: Sets the deployment.environment attribute (e.g., Production, Staging)
-    openlit.init(application_name="YourAppName", environment="Production")
-    ```
+For more configuration options, check out the [OpenLIT GitHub Repository](https://github.com/openlit/openlit).
 
-    The most popular libraries in GenAI are OpenAI (for accessing LLMs) and Langchain (for orchestrating steps). An example instrumentation of a Langchain and OpenAI based LLM Application will look like:
+#### Complete Example: Instrumenting a LangChain Application
 
-    This complete example demonstrates how to instrument a LangChain application with OpenLIT for full observability of LLM interactions.
+The following example demonstrates a complete LangChain application with OpenLIT instrumentation. It shows how to set up a chat model with OpenAI's GPT-4 and send a simple translation request. When you run this code with OpenLIT initialized and the environment variables configured, all LLM interactions are automatically captured and sent to OneUptime.
 
-    ```python
-    # Standard library imports for secure credential handling
-    import getpass
-    import os
+```python
+# Standard library imports for secure credential handling
+import getpass
+import os
 
-    # LangChain imports for chat model and message types
-    from langchain_openai import ChatOpenAI
-    from langchain_core.messages import HumanMessage, SystemMessage
+# LangChain imports for chat model and message types
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage
 
-    # Import OpenLIT for automatic instrumentation
-    import openlit
+# Import OpenLIT for automatic instrumentation
+import openlit
 
-    # Initialize OpenLIT BEFORE making any LLM calls
-    # This auto-instruments LLM and VectorDB calls, sending OTel traces
-    # and metrics to the configured endpoint (set via environment variables)
-    openlit.init()
+# Initialize OpenLIT BEFORE making any LLM calls
+# This auto-instruments LLM and VectorDB calls, sending OTel traces
+# and metrics to the configured endpoint (set via environment variables)
+openlit.init()
 
-    # Securely prompt for OpenAI API key (won't echo to terminal)
-    os.environ["OPENAI_API_KEY"] = getpass.getpass()
+# Securely prompt for OpenAI API key (won't echo to terminal)
+os.environ["OPENAI_API_KEY"] = getpass.getpass()
 
-    # Initialize the ChatOpenAI model with GPT-4
-    model = ChatOpenAI(model="gpt-4")
+# Initialize the ChatOpenAI model with GPT-4
+model = ChatOpenAI(model="gpt-4")
 
-    # Create a list of messages for the chat model
-    # SystemMessage: Sets the context/behavior for the AI
-    # HumanMessage: The user's input to be processed
-    messages = [
-        SystemMessage(content="Translate the following from English into Italian"),
-        HumanMessage(content="hi!"),
-    ]
+# Create a list of messages for the chat model
+# SystemMessage: Sets the context/behavior for the AI
+# HumanMessage: The user's input to be processed
+messages = [
+    SystemMessage(content="Translate the following from English into Italian"),
+    HumanMessage(content="hi!"),
+]
 
-    # Invoke the model - OpenLIT automatically captures this call as a trace
-    # including latency, token usage, and model parameters
-    model.invoke(messages)
-    ```
+# Invoke the model - OpenLIT automatically captures this call as a trace
+# including latency, token usage, and model parameters
+model.invoke(messages)
+```
+
+The trace captured by OpenLIT includes:
+- **Request details**: The prompts sent to the model
+- **Response content**: The model's output
+- **Token usage**: Input and output token counts for cost tracking
+- **Latency**: Time taken for the API call
+- **Model metadata**: Model name, temperature, and other parameters
 
 ## Visualizing Data with OneUptime
 Once your LLM application is instrumented, you should see the traces and metrics in the OneUptime telemetry traces page. Please contact support@oneuptime.com if you need any help.
