@@ -18,19 +18,22 @@ Replication is the foundation for both Redis Sentinel and Redis Cluster high ava
 
 ### How Replication Works
 
+```mermaid
+flowchart LR
+    subgraph WritePath["Write Path"]
+        C1[Client] --> M1[Master] --> R1[Replicas<br/>async/sync]
+    end
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                      Write Path                               │
-│   Client ───► Master ───► Replicas (async/sync)              │
-└──────────────────────────────────────────────────────────────┘
 
-┌──────────────────────────────────────────────────────────────┐
-│                      Read Path                                │
-│   Client ───► Master (writes + reads)                        │
-│   Client ───► Replica (reads only)                           │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph ReadPath["Read Path"]
+        C2[Client] --> M2[Master<br/>writes + reads]
+        C3[Client] --> R2[Replica<br/>reads only]
+    end
+```
 
-Replication Flow:
+**Replication Flow:**
 1. Replica connects to master
 2. Master starts BGSAVE (creates RDB snapshot)
 3. Master sends RDB to replica
@@ -38,7 +41,6 @@ Replication Flow:
 5. Master sends backlog of commands during BGSAVE
 6. Replica is now synchronized
 7. Master streams new commands to replica (async)
-```
 
 ### Replication Types
 

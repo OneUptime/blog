@@ -12,24 +12,18 @@ WSL2 (Windows Subsystem for Linux 2) provides a full Linux kernel on Windows, en
 
 ## Architecture Overview
 
-```
-Docker on WSL2
-┌─────────────────────────────────────────────────────────────┐
-│                        Windows                               │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │                 Docker Desktop                       │   │
-│  │  ┌─────────────────────────────────────────────┐   │   │
-│  │  │              WSL2 VM                         │   │   │
-│  │  │  ┌───────────────────────────────────────┐ │   │   │
-│  │  │  │        Linux Kernel (Real)            │ │   │   │
-│  │  │  │  ┌──────────┐  ┌──────────────────┐  │ │   │   │
-│  │  │  │  │ Ubuntu   │  │ Docker Daemon    │  │ │   │   │
-│  │  │  │  │ Distro   │  │ containerd       │  │ │   │   │
-│  │  │  │  └──────────┘  └──────────────────┘  │ │   │   │
-│  │  │  └───────────────────────────────────────┘ │   │   │
-│  │  └─────────────────────────────────────────────┘   │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Windows["Windows"]
+        subgraph DockerDesktop["Docker Desktop"]
+            subgraph WSL2["WSL2 VM"]
+                subgraph Kernel["Linux Kernel (Real)"]
+                    Ubuntu[Ubuntu Distro]
+                    Docker[Docker Daemon<br/>containerd]
+                end
+            end
+        end
+    end
 ```
 
 ## Prerequisites

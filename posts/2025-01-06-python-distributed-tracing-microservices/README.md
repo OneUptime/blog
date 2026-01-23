@@ -22,15 +22,16 @@ Context propagation is how trace information flows between services. When Servic
 - **Span ID**: Identifier for the current operation
 - **Trace flags**: Sampling decisions and other metadata
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Service A  │────▶│  Service B  │────▶│  Service C  │
-│  Span: abc  │     │  Span: def  │     │  Span: ghi  │
-│  Trace: 123 │     │  Trace: 123 │     │  Trace: 123 │
-└─────────────┘     └─────────────┘     └─────────────┘
-      │                   │                   │
-      └───────────────────┴───────────────────┘
-                    Same Trace ID
+```mermaid
+flowchart LR
+    A["Service A<br/>Span: abc<br/>Trace: 123"] --> B["Service B<br/>Span: def<br/>Trace: 123"]
+    B --> C["Service C<br/>Span: ghi<br/>Trace: 123"]
+    
+    subgraph trace["Same Trace ID"]
+        A
+        B
+        C
+    end
 ```
 
 ---

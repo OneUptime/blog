@@ -247,21 +247,14 @@ def migrate_with_dump_restore(source, target, keys):
 
 ### Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Application                               │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │                   Migration Layer                        │    │
-│  │   Write: Standalone + Cluster                           │    │
-│  │   Read:  Standalone (initially) -> Cluster (later)      │    │
-│  └─────────────────────────────────────────────────────────┘    │
-└───────────────┬───────────────────────────┬─────────────────────┘
-                │                           │
-                ▼                           ▼
-        ┌───────────────┐           ┌───────────────┐
-        │  Standalone   │           │   Cluster     │
-        │   (Source)    │           │   (Target)    │
-        └───────────────┘           └───────────────┘
+```mermaid
+flowchart TB
+    subgraph App["Application"]
+        ML["Migration Layer<br/>Write: Standalone + Cluster<br/>Read: Standalone → Cluster"]
+    end
+    
+    ML --> Standalone["Standalone<br/>(Source)"]
+    ML --> Cluster["Cluster<br/>(Target)"]
 ```
 
 ### Implementation

@@ -27,18 +27,11 @@ This decoupled architecture provides several benefits:
 
 ### How Redis Pub/Sub Works
 
-```
-┌──────────────┐         ┌─────────────┐         ┌──────────────┐
-│  Publisher   │ ──────► │   Channel   │ ──────► │  Subscriber  │
-│  (Client A)  │         │  "news"     │         │  (Client B)  │
-└──────────────┘         └─────────────┘         └──────────────┘
-                                │
-                                │
-                                ▼
-                         ┌──────────────┐
-                         │  Subscriber  │
-                         │  (Client C)  │
-                         └──────────────┘
+```mermaid
+flowchart LR
+    Publisher["Publisher<br>(Client A)"] --> Channel["Channel<br>'news'"]
+    Channel --> SubB["Subscriber<br>(Client B)"]
+    Channel --> SubC["Subscriber<br>(Client C)"]
 ```
 
 When a publisher sends a message to a channel, Redis immediately delivers it to all subscribers listening on that channel. If no subscribers are listening, the message is simply discarded.

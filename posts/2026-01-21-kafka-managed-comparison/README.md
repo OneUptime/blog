@@ -26,69 +26,60 @@ Choosing the right Kafka deployment option is crucial for your streaming platfor
 
 ### Confluent Cloud
 
-```
-┌────────────────────────────────────────────────────────┐
-│                  Confluent Cloud                        │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │              Managed Kafka Cluster                │  │
-│  │  - Auto-scaling                                   │  │
-│  │  - Multi-zone                                     │  │
-│  │  - Encryption at rest                             │  │
-│  └──────────────────────────────────────────────────┘  │
-│                                                         │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐      │
-│  │   Schema    │ │   Kafka     │ │   ksqlDB    │      │
-│  │  Registry   │ │   Connect   │ │             │      │
-│  └─────────────┘ └─────────────┘ └─────────────┘      │
-│                                                         │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │         Control Plane & Monitoring                │  │
-│  └──────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph CC["Confluent Cloud"]
+        subgraph Cluster["Managed Kafka Cluster"]
+            Features["Auto-scaling<br/>Multi-zone<br/>Encryption at rest"]
+        end
+        subgraph Services[" "]
+            SR["Schema<br/>Registry"]
+            KC["Kafka<br/>Connect"]
+            KS["ksqlDB"]
+        end
+        CP["Control Plane & Monitoring"]
+        Cluster --> Services
+        Services --> CP
+    end
 ```
 
 ### AWS MSK
 
-```
-┌────────────────────────────────────────────────────────┐
-│                      AWS MSK                            │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │              Managed Kafka Brokers                │  │
-│  │  ┌──────┐ ┌──────┐ ┌──────┐                      │  │
-│  │  │Broker│ │Broker│ │Broker│                      │  │
-│  │  │ AZ-a │ │ AZ-b │ │ AZ-c │                      │  │
-│  │  └──────┘ └──────┘ └──────┘                      │  │
-│  └──────────────────────────────────────────────────┘  │
-│                                                         │
-│  ┌──────────────┐                                      │
-│  │ ZooKeeper    │  (or KRaft for Serverless)          │
-│  │ (Managed)    │                                      │
-│  └──────────────┘                                      │
-│                                                         │
-│  Self-managed: Schema Registry, Connect, ksqlDB        │
-└────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph MSK["AWS MSK"]
+        subgraph Brokers["Managed Kafka Brokers"]
+            B1["Broker<br/>AZ-a"]
+            B2["Broker<br/>AZ-b"]
+            B3["Broker<br/>AZ-c"]
+        end
+        ZK["ZooKeeper (Managed)<br/>or KRaft for Serverless"]
+        SM["Self-managed: Schema Registry, Connect, ksqlDB"]
+        Brokers --> ZK
+        ZK --> SM
+    end
 ```
 
 ### Self-Hosted
 
-```
-┌────────────────────────────────────────────────────────┐
-│                    Self-Hosted                          │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │              Kafka Brokers (EC2/K8s)              │  │
-│  │  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐            │  │
-│  │  │Broker│ │Broker│ │Broker│ │Broker│            │  │
-│  │  │  1   │ │  2   │ │  3   │ │  N   │            │  │
-│  │  └──────┘ └──────┘ └──────┘ └──────┘            │  │
-│  └──────────────────────────────────────────────────┘  │
-│                                                         │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐               │
-│  │ZooKeeper │ │  Schema  │ │  Kafka   │               │
-│  │/KRaft    │ │ Registry │ │ Connect  │               │
-│  └──────────┘ └──────────┘ └──────────┘               │
-│                                                         │
-│  Everything managed by your team                        │
-└────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph SH["Self-Hosted"]
+        subgraph Brokers["Kafka Brokers (EC2/K8s)"]
+            B1["Broker 1"]
+            B2["Broker 2"]
+            B3["Broker 3"]
+            BN["Broker N"]
+        end
+        subgraph Components[" "]
+            ZK["ZooKeeper<br/>/KRaft"]
+            SR["Schema<br/>Registry"]
+            KC["Kafka<br/>Connect"]
+        end
+        Note["Everything managed by your team"]
+        Brokers --> Components
+        Components --> Note
+    end
 ```
 
 ## Feature Deep Dive

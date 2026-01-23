@@ -1840,30 +1840,17 @@ For production environments requiring high availability, deploy multiple Keycloa
 
 ### Architecture Overview
 
-```
-                    ┌─────────────────┐
-                    │   Load Balancer │
-                    │   (Nginx/HAProxy)│
-                    └────────┬────────┘
-                             │
-            ┌────────────────┼────────────────┐
-            │                │                │
-    ┌───────▼───────┐ ┌──────▼──────┐ ┌──────▼──────┐
-    │  Keycloak 1   │ │ Keycloak 2  │ │ Keycloak 3  │
-    │  (Active)     │ │ (Active)    │ │ (Active)    │
-    └───────┬───────┘ └──────┬──────┘ └──────┬──────┘
-            │                │                │
-            └────────────────┼────────────────┘
-                             │
-                    ┌────────▼────────┐
-                    │   PostgreSQL    │
-                    │   (Primary)     │
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │   PostgreSQL    │
-                    │   (Replica)     │
-                    └─────────────────┘
+```mermaid
+flowchart TB
+    LB["Load Balancer<br>(Nginx/HAProxy)"] --> KC1["Keycloak 1<br>(Active)"]
+    LB --> KC2["Keycloak 2<br>(Active)"]
+    LB --> KC3["Keycloak 3<br>(Active)"]
+    
+    KC1 --> PG1[("PostgreSQL<br>(Primary)")]
+    KC2 --> PG1
+    KC3 --> PG1
+    
+    PG1 --> PG2[("PostgreSQL<br>(Replica)")]
 ```
 
 ### Configuring Keycloak Cluster

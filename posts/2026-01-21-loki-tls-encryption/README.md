@@ -21,26 +21,25 @@ Before starting, ensure you have:
 
 ## TLS Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    TLS Encrypted Communication                   │
-│                                                                  │
-│  ┌──────────────┐         TLS          ┌──────────────┐         │
-│  │   Promtail   │─────────────────────▶│              │         │
-│  │   (Client)   │   Encrypted Logs     │              │         │
-│  └──────────────┘                      │              │         │
-│                                        │    Loki      │         │
-│  ┌──────────────┐         TLS          │   Server     │         │
-│  │   Grafana    │─────────────────────▶│              │         │
-│  │   (Client)   │   Encrypted Queries  │              │         │
-│  └──────────────┘                      │              │         │
-│                                        └──────────────┘         │
-│                                                                  │
-│  Certificate Authority (CA)                                      │
-│  ├── Server Certificate (loki.example.com)                      │
-│  ├── Client Certificate (promtail)                              │
-│  └── Client Certificate (grafana)                               │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Clients
+        Promtail["Promtail<br/>(Client)"]
+        Grafana["Grafana<br/>(Client)"]
+    end
+    
+    subgraph Server
+        Loki["Loki<br/>Server"]
+    end
+    
+    Promtail -->|"TLS<br/>Encrypted Logs"| Loki
+    Grafana -->|"TLS<br/>Encrypted Queries"| Loki
+    
+    subgraph CA["Certificate Authority (CA)"]
+        ServerCert["Server Certificate<br/>(loki.example.com)"]
+        PromtailCert["Client Certificate<br/>(promtail)"]
+        GrafanaCert["Client Certificate<br/>(grafana)"]
+    end
 ```
 
 ## Generating Certificates

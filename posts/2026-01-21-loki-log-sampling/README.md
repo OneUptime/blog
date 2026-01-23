@@ -14,23 +14,26 @@ Log sampling reduces the volume of logs ingested into Loki while preserving stat
 
 ### Why Sample Logs?
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Log Sampling Benefits                         │
-│                                                                  │
-│  Before Sampling:                                                │
-│  - 100 GB/day of logs                                           │
-│  - High storage costs                                            │
-│  - Slow queries                                                  │
-│  - Most logs are routine (INFO/DEBUG)                           │
-│                                                                  │
-│  After 10% Sampling:                                             │
-│  - 10 GB/day of sampled logs + 100% errors                      │
-│  - 90% cost reduction                                            │
-│  - Faster queries                                                │
-│  - Still statistically representative                            │
-│  - All errors preserved                                          │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Before["Before Sampling"]
+        B1["100 GB/day of logs"]
+        B2["High storage costs"]
+        B3["Slow queries"]
+        B4["Most logs are routine<br/>(INFO/DEBUG)"]
+    end
+    
+    Sampling["10% Sampling"]
+    
+    subgraph After["After Sampling"]
+        A1["10 GB/day sampled logs<br/>+ 100% errors"]
+        A2["90% cost reduction"]
+        A3["Faster queries"]
+        A4["Statistically representative"]
+        A5["All errors preserved"]
+    end
+    
+    Before --> Sampling --> After
 ```
 
 ### Sampling Strategies

@@ -12,19 +12,15 @@ Docker Compose provides multiple ways to create reusable configurations: the `ex
 
 ## Understanding Extends
 
-```
-Service Extension Hierarchy
-┌─────────────────────────────────────────────────────────────┐
-│  base-compose.yml           docker-compose.yml              │
-│  ┌───────────────────┐     ┌───────────────────────────┐   │
-│  │  base-service:    │     │  my-service:              │   │
-│  │    image: node    │ ──► │    extends:               │   │
-│  │    working_dir:/a │     │      file: base-compose   │   │
-│  │    volumes: [...]│     │      service: base-service│   │
-│  └───────────────────┘     │    ports: [3000:3000]     │   │
-│                             │    environment: [...]     │   │
-│                             └───────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph base["base-compose.yml"]
+        BS["base-service:\n  image: node\n  working_dir: /a\n  volumes: [...]"]
+    end
+    subgraph main["docker-compose.yml"]
+        MS["my-service:\n  extends:\n    file: base-compose\n    service: base-service\n  ports: [3000:3000]\n  environment: [...]"]
+    end
+    BS -->|extends| MS
 ```
 
 ## Basic Extends Usage

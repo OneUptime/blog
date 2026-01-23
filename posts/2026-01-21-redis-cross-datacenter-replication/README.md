@@ -26,22 +26,30 @@ Choose the right pattern based on your consistency requirements, write patterns,
 
 ### Architecture Options
 
-```
-Active-Passive (DR)
-────────────────────────────────────────────────────────────
-┌─────────────────┐     Async Replication    ┌─────────────────┐
-│   DC1 (Active)  │ ─────────────────────▶  │  DC2 (Passive)  │
-│  Master + Sentinel                        │  Replica + Sentinel │
-│  [WRITES + READS]                         │  [STANDBY]      │
-└─────────────────┘                         └─────────────────┘
+**Active-Passive (DR):**
 
-Active-Active (Geo-Distribution)
-────────────────────────────────────────────────────────────
-┌─────────────────┐     Conflict Resolution   ┌─────────────────┐
-│   DC1 (Active)  │ ◀────────────────────▶   │   DC2 (Active)  │
-│  Master + Sentinel                         │  Master + Sentinel │
-│  [WRITES + READS]                          │  [WRITES + READS] │
-└─────────────────┘                          └─────────────────┘
+```mermaid
+flowchart LR
+    subgraph DC1["DC1 (Active)"]
+        M1["Master + Sentinel<br/>WRITES + READS"]
+    end
+    subgraph DC2["DC2 (Passive)"]
+        R1["Replica + Sentinel<br/>STANDBY"]
+    end
+    DC1 -->|"Async Replication"| DC2
+```
+
+**Active-Active (Geo-Distribution):**
+
+```mermaid
+flowchart LR
+    subgraph DC1["DC1 (Active)"]
+        M1["Master + Sentinel<br/>WRITES + READS"]
+    end
+    subgraph DC2["DC2 (Active)"]
+        M2["Master + Sentinel<br/>WRITES + READS"]
+    end
+    DC1 <-->|"Conflict Resolution"| DC2
 ```
 
 ---

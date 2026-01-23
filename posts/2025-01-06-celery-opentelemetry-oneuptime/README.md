@@ -16,16 +16,12 @@ Background jobs fail silently. Proper monitoring catches problems before they im
 
 ## Overview
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Web App       │────▶│   Redis/RabbitMQ│────▶│  Celery Worker  │
-│   (Producer)    │     │   (Broker)      │     │  (Consumer)     │
-└────────┬────────┘     └─────────────────┘     └────────┬────────┘
-         │                                               │
-         │              ┌─────────────────┐              │
-         └─────────────▶│    OneUptime    │◀─────────────┘
-                        │ (Traces/Metrics)│
-                        └─────────────────┘
+```mermaid
+flowchart LR
+    WebApp["Web App<br/>(Producer)"] --> Broker["Redis/RabbitMQ<br/>(Broker)"]
+    Broker --> Worker["Celery Worker<br/>(Consumer)"]
+    WebApp --> OneUptime["OneUptime<br/>(Traces/Metrics)"]
+    Worker --> OneUptime
 ```
 
 ---

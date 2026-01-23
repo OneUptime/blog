@@ -38,11 +38,10 @@ Before we begin, ensure you have the following:
 
 OneUptime accepts logs via the OpenTelemetry Protocol (OTLP), which is the standard transport mechanism for OpenTelemetry data. The architecture looks like this:
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Go Application │────▶│  OTLP Exporter  │────▶│    OneUptime    │
-│   (Your Code)   │     │  (gRPC/HTTP)    │     │   Log Ingestion │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+```mermaid
+flowchart LR
+    App["Go Application<br/>(Your Code)"] --> OTLP["OTLP Exporter<br/>(gRPC/HTTP)"]
+    OTLP --> OneUptime["OneUptime<br/>Log Ingestion"]
 ```
 
 Your Go application generates logs, which are then exported to OneUptime using the OTLP exporter over either gRPC or HTTP.

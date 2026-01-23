@@ -64,29 +64,41 @@ ZooKeeper serves as the configuration and coordination store for both Pulsar and
 
 Note: Pulsar 3.0+ supports running without ZooKeeper using an embedded metadata store, but ZooKeeper remains the production-tested option.
 
-```
-                    ┌─────────────────────────────────────────────┐
-                    │              Pulsar Cluster                  │
-                    │                                              │
-    ┌──────────┐    │   ┌─────────┐  ┌─────────┐  ┌─────────┐    │
-    │ Producer │────┼──▶│ Broker  │  │ Broker  │  │ Broker  │    │
-    └──────────┘    │   └────┬────┘  └────┬────┘  └────┬────┘    │
-                    │        │            │            │          │
-    ┌──────────┐    │        ▼            ▼            ▼          │
-    │ Consumer │◀───┼──  ┌─────────────────────────────────┐     │
-    └──────────┘    │    │        BookKeeper (Bookies)      │     │
-                    │    │  ┌──────┐ ┌──────┐ ┌──────┐     │     │
-                    │    │  │Bookie│ │Bookie│ │Bookie│     │     │
-                    │    │  └──────┘ └──────┘ └──────┘     │     │
-                    │    └─────────────────────────────────┘     │
-                    │                    │                        │
-                    │    ┌───────────────┴───────────────┐       │
-                    │    │          ZooKeeper            │       │
-                    │    │  ┌────┐  ┌────┐  ┌────┐      │       │
-                    │    │  │ ZK │  │ ZK │  │ ZK │      │       │
-                    │    │  └────┘  └────┘  └────┘      │       │
-                    │    └───────────────────────────────┘       │
-                    └─────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Cluster["Pulsar Cluster"]
+        subgraph Brokers["Brokers"]
+            B1[Broker]
+            B2[Broker]
+            B3[Broker]
+        end
+        
+        subgraph BK["BookKeeper - Bookies"]
+            BK1[Bookie]
+            BK2[Bookie]
+            BK3[Bookie]
+        end
+        
+        subgraph ZK["ZooKeeper"]
+            ZK1[ZK]
+            ZK2[ZK]
+            ZK3[ZK]
+        end
+    end
+    
+    Producer[Producer] --> B1
+    Producer --> B2
+    Producer --> B3
+    
+    B1 --> BK
+    B2 --> BK
+    B3 --> BK
+    
+    BK --> ZK
+    
+    B1 --> Consumer[Consumer]
+    B2 --> Consumer
+    B3 --> Consumer
 ```
 
 ## Prerequisites

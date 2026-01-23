@@ -12,19 +12,32 @@ YAML anchors (`&`) and aliases (`*`) enable reusing configuration blocks within 
 
 ## Understanding Anchors and Aliases
 
+```mermaid
+flowchart LR
+    subgraph Definition["Define Anchor"]
+        A["x-common: &common<br/>restart: always<br/>logging: {...}"]
+    end
+    
+    subgraph Usage["Reference & Merge"]
+        B["service:<br/><<: *common<br/>image: myapp"]
+    end
+    
+    subgraph Result["Result"]
+        C["service:<br/>restart: always<br/>logging: {...}<br/>image: myapp"]
+    end
+    
+    A -->|"&anchor_name"| B
+    B -->|"<<: *anchor_name"| C
+    
+    style Definition fill:#e1f5fe
+    style Usage fill:#fff3e0
+    style Result fill:#e8f5e9
 ```
-YAML Anchors and Aliases
-┌─────────────────────────────────────────────────────────────┐
-│  Define anchor:    &anchor_name                             │
-│  Reference alias:  *anchor_name                             │
-│  Merge into map:   <<: *anchor_name                         │
-│                                                              │
-│  x-common: &common    │  service:                           │
-│    restart: always    │    <<: *common                      │
-│    logging: {...}     │    image: myapp                     │
-│                       │    # Gets restart and logging       │
-└─────────────────────────────────────────────────────────────┘
-```
+
+**Key Syntax:**
+- Define anchor: `&anchor_name`
+- Reference alias: `*anchor_name`
+- Merge into map: `<<: *anchor_name`
 
 ## Basic Anchors and Aliases
 

@@ -12,24 +12,21 @@ Docker Compose provides built-in service discovery through DNS resolution. Servi
 
 ## How Docker DNS Works
 
-```
-Docker Compose Service Discovery
-┌─────────────────────────────────────────────────────────────┐
-│                  Docker Network (bridge)                     │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │               Embedded DNS Server                    │   │
-│  │                   (127.0.0.11)                       │   │
-│  └─────────────────────────────────────────────────────┘   │
-│         ▲              ▲              ▲                     │
-│         │              │              │                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐                 │
-│  │   api    │  │   web    │  │    db    │                 │
-│  │ 172.x.x.2│  │ 172.x.x.3│  │ 172.x.x.4│                 │
-│  └──────────┘  └──────────┘  └──────────┘                 │
-│                                                             │
-│  api → web: DNS lookup "web" → 172.x.x.3                   │
-│  web → db:  DNS lookup "db"  → 172.x.x.4                   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph network["Docker Network (bridge)"]
+        DNS["Embedded DNS Server\n(127.0.0.11)"]
+        API["api\n172.x.x.2"]
+        WEB["web\n172.x.x.3"]
+        DB["db\n172.x.x.4"]
+        
+        API --> DNS
+        WEB --> DNS
+        DB --> DNS
+    end
+    
+    API -->|"DNS lookup 'web' → 172.x.x.3"| WEB
+    WEB -->|"DNS lookup 'db' → 172.x.x.4"| DB
 ```
 
 ## Basic Service Discovery

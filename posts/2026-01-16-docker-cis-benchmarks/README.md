@@ -14,30 +14,19 @@ The CIS Docker Benchmark provides prescriptive guidance for establishing a secur
 
 The CIS Docker Benchmark is organized into sections:
 
-```
-CIS Docker Benchmark Structure
-┌────────────────────────────────────────────────────────────┐
-│ 1. Host Configuration                                       │
-│    - Kernel parameters, audit rules                        │
-├────────────────────────────────────────────────────────────┤
-│ 2. Docker Daemon Configuration                             │
-│    - TLS, authorization, logging                           │
-├────────────────────────────────────────────────────────────┤
-│ 3. Docker Daemon Configuration Files                       │
-│    - File permissions, ownership                           │
-├────────────────────────────────────────────────────────────┤
-│ 4. Container Images and Build Files                        │
-│    - Base images, users, secrets                           │
-├────────────────────────────────────────────────────────────┤
-│ 5. Container Runtime                                        │
-│    - Capabilities, mounts, resources                       │
-├────────────────────────────────────────────────────────────┤
-│ 6. Docker Security Operations                              │
-│    - Monitoring, incident response                         │
-├────────────────────────────────────────────────────────────┤
-│ 7. Docker Swarm Configuration                              │
-│    - Cluster security settings                             │
-└────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph CIS["CIS Docker Benchmark Structure"]
+        S1["1. Host Configuration\n- Kernel parameters, audit rules"]
+        S2["2. Docker Daemon Configuration\n- TLS, authorization, logging"]
+        S3["3. Docker Daemon Configuration Files\n- File permissions, ownership"]
+        S4["4. Container Images and Build Files\n- Base images, users, secrets"]
+        S5["5. Container Runtime\n- Capabilities, mounts, resources"]
+        S6["6. Docker Security Operations\n- Monitoring, incident response"]
+        S7["7. Docker Swarm Configuration\n- Cluster security settings"]
+    end
+    
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
 ```
 
 ## Docker Bench for Security

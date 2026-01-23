@@ -12,17 +12,18 @@ Caddy is a powerful, enterprise-ready web server with automatic HTTPS. It obtain
 
 ## Why Caddy?
 
-```
-Caddy Features
-┌─────────────────────────────────────────────────────────────┐
-│  ✓ Automatic HTTPS (Let's Encrypt)                          │
-│  ✓ Automatic certificate renewal                            │
-│  ✓ HTTP/2 and HTTP/3 support                                │
-│  ✓ Simple configuration (Caddyfile)                         │
-│  ✓ Reverse proxy built-in                                   │
-│  ✓ Load balancing                                           │
-│  ✓ Zero-downtime reloads                                    │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Caddy["Caddy Features"]
+        direction TB
+        F1["✓ Automatic HTTPS - Let's Encrypt"]
+        F2["✓ Automatic certificate renewal"]
+        F3["✓ HTTP/2 and HTTP/3 support"]
+        F4["✓ Simple configuration - Caddyfile"]
+        F5["✓ Reverse proxy built-in"]
+        F6["✓ Load balancing"]
+        F7["✓ Zero-downtime reloads"]
+    end
 ```
 
 ## Basic Setup

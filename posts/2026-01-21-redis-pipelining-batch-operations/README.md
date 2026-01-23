@@ -18,36 +18,43 @@ Pipelining is one of the simplest and most effective Redis optimizations. This g
 
 ### The Network Round-Trip Problem
 
+**Without Pipelining (10 commands):**
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Redis
+
+    Client->>Redis: SET key1
+    Redis-->>Client: OK
+    Client->>Redis: SET key2
+    Redis-->>Client: OK
+    Client->>Redis: SET key3
+    Redis-->>Client: OK
+    Note over Client,Redis: ... (repeat 10 times)
 ```
-Without Pipelining (10 commands):
-─────────────────────────────────────────────────────────
-Client      Network        Redis         Network      Client
-  │                                                      │
-  │─── SET key1 ───────────────────────────────────────▶│
-  │◀──────────────────────────────────────── OK ────────│
-  │─── SET key2 ───────────────────────────────────────▶│
-  │◀──────────────────────────────────────── OK ────────│
-  │─── SET key3 ───────────────────────────────────────▶│
-  ... (repeat 10 times) ...
 
 Total time: 10 * (network_latency * 2 + command_time)
 Example: 10 * (1ms * 2 + 0.1ms) = 21ms
 
-With Pipelining (10 commands):
-─────────────────────────────────────────────────────────
-Client      Network        Redis         Network      Client
-  │                                                      │
-  │─── SET key1 ───────────────────────────────────────▶│
-  │─── SET key2 ───────────────────────────────────────▶│
-  │─── SET key3 ───────────────────────────────────────▶│
-  ... (all 10 sent) ...                                  │
-  │◀────────────────────── OK, OK, OK, ... ─────────────│
+**With Pipelining (10 commands):**
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Redis
+
+    Client->>Redis: SET key1
+    Client->>Redis: SET key2
+    Client->>Redis: SET key3
+    Note over Client,Redis: ... (all 10 sent)
+    Redis-->>Client: OK, OK, OK, ...
+```
 
 Total time: network_latency * 2 + 10 * command_time
 Example: 1ms * 2 + 10 * 0.1ms = 3ms
 
-Speedup: 21ms / 3ms = 7x faster
-```
+**Speedup: 21ms / 3ms = 7x faster**
 
 ### When to Use Pipelining
 

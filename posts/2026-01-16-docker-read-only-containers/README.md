@@ -12,25 +12,25 @@ Running containers with read-only root filesystems prevents malicious code from 
 
 ## Why Read-Only Containers?
 
-```
-Standard Container:
-┌────────────────────────────────────────┐
-│         Container Filesystem           │
-│  /app ─────► Writable                  │
-│  /etc ─────► Writable                  │
-│  /tmp ─────► Writable                  │
-│  /var ─────► Writable  ◄── Attack      │
-│                            surface     │
-└────────────────────────────────────────┘
-
-Read-Only Container:
-┌────────────────────────────────────────┐
-│         Container Filesystem           │
-│  /app ─────► Read-only ✓              │
-│  /etc ─────► Read-only ✓              │
-│  /tmp ─────► tmpfs (ephemeral)        │
-│  /var ─────► Read-only ✓              │
-└────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Standard["Standard Container"]
+        direction TB
+        FS1["Container Filesystem"]
+        FS1 --> A1["/app → Writable"]
+        FS1 --> E1["/etc → Writable"]
+        FS1 --> T1["/tmp → Writable"]
+        FS1 --> V1["/var → Writable ⚠️ Attack surface"]
+    end
+    
+    subgraph ReadOnly["Read-Only Container"]
+        direction TB
+        FS2["Container Filesystem"]
+        FS2 --> A2["/app → Read-only ✓"]
+        FS2 --> E2["/etc → Read-only ✓"]
+        FS2 --> T2["/tmp → tmpfs (ephemeral)"]
+        FS2 --> V2["/var → Read-only ✓"]
+    end
 ```
 
 ## Basic Read-Only Container

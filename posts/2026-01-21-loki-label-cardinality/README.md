@@ -27,22 +27,24 @@ Cardinality examples:
 
 ### Why High Cardinality is Problematic
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                Impact of High Cardinality                        │
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │  More Streams = More Index Entries                       │    │
-│  │  - Larger index size                                     │    │
-│  │  - Slower queries                                        │    │
-│  │  - Higher memory usage                                   │    │
-│  │  - More S3/GCS API calls                                 │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│                                                                  │
-│  Stream count = Product of all label cardinalities              │
-│  Example: job(5) x instance(100) x level(4) = 2,000 streams    │
-│  Bad: job(5) x user_id(100,000) = 500,000 streams              │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Impact["Impact of High Cardinality"]
+        subgraph Effects["More Streams = More Index Entries"]
+            E1["Larger index size"]
+            E2["Slower queries"]
+            E3["Higher memory usage"]
+            E4["More S3/GCS API calls"]
+        end
+        
+        subgraph Formula["Stream Count Calculation"]
+            F1["Stream count = Product of all label cardinalities"]
+            F2["✅ Example: job(5) x instance(100) x level(4) = 2,000 streams"]
+            F3["❌ Bad: job(5) x user_id(100,000) = 500,000 streams"]
+        end
+    end
+    
+    Effects --> Formula
 ```
 
 ## Identifying High Cardinality

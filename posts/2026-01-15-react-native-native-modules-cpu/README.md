@@ -53,32 +53,24 @@ The React Native bridge is the communication layer between JavaScript and native
 
 ### Bridge Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    JavaScript Thread                         │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │              React Native App Code                   │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              │ JSON Serialization
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        Bridge                                │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │           Message Queue (Async)                      │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              │ Native Calls
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     Native Thread(s)                         │
-│  ┌──────────────────┐    ┌──────────────────────────────┐   │
-│  │   iOS Modules    │    │      Android Modules          │   │
-│  │   (Swift/ObjC)   │    │      (Kotlin/Java)            │   │
-│  └──────────────────┘    └──────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph JS["JavaScript Thread"]
+        App[React Native App Code]
+    end
+    
+    subgraph Bridge["Bridge"]
+        MQ[Message Queue - Async]
+    end
+    
+    subgraph Native["Native Thread(s)"]
+        iOS[iOS Modules<br/>Swift/ObjC]
+        Android[Android Modules<br/>Kotlin/Java]
+    end
+    
+    App -->|JSON Serialization| MQ
+    MQ -->|Native Calls| iOS
+    MQ -->|Native Calls| Android
 ```
 
 ### Key Concepts

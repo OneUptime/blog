@@ -21,32 +21,36 @@ Before starting, ensure you have:
 
 ## Dashboard Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Grafana Dashboard                             │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                    Variables Bar                          │   │
-│  │  [Service ▼] [Environment ▼] [Time Range ▼] [Search    ] │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  ┌─────────────────────────┐  ┌─────────────────────────────┐   │
-│  │   Log Volume Graph      │  │    Error Rate Graph         │   │
-│  │   (Time Series)         │  │    (Time Series)            │   │
-│  └─────────────────────────┘  └─────────────────────────────┘   │
-│                                                                  │
-│  ┌─────────────────────────┐  ┌─────────────────────────────┐   │
-│  │   Top Errors Table      │  │   Log Level Distribution    │   │
-│  │   (Table)               │  │   (Pie Chart)               │   │
-│  └─────────────────────────┘  └─────────────────────────────┘   │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                    Log Panel                              │   │
-│  │   timestamp  level  service     message                   │   │
-│  │   10:23:45   ERROR  api-server  Connection refused...     │   │
-│  │   10:23:44   INFO   api-server  Request completed...      │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Dashboard["Grafana Dashboard"]
+        subgraph Variables["Variables Bar"]
+            V1["Service ▼"]
+            V2["Environment ▼"]
+            V3["Time Range ▼"]
+            V4["Search"]
+        end
+        
+        subgraph Row1[" "]
+            direction LR
+            LogVolume["Log Volume Graph<br/>(Time Series)"]
+            ErrorRate["Error Rate Graph<br/>(Time Series)"]
+        end
+        
+        subgraph Row2[" "]
+            direction LR
+            TopErrors["Top Errors Table<br/>(Table)"]
+            LogLevel["Log Level Distribution<br/>(Pie Chart)"]
+        end
+        
+        subgraph LogPanel["Log Panel"]
+            Logs["timestamp | level | service | message<br/>10:23:45 | ERROR | api-server | Connection refused...<br/>10:23:44 | INFO | api-server | Request completed..."]
+        end
+    end
+    
+    Variables --> Row1
+    Row1 --> Row2
+    Row2 --> LogPanel
 ```
 
 ## Creating Your First Log Dashboard

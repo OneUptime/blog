@@ -50,19 +50,14 @@ resources:
 
 Every request must traverse the sidecar proxy twice (ingress and egress), adding measurable latency:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Traditional Sidecar Flow                      │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  Request Path (adds 2-5ms per hop):                             │
-│                                                                  │
-│  App A → Envoy Sidecar A → Network → Envoy Sidecar B → App B    │
-│    │          │                            │           │        │
-│    └──────────┼────────────────────────────┼───────────┘        │
-│         +1-2ms latency              +1-2ms latency               │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Traditional["Traditional Sidecar Flow (adds 2-5ms per hop)"]
+        A1[App A] -->|+1-2ms| S1[Envoy Sidecar A]
+        S1 --> N[Network]
+        N --> S2[Envoy Sidecar B]
+        S2 -->|+1-2ms| A2[App B]
+    end
 ```
 
 ## eBPF: A Kernel-Level Revolution

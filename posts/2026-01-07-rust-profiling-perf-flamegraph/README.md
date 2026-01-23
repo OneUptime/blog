@@ -156,14 +156,17 @@ sudo perf script | ./FlameGraph/stackcollapse-perf.pl > out.folded
 
 ### Reading Flame Graphs
 
-```
-         ┌─────────────────────────────────────────────────────┐
-         │                    main (100%)                       │
-         ├─────────────────────────────┬───────────────────────┤
-         │   process_orders (60%)      │  load_config (10%)    │
-         ├───────────────┬─────────────┼───────────────────────┤
-         │ validate (30%)│ save (25%)  │                       │
-         ├───────────────┴─────────────┴───────────────────────┤
+```mermaid
+flowchart TB
+    subgraph main["main (100%)"]
+        direction TB
+        subgraph process["process_orders (60%)"]
+            direction LR
+            validate["validate (30%)"]
+            save["save (25%)"]
+        end
+        config["load_config (10%)"]
+    end
 ```
 
 - **Width** = time spent in that function (including children)

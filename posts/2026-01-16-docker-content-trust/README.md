@@ -12,39 +12,24 @@ Docker Content Trust (DCT) provides cryptographic verification of image publishe
 
 ## How Content Trust Works
 
-```
-Image Publishing with DCT:
-┌─────────────────────────────────────────────────────────────┐
-│  Publisher                                                   │
-│  ┌────────────┐                                             │
-│  │ Private Key │ ─► Signs Image Metadata                    │
-│  └────────────┘                                             │
-│         │                                                    │
-│         ▼                                                    │
-│  ┌─────────────────┐    ┌─────────────────┐                │
-│  │ Signed Metadata  │───►│  Notary Server  │                │
-│  └─────────────────┘    └─────────────────┘                │
-│         │                        │                          │
-│         ▼                        │                          │
-│  ┌─────────────────┐            │                          │
-│  │  Docker Registry │◄───────────┘                          │
-│  └─────────────────┘                                        │
-└─────────────────────────────────────────────────────────────┘
-
-Image Pulling with DCT:
-┌─────────────────────────────────────────────────────────────┐
-│  Consumer                                                    │
-│         │                                                    │
-│         ▼                                                    │
-│  ┌─────────────────┐    ┌─────────────────┐                │
-│  │  Notary Server  │───►│ Verify Signature │                │
-│  └─────────────────┘    └─────────────────┘                │
-│         │                        │                          │
-│         ▼                        ▼                          │
-│  ┌─────────────────┐    ┌─────────────────┐                │
-│  │  Docker Registry │───►│  Pull if Valid  │                │
-│  └─────────────────┘    └─────────────────┘                │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph publishing["Image Publishing with DCT"]
+        direction TB
+        PK["Private Key"] -->|"Signs"| SM["Signed Metadata"]
+        SM --> NS1["Notary Server"]
+        SM --> DR1["Docker Registry"]
+        NS1 --> DR1
+    end
+    
+    subgraph pulling["Image Pulling with DCT"]
+        direction TB
+        C["Consumer"] --> NS2["Notary Server"]
+        NS2 --> VS["Verify Signature"]
+        NS2 --> DR2["Docker Registry"]
+        VS --> PV["Pull if Valid"]
+        DR2 --> PV
+    end
 ```
 
 ## Enabling Content Trust

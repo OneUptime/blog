@@ -983,23 +983,29 @@ No single protection is unbreakable. Use defense in depth.
 
 ### Implementation Layers
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Layer 1: Obfuscation                  │
-│   JavaScript obfuscation + Hermes bytecode + ProGuard   │
-├─────────────────────────────────────────────────────────┤
-│                    Layer 2: Detection                    │
-│   Debug detection + Root/Jailbreak + Emulator + Frida   │
-├─────────────────────────────────────────────────────────┤
-│                    Layer 3: Integrity                    │
-│   Code signing + Bundle hashing + Memory monitoring     │
-├─────────────────────────────────────────────────────────┤
-│                    Layer 4: Architecture                 │
-│   Server validation + Certificate pinning + Request signing│
-├─────────────────────────────────────────────────────────┤
-│                    Layer 5: Response                     │
-│   Incident logging + Feature limiting + App termination │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Layer1["Layer 1: Obfuscation"]
+        O1["JavaScript obfuscation + Hermes bytecode + ProGuard"]
+    end
+
+    subgraph Layer2["Layer 2: Detection"]
+        O2["Debug detection + Root/Jailbreak + Emulator + Frida"]
+    end
+
+    subgraph Layer3["Layer 3: Integrity"]
+        O3["Code signing + Bundle hashing + Memory monitoring"]
+    end
+
+    subgraph Layer4["Layer 4: Architecture"]
+        O4["Server validation + Certificate pinning + Request signing"]
+    end
+
+    subgraph Layer5["Layer 5: Response"]
+        O5["Incident logging + Feature limiting + App termination"]
+    end
+
+    Layer1 --- Layer2 --- Layer3 --- Layer4 --- Layer5
 ```
 
 ### Security Checklist

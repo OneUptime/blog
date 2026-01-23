@@ -12,32 +12,34 @@ Running Docker inside Docker (DinD) is commonly needed for CI/CD pipelines that 
 
 ## Understanding the Approaches
 
-```
-Approach 1: Docker-in-Docker (DinD)
-┌─────────────────────────────────────────────────────────────┐
-│                         Host                                 │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │            DinD Container (privileged)              │    │
-│  │  ┌─────────────────────────────────────────────┐   │    │
-│  │  │         Nested Docker Daemon                 │   │    │
-│  │  │  ┌─────────┐  ┌─────────┐  ┌─────────┐     │   │    │
-│  │  │  │Container│  │Container│  │Container│     │   │    │
-│  │  │  └─────────┘  └─────────┘  └─────────┘     │   │    │
-│  │  └─────────────────────────────────────────────┘   │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
+### Approach 1: Docker-in-Docker (DinD)
 
-Approach 2: Docker Socket Binding (DooD)
-┌─────────────────────────────────────────────────────────────┐
-│                         Host                                 │
-│  Docker Daemon ◄──────────────────────────────────────────┐ │
-│       │                                                    │ │
-│       ▼                                                    │ │
-│  ┌─────────┐  ┌─────────┐  ┌─────────────────────────┐   │ │
-│  │Container│  │Container│  │   CI Container          │   │ │
-│  └─────────┘  └─────────┘  │   /var/run/docker.sock ─┼───┘ │
-│                            └─────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Host["Host"]
+        subgraph DinD["DinD Container (privileged)"]
+            subgraph Daemon["Nested Docker Daemon"]
+                C1["Container"]
+                C2["Container"]
+                C3["Container"]
+            end
+        end
+    end
+```
+
+### Approach 2: Docker Socket Binding (DooD)
+
+```mermaid
+flowchart TB
+    subgraph Host["Host"]
+        DD["Docker Daemon"]
+        C1["Container"]
+        C2["Container"]
+        CI["CI Container<br>/var/run/docker.sock"]
+        DD --> C1
+        DD --> C2
+        CI -.->|"socket mount"| DD
+    end
 ```
 
 ## Docker-in-Docker (True DinD)

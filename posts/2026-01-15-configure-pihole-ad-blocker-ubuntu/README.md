@@ -25,12 +25,12 @@ Pi-hole operates as a DNS server on your network. When any device makes a DNS re
 
 ### How Pi-hole Works
 
-```
-┌─────────────┐     DNS Query      ┌──────────┐     If Allowed     ┌──────────────┐
-│   Client    │ ─────────────────► │ Pi-hole  │ ─────────────────► │ Upstream DNS │
-│   Device    │                    │  Server  │                    │   (Google,   │
-└─────────────┘ ◄───────────────── └──────────┘ ◄───────────────── │ Cloudflare)  │
-                  IP or Block                      IP Address       └──────────────┘
+```mermaid
+flowchart LR
+    A[Client Device] -->|DNS Query| B[Pi-hole Server]
+    B -->|If Allowed| C[Upstream DNS<br/>Google, Cloudflare]
+    C -->|IP Address| B
+    B -->|IP or Block| A
 ```
 
 ## Prerequisites

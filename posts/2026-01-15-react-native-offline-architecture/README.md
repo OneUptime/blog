@@ -58,17 +58,22 @@ const fetchDataOfflineFirst = async () => {
 
 A well-designed offline-first architecture typically consists of three layers:
 
-```
-┌─────────────────────────────────────┐
-│         Presentation Layer          │
-│    (React Components, Hooks)        │
-├─────────────────────────────────────┤
-│         Data Access Layer           │
-│  (Repositories, Sync Manager)       │
-├─────────────────────────────────────┤
-│         Persistence Layer           │
-│  (SQLite, AsyncStorage, MMKV)       │
-└─────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Presentation["Presentation Layer"]
+        P[React Components, Hooks]
+    end
+    
+    subgraph DataAccess["Data Access Layer"]
+        D[Repositories, Sync Manager]
+    end
+    
+    subgraph Persistence["Persistence Layer"]
+        DB[SQLite, AsyncStorage, MMKV]
+    end
+    
+    Presentation --> DataAccess
+    DataAccess --> Persistence
 ```
 
 ### Repository Pattern Implementation

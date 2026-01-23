@@ -16,13 +16,18 @@ For foundational concepts, see our guides on [traces and spans in OpenTelemetry]
 
 OpenTelemetry uses W3C Trace Context for propagation:
 
-```
-traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
-             │   │                                 │                │
-             │   │                                 │                └─ Flags (sampled)
-             │   │                                 └─ Parent Span ID (16 hex)
-             │   └─ Trace ID (32 hex chars)
-             └─ Version
+```mermaid
+flowchart LR
+    subgraph traceparent["traceparent header"]
+        V["00"] --> TID["0af7651916cd43dd8448eb211c80319c"]
+        TID --> PID["b7ad6b7169203331"]
+        PID --> F["01"]
+    end
+    
+    V -.- VL["Version"]
+    TID -.- TIDL["Trace ID (32 hex chars)"]
+    PID -.- PIDL["Parent Span ID (16 hex)"]
+    F -.- FL["Flags (sampled)"]
 ```
 
 ## Basic Setup

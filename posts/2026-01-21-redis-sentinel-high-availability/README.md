@@ -25,32 +25,33 @@ Sentinel is ideal for Redis deployments that require automatic failover but don'
 
 ### Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Sentinel Cluster                          │
-│   ┌──────────┐    ┌──────────┐    ┌──────────┐             │
-│   │Sentinel 1│    │Sentinel 2│    │Sentinel 3│             │
-│   └────┬─────┘    └────┬─────┘    └────┬─────┘             │
-└────────┼───────────────┼───────────────┼────────────────────┘
-         │               │               │
-         │     Monitor   │               │
-         ▼               ▼               ▼
-    ┌─────────┐    ┌─────────┐    ┌─────────┐
-    │  Master │───▶│Replica 1│───▶│Replica 2│
-    │ (Write) │    │ (Read)  │    │ (Read)  │
-    └─────────┘    └─────────┘    └─────────┘
+```mermaid
+flowchart TB
+    subgraph SentinelCluster["Sentinel Cluster"]
+        S1[Sentinel 1]
+        S2[Sentinel 2]
+        S3[Sentinel 3]
+    end
+    
+    S1 -->|Monitor| Master["Master<br/>(Write)"]
+    S2 -->|Monitor| Master
+    S3 -->|Monitor| Master
+    
+    Master --> R1["Replica 1<br/>(Read)"]
+    Master --> R2["Replica 2<br/>(Read)"]
 ```
 
 ### Quorum and Failover
 
-```
-Sentinel Agreement Process:
-1. Sentinel detects master is down (SDOWN - subjective)
-2. Sentinel asks other Sentinels to confirm (ODOWN - objective)
-3. If quorum agrees, failover begins
-4. One Sentinel is elected leader
-5. Leader promotes best replica to master
-6. Other replicas reconfigured to follow new master
+```mermaid
+flowchart TB
+    A["1. Sentinel detects master down<br/>(SDOWN - subjective)"] --> B["2. Ask other Sentinels to confirm<br/>(ODOWN - objective)"]
+    B --> C{"3. Quorum agrees?"}
+    C -->|Yes| D["4. Elect Sentinel leader"]
+    D --> E["5. Leader promotes best replica to master"]
+    E --> F["6. Reconfigure other replicas to follow new master"]
+    C -->|No| G["Wait and retry"]
+    G --> A
 ```
 
 ---

@@ -91,22 +91,26 @@ Virtualization is the core concept behind FlatList's performance. It works by ma
 
 ### How Virtualization Works
 
-```
-┌─────────────────────────────────┐
-│     Items Above Window          │  ← Not rendered (recycled)
-│         (Memory freed)          │
-├─────────────────────────────────┤
-│     Buffer Zone (Above)         │  ← Rendered but off-screen
-├─────────────────────────────────┤
-│                                 │
-│     Visible Viewport            │  ← Rendered and visible
-│                                 │
-├─────────────────────────────────┤
-│     Buffer Zone (Below)         │  ← Rendered but off-screen
-├─────────────────────────────────┤
-│     Items Below Window          │  ← Not rendered (recycled)
-│         (Memory freed)          │
-└─────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Window["FlatList Virtualization"]
+        A["Items Above Window<br/>(Memory freed)"]
+        B["Buffer Zone Above<br/>(Rendered but off-screen)"]
+        C["Visible Viewport<br/>(Rendered and visible)"]
+        D["Buffer Zone Below<br/>(Rendered but off-screen)"]
+        E["Items Below Window<br/>(Memory freed)"]
+    end
+    
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    
+    style A fill:#f9f9f9,stroke:#ccc
+    style E fill:#f9f9f9,stroke:#ccc
+    style B fill:#ffffcc,stroke:#999
+    style D fill:#ffffcc,stroke:#999
+    style C fill:#ccffcc,stroke:#090
 ```
 
 ### The Virtualization Trade-off

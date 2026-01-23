@@ -22,30 +22,16 @@ Before starting, ensure you have:
 
 ## Access Control Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Access Control Layers                         │
-│                                                                  │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐        │
-│  │    Users     │──▶│  Auth Layer  │──▶│  AuthZ Layer │        │
-│  │              │   │  (Identity)  │   │  (Policies)  │        │
-│  └──────────────┘   └──────────────┘   └──────────────┘        │
-│                                               │                  │
-│                      ┌────────────────────────┼─────────────┐   │
-│                      │                        │             │   │
-│                      ▼                        ▼             ▼   │
-│               ┌──────────────┐        ┌──────────────┐         │
-│               │  Tenant A    │        │  Tenant B    │         │
-│               │  (team-a)    │        │  (team-b)    │         │
-│               └──────────────┘        └──────────────┘         │
-│                      │                        │                  │
-│                      └────────────┬───────────┘                 │
-│                                   ▼                              │
-│                          ┌──────────────┐                       │
-│                          │    Loki      │                       │
-│                          │  (Storage)   │                       │
-│                          └──────────────┘                       │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph ACL["Access Control Layers"]
+        Users --> Auth["Auth Layer<br/>(Identity)"]
+        Auth --> AuthZ["AuthZ Layer<br/>(Policies)"]
+        AuthZ --> TenantA["Tenant A<br/>(team-a)"]
+        AuthZ --> TenantB["Tenant B<br/>(team-b)"]
+        TenantA --> Loki["Loki<br/>(Storage)"]
+        TenantB --> Loki
+    end
 ```
 
 ## Multi-Tenancy Configuration

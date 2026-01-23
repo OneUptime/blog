@@ -12,21 +12,22 @@ Apple Silicon Macs require special consideration when running Docker due to the 
 
 ## Architecture Overview
 
-```
-Docker on Apple Silicon
-┌─────────────────────────────────────────────────────────────┐
-│                     macOS (ARM64)                            │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Docker Desktop / Colima                 │   │
-│  │  ┌─────────────────────────────────────────────┐   │   │
-│  │  │           Linux VM (ARM64)                   │   │   │
-│  │  │  ┌───────────────┐  ┌───────────────────┐  │   │   │
-│  │  │  │ ARM64 Image   │  │ AMD64 via Rosetta │  │   │   │
-│  │  │  │ (Native)      │  │ (Emulated)        │  │   │   │
-│  │  │  └───────────────┘  └───────────────────┘  │   │   │
-│  │  └─────────────────────────────────────────────┘   │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph macos["macOS (ARM64)"]
+        subgraph docker["Docker Desktop / Colima"]
+            subgraph vm["Linux VM (ARM64)"]
+                arm64["ARM64 Image<br/>(Native)"]
+                amd64["AMD64 via Rosetta<br/>(Emulated)"]
+            end
+        end
+    end
+
+    style macos fill:#f5f5f5,stroke:#333
+    style docker fill:#e6f3ff,stroke:#0066cc
+    style vm fill:#fff3e6,stroke:#cc6600
+    style arm64 fill:#90EE90,stroke:#228B22
+    style amd64 fill:#FFB6C1,stroke:#DC143C
 ```
 
 ## Installing Docker Desktop

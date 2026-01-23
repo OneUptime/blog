@@ -21,30 +21,26 @@ Before starting, ensure you have:
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Applications                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │   Python     │  │   Node.js    │  │     Go       │          │
-│  │   OTel SDK   │  │   OTel SDK   │  │   OTel SDK   │          │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘          │
-│         │                  │                  │                  │
-│         └──────────────────┼──────────────────┘                  │
-│                            │ OTLP                                │
-│                            ▼                                     │
-│                 ┌──────────────────────┐                        │
-│                 │  OpenTelemetry       │                        │
-│                 │  Collector           │                        │
-│                 │  - Receivers         │                        │
-│                 │  - Processors        │                        │
-│                 │  - Exporters         │                        │
-│                 └──────────┬───────────┘                        │
-└────────────────────────────┼────────────────────────────────────┘
-                             │ Loki API / OTLP
-                             ▼
-                    ┌──────────────────┐
-                    │   Grafana Loki   │
-                    └──────────────────┘
+```mermaid
+flowchart TB
+    subgraph Applications
+        Python["Python<br/>OTel SDK"]
+        NodeJS["Node.js<br/>OTel SDK"]
+        Go["Go<br/>OTel SDK"]
+    end
+    
+    subgraph Collector["OpenTelemetry Collector"]
+        Receivers["Receivers"]
+        Processors["Processors"]
+        Exporters["Exporters"]
+    end
+    
+    Python -->|OTLP| Receivers
+    NodeJS -->|OTLP| Receivers
+    Go -->|OTLP| Receivers
+    Receivers --> Processors
+    Processors --> Exporters
+    Exporters -->|"Loki API / OTLP"| Loki["Grafana Loki"]
 ```
 
 ## Deploying the Stack

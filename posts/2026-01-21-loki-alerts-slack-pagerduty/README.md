@@ -22,31 +22,16 @@ Before starting, ensure you have:
 
 ## Architecture Overview
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                         Loki Cluster                              │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
-│  │   Ingester   │    │    Ruler     │    │   Querier    │       │
-│  └──────────────┘    └──────┬───────┘    └──────────────┘       │
-│                             │                                     │
-│                             │ Evaluates LogQL                     │
-│                             │ Alert Rules                         │
-│                             ▼                                     │
-│                    ┌──────────────────┐                          │
-│                    │  Alert Manager   │                          │
-│                    │  - Routing       │                          │
-│                    │  - Grouping      │                          │
-│                    │  - Silencing     │                          │
-│                    └────────┬─────────┘                          │
-└─────────────────────────────┼────────────────────────────────────┘
-                              │
-              ┌───────────────┴───────────────┐
-              │                               │
-              ▼                               ▼
-       ┌──────────────┐               ┌──────────────┐
-       │    Slack     │               │  PagerDuty   │
-       │  Webhooks    │               │  Events API  │
-       └──────────────┘               └──────────────┘
+```mermaid
+flowchart TB
+    subgraph Loki["Loki Cluster"]
+        Ingester
+        Ruler
+        Querier
+        Ruler -->|"Evaluates LogQL<br/>Alert Rules"| AM["Alert Manager<br/>- Routing<br/>- Grouping<br/>- Silencing"]
+    end
+    AM --> Slack["Slack<br/>Webhooks"]
+    AM --> PD["PagerDuty<br/>Events API"]
 ```
 
 ## Deploying the Alerting Stack

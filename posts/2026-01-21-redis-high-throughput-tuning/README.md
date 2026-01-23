@@ -371,18 +371,11 @@ if __name__ == '__main__':
 
 ### Read Replicas
 
-```
-┌───────────────────────────────────────────────────────────┐
-│                       Load Balancer                        │
-│               (HAProxy / Redis Cluster Proxy)              │
-└─────────────────────────┬─────────────────────────────────┘
-                          │
-          ┌───────────────┼───────────────┐
-          │               │               │
-    ┌─────▼─────┐   ┌─────▼─────┐   ┌─────▼─────┐
-    │  Master   │   │ Replica 1 │   │ Replica 2 │
-    │ (Writes)  │   │  (Reads)  │   │  (Reads)  │
-    └───────────┘   └───────────┘   └───────────┘
+```mermaid
+flowchart TB
+    LB["Load Balancer<br/>(HAProxy / Redis Cluster Proxy)"] --> Master["Master<br/>(Writes)"]
+    LB --> R1["Replica 1<br/>(Reads)"]
+    LB --> R2["Replica 2<br/>(Reads)"]
 ```
 
 ```python

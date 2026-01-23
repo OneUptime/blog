@@ -26,29 +26,23 @@ Write-through caching ensures strong consistency by writing to both cache and da
 | Complexity | Simpler | More complex |
 | Use Case | Critical data, transactions | High-write workloads, analytics |
 
-```
-Write-Through:
-┌────────┐  1. Write  ┌────────┐  2. Write  ┌──────────┐
-│ Client │ ─────────► │  App   │ ─────────► │  Redis   │
-└────────┘            └────┬───┘            └──────────┘
-                           │
-                           │ 3. Write (sync)
-                           ▼
-                     ┌──────────┐
-                     │ Database │
-                     └──────────┘
+### Write-Through Flow
 
-Write-Behind:
-┌────────┐  1. Write  ┌────────┐  2. Write  ┌──────────┐
-│ Client │ ─────────► │  App   │ ─────────► │  Redis   │
-└────────┘            └────────┘            └─────┬────┘
-     ▲                                            │
-     │ 3. ACK                                     │ 4. Async
-     │ (immediate)                                │    Write
-     │                                            ▼
-                                            ┌──────────┐
-                                            │ Database │
-                                            └──────────┘
+```mermaid
+flowchart LR
+    Client[Client] -->|1. Write| App[App]
+    App -->|2. Write| Redis[Redis]
+    App -->|3. Write sync| Database[Database]
+```
+
+### Write-Behind Flow
+
+```mermaid
+flowchart LR
+    Client[Client] -->|1. Write| App[App]
+    App -->|2. Write| Redis[Redis]
+    Redis -->|4. Async Write| Database[Database]
+    App -.->|3. ACK immediate| Client
 ```
 
 ---

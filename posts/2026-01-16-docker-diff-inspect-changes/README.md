@@ -31,25 +31,23 @@ D /tmp/old-file.txt
 | **C** | Changed | File or directory was modified |
 | **D** | Deleted | File or directory was removed |
 
-```
-Container Filesystem Comparison
-
-┌─────────────────────────────────────────────────────────────┐
-│                     Base Image                               │
-│  /etc/config.txt     (original)                             │
-│  /var/log/           (empty)                                │
-│  /tmp/tempfile       (exists)                               │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼ Running container makes changes
-┌─────────────────────────────────────────────────────────────┐
-│                  Container Layer                             │
-│  C /etc/config.txt   (modified)                             │
-│  A /var/log/app.log  (created)                              │
-│  D /tmp/tempfile     (deleted)                              │
-│  A /data/            (new directory)                        │
-│  A /data/db.sqlite   (new file)                             │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph BaseImage["Base Image"]
+        B1["/etc/config.txt (original)"]
+        B2["/var/log/ (empty)"]
+        B3["/tmp/tempfile (exists)"]
+    end
+    
+    BaseImage -->|"Running container makes changes"| ContainerLayer
+    
+    subgraph ContainerLayer["Container Layer"]
+        C1["C /etc/config.txt (modified)"]
+        C2["A /var/log/app.log (created)"]
+        C3["D /tmp/tempfile (deleted)"]
+        C4["A /data/ (new directory)"]
+        C5["A /data/db.sqlite (new file)"]
+    end
 ```
 
 ## Practical Examples

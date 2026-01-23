@@ -30,11 +30,10 @@ Here is a simplified overview of the CodePush workflow:
 4. **Distribution**: The app checks for updates and downloads the new bundle
 5. **Installation**: The app installs the update and restarts (or applies it on next launch)
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Developer     │────▶│   App Center    │────▶│   User Device   │
-│   Pushes Update │     │   CodePush      │     │   Downloads     │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+```mermaid
+flowchart LR
+    A[Developer<br/>Pushes Update] --> B[App Center<br/>CodePush]
+    B --> C[User Device<br/>Downloads]
 ```
 
 ### What Can Be Updated with CodePush?

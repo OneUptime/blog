@@ -14,40 +14,30 @@ Migrating from RabbitMQ to Kafka requires understanding the fundamental differen
 
 ### RabbitMQ Model
 
+```mermaid
+flowchart LR
+    subgraph RabbitMQ
+        E["Exchange<br/>(fanout)"] --> Q["Queue<br/>(messages deleted)"] --> C["Consumer<br/>(ack/nack)"]
+    end
 ```
-┌─────────────────────────────────────────────────────┐
-│                    RabbitMQ                          │
-│  ┌─────────┐    ┌──────────┐    ┌─────────┐        │
-│  │Exchange │───▶│  Queue   │───▶│Consumer │        │
-│  │(fanout) │    │(messages │    │(ack/nack)│       │
-│  └─────────┘    │ deleted) │    └─────────┘        │
-│                 └──────────┘                        │
-│  - Push-based delivery                              │
-│  - Messages deleted after ack                       │
-│  - Per-message routing                              │
-└─────────────────────────────────────────────────────┘
-```
+
+- Push-based delivery
+- Messages deleted after ack
+- Per-message routing
 
 ### Kafka Model
 
+```mermaid
+flowchart TB
+    subgraph Kafka
+        P["Producer"] --> T["Topic (Log)<br/>[0][1][2][3][4]<br/>(messages kept)"]
+        T --> CG["Consumer Group<br/>(pull, offsets)"]
+    end
 ```
-┌─────────────────────────────────────────────────────┐
-│                     Kafka                            │
-│  ┌─────────┐    ┌──────────────────┐               │
-│  │Producer │───▶│ Topic (Log)      │               │
-│  └─────────┘    │ [0][1][2][3][4]  │               │
-│                 │  (messages kept) │               │
-│                 └────────┬─────────┘               │
-│                          │                          │
-│                 ┌────────┴────────┐                │
-│                 │Consumer Group   │                │
-│                 │(pull, offsets)  │                │
-│                 └─────────────────┘                │
-│  - Pull-based consumption                           │
-│  - Messages retained (configurable)                 │
-│  - Partition-based ordering                         │
-└─────────────────────────────────────────────────────┘
-```
+
+- Pull-based consumption
+- Messages retained (configurable)
+- Partition-based ordering
 
 ## Key Differences
 

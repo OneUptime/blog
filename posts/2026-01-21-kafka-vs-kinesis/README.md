@@ -25,43 +25,36 @@ Choosing between Apache Kafka and AWS Kinesis is a critical decision for streami
 
 ### Apache Kafka
 
-```
-┌─────────────────────────────────────────────────┐
-│                  Kafka Cluster                   │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐        │
-│  │ Broker 1 │ │ Broker 2 │ │ Broker 3 │        │
-│  │ (Leader) │ │(Follower)│ │(Follower)│        │
-│  └──────────┘ └──────────┘ └──────────┘        │
-│                                                  │
-│  ┌─────────────────────────────────────────┐   │
-│  │      Topic: orders (3 partitions)        │   │
-│  │  [P0] ─── [P1] ─── [P2]                 │   │
-│  └─────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────┘
-         │                    │
-    ┌────┴────┐          ┌───┴───┐
-    │Producer │          │Consumer│
-    └─────────┘          └────────┘
+```mermaid
+flowchart TB
+    subgraph Cluster["Kafka Cluster"]
+        subgraph Brokers[" "]
+            B1["Broker 1<br/>(Leader)"]
+            B2["Broker 2<br/>(Follower)"]
+            B3["Broker 3<br/>(Follower)"]
+        end
+        subgraph Topic["Topic: orders (3 partitions)"]
+            P0["P0"] --- P1["P1"] --- P2["P2"]
+        end
+    end
+    Producer --> Cluster
+    Cluster --> Consumer
 ```
 
 ### AWS Kinesis
 
-```
-┌─────────────────────────────────────────────────┐
-│              Kinesis Data Stream                 │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐        │
-│  │ Shard 1  │ │ Shard 2  │ │ Shard 3  │        │
-│  │1MB/s in  │ │1MB/s in  │ │1MB/s in  │        │
-│  │2MB/s out │ │2MB/s out │ │2MB/s out │        │
-│  └──────────┘ └──────────┘ └──────────┘        │
-│                                                  │
-│  AWS Managed - No brokers to manage             │
-└─────────────────────────────────────────────────┘
-         │                    │
-    ┌────┴────┐          ┌───┴───┐
-    │Producer │          │Consumer│
-    │  (SDK)  │          │ (KCL) │
-    └─────────┘          └────────┘
+```mermaid
+flowchart TB
+    subgraph Stream["Kinesis Data Stream"]
+        subgraph Shards[" "]
+            S1["Shard 1<br/>1MB/s in<br/>2MB/s out"]
+            S2["Shard 2<br/>1MB/s in<br/>2MB/s out"]
+            S3["Shard 3<br/>1MB/s in<br/>2MB/s out"]
+        end
+        Note["AWS Managed - No brokers to manage"]
+    end
+    Producer["Producer<br/>(SDK)"] --> Stream
+    Stream --> Consumer["Consumer<br/>(KCL)"]
 ```
 
 ## Java Implementation Comparison

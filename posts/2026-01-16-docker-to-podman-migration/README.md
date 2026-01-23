@@ -12,18 +12,22 @@ Podman is a daemonless container engine that's compatible with Docker. Migrating
 
 ## Podman vs Docker Architecture
 
-```
-Docker Architecture:
-┌─────────────────────────────────────────────────────────────┐
-│  docker CLI ──► Docker Daemon ──► containerd ──► Containers │
-│                (root process)                                │
-└─────────────────────────────────────────────────────────────┘
+**Docker Architecture:**
 
-Podman Architecture:
-┌─────────────────────────────────────────────────────────────┐
-│  podman CLI ──► (no daemon) ──► conmon ──► Containers       │
-│                                   (per container)            │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    A[docker CLI] --> B[Docker Daemon<br/>root process]
+    B --> C[containerd]
+    C --> D[Containers]
+```
+
+**Podman Architecture:**
+
+```mermaid
+flowchart LR
+    A[podman CLI] --> B["(no daemon)"]
+    B --> C[conmon<br/>per container]
+    C --> D[Containers]
 ```
 
 ## Installing Podman

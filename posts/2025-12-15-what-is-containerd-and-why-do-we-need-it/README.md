@@ -22,19 +22,15 @@ If you've worked with containers, you've almost certainly used Docker. But under
 
 containerd was originally built as a core component of Docker, then donated to the Cloud Native Computing Foundation (CNCF) in 2017. Today it's a graduated CNCF project used by Docker, Kubernetes, and many other platforms.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Your Application                     │
-├─────────────────────────────────────────────────────────┤
-│              Kubernetes / Docker CLI                     │
-├─────────────────────────────────────────────────────────┤
-│                      containerd                          │
-├─────────────────────────────────────────────────────────┤
-│                        runc                              │
-├─────────────────────────────────────────────────────────┤
-│                    Linux Kernel                          │
-│            (namespaces, cgroups, etc.)                   │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    App["Your Application"]
+    K8s["Kubernetes / Docker CLI"]
+    Containerd["containerd"]
+    Runc["runc"]
+    Kernel["Linux Kernel<br/>(namespaces, cgroups, etc.)"]
+
+    App --> K8s --> Containerd --> Runc --> Kernel
 ```
 
 ## The Container Runtime Stack
@@ -71,20 +67,16 @@ The lowest level - these spawn the actual container process:
 
 Docker Engine is built on top of containerd. When you run `docker run`, here's what happens:
 
-```
-docker run nginx
-    │
-    ▼
-Docker CLI → Docker Daemon (dockerd)
-                    │
-                    ▼
-              containerd
-                    │
-                    ▼
-                  runc
-                    │
-                    ▼
-            Container Process
+```mermaid
+flowchart TB
+    CMD["docker run nginx"]
+    CLI["Docker CLI"]
+    Daemon["Docker Daemon (dockerd)"]
+    Containerd["containerd"]
+    Runc["runc"]
+    Process["Container Process"]
+
+    CMD --> CLI --> Daemon --> Containerd --> Runc --> Process
 ```
 
 **Docker includes:**
@@ -123,8 +115,9 @@ Kubernetes communicates with container runtimes via the **Container Runtime Inte
 
 The old architecture required a shim:
 
-```
-kubelet → dockershim → Docker → containerd → runc
+```mermaid
+flowchart LR
+    kubelet --> dockershim --> Docker --> containerd --> runc
 ```
 
 This added:
@@ -137,8 +130,9 @@ This added:
 
 containerd implements CRI natively:
 
-```
-kubelet → containerd → runc
+```mermaid
+flowchart LR
+    kubelet --> containerd --> runc
 ```
 
 **Benefits:**

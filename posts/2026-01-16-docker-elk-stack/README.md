@@ -12,18 +12,12 @@ The ELK stack provides powerful centralized logging for Docker environments. Thi
 
 ## Architecture
 
-```
-Docker Logs Flow
-┌──────────┐     ┌──────────┐     ┌─────────────┐     ┌────────┐
-│ Container│────►│ Filebeat │────►│  Logstash   │────►│  ES    │
-│  Logs    │     │  or      │     │  (parsing)  │     │        │
-│          │     │ Fluentd  │     │             │     │        │
-└──────────┘     └──────────┘     └─────────────┘     └────────┘
-                                                           │
-                                                           ▼
-                                                      ┌────────┐
-                                                      │ Kibana │
-                                                      └────────┘
+```mermaid
+flowchart LR
+    A["Container<br>Logs"] --> B["Filebeat<br>or<br>Fluentd"]
+    B --> C["Logstash<br>(parsing)"]
+    C --> D["ES"]
+    D --> E["Kibana"]
 ```
 
 ## Basic ELK Setup

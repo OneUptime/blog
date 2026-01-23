@@ -16,11 +16,11 @@ A multi-arch image is actually a **manifest list** - a pointer to platform-speci
 
 This diagram shows how a single image tag contains references to multiple platform-specific images. Docker automatically selects the correct one based on your system architecture.
 
-```
-myapp:latest
-├── linux/amd64  → sha256:abc123...   # Intel/AMD 64-bit
-├── linux/arm64  → sha256:def456...   # Apple Silicon, Graviton, etc.
-└── linux/arm/v7 → sha256:ghi789...   # Raspberry Pi, older ARM
+```mermaid
+flowchart TB
+    A["myapp:latest"] --> B["linux/amd64<br>sha256:abc123...<br>(Intel/AMD 64-bit)"]
+    A --> C["linux/arm64<br>sha256:def456...<br>(Apple Silicon, Graviton)"]
+    A --> D["linux/arm/v7<br>sha256:ghi789...<br>(Raspberry Pi, older ARM)"]
 ```
 
 When you `docker pull myapp:latest`, Docker automatically selects the right variant for your platform.

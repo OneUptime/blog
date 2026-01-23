@@ -14,28 +14,24 @@ Storage costs are often the largest expense when running Grafana Loki at scale. 
 
 ### Cost Components
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Loki Storage Cost Breakdown                   │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  Chunks (70-80% of storage)                               │   │
-│  │  - Compressed log data                                    │   │
-│  │  - Stored in object storage (S3/GCS)                      │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  Index (10-20% of storage)                                │   │
-│  │  - Label-to-chunk mappings                                │   │
-│  │  - Can use cheaper storage tier                           │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  API Requests (variable)                                  │   │
-│  │  - GET/PUT operations                                     │   │
-│  │  - Data transfer costs                                    │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Breakdown["Loki Storage Cost Breakdown"]
+        subgraph Chunks["Chunks (70-80% of storage)"]
+            C1["Compressed log data"]
+            C2["Stored in object storage (S3/GCS)"]
+        end
+        
+        subgraph Index["Index (10-20% of storage)"]
+            I1["Label-to-chunk mappings"]
+            I2["Can use cheaper storage tier"]
+        end
+        
+        subgraph API["API Requests (variable)"]
+            A1["GET/PUT operations"]
+            A2["Data transfer costs"]
+        end
+    end
 ```
 
 ### Estimating Storage Requirements

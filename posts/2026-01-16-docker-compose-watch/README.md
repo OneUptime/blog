@@ -12,15 +12,13 @@ Docker Compose Watch automatically updates running containers when source files 
 
 ## Understanding Compose Watch
 
-```
-Compose Watch Actions
-┌─────────────────────────────────────────────────────────────┐
-│  Action     │ Behavior                                      │
-├─────────────┼──────────────────────────────────────────────┤
-│  sync       │ Copy changed files to container               │
-│  rebuild    │ Rebuild image and recreate container          │
-│  sync+restart│ Sync files and restart container             │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph actions["Compose Watch Actions"]
+        sync["**sync**<br/>Copy changed files to container"]
+        rebuild["**rebuild**<br/>Rebuild image and recreate container"]
+        syncrestart["**sync+restart**<br/>Sync files and restart container"]
+    end
 ```
 
 ## Basic Watch Configuration

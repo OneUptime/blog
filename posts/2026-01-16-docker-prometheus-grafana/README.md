@@ -12,20 +12,22 @@ Prometheus and Grafana provide a powerful monitoring stack for Docker environmen
 
 ## Architecture Overview
 
-```
-Monitoring Architecture
-┌─────────────────────────────────────────────────────────────┐
-│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐   │
-│  │   Grafana   │◄────│ Prometheus  │◄────│  cAdvisor   │   │
-│  │ Dashboards  │     │  (scraping) │     │  (metrics)  │   │
-│  └─────────────┘     └─────────────┘     └─────────────┘   │
-│                             │                    │          │
-│                             ▼                    ▼          │
-│                      ┌───────────────────────────────┐     │
-│                      │     Docker Containers          │     │
-│                      │  app1   app2   db   cache     │     │
-│                      └───────────────────────────────┘     │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Monitoring Architecture
+        cAdvisor["cAdvisor<br/>(metrics)"] --> Prometheus["Prometheus<br/>(scraping)"]
+        Prometheus --> Grafana["Grafana<br/>Dashboards"]
+        
+        subgraph Containers["Docker Containers"]
+            app1[app1]
+            app2[app2]
+            db[db]
+            cache[cache]
+        end
+        
+        cAdvisor --> Containers
+        Prometheus --> Containers
+    end
 ```
 
 ## Basic Setup

@@ -19,16 +19,18 @@ docker run -v /var/run/docker.sock:/var/run/docker.sock docker:latest docker ps
 
 The container can now execute Docker commands against the host's daemon:
 
-```
-Container with Socket Access
-┌──────────────────────────────────────┐
-│  docker build ...                    │
-│  docker run ...                      │
-│  docker ps                           │
-│       │                              │
-│       ▼                              │
-│  /var/run/docker.sock ───────────────┼──► Host Docker Daemon
-└──────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Container["Container with Socket Access"]
+        C1[docker build ...]
+        C2[docker run ...]
+        C3[docker ps]
+        C1 --> Socket
+        C2 --> Socket
+        C3 --> Socket
+        Socket[/var/run/docker.sock]
+    end
+    Socket --> Daemon[Host Docker Daemon]
 ```
 
 ## Security Risks

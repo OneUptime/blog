@@ -12,24 +12,17 @@ Benchmarking Docker containers helps identify performance bottlenecks, compare c
 
 ## Benchmarking Overview
 
-```
-Container Performance Metrics
-┌─────────────────────────────────────────────────────────────┐
-│  CPU Performance                                             │
-│  - Processing speed, context switches                       │
-├─────────────────────────────────────────────────────────────┤
-│  Memory Performance                                          │
-│  - Allocation speed, access latency                         │
-├─────────────────────────────────────────────────────────────┤
-│  Storage Performance                                         │
-│  - IOPS, throughput, latency                                │
-├─────────────────────────────────────────────────────────────┤
-│  Network Performance                                         │
-│  - Bandwidth, latency, packets/sec                          │
-├─────────────────────────────────────────────────────────────┤
-│  Container Overhead                                          │
-│  - Startup time, resource consumption                       │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Metrics["Container Performance Metrics"]
+        CPU["CPU Performance\n- Processing speed, context switches"]
+        MEM["Memory Performance\n- Allocation speed, access latency"]
+        STOR["Storage Performance\n- IOPS, throughput, latency"]
+        NET["Network Performance\n- Bandwidth, latency, packets/sec"]
+        OVER["Container Overhead\n- Startup time, resource consumption"]
+    end
+    
+    CPU --> MEM --> STOR --> NET --> OVER
 ```
 
 ## CPU Benchmarking

@@ -12,16 +12,21 @@ Docker contexts allow you to manage containers on multiple Docker hosts from a s
 
 ## Understanding Docker Contexts
 
-```
-Local Machine
-┌────────────────────────────────────┐
-│  docker CLI                        │
-│  ┌──────────────────────────────┐  │
-│  │ Context: default (local)     │──┼──► Local Docker Engine
-│  │ Context: staging             │──┼──► Staging Server
-│  │ Context: production          │──┼──► Production Server
-│  └──────────────────────────────┘  │
-└────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph local["Local Machine"]
+        CLI["docker CLI"]
+        subgraph contexts["Contexts"]
+            CTX1["default (local)"]
+            CTX2["staging"]
+            CTX3["production"]
+        end
+        CLI --> contexts
+    end
+    
+    CTX1 --> LDE["Local Docker Engine"]
+    CTX2 --> SS["Staging Server"]
+    CTX3 --> PS["Production Server"]
 ```
 
 ## List and View Contexts

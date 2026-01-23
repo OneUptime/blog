@@ -24,26 +24,45 @@ Before diving into numbers, we need to understand what VMs and containers actual
 
 A virtual machine is exactly what it sounds like - a complete simulated computer. The hypervisor (VMware ESXi, KVM, Hyper-V, Xen) creates the illusion of dedicated hardware for each VM:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Physical Hardware                           │
-│         (CPU, RAM, Storage, Network Interfaces)                │
-├────────────────────────────────────────────────────────────────┤
-│                    Host Operating System                       │
-│              (or bare-metal hypervisor)                        │
-├────────────────────────────────────────────────────────────────┤
-│                      Hypervisor                                │
-│        (KVM, VMware ESXi, Hyper-V, Xen)                        │
-├──────────────────┬──────────────────┬──────────────────────────┤
-│       VM 1       │       VM 2       │         VM 3             │
-├──────────────────┼──────────────────┼──────────────────────────┤
-│   Guest OS       │   Guest OS       │      Guest OS            │
-│   (Full Linux)   │   (Full Linux)   │      (Full Linux)        │
-├──────────────────┼──────────────────┼──────────────────────────┤
-│   Libraries      │   Libraries      │      Libraries           │
-├──────────────────┼──────────────────┼──────────────────────────┤
-│   Application    │   Application    │      Application         │
-└──────────────────┴──────────────────┴──────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Hardware["Physical Hardware"]
+        HW["CPU, RAM, Storage, Network Interfaces"]
+    end
+    
+    subgraph HostOS["Host Operating System / Bare-metal Hypervisor"]
+        OS["Host OS"]
+    end
+    
+    subgraph Hypervisor["Hypervisor (KVM, VMware ESXi, Hyper-V, Xen)"]
+        HV["Hypervisor Layer"]
+    end
+    
+    subgraph VM1["VM 1"]
+        GOS1["Guest OS\n(Full Linux)"]
+        LIB1["Libraries"]
+        APP1["Application"]
+        GOS1 --> LIB1 --> APP1
+    end
+    
+    subgraph VM2["VM 2"]
+        GOS2["Guest OS\n(Full Linux)"]
+        LIB2["Libraries"]
+        APP2["Application"]
+        GOS2 --> LIB2 --> APP2
+    end
+    
+    subgraph VM3["VM 3"]
+        GOS3["Guest OS\n(Full Linux)"]
+        LIB3["Libraries"]
+        APP3["Application"]
+        GOS3 --> LIB3 --> APP3
+    end
+    
+    Hardware --> HostOS --> Hypervisor
+    Hypervisor --> VM1
+    Hypervisor --> VM2
+    Hypervisor --> VM3
 ```
 
 Each VM includes:
@@ -56,31 +75,59 @@ Each VM includes:
 
 Containers take a fundamentally different approach. Instead of simulating hardware, they use Linux kernel features to create isolated process groups:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Physical Hardware                            │
-│         (CPU, RAM, Storage, Network Interfaces)                 │
-├─────────────────────────────────────────────────────────────────┤
-│                    Host Operating System                        │
-│                    (Single Linux Kernel)                        │
-├─────────────────────────────────────────────────────────────────┤
-│                  Container Runtime                              │
-│           (Docker, containerd, CRI-O, Podman)                   │
-├──────────────┬──────────────┬──────────────┬───────────────────┤
-│  Container 1 │  Container 2 │  Container 3 │    Container N    │
-├──────────────┼──────────────┼──────────────┼───────────────────┤
-│  App Libs    │  App Libs    │  App Libs    │    App Libs       │
-├──────────────┼──────────────┼──────────────┼───────────────────┤
-│  Application │  Application │  Application │    Application    │
-└──────────────┴──────────────┴──────────────┴───────────────────┘
-         │              │              │               │
-         └──────────────┴──────────────┴───────────────┘
-                               │
-                    ┌──────────┴──────────┐
-                    │   Shared Kernel     │
-                    │   (namespaces,      │
-                    │    cgroups)         │
-                    └─────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Hardware["Physical Hardware"]
+        HW["CPU, RAM, Storage, Network Interfaces"]
+    end
+    
+    subgraph HostOS["Host Operating System (Single Linux Kernel)"]
+        OS["Linux Kernel"]
+    end
+    
+    subgraph Runtime["Container Runtime (Docker, containerd, CRI-O, Podman)"]
+        CR["Container Runtime"]
+    end
+    
+    subgraph Containers[" "]
+        subgraph C1["Container 1"]
+            LIB1["App Libs"]
+            APP1["Application"]
+            LIB1 --> APP1
+        end
+        
+        subgraph C2["Container 2"]
+            LIB2["App Libs"]
+            APP2["Application"]
+            LIB2 --> APP2
+        end
+        
+        subgraph C3["Container 3"]
+            LIB3["App Libs"]
+            APP3["Application"]
+            LIB3 --> APP3
+        end
+        
+        subgraph CN["Container N"]
+            LIBN["App Libs"]
+            APPN["Application"]
+            LIBN --> APPN
+        end
+    end
+    
+    subgraph SharedKernel["Shared Kernel"]
+        SK["namespaces, cgroups"]
+    end
+    
+    Hardware --> HostOS --> Runtime
+    Runtime --> C1
+    Runtime --> C2
+    Runtime --> C3
+    Runtime --> CN
+    C1 -.-> SharedKernel
+    C2 -.-> SharedKernel
+    C3 -.-> SharedKernel
+    CN -.-> SharedKernel
 ```
 
 Containers share the host kernel and use:

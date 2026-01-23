@@ -16,22 +16,14 @@ Loki recording rules pre-compute LogQL metric queries and store the results as t
 
 Recording rules periodically evaluate LogQL queries and write the results back as time series data that can be quickly queried:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                  Recording Rules Pipeline                        │
-│                                                                  │
-│  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐    │
-│  │   Raw Logs   │────▶│  Recording   │────▶│  Metrics     │    │
-│  │   (Loki)     │     │  Rule Eval   │     │  (Stored)    │    │
-│  └──────────────┘     └──────────────┘     └──────────────┘    │
-│                              │                     │            │
-│                              │                     │            │
-│               Evaluate every interval              ▼            │
-│               (e.g., every 1 minute)     ┌──────────────┐      │
-│                                          │  Fast Query  │      │
-│                                          │  Dashboard   │      │
-│                                          └──────────────┘      │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Pipeline["Recording Rules Pipeline"]
+        RawLogs["Raw Logs<br/>(Loki)"] --> RuleEval["Recording<br/>Rule Eval"]
+        RuleEval --> Metrics["Metrics<br/>(Stored)"]
+        RuleEval -.->|"Evaluate every interval<br/>(e.g., every 1 minute)"| RuleEval
+        Metrics --> Dashboard["Fast Query<br/>Dashboard"]
+    end
 ```
 
 ### Benefits

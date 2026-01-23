@@ -22,35 +22,25 @@ Before starting, ensure you have:
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Application                               │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │              Instrumented Code                           │    │
-│  │  - Metrics (counters, gauges, histograms)               │    │
-│  │  - Structured Logs with matching labels                  │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│              │                              │                     │
-│              ▼                              ▼                     │
-│     ┌────────────────┐            ┌────────────────┐            │
-│     │ Metrics Export │            │   Log Output   │            │
-│     │ job=api        │            │ job=api        │            │
-│     │ instance=pod1  │            │ instance=pod1  │            │
-│     └────────────────┘            └────────────────┘            │
-└─────────────────────────────────────────────────────────────────┘
-              │                              │
-              ▼                              ▼
-       ┌──────────────┐              ┌──────────────┐
-       │  Prometheus  │◄────────────►│    Loki      │
-       │  (Metrics)   │   Grafana    │   (Logs)     │
-       └──────────────┘   Correlation└──────────────┘
-              │                              │
-              └──────────────┬───────────────┘
-                             ▼
-                      ┌──────────────┐
-                      │   Grafana    │
-                      │  Dashboard   │
-                      └──────────────┘
+```mermaid
+flowchart TB
+    subgraph Application["Application"]
+        subgraph Code["Instrumented Code"]
+            IC1["Metrics (counters, gauges, histograms)"]
+            IC2["Structured Logs with matching labels"]
+        end
+        
+        Code --> MetricsExport["Metrics Export<br/>job=api<br/>instance=pod1"]
+        Code --> LogOutput["Log Output<br/>job=api<br/>instance=pod1"]
+    end
+    
+    MetricsExport --> Prometheus["Prometheus<br/>(Metrics)"]
+    LogOutput --> Loki["Loki<br/>(Logs)"]
+    
+    Prometheus <-->|"Grafana<br/>Correlation"| Loki
+    
+    Prometheus --> Grafana["Grafana<br/>Dashboard"]
+    Loki --> Grafana
 ```
 
 ## Deploying the Stack

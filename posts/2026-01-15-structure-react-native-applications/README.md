@@ -269,20 +269,25 @@ Clean separation of concerns makes code easier to understand, test, and modify. 
 
 Dependencies should point inward. Outer layers depend on inner layers, never the reverse:
 
-```
-┌─────────────────────────────────────────────┐
-│                   UI Layer                   │
-│  (Screens, Components, Navigation)           │
-├─────────────────────────────────────────────┤
-│               Application Layer              │
-│  (Hooks, State Management, ViewModels)       │
-├─────────────────────────────────────────────┤
-│                Domain Layer                  │
-│  (Business Logic, Entities, Use Cases)       │
-├─────────────────────────────────────────────┤
-│             Infrastructure Layer             │
-│  (API, Storage, Device APIs, Analytics)      │
-└─────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph UI["UI Layer"]
+        UI1["Screens, Components, Navigation"]
+    end
+
+    subgraph App["Application Layer"]
+        App1["Hooks, State Management, ViewModels"]
+    end
+
+    subgraph Domain["Domain Layer"]
+        Domain1["Business Logic, Entities, Use Cases"]
+    end
+
+    subgraph Infra["Infrastructure Layer"]
+        Infra1["API, Storage, Device APIs, Analytics"]
+    end
+
+    UI --> App --> Domain --> Infra
 ```
 
 ### Example: Clean Feature Architecture

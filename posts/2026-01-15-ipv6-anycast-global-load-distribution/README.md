@@ -105,31 +105,19 @@ Before implementing anycast, ensure you have:
 
 ### Network Topology Example
 
-```
-                           ┌──────────────────┐
-                           │   Internet       │
-                           │   (Global BGP    │
-                           │    Routing)      │
-                           └────────┬─────────┘
-                                    │
-          ┌─────────────────────────┼─────────────────────────┐
-          │                         │                         │
-    ┌─────▼─────┐            ┌─────▼─────┐            ┌─────▼─────┐
-    │ Transit A │            │ Transit B │            │ Transit C │
-    │  (NYC)    │            │  (AMS)    │            │  (TYO)    │
-    └─────┬─────┘            └─────┬─────┘            └─────┬─────┘
-          │                        │                        │
-    ┌─────▼─────┐            ┌─────▼─────┐            ┌─────▼─────┐
-    │  Router   │            │  Router   │            │  Router   │
-    │   NYC     │            │   AMS     │            │   TYO     │
-    │(BIRD/FRR) │            │(BIRD/FRR) │            │(BIRD/FRR) │
-    └─────┬─────┘            └─────┬─────┘            └─────┬─────┘
-          │                        │                        │
-    ┌─────▼─────┐            ┌─────▼─────┐            ┌─────▼─────┐
-    │  Server   │            │  Server   │            │  Server   │
-    │   NYC     │            │   AMS     │            │   TYO     │
-    │2001:db8::1│            │2001:db8::1│            │2001:db8::1│
-    └───────────┘            └───────────┘            └───────────┘
+```mermaid
+flowchart TB
+    Internet["Internet<br>(Global BGP Routing)"] --> TransitA["Transit A<br>(NYC)"]
+    Internet --> TransitB["Transit B<br>(AMS)"]
+    Internet --> TransitC["Transit C<br>(TYO)"]
+    
+    TransitA --> RouterNYC["Router NYC<br>(BIRD/FRR)"]
+    TransitB --> RouterAMS["Router AMS<br>(BIRD/FRR)"]
+    TransitC --> RouterTYO["Router TYO<br>(BIRD/FRR)"]
+    
+    RouterNYC --> ServerNYC["Server NYC<br>2001:db8::1"]
+    RouterAMS --> ServerAMS["Server AMS<br>2001:db8::1"]
+    RouterTYO --> ServerTYO["Server TYO<br>2001:db8::1"]
 ```
 
 ---

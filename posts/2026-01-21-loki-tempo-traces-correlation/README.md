@@ -24,26 +24,17 @@ Before starting, ensure you have:
 
 The correlation between logs and traces works through a shared identifier - the trace ID:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Application                               │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │  Request Processing with Trace Context                   │    │
-│  │  trace_id: abc123, span_id: def456                       │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│              │                              │                     │
-│              ▼                              ▼                     │
-│     ┌────────────────┐            ┌────────────────┐            │
-│     │   Log Output   │            │  Trace Export  │            │
-│     │ trace_id=abc123│            │ trace_id=abc123│            │
-│     └────────────────┘            └────────────────┘            │
-└─────────────────────────────────────────────────────────────────┘
-              │                              │
-              ▼                              ▼
-       ┌──────────────┐              ┌──────────────┐
-       │    Loki      │◄────────────►│    Tempo     │
-       │   (Logs)     │   Grafana    │   (Traces)   │
-       └──────────────┘   Links      └──────────────┘
+```mermaid
+flowchart TB
+    subgraph Application
+        RP["Request Processing with Trace Context<br/>trace_id: abc123, span_id: def456"]
+        RP --> LO["Log Output<br/>trace_id=abc123"]
+        RP --> TE["Trace Export<br/>trace_id=abc123"]
+    end
+    
+    LO --> Loki["Loki<br/>(Logs)"]
+    TE --> Tempo["Tempo<br/>(Traces)"]
+    Loki <-->|"Grafana Links"| Tempo
 ```
 
 ## Deploying the Observability Stack

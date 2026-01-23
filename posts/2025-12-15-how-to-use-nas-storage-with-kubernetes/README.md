@@ -524,31 +524,13 @@ Or configure NFS squashing on the NAS to map all users to a specific UID.
 
 ## Decision Flowchart
 
-```
-┌─────────────────────────────────────┐
-│ What protocol should you use?       │
-└─────────────────────────────────────┘
-                │
-    ┌───────────┴───────────┐
-    ▼                       ▼
-┌─────────┐           ┌───────────┐
-│ Linux   │           │ Windows   │
-│ pods?   │           │ pods?     │
-└────┬────┘           └─────┬─────┘
-     │                      │
-     ▼                      ▼
-┌─────────┐           ┌───────────┐
-│ Need    │           │ Use SMB   │
-│ block   │           └───────────┘
-│ storage?│
-└────┬────┘
-     │
- ┌───┴───┐
- ▼       ▼
-Yes      No
- │       │
- ▼       ▼
-iSCSI   NFS (ReadWriteMany supported)
+```mermaid
+flowchart TD
+    A[What protocol should you use?] --> B{Pod Type?}
+    B -->|Linux pods| C{Need block storage?}
+    B -->|Windows pods| D[Use SMB]
+    C -->|Yes| E[iSCSI]
+    C -->|No| F[NFS<br/>ReadWriteMany supported]
 ```
 
 ## TL;DR Quick Start

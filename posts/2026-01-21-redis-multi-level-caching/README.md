@@ -18,30 +18,14 @@ The L1/L2 cache pattern is inspired by CPU cache hierarchies - small, fast cache
 
 ### Cache Hierarchy
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Application                           │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │                    L1 Cache (Local)                   │   │
-│  │              In-Memory Dictionary/LRU                 │   │
-│  │            ~100ns access, small capacity             │   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              │ L1 Miss
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      L2 Cache (Redis)                       │
-│                    ~1ms network access                      │
-│                    Large capacity, shared                   │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              │ L2 Miss
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Database / Origin                        │
-│                  ~10-100ms access time                      │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph App["Application"]
+        L1["L1 Cache (Local)<br/>In-Memory Dictionary/LRU<br/>~100ns access, small capacity"]
+    end
+    
+    L1 -->|"L1 Miss"| L2["L2 Cache (Redis)<br/>~1ms network access<br/>Large capacity, shared"]
+    L2 -->|"L2 Miss"| DB["Database / Origin<br/>~10-100ms access time"]
 ```
 
 ### Performance Comparison

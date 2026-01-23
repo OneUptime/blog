@@ -12,21 +12,23 @@ Docker layer caching can reduce build times from minutes to seconds by reusing u
 
 ## How Docker Layer Caching Works
 
-```
-Dockerfile Layers
-┌────────────────────────────────────────────┐
-│  FROM node:20                               │ ─► Cached (base image)
-├────────────────────────────────────────────┤
-│  WORKDIR /app                               │ ─► Cached (unchanged)
-├────────────────────────────────────────────┤
-│  COPY package*.json ./                      │ ─► Cached if unchanged
-├────────────────────────────────────────────┤
-│  RUN npm ci                                 │ ─► Cached if package.json unchanged
-├────────────────────────────────────────────┤
-│  COPY . .                                   │ ─► Invalidated (code changed)
-├────────────────────────────────────────────┤
-│  RUN npm run build                          │ ─► Rebuilt (layer above changed)
-└────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph layers["Dockerfile Layers"]
+        L1["FROM node:20"] -->|Cached - base image| L2["WORKDIR /app"]
+        L2 -->|Cached - unchanged| L3["COPY package*.json ./"]
+        L3 -->|Cached if unchanged| L4["RUN npm ci"]
+        L4 -->|Cached if package.json unchanged| L5["COPY . ."]
+        L5 -->|Invalidated - code changed| L6["RUN npm run build"]
+        L6 -->|Rebuilt - layer above changed| final((Final Image))
+    end
+
+    style L1 fill:#90EE90
+    style L2 fill:#90EE90
+    style L3 fill:#90EE90
+    style L4 fill:#90EE90
+    style L5 fill:#FFB6C1
+    style L6 fill:#FFB6C1
 ```
 
 When any layer changes, all subsequent layers must be rebuilt. Optimizing layer order is the first step to effective caching.

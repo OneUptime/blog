@@ -12,26 +12,20 @@ HAProxy is a high-performance load balancer used by many high-traffic websites. 
 
 ## HAProxy Architecture
 
-```
-HAProxy Load Balancing
-┌─────────────────────────────────────────────────────────────┐
-│                        Clients                               │
-│                           │                                  │
-│                           ▼                                  │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │                     HAProxy                          │   │
-│  │  - Health Checks                                     │   │
-│  │  - Load Balancing                                    │   │
-│  │  - SSL Termination                                   │   │
-│  │  - Session Persistence                               │   │
-│  └─────────────────────────────────────────────────────┘   │
-│            │              │              │                   │
-│            ▼              ▼              ▼                   │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐        │
-│  │   Backend 1  │ │   Backend 2  │ │   Backend 3  │        │
-│  │   (healthy)  │ │   (healthy)  │ │   (failed)   │        │
-│  └──────────────┘ └──────────────┘ └──────────────┘        │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    A["Clients"] --> B
+    subgraph B["HAProxy"]
+        direction TB
+        H1["Health Checks"]
+        H2["Load Balancing"]
+        H3["SSL Termination"]
+        H4["Session Persistence"]
+    end
+    B --> C["Backend 1<br>(healthy)"]
+    B --> D["Backend 2<br>(healthy)"]
+    B --> E["Backend 3<br>(failed)"]
+    style E fill:#f96,stroke:#333
 ```
 
 ## Basic Setup

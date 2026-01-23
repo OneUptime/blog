@@ -27,29 +27,29 @@ Choosing between Grafana Loki (self-hosted) and AWS CloudWatch Logs (managed ser
 
 ### Architecture Comparison
 
+```mermaid
+flowchart LR
+    subgraph Loki["Grafana Loki (Self-Hosted on AWS)"]
+        direction LR
+        P1["Promtail<br/>/OTel"] --> L1["Loki<br/>(EKS/EC2)"] --> S1["S3<br/>(Storage)"]
+        L1 --> G1["Grafana<br/>(Query)"]
+    end
+    
+    subgraph CW["AWS CloudWatch Logs"]
+        direction LR
+        A1["CloudWatch<br/>Agent"] --> CWL["CloudWatch Logs<br/>(Fully Managed)"] --> I1["Logs<br/>Insights"]
+    end
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Architecture Comparison                       │
-│                                                                  │
-│  Grafana Loki (Self-Hosted on AWS):                             │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐    │
-│  │ Promtail │──▶│  Loki    │──▶│   S3     │   │ Grafana  │    │
-│  │ /OTel    │   │ (EKS/EC2)│   │ (Storage)│   │ (Query)  │    │
-│  └──────────┘   └──────────┘   └──────────┘   └──────────┘    │
-│  - You manage all components                                    │
-│  - Full control over configuration                              │
-│  - Works across clouds                                          │
-│                                                                  │
-│  AWS CloudWatch Logs:                                           │
-│  ┌──────────┐   ┌──────────────────────────┐   ┌──────────┐   │
-│  │ CloudWatch│──▶│     CloudWatch Logs      │──▶│  Logs    │   │
-│  │ Agent    │   │   (Fully Managed)        │   │ Insights │   │
-│  └──────────┘   └──────────────────────────┘   └──────────┘   │
-│  - AWS manages everything                                       │
-│  - Automatic scaling                                            │
-│  - Native AWS integrations                                      │
-└─────────────────────────────────────────────────────────────────┘
-```
+
+**Grafana Loki:**
+- You manage all components
+- Full control over configuration
+- Works across clouds
+
+**AWS CloudWatch Logs:**
+- AWS manages everything
+- Automatic scaling
+- Native AWS integrations
 
 ## Cost Comparison
 

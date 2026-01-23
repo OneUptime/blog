@@ -28,24 +28,22 @@ Before starting, ensure you have:
 - **Error Budget**: The amount of unreliability you can tolerate (1 - SLO)
 - **Burn Rate**: How fast you are consuming your error budget
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     SLO Dashboard Architecture                   │
-│                                                                  │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
-│  │   Logs       │───▶│   SLIs       │───▶│   SLOs       │       │
-│  │ (Raw Data)   │    │ (Indicators) │    │ (Objectives) │       │
-│  └──────────────┘    └──────────────┘    └──────────────┘       │
-│         │                   │                    │                │
-│         │                   │                    │                │
-│         ▼                   ▼                    ▼                │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │                    Error Budget                          │    │
-│  │  - Budget Remaining                                      │    │
-│  │  - Burn Rate                                             │    │
-│  │  - Time to Exhaustion                                    │    │
-│  └─────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Architecture["SLO Dashboard Architecture"]
+        Logs["Logs<br/>(Raw Data)"] --> SLIs["SLIs<br/>(Indicators)"]
+        SLIs --> SLOs["SLOs<br/>(Objectives)"]
+        
+        Logs --> ErrorBudget
+        SLIs --> ErrorBudget
+        SLOs --> ErrorBudget
+        
+        subgraph ErrorBudget["Error Budget"]
+            BudgetRemaining["Budget Remaining"]
+            BurnRate["Burn Rate"]
+            TimeToExhaustion["Time to Exhaustion"]
+        end
+    end
 ```
 
 ## Calculating SLIs from Logs

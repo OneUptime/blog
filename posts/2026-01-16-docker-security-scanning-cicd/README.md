@@ -12,26 +12,30 @@ Integrating security scanning into CI/CD pipelines catches vulnerabilities early
 
 ## Security Scanning Overview
 
-```
-CI/CD Pipeline with Security Scanning
-┌────────────────────────────────────────────────────────────────────┐
-│                                                                     │
-│  Build ──► Scan Image ──► Scan Dependencies ──► Scan IaC ──► Deploy│
-│              │                  │                  │                │
-│              ▼                  ▼                  ▼                │
-│         Trivy/Grype      Snyk/Dependabot    Checkov/tfsec         │
-│              │                  │                  │                │
-│              ▼                  ▼                  ▼                │
-│         ┌────────────────────────────────────────────┐             │
-│         │              Security Gate                  │             │
-│         │  - Block on CRITICAL/HIGH                  │             │
-│         │  - Generate reports                         │             │
-│         │  - Create tickets                          │             │
-│         └────────────────────────────────────────────┘             │
-│                              │                                      │
-│                              ▼                                      │
-│                    Pass/Fail Decision                              │
-└────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Pipeline["CI/CD Pipeline with Security Scanning"]
+        Build --> ScanImage[Scan Image]
+        ScanImage --> ScanDeps[Scan Dependencies]
+        ScanDeps --> ScanIaC[Scan IaC]
+        ScanIaC --> Deploy
+        
+        ScanImage --> Trivy[Trivy/Grype]
+        ScanDeps --> Snyk[Snyk/Dependabot]
+        ScanIaC --> Checkov[Checkov/tfsec]
+        
+        Trivy --> Gate
+        Snyk --> Gate
+        Checkov --> Gate
+        
+        subgraph Gate[Security Gate]
+            G1[Block on CRITICAL/HIGH]
+            G2[Generate reports]
+            G3[Create tickets]
+        end
+        
+        Gate --> Decision[Pass/Fail Decision]
+    end
 ```
 
 ## Trivy Integration

@@ -25,28 +25,15 @@ The cache-aside pattern follows these steps:
 5. **Cache Update**: Store the database result in cache
 6. **Return Data**: Return the data to the caller
 
-```
-┌─────────────┐     1. Request     ┌─────────────┐
-│             │ ────────────────── │             │
-│   Client    │                    │ Application │
-│             │ ◄───────────────── │             │
-└─────────────┘     6. Response    └──────┬──────┘
-                                          │
-                              2. Check    │    4. Query
-                                 Cache    │    (on miss)
-                                          │
-                    ┌─────────────────────┼─────────────────────┐
-                    │                     │                     │
-                    ▼                     │                     ▼
-             ┌─────────────┐              │              ┌─────────────┐
-             │             │              │              │             │
-             │    Redis    │              │              │  Database   │
-             │    Cache    │              │              │             │
-             └─────────────┘              │              └─────────────┘
-                    │                     │                     │
-                    │       3. Return     │      5. Store       │
-                    │       (on hit)      │      in cache       │
-                    └─────────────────────┴─────────────────────┘
+```mermaid
+flowchart TB
+    Client(["Client"]) -->|"1. Request"| App["Application"]
+    App -->|"6. Response"| Client
+    App -->|"2. Check Cache"| Redis[("Redis Cache")]
+    Redis -->|"3. Return (on hit)"| App
+    App -->|"4. Query (on miss)"| DB[("Database")]
+    DB -->|"5. Store in cache"| Redis
+    DB --> App
 ```
 
 ---

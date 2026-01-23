@@ -18,11 +18,10 @@ Scattered logs across servers waste time. Centralized logs with proper structure
 
 OneUptime accepts logs via the OpenTelemetry Protocol (OTLP). You can send logs directly or alongside traces for full observability.
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Python App     │────▶│  OTLP Exporter  │────▶│    OneUptime    │
-│  (logging)      │     │                 │     │  (Logs + Traces)│
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+```mermaid
+flowchart LR
+    App["Python App<br/>(logging)"] --> OTLP["OTLP Exporter"]
+    OTLP --> OneUptime["OneUptime<br/>(Logs + Traces)"]
 ```
 
 ---

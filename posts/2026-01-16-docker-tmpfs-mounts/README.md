@@ -12,19 +12,25 @@ tmpfs mounts store data in memory instead of disk, providing extremely fast I/O 
 
 ## Understanding tmpfs
 
-```
-Storage Types Comparison
-┌─────────────────────────────────────────────────────────────┐
-│  Regular Volume                                              │
-│  Container ──► Filesystem ──► Disk (SSD/HDD)                │
-│  Speed: ~500 MB/s (SSD)                                     │
-│  Persistence: Yes                                            │
-├─────────────────────────────────────────────────────────────┤
-│  tmpfs Mount                                                 │
-│  Container ──► RAM (Memory)                                  │
-│  Speed: ~10,000 MB/s                                        │
-│  Persistence: No (cleared on container stop)                │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Regular["Regular Volume"]
+        direction LR
+        C1[Container] --> FS[Filesystem] --> Disk["Disk (SSD/HDD)"]
+    end
+    subgraph RegularInfo[" "]
+        R1["Speed: ~500 MB/s (SSD)"]
+        R2["Persistence: Yes"]
+    end
+    
+    subgraph Tmpfs["tmpfs Mount"]
+        direction LR
+        C2[Container] --> RAM["RAM (Memory)"]
+    end
+    subgraph TmpfsInfo[" "]
+        T1["Speed: ~10,000 MB/s"]
+        T2["Persistence: No (cleared on container stop)"]
+    end
 ```
 
 ## Basic tmpfs Usage

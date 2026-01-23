@@ -12,18 +12,14 @@ Migrating Docker containers between hosts requires transferring images, volumes,
 
 ## Migration Strategies
 
-```
-Migration Methods
-┌────────────────────────────────────────────────────────────┐
-│  1. Registry-Based: Push → Pull                            │
-│     Best for: Production, multiple hosts                   │
-├────────────────────────────────────────────────────────────┤
-│  2. Image Export: save → transfer → load                   │
-│     Best for: Air-gapped, single host                      │
-├────────────────────────────────────────────────────────────┤
-│  3. Full Migration: images + volumes + configs             │
-│     Best for: Complete environment replication             │
-└────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph methods["Migration Methods"]
+        m1["**1. Registry-Based: Push → Pull**<br/>Best for: Production, multiple hosts"]
+        m2["**2. Image Export: save → transfer → load**<br/>Best for: Air-gapped, single host"]
+        m3["**3. Full Migration: images + volumes + configs**<br/>Best for: Complete environment replication"]
+    end
+    m1 --- m2 --- m3
 ```
 
 ## Method 1: Registry-Based

@@ -44,25 +44,27 @@ There are several legitimate business reasons to detect compromised devices:
 
 Running your app on a jailbroken or rooted device exposes it to numerous threats:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    COMPROMISED DEVICE                        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │   Malware   │  │   Keylogger │  │   Screen    │         │
-│  │   Access    │  │   Capture   │  │   Recording │         │
-│  └─────────────┘  └─────────────┘  └─────────────┘         │
-│                                                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │   Memory    │  │   Network   │  │   SSL       │         │
-│  │   Dumping   │  │   Sniffing  │  │   Bypass    │         │
-│  └─────────────┘  └─────────────┘  └─────────────┘         │
-│                                                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │   Code      │  │   Data      │  │   Runtime   │         │
-│  │   Injection │  │   Theft     │  │   Hooking   │         │
-│  └─────────────┘  └─────────────┘  └─────────────┘         │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Device["COMPROMISED DEVICE"]
+        subgraph Row1[" "]
+            A1[Malware Access]
+            A2[Keylogger Capture]
+            A3[Screen Recording]
+        end
+        subgraph Row2[" "]
+            B1[Memory Dumping]
+            B2[Network Sniffing]
+            B3[SSL Bypass]
+        end
+        subgraph Row3[" "]
+            C1[Code Injection]
+            C2[Data Theft]
+            C3[Runtime Hooking]
+        end
+    end
+    
+    style Device fill:#ffcccc,stroke:#cc0000
 ```
 
 ### Common Attack Vectors
@@ -1076,37 +1078,41 @@ Jailbreak/root detection should be just one part of a comprehensive security str
 
 ### Multi-Layer Security Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    DEFENSE IN DEPTH LAYERS                       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  Layer 1: Device Integrity                                       │
-│  ├── Jailbreak/Root Detection                                   │
-│  ├── Emulator Detection                                         │
-│  └── Debug Mode Detection                                       │
-│                                                                  │
-│  Layer 2: Application Security                                   │
-│  ├── Code Obfuscation                                           │
-│  ├── Anti-Tampering                                             │
-│  └── Integrity Verification                                     │
-│                                                                  │
-│  Layer 3: Communication Security                                 │
-│  ├── Certificate Pinning                                        │
-│  ├── TLS 1.3                                                    │
-│  └── Request Signing                                            │
-│                                                                  │
-│  Layer 4: Data Security                                          │
-│  ├── Encryption at Rest                                         │
-│  ├── Secure Key Storage                                         │
-│  └── Data Minimization                                          │
-│                                                                  │
-│  Layer 5: Server-Side Security                                   │
-│  ├── API Security                                               │
-│  ├── Behavioral Analysis                                        │
-│  └── Fraud Detection                                            │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Defense["DEFENSE IN DEPTH LAYERS"]
+        subgraph L1["Layer 1: Device Integrity"]
+            L1A[Jailbreak/Root Detection]
+            L1B[Emulator Detection]
+            L1C[Debug Mode Detection]
+        end
+        
+        subgraph L2["Layer 2: Application Security"]
+            L2A[Code Obfuscation]
+            L2B[Anti-Tampering]
+            L2C[Integrity Verification]
+        end
+        
+        subgraph L3["Layer 3: Communication Security"]
+            L3A[Certificate Pinning]
+            L3B[TLS 1.3]
+            L3C[Request Signing]
+        end
+        
+        subgraph L4["Layer 4: Data Security"]
+            L4A[Encryption at Rest]
+            L4B[Secure Key Storage]
+            L4C[Data Minimization]
+        end
+        
+        subgraph L5["Layer 5: Server-Side Security"]
+            L5A[API Security]
+            L5B[Behavioral Analysis]
+            L5C[Fraud Detection]
+        end
+    end
+    
+    L1 --> L2 --> L3 --> L4 --> L5
 ```
 
 ### Implementing Certificate Pinning

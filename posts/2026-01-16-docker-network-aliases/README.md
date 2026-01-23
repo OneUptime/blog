@@ -12,21 +12,17 @@ Network aliases provide multiple DNS names for containers, enabling flexible ser
 
 ## Understanding Network Aliases
 
-```
-Network Aliases
-┌─────────────────────────────────────────────────────────────┐
-│  Container: api-v2                                           │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │  Primary name: api-v2                                  │  │
-│  │  Aliases: api, backend, service                        │  │
-│  │                                                         │  │
-│  │  DNS resolution:                                        │  │
-│  │  api-v2 → 172.17.0.5                                   │  │
-│  │  api → 172.17.0.5                                      │  │
-│  │  backend → 172.17.0.5                                  │  │
-│  │  service → 172.17.0.5                                  │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Container["Container: api-v2"]
+        subgraph DNS["DNS Resolution"]
+            A["api-v2"] --> IP["172.17.0.5"]
+            B["api"] --> IP
+            C["backend"] --> IP
+            D["service"] --> IP
+        end
+        Info["Primary name: api-v2<br/>Aliases: api, backend, service"]
+    end
 ```
 
 ## Basic Alias Usage

@@ -12,16 +12,24 @@ Macvlan networks allow Docker containers to have their own MAC addresses and app
 
 ## Understanding Macvlan
 
-```
-Macvlan Network Architecture
-┌────────────────────────────────────────────────────────────┐
-│                    Physical Network                         │
-│                    192.168.1.0/24                           │
-├────────────────────────────────────────────────────────────┤
-│  Router          Host              Container A   Container B│
-│  192.168.1.1     192.168.1.100     192.168.1.50 192.168.1.51│
-│  MAC: aa:bb      MAC: cc:dd        MAC: ee:ff   MAC: gg:hh  │
-└────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph network["Physical Network - 192.168.1.0/24"]
+        router["Router<br/>192.168.1.1<br/>MAC: aa:bb"]
+        host["Host<br/>192.168.1.100<br/>MAC: cc:dd"]
+        containerA["Container A<br/>192.168.1.50<br/>MAC: ee:ff"]
+        containerB["Container B<br/>192.168.1.51<br/>MAC: gg:hh"]
+    end
+
+    router --- host
+    router --- containerA
+    router --- containerB
+
+    style network fill:#f0f8ff,stroke:#4682B4
+    style router fill:#FFD700,stroke:#DAA520
+    style host fill:#98FB98,stroke:#228B22
+    style containerA fill:#87CEEB,stroke:#4169E1
+    style containerB fill:#87CEEB,stroke:#4169E1
 ```
 
 ## Basic Macvlan Network

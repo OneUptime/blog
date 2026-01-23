@@ -12,20 +12,16 @@ GitLab CI Runner with Docker executor provides isolated, reproducible build envi
 
 ## Runner Architecture
 
-```
-GitLab Server
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    GitLab Runner                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Docker Executor                         │   │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐            │   │
-│  │  │  Job 1  │  │  Job 2  │  │  Job 3  │            │   │
-│  │  │Container│  │Container│  │Container│            │   │
-│  │  └─────────┘  └─────────┘  └─────────┘            │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    A["GitLab Server"] --> B
+    subgraph B["GitLab Runner"]
+        subgraph C["Docker Executor"]
+            D["Job 1<br>Container"]
+            E["Job 2<br>Container"]
+            F["Job 3<br>Container"]
+        end
+    end
 ```
 
 ## Installing GitLab Runner

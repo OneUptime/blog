@@ -12,26 +12,22 @@ Docker daemon configuration significantly impacts container performance, especia
 
 ## Daemon Configuration Overview
 
-```
-Docker Daemon Components
-┌─────────────────────────────────────────────────────────────┐
-│                     Docker Daemon                            │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Storage   │  │  Network    │  │   Logging   │        │
-│  │   Driver    │  │   Driver    │  │   Driver    │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-│         │                │                │                 │
-│         ▼                ▼                ▼                 │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │            Container Runtime (containerd)            │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                          │                                  │
-│                          ▼                                  │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │                  Linux Kernel                        │   │
-│  │  (cgroups, namespaces, networking, storage)         │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph DockerDaemon["Docker Daemon"]
+        Storage["Storage Driver"]
+        Network["Network Driver"]
+        Logging["Logging Driver"]
+        
+        Storage --> Containerd
+        Network --> Containerd
+        Logging --> Containerd
+        
+        Containerd["Container Runtime (containerd)"]
+        Containerd --> Kernel
+        
+        Kernel["Linux Kernel<br/>(cgroups, namespaces, networking, storage)"]
+    end
 ```
 
 ## Storage Driver Optimization

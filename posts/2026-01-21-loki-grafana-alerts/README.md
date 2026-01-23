@@ -21,37 +21,14 @@ Before starting, ensure you have:
 
 ## Architecture Overview
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                         Grafana                                   │
-│                                                                   │
-│  ┌──────────────────────────────────────────────────────────┐    │
-│  │                    Alert Rules                            │    │
-│  │  - LogQL Queries                                          │    │
-│  │  - Thresholds                                             │    │
-│  │  - Evaluation Intervals                                   │    │
-│  └──────────────────────────────────────────────────────────┘    │
-│                             │                                     │
-│                             ▼                                     │
-│  ┌──────────────────────────────────────────────────────────┐    │
-│  │                Notification Policies                      │    │
-│  │  - Routing Rules                                          │    │
-│  │  - Grouping                                               │    │
-│  │  - Timing                                                 │    │
-│  └──────────────────────────────────────────────────────────┘    │
-│                             │                                     │
-│                             ▼                                     │
-│  ┌──────────────────────────────────────────────────────────┐    │
-│  │                   Contact Points                          │    │
-│  │  - Slack                                                  │    │
-│  │  - Email                                                  │    │
-│  │  - PagerDuty                                              │    │
-│  │  - Webhooks                                               │    │
-│  └──────────────────────────────────────────────────────────┘    │
-└──────────────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-                      Notifications
+```mermaid
+flowchart TB
+    subgraph Grafana
+        AR["Alert Rules<br/>- LogQL Queries<br/>- Thresholds<br/>- Evaluation Intervals"]
+        AR --> NP["Notification Policies<br/>- Routing Rules<br/>- Grouping<br/>- Timing"]
+        NP --> CP["Contact Points<br/>- Slack<br/>- Email<br/>- PagerDuty<br/>- Webhooks"]
+    end
+    CP --> Notifications
 ```
 
 ## Enabling Grafana Unified Alerting

@@ -25,37 +25,29 @@ docker commit myapp myregistry/myapp:v1.0
 
 ## How docker commit Works
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Original Image                            │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ Layer 1: Base OS                                     │    │
-│  ├─────────────────────────────────────────────────────┤    │
-│  │ Layer 2: Dependencies                                │    │
-│  ├─────────────────────────────────────────────────────┤    │
-│  │ Layer 3: Application                                 │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼ docker run
-┌─────────────────────────────────────────────────────────────┐
-│                  Running Container                           │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ Read-only layers from image                          │    │
-│  ├─────────────────────────────────────────────────────┤    │
-│  │ Writable container layer (your changes)              │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼ docker commit
-┌─────────────────────────────────────────────────────────────┐
-│                     New Image                                │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ Original layers                                      │    │
-│  ├─────────────────────────────────────────────────────┤    │
-│  │ New layer: Your changes                              │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph OriginalImage["Original Image"]
+        L1["Layer 1: Base OS"]
+        L2["Layer 2: Dependencies"]
+        L3["Layer 3: Application"]
+        L1 --- L2 --- L3
+    end
+
+    subgraph RunningContainer["Running Container"]
+        RL["Read-only layers from image"]
+        WL["Writable container layer (your changes)"]
+        RL --- WL
+    end
+
+    subgraph NewImage["New Image"]
+        OL["Original layers"]
+        NL["New layer: Your changes"]
+        OL --- NL
+    end
+
+    OriginalImage -->|"docker run"| RunningContainer
+    RunningContainer -->|"docker commit"| NewImage
 ```
 
 ## Practical Examples

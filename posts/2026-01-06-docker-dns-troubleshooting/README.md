@@ -388,38 +388,15 @@ services:
 
 ## Troubleshooting Flowchart
 
-```
-DNS Resolution Fails
-        │
-        ▼
-┌─────────────────────────┐
-│ Is container on user-   │
-│ defined network?        │
-└───────────┬─────────────┘
-            │
-     No ────┴──── Yes
-     │             │
-     ▼             ▼
-┌─────────┐   ┌─────────────────────┐
-│ Use     │   │ Is target container │
-│ --net   │   │ running?            │
-└─────────┘   └──────────┬──────────┘
-                         │
-              No ────────┴───── Yes
-              │                  │
-              ▼                  ▼
-         ┌─────────┐   ┌─────────────────┐
-         │ Start   │   │ Same network?   │
-         │ target  │   └────────┬────────┘
-         └─────────┘            │
-                     No ────────┴───── Yes
-                     │                  │
-                     ▼                  ▼
-                ┌─────────┐   ┌────────────────┐
-                │ Connect │   │ Check spelling │
-                │ to same │   │ Use exact name │
-                │ network │   └────────────────┘
-                └─────────┘
+```mermaid
+flowchart TB
+    A[DNS Resolution Fails] --> B{Is container on<br>user-defined network?}
+    B -->|No| C[Use --net flag]
+    B -->|Yes| D{Is target container<br>running?}
+    D -->|No| E[Start target container]
+    D -->|Yes| F{Same network?}
+    F -->|No| G[Connect to same network]
+    F -->|Yes| H[Check spelling<br>Use exact name]
 ```
 
 ---

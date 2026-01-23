@@ -18,27 +18,21 @@ Unlike Redis Sentinel (which provides HA for a single dataset), Redis Cluster di
 
 ### Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Redis Cluster                             │
-│                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │              16384 Hash Slots                            │   │
-│   │   [0-5460]        [5461-10922]       [10923-16383]      │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│         │                  │                    │                │
-│         ▼                  ▼                    ▼                │
-│   ┌──────────┐      ┌──────────┐        ┌──────────┐           │
-│   │ Master 1 │      │ Master 2 │        │ Master 3 │           │
-│   │(primary) │      │(primary) │        │(primary) │           │
-│   └────┬─────┘      └────┬─────┘        └────┬─────┘           │
-│        │                 │                   │                  │
-│        ▼                 ▼                   ▼                  │
-│   ┌──────────┐      ┌──────────┐        ┌──────────┐           │
-│   │ Replica  │      │ Replica  │        │ Replica  │           │
-│   │   1a     │      │   2a     │        │   3a     │           │
-│   └──────────┘      └──────────┘        └──────────┘           │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Cluster["Redis Cluster"]
+        subgraph Slots["16384 Hash Slots"]
+            S1["0-5460"]
+            S2["5461-10922"]
+            S3["10923-16383"]
+        end
+        S1 --> M1["Master 1<br/>(primary)"]
+        S2 --> M2["Master 2<br/>(primary)"]
+        S3 --> M3["Master 3<br/>(primary)"]
+        M1 --> R1["Replica 1a"]
+        M2 --> R2["Replica 2a"]
+        M3 --> R3["Replica 3a"]
+    end
 ```
 
 ### Hash Slots

@@ -27,24 +27,18 @@ Before we begin, ensure you have:
 
 HAProxy operates as a reverse proxy that sits between clients and your backend servers. Here is a conceptual overview:
 
-```
-                    ┌─────────────────┐
-                    │    Clients      │
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │    HAProxy      │
-                    │  (Load Balancer)│
-                    └────────┬────────┘
-                             │
-           ┌─────────────────┼─────────────────┐
-           │                 │                 │
-           ▼                 ▼                 ▼
-    ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-    │  Backend 1  │   │  Backend 2  │   │  Backend 3  │
-    │ (Web Server)│   │ (Web Server)│   │ (Web Server)│
-    └─────────────┘   └─────────────┘   └─────────────┘
+```mermaid
+flowchart TB
+    Clients["Clients"]
+    HAProxy["HAProxy<br/>(Load Balancer)"]
+    B1["Backend 1<br/>(Web Server)"]
+    B2["Backend 2<br/>(Web Server)"]
+    B3["Backend 3<br/>(Web Server)"]
+
+    Clients --> HAProxy
+    HAProxy --> B1
+    HAProxy --> B2
+    HAProxy --> B3
 ```
 
 HAProxy configuration consists of four main sections:

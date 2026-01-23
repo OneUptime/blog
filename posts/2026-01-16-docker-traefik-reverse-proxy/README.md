@@ -12,25 +12,19 @@ Traefik is a modern reverse proxy and load balancer designed for containerized e
 
 ## How Traefik Works
 
-```
-Traffic Flow with Traefik
-┌─────────────────────────────────────────────────────────────┐
-│                        Internet                              │
-│                            │                                 │
-│                            ▼                                 │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │                     Traefik                          │   │
-│  │  - SSL Termination                                   │   │
-│  │  - Automatic Discovery                               │   │
-│  │  - Load Balancing                                    │   │
-│  └─────────────────────────────────────────────────────┘   │
-│            │                │                │              │
-│            ▼                ▼                ▼              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │   Service A  │  │   Service B  │  │   Service C  │     │
-│  │  api.example │  │  web.example │  │  admin.example│    │
-│  └──────────────┘  └──────────────┘  └──────────────┘     │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    Internet[Internet] --> Traefik
+    
+    subgraph Traefik["Traefik"]
+        T1[SSL Termination]
+        T2[Automatic Discovery]
+        T3[Load Balancing]
+    end
+    
+    Traefik --> A[Service A<br/>api.example]
+    Traefik --> B[Service B<br/>web.example]
+    Traefik --> C[Service C<br/>admin.example]
 ```
 
 ## Basic Setup
