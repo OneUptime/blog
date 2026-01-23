@@ -28,22 +28,14 @@ The KSK is the trust anchor for your zone. The parent zone (for example, `.com` 
 
 Before diving into rollover procedures, understand the key relationships:
 
-```
-Root Zone (.)
-    |
-    v
-TLD Zone (.com)
-    |
-    +-- DS Record (hash of your KSK)
-    |
-    v
-Your Zone (example.com)
-    |
-    +-- DNSKEY (KSK) -- signs the ZSK
-    |
-    +-- DNSKEY (ZSK) -- signs all other records
-    |
-    +-- RRSIG records (signatures)
+```mermaid
+flowchart TB
+    A["Root Zone (.)"] --> B["TLD Zone (.com)"]
+    B --> C["DS Record (hash of your KSK)"]
+    C --> D["Your Zone (example.com)"]
+    D --> E["DNSKEY (KSK) - signs the ZSK"]
+    D --> F["DNSKEY (ZSK) - signs all other records"]
+    D --> G["RRSIG records (signatures)"]
 ```
 
 ### Key Types Explained

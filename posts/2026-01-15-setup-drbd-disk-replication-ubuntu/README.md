@@ -54,10 +54,12 @@ DRBD offers three replication protocols, each providing different trade-offs bet
 
 ### Protocol A (Asynchronous)
 
-```
-Write Request --> Local Write --> Send to Peer --> Acknowledge to Application
-                                      |
-                                      +--> Peer writes asynchronously
+```mermaid
+flowchart LR
+    A[Write Request] --> B[Local Write]
+    B --> C[Send to Peer]
+    C --> D[Acknowledge to Application]
+    C --> E[Peer writes asynchronously]
 ```
 
 - **Behavior**: Write is considered complete once it reaches local disk and the TCP send buffer
@@ -67,8 +69,12 @@ Write Request --> Local Write --> Send to Peer --> Acknowledge to Application
 
 ### Protocol B (Memory Synchronous / Semi-Synchronous)
 
-```
-Write Request --> Local Write --> Send to Peer --> Peer Acknowledges Receipt --> Acknowledge to Application
+```mermaid
+flowchart LR
+    A[Write Request] --> B[Local Write]
+    B --> C[Send to Peer]
+    C --> D[Peer Acknowledges Receipt]
+    D --> E[Acknowledge to Application]
 ```
 
 - **Behavior**: Write is complete when local disk write finishes and peer acknowledges receiving data in memory
@@ -78,8 +84,12 @@ Write Request --> Local Write --> Send to Peer --> Peer Acknowledges Receipt -->
 
 ### Protocol C (Synchronous)
 
-```
-Write Request --> Local Write --> Send to Peer --> Peer Writes to Disk --> Acknowledge to Application
+```mermaid
+flowchart LR
+    A[Write Request] --> B[Local Write]
+    B --> C[Send to Peer]
+    C --> D[Peer Writes to Disk]
+    D --> E[Acknowledge to Application]
 ```
 
 - **Behavior**: Write is complete only when both nodes have written to disk

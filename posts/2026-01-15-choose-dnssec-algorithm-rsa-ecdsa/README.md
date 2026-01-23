@@ -606,22 +606,20 @@ Set up alerts for:
 
 Use this flowchart to guide your decision:
 
-```
-START
-  |
-  v
-Do you need 100% legacy compatibility?
-  |
-  +-- Yes --> Use RSASHA256 (Algorithm 8)
-  |
-  +-- No
-      |
-      v
-    Do you need maximum security margins?
-      |
-      +-- Yes --> Use ECDSAP384SHA384 (Algorithm 14)
-      |
-      +-- No --> Use ECDSAP256SHA256 (Algorithm 13)
+```mermaid
+flowchart TB
+    START([START])
+    Q1{Do you need 100%<br/>legacy compatibility?}
+    Q2{Do you need maximum<br/>security margins?}
+    A1[Use RSASHA256<br/>Algorithm 8]
+    A2[Use ECDSAP384SHA384<br/>Algorithm 14]
+    A3[Use ECDSAP256SHA256<br/>Algorithm 13]
+
+    START --> Q1
+    Q1 -->|Yes| A1
+    Q1 -->|No| Q2
+    Q2 -->|Yes| A2
+    Q2 -->|No| A3
 ```
 
 ## Final Recommendations

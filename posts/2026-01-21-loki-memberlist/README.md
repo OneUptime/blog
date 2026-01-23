@@ -23,12 +23,14 @@ Before starting, ensure you have:
 
 ### How Memberlist Works
 
-```
-Ingester-1 <--gossip--> Ingester-2 <--gossip--> Ingester-3
-     |                       |                       |
-     +-----------+-----------+-----------+-----------+
-                 |                       |
-            Distributor-1           Distributor-2
+```mermaid
+flowchart TB
+    I1[Ingester-1] <--gossip--> I2[Ingester-2]
+    I2 <--gossip--> I3[Ingester-3]
+    I1 --- D1[Distributor-1]
+    I2 --- D1
+    I2 --- D2[Distributor-2]
+    I3 --- D2
 ```
 
 ### Benefits

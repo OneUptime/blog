@@ -14,19 +14,19 @@ Log analytics is one of the most common use cases for both ClickHouse and Elasti
 
 ### Elasticsearch Architecture
 
-```
-Elasticsearch Cluster:
-+------------------+     +------------------+
-|   Master Node    |<--->|   Master Node    |
-+------------------+     +------------------+
-         |                       |
-+------------------+     +------------------+
-|   Data Node      |     |   Data Node      |
-| +-------------+  |     | +-------------+  |
-| |   Shard 1   |  |     | |   Shard 2   |  |
-| | (Lucene)    |  |     | | (Lucene)    |  |
-| +-------------+  |     | +-------------+  |
-+------------------+     +------------------+
+```mermaid
+flowchart TB
+    subgraph Elasticsearch Cluster
+        M1[Master Node] <--> M2[Master Node]
+        M1 --- D1
+        M2 --- D2
+        subgraph D1[Data Node]
+            S1[Shard 1<br/>Lucene]
+        end
+        subgraph D2[Data Node]
+            S2[Shard 2<br/>Lucene]
+        end
+    end
 ```
 
 Key characteristics:
@@ -38,18 +38,19 @@ Key characteristics:
 
 ### ClickHouse Architecture
 
-```
-ClickHouse Cluster:
-+------------------+     +------------------+
-| ClickHouse Node  |<--->| ClickHouse Node  |
-| +-------------+  |     | +-------------+  |
-| | MergeTree   |  |     | | MergeTree   |  |
-| | Table       |  |     | | Table       |  |
-| +-------------+  |     | +-------------+  |
-| | Bloom Filter|  |     | | Bloom Filter|  |
-| | Index       |  |     | | Index       |  |
-| +-------------+  |     | +-------------+  |
-+------------------+     +------------------+
+```mermaid
+flowchart TB
+    subgraph ClickHouse Cluster
+        subgraph N1[ClickHouse Node]
+            MT1[MergeTree Table]
+            BF1[Bloom Filter Index]
+        end
+        subgraph N2[ClickHouse Node]
+            MT2[MergeTree Table]
+            BF2[Bloom Filter Index]
+        end
+        N1 <--> N2
+    end
 ```
 
 Key characteristics:

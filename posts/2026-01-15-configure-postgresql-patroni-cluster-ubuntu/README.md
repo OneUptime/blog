@@ -37,26 +37,25 @@ When the current leader becomes unavailable:
 
 A typical Patroni cluster consists of several components:
 
-```
-                    +------------------+
-                    |    HAProxy /     |
-                    |    PgBouncer     |
-                    +--------+---------+
-                             |
-           +-----------------+-----------------+
-           |                 |                 |
-    +------+------+   +------+------+   +------+------+
-    |   Node 1    |   |   Node 2    |   |   Node 3    |
-    | PostgreSQL  |   | PostgreSQL  |   | PostgreSQL  |
-    |   Patroni   |   |   Patroni   |   |   Patroni   |
-    +------+------+   +------+------+   +------+------+
-           |                 |                 |
-           +-----------------+-----------------+
-                             |
-                    +--------+---------+
-                    |   etcd / Consul  |
-                    |   / ZooKeeper    |
-                    +------------------+
+```mermaid
+flowchart TB
+    LB["HAProxy /<br/>PgBouncer"]
+    
+    subgraph Cluster["PostgreSQL Cluster"]
+        N1["Node 1<br/>PostgreSQL<br/>Patroni"]
+        N2["Node 2<br/>PostgreSQL<br/>Patroni"]
+        N3["Node 3<br/>PostgreSQL<br/>Patroni"]
+    end
+    
+    DCS[("etcd / Consul<br/>/ ZooKeeper")]
+    
+    LB --> N1
+    LB --> N2
+    LB --> N3
+    
+    N1 <--> DCS
+    N2 <--> DCS
+    N3 <--> DCS
 ```
 
 ### Distributed Configuration Store (DCS) Options

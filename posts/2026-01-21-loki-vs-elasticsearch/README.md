@@ -271,22 +271,21 @@ count_over_time({namespace="production"} |= "error" [5m])
 
 Some organizations use both:
 
-```
-                    +------------------+
-                    |   Log Sources    |
-                    +--------+---------+
-                             |
-              +--------------+--------------+
-              |                             |
-     +--------v--------+          +---------v-------+
-     |     Loki        |          |  Elasticsearch  |
-     | (High Volume,   |          | (Security,      |
-     |  Kubernetes)    |          |  Compliance)    |
-     +--------+--------+          +---------+-------+
-              |                             |
-     +--------v--------+          +---------v-------+
-     |    Grafana      |          |     Kibana      |
-     +-----------------+          +-----------------+
+```mermaid
+flowchart TB
+    LS[Log Sources]
+    LS --> Loki
+    LS --> ES[Elasticsearch]
+    
+    subgraph Loki Stack
+        Loki["Loki<br/>(High Volume, Kubernetes)"]
+        Loki --> Grafana
+    end
+    
+    subgraph ELK Stack
+        ES["Elasticsearch<br/>(Security, Compliance)"]
+        ES --> Kibana
+    end
 ```
 
 Use cases:

@@ -51,14 +51,16 @@ Before auditing, understand the key DNSSEC components:
 
 ### Chain of Trust
 
-```
-Root Zone (.)
-    |
-    +-- DS Record --> TLD (.com)
-                          |
-                          +-- DS Record --> Your Domain (example.com)
-                                                |
-                                                +-- DNSKEY --> Zone Records
+```mermaid
+flowchart TB
+    Root["Root Zone (.)"]
+    TLD["TLD (.com)"]
+    Domain["Your Domain (example.com)"]
+    Records["Zone Records"]
+
+    Root -->|DS Record| TLD
+    TLD -->|DS Record| Domain
+    Domain -->|DNSKEY| Records
 ```
 
 ## Pre-Audit Preparation

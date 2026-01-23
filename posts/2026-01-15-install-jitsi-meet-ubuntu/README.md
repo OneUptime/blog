@@ -18,30 +18,13 @@ Before diving into installation, understanding Jitsi Meet's architecture helps y
 
 Jitsi Meet consists of several interconnected components:
 
-```
-+------------------+     +-------------------+     +------------------+
-|                  |     |                   |     |                  |
-|   Web Browser    +---->+   Nginx/Prosody   +---->+   Jitsi Meet     |
-|   (WebRTC)       |     |   (XMPP/BOSH)     |     |   Web Interface  |
-|                  |     |                   |     |                  |
-+--------+---------+     +---------+---------+     +------------------+
-         |                         |
-         |                         v
-         |               +---------+---------+
-         |               |                   |
-         +-------------->+   Jicofo          |
-                         |   (Focus)         |
-                         |                   |
-                         +---------+---------+
-                                   |
-                                   v
-                         +---------+---------+
-                         |                   |
-                         |   Jitsi           |
-                         |   Videobridge     |
-                         |   (JVB)           |
-                         |                   |
-                         +-------------------+
+```mermaid
+flowchart TB
+    WB[Web Browser<br/>WebRTC] --> NP[Nginx/Prosody<br/>XMPP/BOSH]
+    NP --> JM[Jitsi Meet<br/>Web Interface]
+    WB --> JC[Jicofo<br/>Focus]
+    NP --> JC
+    JC --> JVB[Jitsi Videobridge<br/>JVB]
 ```
 
 **Component Descriptions:**
@@ -1310,40 +1293,18 @@ For large deployments, you can scale horizontally by adding multiple Jitsi Video
 
 ### Architecture for Scalability
 
-```
-                    +------------------+
-                    |                  |
-                    |   Load Balancer  |
-                    |   (HAProxy/Nginx)|
-                    |                  |
-                    +--------+---------+
-                             |
-              +--------------+--------------+
-              |              |              |
-      +-------+------+ +-----+--------+ +---+----------+
-      |              | |              | |              |
-      | Web Server 1 | | Web Server 2 | | Web Server 3 |
-      | (Nginx)      | | (Nginx)      | | (Nginx)      |
-      |              | |              | |              |
-      +-------+------+ +------+-------+ +------+-------+
-              |               |                |
-              +---------------+----------------+
-                              |
-                    +---------+---------+
-                    |                   |
-                    |   Prosody XMPP    |
-                    |   + Jicofo        |
-                    |                   |
-                    +---------+---------+
-                              |
-         +--------------------+--------------------+
-         |                    |                    |
-  +------+------+      +------+------+      +------+------+
-  |             |      |             |      |             |
-  | JVB Server 1|      | JVB Server 2|      | JVB Server 3|
-  | (Region A)  |      | (Region B)  |      | (Region C)  |
-  |             |      |             |      |             |
-  +-------------+      +-------------+      +-------------+
+```mermaid
+flowchart TB
+    LB[Load Balancer<br/>HAProxy/Nginx]
+    LB --> WS1[Web Server 1<br/>Nginx]
+    LB --> WS2[Web Server 2<br/>Nginx]
+    LB --> WS3[Web Server 3<br/>Nginx]
+    WS1 --> PJ[Prosody XMPP<br/>+ Jicofo]
+    WS2 --> PJ
+    WS3 --> PJ
+    PJ --> JVB1[JVB Server 1<br/>Region A]
+    PJ --> JVB2[JVB Server 2<br/>Region B]
+    PJ --> JVB3[JVB Server 3<br/>Region C]
 ```
 
 ### Setting Up Additional Videobridge Servers

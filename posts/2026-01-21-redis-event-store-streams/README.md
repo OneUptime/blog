@@ -22,22 +22,13 @@ Redis Streams offer unique advantages:
 
 ## Event Store Architecture
 
-```
-Events Flow:
-                                           +------------------+
-  Command --> Event Store --> Stream ID    | Event Consumers  |
-                 |                         | (Consumer Groups)|
-                 v                         +------------------+
-          +-------------+                          |
-          |   Stream    |<-------------------------+
-          | (per agg)   |
-          +-------------+
-                 |
-                 v
-          +--------------+
-          | Projections  |
-          | (Read Models)|
-          +--------------+
+```mermaid
+flowchart TB
+    Command[Command] --> EventStore[Event Store]
+    EventStore --> StreamID[Stream ID]
+    EventStore --> Stream[Stream<br/>per agg]
+    EventConsumers[Event Consumers<br/>Consumer Groups] --> Stream
+    Stream --> Projections[Projections<br/>Read Models]
 ```
 
 ## Basic Event Store Implementation

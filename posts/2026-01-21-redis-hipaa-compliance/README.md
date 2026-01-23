@@ -54,39 +54,19 @@ PHI Identifiers:
 
 ### Network Isolation
 
-```
-                    +------------------+
-                    |    Internet      |
-                    +--------+---------+
-                             |
-                    +--------v---------+
-                    |   WAF/Firewall   |
-                    +--------+---------+
-                             |
-                    +--------v---------+
-                    |   Load Balancer  |
-                    +--------+---------+
-                             |
-        +--------------------+--------------------+
-        |                    |                    |
-+-------v--------+  +--------v-------+  +--------v-------+
-| Application    |  | Application    |  | Application    |
-| Server (DMZ)   |  | Server (DMZ)   |  | Server (DMZ)   |
-+-------+--------+  +--------+-------+  +--------+-------+
-        |                    |                    |
-        +--------------------+--------------------+
-                             |
-                    +--------v---------+
-                    |  Private Subnet  |
-                    |  (No Internet)   |
-                    +--------+---------+
-                             |
-        +--------------------+--------------------+
-        |                    |                    |
-+-------v--------+  +--------v-------+  +--------v-------+
-| Redis Primary  |  | Redis Replica  |  | Redis Replica  |
-| (Encrypted)    |  | (Encrypted)    |  | (Encrypted)    |
-+----------------+  +----------------+  +----------------+
+```mermaid
+flowchart TB
+    Internet[Internet] --> WAF[WAF/Firewall]
+    WAF --> LB[Load Balancer]
+    LB --> App1[Application Server<br/>DMZ]
+    LB --> App2[Application Server<br/>DMZ]
+    LB --> App3[Application Server<br/>DMZ]
+    App1 --> PrivateSubnet[Private Subnet<br/>No Internet]
+    App2 --> PrivateSubnet
+    App3 --> PrivateSubnet
+    PrivateSubnet --> RedisPrimary[Redis Primary<br/>Encrypted]
+    PrivateSubnet --> RedisReplica1[Redis Replica<br/>Encrypted]
+    PrivateSubnet --> RedisReplica2[Redis Replica<br/>Encrypted]
 ```
 
 ### Redis Configuration for HIPAA

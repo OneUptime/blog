@@ -32,16 +32,21 @@ Pacemaker is the cluster resource manager that sits on top of Corosync and provi
 
 ### How They Work Together
 
-```
-+------------------+     +------------------+
-|     Node 1       |     |     Node 2       |
-+------------------+     +------------------+
-|    Pacemaker     |     |    Pacemaker     |
-|  (Resource Mgr)  |     |  (Resource Mgr)  |
-+------------------+     +------------------+
-|    Corosync      |<--->|    Corosync      |
-| (Communication)  |     | (Communication)  |
-+------------------+     +------------------+
+```mermaid
+flowchart LR
+    subgraph Node1["Node 1"]
+        PM1["Pacemaker<br/>(Resource Mgr)"]
+        CS1["Corosync<br/>(Communication)"]
+        PM1 --- CS1
+    end
+    
+    subgraph Node2["Node 2"]
+        PM2["Pacemaker<br/>(Resource Mgr)"]
+        CS2["Corosync<br/>(Communication)"]
+        PM2 --- CS2
+    end
+    
+    CS1 <-->|"Cluster Communication"| CS2
 ```
 
 Corosync handles the low-level cluster communication and membership, while Pacemaker makes decisions about resource placement and handles failover logic.

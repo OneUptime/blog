@@ -12,16 +12,20 @@ Custom Kafka Connectors allow you to integrate Kafka with any data source or sin
 
 ## Connector Architecture
 
-```
-Connector (1 instance)
-    |
-    +-- Task 1 (partition 0-3)
-    +-- Task 2 (partition 4-7)
-    +-- Task 3 (partition 8-11)
+```mermaid
+flowchart TB
+    Connector["Connector\n(1 instance)"]
+    Task1["Task 1\n(partition 0-3)"]
+    Task2["Task 2\n(partition 4-7)"]
+    Task3["Task 3\n(partition 8-11)"]
 
-Connector: Configuration, task distribution
-Task: Actual data movement
+    Connector --> Task1
+    Connector --> Task2
+    Connector --> Task3
 ```
+
+- **Connector**: Configuration, task distribution
+- **Task**: Actual data movement
 
 ## Project Setup
 

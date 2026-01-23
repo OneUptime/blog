@@ -23,19 +23,18 @@ IoT ingestion systems must handle:
 
 ## Architecture Overview
 
-```
-+-------------+     +-----------+     +-------------+     +------------+
-|   Devices   | --> |   MQTT    | --> |    Redis    | --> |  Consumers |
-| (Millions)  |     |  Broker   |     |   Streams   |     | (Workers)  |
-+-------------+     +-----------+     +-------------+     +------------+
-                          |                  |                   |
-                    Validation          Buffering           Processing
-                                             |                   |
-                                             v                   v
-                                      +-------------+     +------------+
-                                      | Time Series |     |  Storage   |
-                                      |    (TSDB)   |     | (ClickHouse)|
-                                      +-------------+     +------------+
+```mermaid
+flowchart LR
+    Devices[Devices<br/>Millions] --> MQTT[MQTT Broker]
+    MQTT --> Redis[Redis Streams]
+    Redis --> Consumers[Consumers<br/>Workers]
+    
+    MQTT -.->|Validation| MQTT
+    Redis -.->|Buffering| Redis
+    Consumers -.->|Processing| Consumers
+    
+    Redis --> TSDB[Time Series<br/>TSDB]
+    Consumers --> Storage[Storage<br/>ClickHouse]
 ```
 
 ## Basic Data Ingestion

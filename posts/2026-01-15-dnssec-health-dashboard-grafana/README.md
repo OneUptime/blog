@@ -27,11 +27,10 @@ Common failure scenarios:
 
 ## Architecture Overview
 
-```
-+------------------+     +------------------+     +------------------+
-|   DNS Probes     | --> |   Prometheus/    | --> |     Grafana      |
-| (dnssec-exporter)|     |   InfluxDB       |     |   Dashboard      |
-+------------------+     +------------------+     +------------------+
+```mermaid
+flowchart LR
+    A["DNS Probes<br/>(dnssec-exporter)"] --> B["Prometheus/<br/>InfluxDB"]
+    B --> C["Grafana<br/>Dashboard"]
 ```
 
 ## Prerequisites

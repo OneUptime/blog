@@ -16,11 +16,11 @@ Choosing between Kafka and RabbitMQ is a common decision for teams building dist
 
 Kafka is a distributed streaming platform based on a commit log:
 
-```
-Producer -> Broker (Partition Log) -> Consumer Group
-               |
-               v
-         Persistent Storage
+```mermaid
+flowchart LR
+    P[Producer] --> B[Broker<br/>Partition Log]
+    B --> C[Consumer Group]
+    B --> S[(Persistent Storage)]
 ```
 
 Key characteristics:
@@ -34,11 +34,12 @@ Key characteristics:
 
 RabbitMQ is a traditional message broker implementing AMQP:
 
-```
-Producer -> Exchange -> Queue -> Consumer
-              |
-              v
-       Routing Rules
+```mermaid
+flowchart LR
+    P[Producer] --> E[Exchange]
+    E --> Q[Queue]
+    Q --> C[Consumer]
+    E --> R[Routing Rules]
 ```
 
 Key characteristics:
@@ -101,11 +102,12 @@ RabbitMQ excels at:
 
 #### 1. Event Streaming and Analytics
 
-```
-User Events -> Kafka -> Stream Processing -> Analytics Dashboard
-                  |
-                  v
-              Data Lake
+```mermaid
+flowchart LR
+    UE[User Events] --> K[Kafka]
+    K --> SP[Stream Processing]
+    SP --> AD[Analytics Dashboard]
+    K --> DL[(Data Lake)]
 ```
 
 - Real-time analytics pipelines
@@ -115,11 +117,11 @@ User Events -> Kafka -> Stream Processing -> Analytics Dashboard
 
 #### 2. Event Sourcing
 
-```
-Commands -> Event Store (Kafka) -> Projections
-                  |
-                  v
-            Event Replay
+```mermaid
+flowchart LR
+    C[Commands] --> ES[Event Store<br/>Kafka]
+    ES --> P[Projections]
+    ES --> ER[Event Replay]
 ```
 
 - Audit logging
@@ -128,12 +130,14 @@ Commands -> Event Store (Kafka) -> Projections
 
 #### 3. Data Integration
 
-```
-Database -> CDC (Debezium) -> Kafka -> Multiple Consumers
-                                          |
-                    +--------------------+--------------------+
-                    |                    |                    |
-                 Search              Cache              Warehouse
+```mermaid
+flowchart LR
+    DB[(Database)] --> CDC[CDC<br/>Debezium]
+    CDC --> K[Kafka]
+    K --> MC[Multiple Consumers]
+    MC --> S[Search]
+    MC --> C[Cache]
+    MC --> W[(Warehouse)]
 ```
 
 - Change data capture
@@ -150,12 +154,12 @@ Database -> CDC (Debezium) -> Kafka -> Multiple Consumers
 
 #### 1. Task Queues
 
-```
-Web App -> Task Queue (RabbitMQ) -> Workers
-                                       |
-                                   Process
-                                       |
-                                   Complete
+```mermaid
+flowchart LR
+    WA[Web App] --> TQ[Task Queue<br/>RabbitMQ]
+    TQ --> W[Workers]
+    W --> P[Process]
+    P --> C[Complete]
 ```
 
 - Background job processing
@@ -164,11 +168,12 @@ Web App -> Task Queue (RabbitMQ) -> Workers
 
 #### 2. Request-Reply Patterns
 
-```
-Client -> Request Queue -> Server
-   ^                          |
-   |                          v
-   +------ Reply Queue <------+
+```mermaid
+flowchart LR
+    C[Client] --> RQ[Request Queue]
+    RQ --> S[Server]
+    S --> RPQ[Reply Queue]
+    RPQ --> C
 ```
 
 - RPC over messaging
@@ -176,12 +181,12 @@ Client -> Request Queue -> Server
 
 #### 3. Complex Routing
 
-```
-Publisher -> Exchange -> Queue A (routing key: *.error.*)
-                |
-                +-----> Queue B (routing key: app1.*)
-                |
-                +-----> Queue C (routing key: *.*.critical)
+```mermaid
+flowchart LR
+    P[Publisher] --> E[Exchange]
+    E -->|*.error.*| QA[Queue A]
+    E -->|app1.*| QB[Queue B]
+    E -->|*.*.critical| QC[Queue C]
 ```
 
 - Topic routing
@@ -191,8 +196,11 @@ Publisher -> Exchange -> Queue A (routing key: *.error.*)
 
 #### 4. Delayed Messages
 
-```
-Producer -> Delayed Exchange -> Wait -> Deliver
+```mermaid
+flowchart LR
+    P[Producer] --> DE[Delayed Exchange]
+    DE --> W[Wait]
+    W --> D[Deliver]
 ```
 
 - Scheduled tasks
@@ -327,13 +335,14 @@ Operational considerations:
 
 Some architectures benefit from using both:
 
-```
-User Actions -> RabbitMQ -> Workers -> Kafka -> Analytics
-    |                          |
-    |                          v
-    |                     Database
-    |
-    +-> Real-time notifications (RabbitMQ)
+```mermaid
+flowchart LR
+    UA[User Actions] --> RMQ[RabbitMQ]
+    RMQ --> W[Workers]
+    W --> K[Kafka]
+    K --> A[Analytics]
+    W --> DB[(Database)]
+    UA --> RTN[Real-time notifications<br/>RabbitMQ]
 ```
 
 Use RabbitMQ for:

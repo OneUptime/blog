@@ -295,14 +295,29 @@ curl -X GET "localhost:9200/_cat/nodeattrs?v&h=node,attr,value"
 
 ### Three-Zone Deployment
 
-```
-Zone A              Zone B              Zone C
-+------------+      +------------+      +------------+
-| Master-1   |      | Master-2   |      | Master-3   |
-| Data-1     |      | Data-2     |      | Data-3     |
-| Data-4     |      | Data-5     |      | Data-6     |
-| Ingest-1   |      | Ingest-2   |      | Ingest-3   |
-+------------+      +------------+      +------------+
+```mermaid
+flowchart LR
+    subgraph ZA[Zone A]
+        MA[Master-1]
+        DA1[Data-1]
+        DA4[Data-4]
+        IA[Ingest-1]
+    end
+    subgraph ZB[Zone B]
+        MB[Master-2]
+        DB2[Data-2]
+        DB5[Data-5]
+        IB[Ingest-2]
+    end
+    subgraph ZC[Zone C]
+        MC[Master-3]
+        DC3[Data-3]
+        DC6[Data-6]
+        IC[Ingest-3]
+    end
+    ZA <--> ZB
+    ZB <--> ZC
+    ZA <--> ZC
 ```
 
 Configuration for this setup:

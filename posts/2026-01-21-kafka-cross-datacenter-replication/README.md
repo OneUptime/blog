@@ -14,22 +14,32 @@ Cross-datacenter replication enables disaster recovery, data locality, and activ
 
 ### Active-Passive (DR)
 
-```
-Datacenter A (Primary)          Datacenter B (DR)
-+-------------------+           +-------------------+
-|   Kafka Cluster   |  ------>  |   Kafka Cluster   |
-|   (Producers)     |    MM2    |   (Standby)       |
-+-------------------+           +-------------------+
+```mermaid
+flowchart LR
+    subgraph DCA["Datacenter A (Primary)"]
+        KafkaA["Kafka Cluster\n(Producers)"]
+    end
+
+    subgraph DCB["Datacenter B (DR)"]
+        KafkaB["Kafka Cluster\n(Standby)"]
+    end
+
+    KafkaA -->|MM2| KafkaB
 ```
 
 ### Active-Active
 
-```
-Datacenter A                    Datacenter B
-+-------------------+           +-------------------+
-|   Kafka Cluster   |  <---->   |   Kafka Cluster   |
-|   (Local Prod)    |    MM2    |   (Local Prod)    |
-+-------------------+           +-------------------+
+```mermaid
+flowchart LR
+    subgraph DCA["Datacenter A"]
+        KafkaA["Kafka Cluster\n(Local Prod)"]
+    end
+
+    subgraph DCB["Datacenter B"]
+        KafkaB["Kafka Cluster\n(Local Prod)"]
+    end
+
+    KafkaA <-->|MM2| KafkaB
 ```
 
 ## MirrorMaker 2 Setup

@@ -70,18 +70,21 @@ Distributed tracing works by passing a **trace context** through every hop in a 
 
 The challenge: HTTP requests cross a trust boundary between browser and server. The frontend must inject context into outgoing requests, and the backend must extract and continue it.
 
-```
-Browser                          Server
-   |                                |
-   |  [trace_id=abc, span_id=123]   |
-   |------------------------------->|
-   |        HTTP Request            |
-   |     + traceparent header       |
-   |                                |
-   |     Extract context            |
-   |     Create child span          |
-   |     [trace_id=abc, span_id=456]|
-   |                                |
+```mermaid
+flowchart LR
+    subgraph Browser
+        B1["trace_id=abc<br/>span_id=123"]
+    end
+    
+    subgraph Server
+        S1["Extract context"]
+        S2["Create child span"]
+        S3["trace_id=abc<br/>span_id=456"]
+    end
+    
+    B1 -->|"HTTP Request<br/>+ traceparent header"| S1
+    S1 --> S2
+    S2 --> S3
 ```
 
 Without proper propagation, traces break at the browser-server boundary, leaving you with disconnected fragments.

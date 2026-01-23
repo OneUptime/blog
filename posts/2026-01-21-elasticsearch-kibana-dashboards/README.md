@@ -219,29 +219,35 @@ Add these visualizations at the top:
 
 ### Dashboard Layout
 
-```
-+------------------+------------------+------------------+------------------+
-|  Total Logs      |  Error Count     |  Error Rate %    |  Active Services |
-|  (Metric)        |  (Metric)        |  (Metric)        |  (Metric)        |
-+------------------+------------------+------------------+------------------+
-|                                                                           |
-|                    Log Volume Over Time (Area Chart)                      |
-|                                                                           |
-+---------------------------------------------------------------------------+
-|                           |                                               |
-|   Logs by Service         |              Error Trend                      |
-|   (Bar Chart)             |              (Line Chart)                     |
-|                           |                                               |
-+---------------------------+-----------------------------------------------+
-|                           |                                               |
-|   Logs by Level           |          Top Error Messages                   |
-|   (Pie Chart)             |          (Data Table)                         |
-|                           |                                               |
-+---------------------------+-----------------------------------------------+
-|                                                                           |
-|                     Recent Errors (Saved Search)                          |
-|                                                                           |
-+---------------------------------------------------------------------------+
+```mermaid
+flowchart TB
+    subgraph Row1["Top Metrics Row"]
+        direction LR
+        M1[Total Logs<br/>Metric]
+        M2[Error Count<br/>Metric]
+        M3[Error Rate %<br/>Metric]
+        M4[Active Services<br/>Metric]
+    end
+    subgraph Row2["Time Series Row"]
+        TS[Log Volume Over Time<br/>Area Chart]
+    end
+    subgraph Row3["Analysis Row"]
+        direction LR
+        BC[Logs by Service<br/>Bar Chart]
+        LC[Error Trend<br/>Line Chart]
+    end
+    subgraph Row4["Details Row"]
+        direction LR
+        PC[Logs by Level<br/>Pie Chart]
+        DT[Top Error Messages<br/>Data Table]
+    end
+    subgraph Row5["Drill-down Row"]
+        SS[Recent Errors<br/>Saved Search]
+    end
+    Row1 --> Row2
+    Row2 --> Row3
+    Row3 --> Row4
+    Row4 --> Row5
 ```
 
 ### Adding Controls

@@ -19,22 +19,14 @@ A Redis-backed chat system typically consists of:
 3. **Redis Data Structures**: Stores user state, room membership, and message history
 4. **Application Logic**: Message routing, user management, and moderation
 
-```
-+-------------+     +-------------+     +-------------+
-|  Client 1   |     |  Client 2   |     |  Client 3   |
-+------+------+     +------+------+     +------+------+
-       |                   |                   |
-       v                   v                   v
-+------+------+     +------+------+     +------+------+
-| WS Server 1 |     | WS Server 2 |     | WS Server 3 |
-+------+------+     +------+------+     +------+------+
-       |                   |                   |
-       +-------------------+-------------------+
-                           |
-                    +------+------+
-                    |    Redis    |
-                    |   Pub/Sub   |
-                    +-------------+
+```mermaid
+flowchart TB
+    C1[Client 1] --> WS1[WS Server 1]
+    C2[Client 2] --> WS2[WS Server 2]
+    C3[Client 3] --> WS3[WS Server 3]
+    WS1 --> Redis[Redis Pub/Sub]
+    WS2 --> Redis
+    WS3 --> Redis
 ```
 
 ## Node.js Chat Server Implementation

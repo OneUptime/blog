@@ -1933,29 +1933,30 @@ When working with multiple network interfaces, careful planning is required to e
 
 ### Multi-Interface Architecture
 
-```
-                           Internet
-                              |
-                              v
-                    +------------------+
-                    |  Router/Firewall |
-                    +------------------+
-                           |
-              +------------+------------+
-              |                         |
-         Public Network            Private Network
-         192.168.1.0/24            10.0.0.0/24
-              |                         |
-    +---------+---------+     +---------+---------+
-    |                   |     |                   |
-+---+---+           +---+---+ +---+---+       +---+---+
-|Server1|           |Server2| |Server1|       |Server2|
-|eth0   |           |eth0   | |eth1   |       |eth1   |
-|.10    |           |.11    | |.10    |       |.11    |
-+-------+           +-------+ +-------+       +-------+
-    |                   |         |               |
-    +---VIP: .100-------+         +--VIP: .100----+
-   (Public Service VIP)          (Private Service VIP)
+```mermaid
+flowchart TB
+    Internet["Internet"]
+    Router["Router/Firewall"]
+    
+    subgraph PublicNetwork["Public Network<br/>192.168.1.0/24"]
+        Server1Pub["Server1<br/>eth0: .10"]
+        Server2Pub["Server2<br/>eth0: .11"]
+        PublicVIP["VIP: .100<br/>(Public Service VIP)"]
+    end
+    
+    subgraph PrivateNetwork["Private Network<br/>10.0.0.0/24"]
+        Server1Priv["Server1<br/>eth1: .10"]
+        Server2Priv["Server2<br/>eth1: .11"]
+        PrivateVIP["VIP: .100<br/>(Private Service VIP)"]
+    end
+    
+    Internet --> Router
+    Router --> PublicNetwork
+    Router --> PrivateNetwork
+    Server1Pub --- PublicVIP
+    Server2Pub --- PublicVIP
+    Server1Priv --- PrivateVIP
+    Server2Priv --- PrivateVIP
 ```
 
 ### Netplan Multi-Interface Configuration

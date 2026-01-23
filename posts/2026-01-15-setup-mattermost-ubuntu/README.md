@@ -1236,18 +1236,22 @@ For production environments requiring zero downtime, deploy Mattermost in high a
 
 ### Architecture Overview
 
-```
-                    Load Balancer
-                         |
-         +---------------+---------------+
-         |               |               |
-   Mattermost 1    Mattermost 2    Mattermost 3
-         |               |               |
-         +---------------+---------------+
-                         |
-              PostgreSQL (Primary)
-                         |
-              PostgreSQL (Replica)
+```mermaid
+flowchart TB
+    LB["Load Balancer"]
+    MM1["Mattermost 1"]
+    MM2["Mattermost 2"]
+    MM3["Mattermost 3"]
+    PG1[("PostgreSQL<br/>Primary")]
+    PG2[("PostgreSQL<br/>Replica")]
+    
+    LB --> MM1
+    LB --> MM2
+    LB --> MM3
+    MM1 --> PG1
+    MM2 --> PG1
+    MM3 --> PG1
+    PG1 --> PG2
 ```
 
 ### Cluster Configuration

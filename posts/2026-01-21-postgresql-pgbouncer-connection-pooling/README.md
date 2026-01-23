@@ -514,23 +514,15 @@ groups:
 
 Deploy multiple PgBouncer instances behind a load balancer:
 
-```
-                    +-----------------+
-                    |  Load Balancer  |
-                    |   (HAProxy/LB)  |
-                    +--------+--------+
-                             |
-            +----------------+----------------+
-            |                |                |
-    +-------v------+  +------v-------+  +-----v--------+
-    |  PgBouncer 1 |  |  PgBouncer 2 |  |  PgBouncer 3 |
-    +--------------+  +--------------+  +--------------+
-            |                |                |
-            +----------------+----------------+
-                             |
-                    +--------v--------+
-                    |   PostgreSQL    |
-                    +-----------------+
+```mermaid
+flowchart TB
+    LB["Load Balancer<br/>(HAProxy/LB)"]
+    LB --> PG1[PgBouncer 1]
+    LB --> PG2[PgBouncer 2]
+    LB --> PG3[PgBouncer 3]
+    PG1 --> DB[(PostgreSQL)]
+    PG2 --> DB
+    PG3 --> DB
 ```
 
 ### HAProxy Configuration

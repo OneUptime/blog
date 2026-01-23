@@ -23,19 +23,12 @@ Streaming platforms typically track several viewer metrics:
 
 ## Architecture Overview
 
-```
-+------------+     +----------------+     +-------------+
-|  Viewers   | --> |  Edge Servers  | --> |    Redis    |
-| (Millions) |     | (Regional CDN) |     |   Cluster   |
-+------------+     +----------------+     +-------------+
-                          |                      |
-                   Heartbeats              Aggregation
-                   (every 30s)                   |
-                          |                      v
-                          |              +-------------+
-                          +------------->| Time Series |
-                                         | (ClickHouse)|
-                                         +-------------+
+```mermaid
+flowchart LR
+    A["Viewers<br/>(Millions)"] --> B["Edge Servers<br/>(Regional CDN)"]
+    B --> C["Redis<br/>Cluster"]
+    B -->|"Heartbeats<br/>(every 30s)"| D["Time Series<br/>(ClickHouse)"]
+    C -->|Aggregation| D
 ```
 
 ## Basic View Counter

@@ -21,13 +21,19 @@ CCR provides:
 
 ### CCR Architecture
 
-```
-Leader Cluster (Primary)          Follower Cluster (Secondary)
-+--------------------+            +--------------------+
-| Leader Index       |   ----->   | Follower Index     |
-| (Read/Write)       |   CCR      | (Read-Only)        |
-+--------------------+            +--------------------+
-        US-East                          EU-West
+```mermaid
+flowchart LR
+    subgraph US["US-East (Primary)"]
+        subgraph LC[Leader Cluster]
+            LI[Leader Index<br/>Read/Write]
+        end
+    end
+    subgraph EU["EU-West (Secondary)"]
+        subgraph FC[Follower Cluster]
+            FI[Follower Index<br/>Read-Only]
+        end
+    end
+    LI -->|CCR| FI
 ```
 
 ## Prerequisites
@@ -324,15 +330,18 @@ curl -X PUT "localhost:9200/my-index-new-follower/_ccr/follow" -H 'Content-Type:
 
 For active-active setups with different indices:
 
-```
-Cluster A                         Cluster B
-+-----------+                     +-----------+
-| users-a   | ----CCR--->         | users-a   | (follower)
-| (leader)  |                     |           |
-|           |                     |           |
-| orders-a  | <---CCR----         | orders-a  | (leader)
-| (follower)|                     |           |
-+-----------+                     +-----------+
+```mermaid
+flowchart LR
+    subgraph CA[Cluster A]
+        UA[users-a<br/>leader]
+        OA[orders-a<br/>follower]
+    end
+    subgraph CB[Cluster B]
+        UB[users-a<br/>follower]
+        OB[orders-a<br/>leader]
+    end
+    UA -->|CCR| UB
+    OB -->|CCR| OA
 ```
 
 ### Configure on Cluster A

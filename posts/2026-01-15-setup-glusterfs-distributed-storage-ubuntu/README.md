@@ -50,11 +50,11 @@ GlusterFS supports several volume types, each designed for different use cases.
 
 Distributed volumes spread files across multiple bricks without any redundancy. This maximizes storage capacity but provides no fault tolerance.
 
-```
-+----------+    +----------+    +----------+
-|  Brick1  |    |  Brick2  |    |  Brick3  |
-| file1.txt|    | file2.txt|    | file3.txt|
-+----------+    +----------+    +----------+
+```mermaid
+flowchart LR
+    Brick1["Brick1<br/>file1.txt"]
+    Brick2["Brick2<br/>file2.txt"]
+    Brick3["Brick3<br/>file3.txt"]
 ```
 
 **Use case**: When storage capacity is the priority and data can be recreated from backups.
@@ -63,12 +63,13 @@ Distributed volumes spread files across multiple bricks without any redundancy. 
 
 Replicated volumes maintain exact copies of data across multiple bricks. If one brick fails, data remains accessible from the replica.
 
-```
-+----------+    +----------+
-|  Brick1  |    |  Brick2  |
-| file1.txt|    | file1.txt|  <- Same files
-| file2.txt|    | file2.txt|
-+----------+    +----------+
+```mermaid
+flowchart LR
+    subgraph Replica["Replicated Data"]
+        Brick1["Brick1<br/>file1.txt<br/>file2.txt"]
+        Brick2["Brick2<br/>file1.txt<br/>file2.txt"]
+    end
+    Brick1 <-.->|"Same files"| Brick2
 ```
 
 **Use case**: Critical data requiring high availability and fault tolerance.
@@ -77,12 +78,18 @@ Replicated volumes maintain exact copies of data across multiple bricks. If one 
 
 This combines distribution and replication. Files are distributed across replica sets, providing both scalability and redundancy.
 
-```
-     Replica Set 1              Replica Set 2
-+----------+----------+    +----------+----------+
-|  Brick1  |  Brick2  |    |  Brick3  |  Brick4  |
-| file1.txt| file1.txt|    | file2.txt| file2.txt|
-+----------+----------+    +----------+----------+
+```mermaid
+flowchart LR
+    subgraph RS1["Replica Set 1"]
+        Brick1["Brick1<br/>file1.txt"]
+        Brick2["Brick2<br/>file1.txt"]
+    end
+    subgraph RS2["Replica Set 2"]
+        Brick3["Brick3<br/>file2.txt"]
+        Brick4["Brick4<br/>file2.txt"]
+    end
+    Brick1 <-.-> Brick2
+    Brick3 <-.-> Brick4
 ```
 
 **Use case**: Production environments requiring both capacity and fault tolerance.
@@ -91,11 +98,11 @@ This combines distribution and replication. Files are distributed across replica
 
 Dispersed volumes use erasure coding to store data and parity across bricks. This provides redundancy with less storage overhead than replication.
 
-```
-+----------+    +----------+    +----------+
-|  Brick1  |    |  Brick2  |    |  Brick3  |
-|  Data    |    |  Data    |    |  Parity  |
-+----------+    +----------+    +----------+
+```mermaid
+flowchart LR
+    Brick1["Brick1<br/>Data"]
+    Brick2["Brick2<br/>Data"]
+    Brick3["Brick3<br/>Parity"]
 ```
 
 **Use case**: Large-scale storage where storage efficiency is important but some redundancy is still required.

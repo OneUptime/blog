@@ -708,10 +708,16 @@ For production environments, run multiple Unbound instances:
 
 ### Option 1: Active-Active with Load Balancer
 
-```
-                    +--> Unbound 1 (10.0.0.53)
-Client --> LB:53 --+
-                    +--> Unbound 2 (10.0.0.54)
+```mermaid
+flowchart LR
+    Client["Client"]
+    LB["LB:53"]
+    U1["Unbound 1<br/>10.0.0.53"]
+    U2["Unbound 2<br/>10.0.0.54"]
+    
+    Client --> LB
+    LB --> U1
+    LB --> U2
 ```
 
 Both instances validate independently. Use health checks on port 53.

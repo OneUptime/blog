@@ -44,21 +44,24 @@ This gives you a /48 prefix, which can be further subdivided into 65,536 /64 sub
 
 ### 6to4 Architecture Overview
 
-```
-+------------------+                                      +------------------+
-|                  |                                      |                  |
-|  IPv6-only Host  |                                      |  IPv6-only Host  |
-|                  |                                      |                  |
-+--------+---------+                                      +--------+---------+
-         |                                                         |
-         | Native IPv6                                   Native IPv6
-         |                                                         |
-+--------+---------+          IPv4 Internet           +--------+---------+
-|                  |                                  |                  |
-|  6to4 Gateway    +----------------------------------+  6to4 Gateway    |
-|  (Router)        |     6to4 Encapsulated Traffic   |  (Router)        |
-|                  |                                  |                  |
-+------------------+                                  +------------------+
+```mermaid
+flowchart TB
+    subgraph Site_A["Site A"]
+        Host_A["IPv6-only Host"]
+        Gateway_A["6to4 Gateway<br/>(Router)"]
+    end
+    
+    subgraph Site_B["Site B"]
+        Host_B["IPv6-only Host"]
+        Gateway_B["6to4 Gateway<br/>(Router)"]
+    end
+    
+    Internet{{"IPv4 Internet"}}
+    
+    Host_A -->|"Native IPv6"| Gateway_A
+    Host_B -->|"Native IPv6"| Gateway_B
+    Gateway_A <-->|"6to4 Encapsulated Traffic"| Internet
+    Internet <-->|"6to4 Encapsulated Traffic"| Gateway_B
 ```
 
 ## Prerequisites

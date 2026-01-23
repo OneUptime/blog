@@ -21,17 +21,10 @@ The challenge is ensuring both systems reflect the same data state.
 
 ## Architecture Overview
 
-```
-                    +------------------+
-                    |   Application    |
-                    +--------+---------+
-                             |
-              +--------------+--------------+
-              |                             |
-       +------v------+              +-------v-------+
-       |    Redis    |              | Elasticsearch |
-       |   (Cache)   |              |   (Search)    |
-       +-------------+              +---------------+
+```mermaid
+flowchart TB
+    A[Application] --> B["Redis<br/>(Cache)"]
+    A --> C["Elasticsearch<br/>(Search)"]
 ```
 
 ## Pattern 1: Dual-Write Pattern

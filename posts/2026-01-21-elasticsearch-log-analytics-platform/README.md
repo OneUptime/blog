@@ -12,16 +12,34 @@ Building a log analytics platform with Elasticsearch (the ELK stack - Elasticsea
 
 ## ELK Stack Architecture Overview
 
-```
-Log Sources          Collection         Processing        Storage & Analysis
-+-----------+       +-----------+      +-----------+      +---------------+
-| Apps      |------>| Filebeat  |----->| Logstash  |----->| Elasticsearch |
-| Servers   |       | Metricbeat|      | (optional)|      +---------------+
-| Containers|       | Fluentd   |      +-----------+             |
-| Cloud     |       +-----------+                                v
-+-----------+                                            +---------------+
-                                                         |    Kibana     |
-                                                         +---------------+
+```mermaid
+flowchart LR
+    subgraph Sources["Log Sources"]
+        Apps[Apps]
+        Servers[Servers]
+        Containers[Containers]
+        Cloud[Cloud]
+    end
+
+    subgraph Collection["Collection"]
+        Filebeat[Filebeat]
+        Metricbeat[Metricbeat]
+        Fluentd[Fluentd]
+    end
+
+    subgraph Processing["Processing"]
+        Logstash["Logstash\n(optional)"]
+    end
+
+    subgraph Storage["Storage & Analysis"]
+        Elasticsearch[Elasticsearch]
+        Kibana[Kibana]
+    end
+
+    Sources --> Collection
+    Collection --> Processing
+    Processing --> Elasticsearch
+    Elasticsearch --> Kibana
 ```
 
 ## Component Selection

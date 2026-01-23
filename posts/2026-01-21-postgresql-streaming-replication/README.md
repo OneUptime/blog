@@ -19,22 +19,12 @@ Streaming replication provides real-time data replication from a primary Postgre
 
 ## Architecture Overview
 
-```
-                Write Traffic
-                     |
-              +------v------+
-              |   Primary   |
-              | (Read-Write)|
-              +------+------+
-                     |
-           WAL Streaming (async/sync)
-                     |
-         +-----------+-----------+
-         |                       |
-   +-----v-----+           +-----v-----+
-   |  Replica  |           |  Replica  |
-   | (Read-Only)|          | (Read-Only)|
-   +-----------+           +-----------+
+```mermaid
+flowchart TB
+    WT[Write Traffic]
+    WT --> Primary["Primary<br/>(Read-Write)"]
+    Primary -->|WAL Streaming<br/>async/sync| R1["Replica<br/>(Read-Only)"]
+    Primary -->|WAL Streaming<br/>async/sync| R2["Replica<br/>(Read-Only)"]
 ```
 
 ## Primary Server Configuration

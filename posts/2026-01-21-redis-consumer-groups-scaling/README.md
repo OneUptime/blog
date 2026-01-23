@@ -22,18 +22,12 @@ Consumer Groups provide essential capabilities for scalable event processing:
 
 ## Consumer Group Architecture
 
-```
-                    +------------------+
-                    |   Redis Stream   |
-                    +--------+---------+
-                             |
-              Consumer Group: "processors"
-                             |
-           +-----------------+-----------------+
-           |                 |                 |
-    +------v------+   +------v------+   +------v------+
-    | Consumer-1  |   | Consumer-2  |   | Consumer-3  |
-    +-------------+   +-------------+   +-------------+
+```mermaid
+flowchart TB
+    RS[Redis Stream] --> CG[Consumer Group: processors]
+    CG --> C1[Consumer-1]
+    CG --> C2[Consumer-2]
+    CG --> C3[Consumer-3]
 ```
 
 ## Basic Consumer Group Setup

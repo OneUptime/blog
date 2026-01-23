@@ -444,7 +444,6 @@ flowchart LR
     end
 
     GwA <-->|"IPsec Tunnel"| GwB
-+------------------+                            +------------------+
 ```
 
 ### Gateway A Configuration

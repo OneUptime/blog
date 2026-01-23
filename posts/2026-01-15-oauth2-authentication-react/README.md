@@ -39,43 +39,35 @@ OAuth 2.0 defines several grant types for different use cases:
 
 The most secure flow, recommended for server-side applications:
 
-```
-+--------+                               +---------------+
-|        |--(A)- Authorization Request ->|   Resource    |
-|        |                               |     Owner     |
-|        |<-(B)-- Authorization Grant ---|               |
-|        |                               +---------------+
-|        |
-|        |                               +---------------+
-|        |--(C)-- Authorization Grant -->| Authorization |
-| Client |                               |     Server    |
-|        |<-(D)----- Access Token -------|               |
-|        |                               +---------------+
-|        |
-|        |                               +---------------+
-|        |--(E)----- Access Token ------>|    Resource   |
-|        |                               |     Server    |
-|        |<-(F)--- Protected Resource ---|               |
-+--------+                               +---------------+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant RO as Resource Owner
+    participant AS as Authorization Server
+    participant RS as Resource Server
+    
+    Client->>RO: (A) Authorization Request
+    RO-->>Client: (B) Authorization Grant
+    Client->>AS: (C) Authorization Grant
+    AS-->>Client: (D) Access Token
+    Client->>RS: (E) Access Token
+    RS-->>Client: (F) Protected Resource
 ```
 
 ### 2. Authorization Code Flow with PKCE
 
 Enhanced security for SPAs and mobile apps. This is what we'll implement:
 
-```
-+--------+                                +---------------+
-|        |--(A)- Authorization Request ->|   Resource    |
-|        |       + Code Challenge        |     Owner     |
-|        |                               |               |
-|        |<-(B)-- Authorization Code ----|               |
-|        |                               +---------------+
-|        |
-|        |--(C)-- Authorization Code -->+---------------+
-| Client |        + Code Verifier       | Authorization |
-|        |                              |     Server    |
-|        |<-(D)----- Access Token ------|               |
-+--------+                              +---------------+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant RO as Resource Owner
+    participant AS as Authorization Server
+    
+    Client->>RO: (A) Authorization Request + Code Challenge
+    RO-->>Client: (B) Authorization Code
+    Client->>AS: (C) Authorization Code + Code Verifier
+    AS-->>Client: (D) Access Token
 ```
 
 ### 3. Implicit Flow (Deprecated)

@@ -22,18 +22,11 @@ Before diving into debugging, let's establish a mental model of how DNSSEC works
 
 DNSSEC creates a chain of trust from the root zone down to your domain:
 
-```
-Root Zone (.)
-    |
-    +-- Signs the TLD's DNSKEY (e.g., .com, .org)
-    |
-TLD Zone (.com)
-    |
-    +-- Signs your domain's DNSKEY
-    |
-Your Domain (example.com)
-    |
-    +-- Signs your actual DNS records (A, AAAA, MX, etc.)
+```mermaid
+flowchart TB
+    A["Root Zone (.)"] -->|Signs the TLD's DNSKEY| B["TLD Zone (.com)"]
+    B -->|Signs your domain's DNSKEY| C["Your Domain (example.com)"]
+    C -->|Signs your actual DNS records| D["A, AAAA, MX, etc."]
 ```
 
 Each level in the hierarchy has:

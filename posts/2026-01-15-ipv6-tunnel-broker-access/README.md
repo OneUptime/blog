@@ -40,15 +40,22 @@ In this comprehensive guide, we will walk through the process of setting up an I
 
 IPv6 tunneling works by encapsulating IPv6 packets inside IPv4 packets. When you send data to an IPv6 destination, your system wraps the IPv6 packet in an IPv4 header and sends it to the tunnel broker's endpoint. The tunnel broker then extracts the IPv6 packet and forwards it to its destination on the IPv6 internet.
 
-```
-+------------------+     +------------------+     +------------------+
-|   Your System    | --> |  Tunnel Broker   | --> | IPv6 Destination |
-|   (IPv4 only)    |     |  (IPv4 & IPv6)   |     |                  |
-+------------------+     +------------------+     +------------------+
-        |                        |                        |
-   IPv4 Network            IPv4/IPv6              IPv6 Network
-        |                        |                        |
-   [IPv6 in IPv4]          [Native IPv6]           [Native IPv6]
+```mermaid
+flowchart LR
+    subgraph IPv4Network["IPv4 Network"]
+        YS["Your System<br/>(IPv4 only)"]
+    end
+    
+    subgraph DualStack["IPv4/IPv6"]
+        TB["Tunnel Broker<br/>(IPv4 & IPv6)"]
+    end
+    
+    subgraph IPv6Network["IPv6 Network"]
+        ID["IPv6 Destination"]
+    end
+    
+    YS -->|"IPv6 in IPv4"| TB
+    TB -->|"Native IPv6"| ID
 ```
 
 ### How 6in4 Tunneling Works

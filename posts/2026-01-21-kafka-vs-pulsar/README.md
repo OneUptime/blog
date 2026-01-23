@@ -14,47 +14,23 @@ Apache Kafka and Apache Pulsar are both distributed messaging and streaming plat
 
 ### Kafka Architecture
 
-```
-+-------------------+
-|    Producers      |
-+--------+----------+
-         |
-         v
-+--------+----------+
-|   Kafka Brokers   |  <- Data stored on brokers
-|   (Stateful)      |
-+--------+----------+
-         |
-         v
-+--------+----------+
-|    Consumers      |
-+-------------------+
-
-Storage: Local disk on brokers
-Coordination: ZooKeeper or KRaft
+```mermaid
+flowchart TB
+    P[Producers] --> B[Kafka Brokers<br/>Stateful]
+    B --> C[Consumers]
+    B -.->|Data stored on brokers| S[(Local Disk Storage)]
+    B -.->|Coordination| Z[ZooKeeper or KRaft]
 ```
 
 ### Pulsar Architecture
 
-```
-+-------------------+
-|    Producers      |
-+--------+----------+
-         |
-         v
-+--------+----------+
-|   Pulsar Brokers  |  <- Stateless, handle routing
-|   (Stateless)     |
-+--------+----------+
-         |
-         v
-+--------+----------+
-|    BookKeeper     |  <- Distributed storage
-|    (Bookies)      |
-+-------------------+
-
-Storage: BookKeeper (distributed log)
-Coordination: ZooKeeper (metadata)
+```mermaid
+flowchart TB
+    P[Producers] --> B[Pulsar Brokers<br/>Stateless]
+    B --> BK[BookKeeper<br/>Bookies]
+    B -.->|Stateless, handle routing| R[Routing Layer]
+    BK -.->|Distributed storage| S[(Distributed Log)]
+    BK -.->|Coordination| Z[ZooKeeper<br/>Metadata]
 ```
 
 ## Feature Comparison

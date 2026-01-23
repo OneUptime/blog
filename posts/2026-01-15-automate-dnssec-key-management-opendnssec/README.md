@@ -23,17 +23,13 @@ Manual key management means tracking key generation timing, pre-publication peri
 
 ## OpenDNSSEC Architecture Overview
 
-```
-+------------------+     +------------------+     +------------------+
-|   ods-enforcer   |---->|   ods-signer     |---->|   Output Zone    |
-|  (Key Manager)   |     |  (Zone Signer)   |     |  (Signed Zone)   |
-+------------------+     +------------------+     +------------------+
-        |                        |
-        v                        v
-+------------------+     +------------------+
-|   SoftHSM / HSM  |     |   Unsigned Zone  |
-|  (Key Storage)   |     |   (Input Zone)   |
-+------------------+     +------------------+
+```mermaid
+flowchart LR
+    Enforcer["ods-enforcer<br/>(Key Manager)"] --> Signer["ods-signer<br/>(Zone Signer)"]
+    Signer --> Output["Output Zone<br/>(Signed Zone)"]
+    
+    Enforcer --> HSM["SoftHSM / HSM<br/>(Key Storage)"]
+    Signer --> Unsigned["Unsigned Zone<br/>(Input Zone)"]
 ```
 
 **ods-enforcer**: The policy engine that tracks key states, schedules rollovers, and ensures timing constraints are met.
