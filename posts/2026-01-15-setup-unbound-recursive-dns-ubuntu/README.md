@@ -915,9 +915,11 @@ Pi-hole is a popular network-wide ad blocker that can use Unbound as its upstrea
 
 ### Architecture Overview
 
-```
-[Clients] --> [Pi-hole:53] --> [Unbound:5335] --> [Root Servers]
-              (Ad blocking)    (Recursive DNS)    (Internet)
+```mermaid
+flowchart LR
+    A[Clients] --> B[Pi-hole:53<br/>Ad blocking]
+    B --> C[Unbound:5335<br/>Recursive DNS]
+    C --> D[Root Servers<br/>Internet]
 ```
 
 ### Pi-hole Configuration

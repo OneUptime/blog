@@ -69,17 +69,21 @@ This is the safest approach for single-instance or master-replica setups.
 
 ### Architecture
 
-```
-Before:
-[Old Master v6.2] <-- [Application]
-
-During:
-[Old Master v6.2] --> [New Replica v7.0]
-        ^                    |
-        |____ [Application]__|
-
-After:
-[New Master v7.0] <-- [Application]
+```mermaid
+flowchart LR
+    subgraph Before
+        A1[Old Master v6.2] <-- B1[Application]
+    end
+    
+    subgraph During
+        A2[Old Master v6.2] --> C2[New Replica v7.0]
+        B2[Application] --> A2
+        B2 --> C2
+    end
+    
+    subgraph After
+        C3[New Master v7.0] <-- B3[Application]
+    end
 ```
 
 ### Step-by-Step Process

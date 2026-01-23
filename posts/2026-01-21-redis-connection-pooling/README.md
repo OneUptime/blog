@@ -30,18 +30,21 @@ With pooling:    Connections reused, near-zero connection overhead
 
 ### Basic Pool Concepts
 
-```
-Application Threads          Connection Pool              Redis Server
-     |                            |                            |
-     |---[Request 1]------------>|                            |
-     |                           |---[Reuse Conn A]---------->|
-     |                           |<--[Response]---------------|
-     |<--[Result 1]--------------|                            |
-     |                           |                            |
-     |---[Request 2]------------>|                            |
-     |                           |---[Reuse Conn B]---------->|
-     |                           |<--[Response]---------------|
-     |<--[Result 2]--------------|                            |
+```mermaid
+sequenceDiagram
+    participant App as Application Threads
+    participant Pool as Connection Pool
+    participant Redis as Redis Server
+
+    App->>Pool: Request 1
+    Pool->>Redis: Reuse Conn A
+    Redis-->>Pool: Response
+    Pool-->>App: Result 1
+
+    App->>Pool: Request 2
+    Pool->>Redis: Reuse Conn B
+    Redis-->>Pool: Response
+    Pool-->>App: Result 2
 ```
 
 ### Key Components
