@@ -26946,5 +26946,868 @@
       "IO"
     ],
     "post": "2026-01-22-nodejs-write-files-async"
+  },
+  {
+    "title": "How to Type Convert Slices in Go",
+    "description": "Learn how to convert between slice types in Go, understand why direct conversion doesn't work, and explore practical patterns for safely transforming slice data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Slices",
+      "Type Conversion",
+      "Arrays"
+    ],
+    "post": "2026-01-23-go-type-convert-slices"
+  },
+  {
+    "title": "How to Understand Struct Tags in Go",
+    "description": "Master Go struct tags for JSON serialization, database mapping, validation, and custom metadata. Learn the syntax, common patterns, and how to read tags with reflection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Struct Tags",
+      "JSON",
+      "Reflection",
+      "Metadata"
+    ],
+    "post": "2026-01-23-go-struct-tags"
+  },
+  {
+    "title": "How to Fix json.Marshal Returning \"{}\" for Structs in Go",
+    "description": "Discover why json.Marshal returns an empty object for your Go structs and learn the fixes for unexported fields, nil pointers, and other common causes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "JSON",
+      "Marshaling",
+      "Struct",
+      "Common Errors"
+    ],
+    "post": "2026-01-23-go-json-marshal-empty-object"
+  },
+  {
+    "title": "How to Export Fields for JSON Marshaling in Go",
+    "description": "Learn the rules for exporting Go struct fields for JSON serialization, including naming conventions, tag usage, and patterns for controlling JSON output.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "JSON",
+      "Export",
+      "Fields",
+      "Marshaling",
+      "Best Practices"
+    ],
+    "post": "2026-01-23-go-export-fields-json"
+  },
+  {
+    "title": "How to Fix \"Cannot use X as type\" Pointer Receiver Errors in Go",
+    "description": "Understand why Go complains about pointer receivers with interface types and learn the fix for \"cannot use X as type Y\" errors when working with methods and interfaces.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Pointer Receiver",
+      "Value Receiver",
+      "Methods",
+      "Interfaces",
+      "Common Errors"
+    ],
+    "post": "2026-01-23-go-pointer-receiver-errors"
+  },
+  {
+    "title": "How to Modify Values While Iterating Over a Slice in Go",
+    "description": "Learn why modifying slice elements during iteration in Go doesn't work as expected and discover the correct patterns to update values in place.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Slices",
+      "Iteration",
+      "Range",
+      "Pointers",
+      "Common Mistakes"
+    ],
+    "post": "2026-01-23-go-modify-slice-iteration"
+  },
+  {
+    "title": "How to Parse Dynamic JSON with Unknown Structure in Go",
+    "description": "Learn techniques for parsing JSON with unknown or dynamic structure in Go using maps, interfaces, and type assertions for flexible data handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "JSON",
+      "Dynamic JSON",
+      "Type Assertions",
+      "Parsing",
+      "API"
+    ],
+    "post": "2026-01-23-go-parse-dynamic-json"
+  },
+  {
+    "title": "How to Bundle Static Resources Inside Go Binaries",
+    "description": "Learn how to embed static files like HTML templates, CSS, JavaScript, images, and configuration files directly into your Go binary using the embed package.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Embed",
+      "Static Files",
+      "Binary",
+      "Assets",
+      "Templates"
+    ],
+    "post": "2026-01-23-go-embed-static-resources"
+  },
+  {
+    "title": "How to Understand Constant Types and Untyped Constants in Go",
+    "description": "Master Go's unique constant system including untyped constants, default types, precision, and the iota keyword for elegant enum-like patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Constants",
+      "Types",
+      "Untyped Constants",
+      "iota",
+      "Best Practices"
+    ],
+    "post": "2026-01-23-go-constant-types"
+  },
+  {
+    "title": "How to Unmarshal JSON with Unknown Fields in Go",
+    "description": "Learn techniques to handle JSON with extra unknown fields in Go, including how to capture, validate, and process unexpected data while maintaining type safety.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "JSON",
+      "Unmarshal",
+      "Unknown Fields",
+      "API",
+      "Parsing"
+    ],
+    "post": "2026-01-23-go-json-unknown-fields"
+  },
+  {
+    "title": "How to Safely Type Assert Interfaces in Go",
+    "description": "Master Go's type assertion syntax for safely extracting concrete types from interfaces, including the comma-ok idiom and type switches for clean polymorphic code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Type Assertion",
+      "Interfaces",
+      "Type Safety",
+      "Type Switch"
+    ],
+    "post": "2026-01-23-go-type-assertions"
+  },
+  {
+    "title": "How to Use the reflect Package for Advanced Type Inspection in Go",
+    "description": "Learn how to use Go's reflect package for runtime type inspection, dynamic value manipulation, and building flexible libraries that work with any type.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Reflection",
+      "reflect Package",
+      "Type Inspection",
+      "Metaprogramming"
+    ],
+    "post": "2026-01-23-go-reflect-package"
+  },
+  {
+    "title": "How to Understand go build vs go install in Go",
+    "description": "Learn the differences between go build and go install commands, when to use each, and how they interact with modules and the Go toolchain.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "go build",
+      "go install",
+      "Compilation",
+      "CLI Tools",
+      "Binary"
+    ],
+    "post": "2026-01-23-go-build-vs-install"
+  },
+  {
+    "title": "How to Use text/template and html/template in Go",
+    "description": "Master Go's powerful template engines for generating text, HTML, emails, and configuration files with dynamic data, custom functions, and template composition.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Templates",
+      "HTML",
+      "text/template",
+      "html/template",
+      "Web Development"
+    ],
+    "post": "2026-01-23-go-templates"
+  },
+  {
+    "title": "How to Handle Non-Deterministic Map Iteration Order in Go",
+    "description": "Learn why Go maps have random iteration order and discover patterns to iterate maps in sorted, deterministic, or insertion order for consistent results.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Maps",
+      "Iteration",
+      "Sorting",
+      "Deterministic Order"
+    ],
+    "post": "2026-01-23-go-map-iteration-order"
+  },
+  {
+    "title": "How to Implement Enums in Go Without Enum Types",
+    "description": "Learn idiomatic patterns for implementing enum-like types in Go using constants, iota, and type definitions for type-safe, self-documenting code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Enums",
+      "iota",
+      "Type Safety",
+      "Constants",
+      "Patterns"
+    ],
+    "post": "2026-01-23-go-enums"
+  },
+  {
+    "title": "How to Set Up GOPATH vs GOROOT Correctly in Go",
+    "description": "Understand the difference between GOPATH and GOROOT, when you need to set them, and how to properly configure your Go development environment.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "GOPATH",
+      "GOROOT",
+      "Environment",
+      "Setup",
+      "Configuration"
+    ],
+    "post": "2026-01-23-go-gopath-goroot"
+  },
+  {
+    "title": "How to Fix \"undefined\" Errors in Go Due to Package or Import Issues",
+    "description": "Learn to diagnose and fix Go's \"undefined\" errors caused by missing imports, wrong package names, unexported identifiers, and build configuration issues.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Undefined Errors",
+      "Imports",
+      "Packages",
+      "Common Errors"
+    ],
+    "post": "2026-01-23-go-undefined-errors"
+  },
+  {
+    "title": "How to Avoid and Debug Nil Pointer Dereference Panics in Go",
+    "description": "Master techniques to prevent, detect, and debug nil pointer dereference panics in Go with defensive programming patterns and debugging strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Nil Pointer",
+      "Panic",
+      "Debugging",
+      "Error Handling",
+      "Pointers"
+    ],
+    "post": "2026-01-23-go-nil-pointer-panics"
+  },
+  {
+    "title": "How to Properly Implement Interfaces in Go",
+    "description": "Learn how Go's implicit interface implementation works, common pitfalls, and best practices for designing clean, effective interfaces in your code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Interfaces",
+      "Duck Typing",
+      "Polymorphism",
+      "Design Patterns"
+    ],
+    "post": "2026-01-23-go-implement-interfaces"
+  },
+  {
+    "title": "How to Debug Deadlocks in Go Concurrency",
+    "description": "Learn to identify, prevent, and debug deadlock situations in Go concurrent programs including channel deadlocks, mutex deadlocks, and goroutine leaks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Deadlocks",
+      "Concurrency",
+      "Goroutines",
+      "Channels",
+      "Debugging"
+    ],
+    "post": "2026-01-23-go-debug-deadlocks"
+  },
+  {
+    "title": "How to Use WaitGroup for Goroutine Synchronization in Go",
+    "description": "Master sync.WaitGroup to coordinate multiple goroutines, avoid common pitfalls, and build robust concurrent Go programs that wait for all workers to complete.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "WaitGroup",
+      "Concurrency",
+      "Goroutines",
+      "Synchronization"
+    ],
+    "post": "2026-01-23-go-waitgroup"
+  },
+  {
+    "title": "How to Use defer Correctly in Go",
+    "description": "Master Go's defer statement for cleanup, resource management, and error handling with proper understanding of evaluation timing and execution order.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "defer",
+      "Cleanup",
+      "Error Handling",
+      "Best Practices"
+    ],
+    "post": "2026-01-23-go-defer"
+  },
+  {
+    "title": "How to Fix Slice Append Overwriting Existing Data in Go",
+    "description": "Understand why slice append can overwrite data in Go and learn safe patterns for working with slices to avoid unexpected mutations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Slices",
+      "Append",
+      "Memory",
+      "Arrays",
+      "Common Bugs"
+    ],
+    "post": "2026-01-23-go-slice-append"
+  },
+  {
+    "title": "How to Handle Concurrent Map Access in Go",
+    "description": "Learn how to safely access maps from multiple goroutines in Go using mutexes, sync.Map, and other concurrency patterns to avoid race conditions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Concurrency",
+      "Maps",
+      "sync.Map",
+      "Mutex",
+      "Race Conditions"
+    ],
+    "post": "2026-01-23-go-concurrent-maps"
+  },
+  {
+    "title": "How to Use Mutex in Go: Patterns and Best Practices",
+    "description": "Master Go mutexes with this comprehensive guide covering sync.Mutex, sync.RWMutex, common patterns, and best practices for safe concurrent programming.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Mutex",
+      "Concurrency",
+      "Synchronization",
+      "Race Conditions"
+    ],
+    "post": "2026-01-23-go-mutex"
+  },
+  {
+    "title": "How to Parse Time Strings and Durations in Go",
+    "description": "Learn how to parse time strings and durations in Go using time.Parse, time.ParseDuration, and common format layouts including RFC3339 and custom formats.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Time",
+      "Date",
+      "Parsing",
+      "Duration",
+      "RFC3339"
+    ],
+    "post": "2026-01-23-go-time-parsing"
+  },
+  {
+    "title": "How to Wrap Errors with %w in Go",
+    "description": "Learn how to wrap errors in Go using %w with fmt.Errorf, create error chains, and use errors.Is and errors.As for proper error inspection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Errors",
+      "Error Handling",
+      "Error Wrapping",
+      "fmt.Errorf"
+    ],
+    "post": "2026-01-23-go-error-wrapping"
+  },
+  {
+    "title": "How to Use Context in Go for Cancellation and Timeouts",
+    "description": "Master Go's context package for handling cancellation, timeouts, and request-scoped values. Learn patterns for propagating context through your application.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Context",
+      "Cancellation",
+      "Timeouts",
+      "Concurrency",
+      "Goroutines"
+    ],
+    "post": "2026-01-23-go-context"
+  },
+  {
+    "title": "How to Set HTTP Client Timeouts in Go",
+    "description": "Learn how to properly configure HTTP client timeouts in Go to prevent hanging requests, including connection, read, write, and overall timeouts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "HTTP",
+      "Timeouts",
+      "Network",
+      "API",
+      "Client"
+    ],
+    "post": "2026-01-23-go-http-timeouts"
+  },
+  {
+    "title": "How to Use Struct Embedding for Composition in Go",
+    "description": "Learn how to use struct embedding in Go for composition over inheritance. Understand method promotion, embedding interfaces, and common patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Structs",
+      "Embedding",
+      "Composition",
+      "Inheritance",
+      "OOP"
+    ],
+    "post": "2026-01-23-go-struct-embedding"
+  },
+  {
+    "title": "How to Use Init Functions in Go",
+    "description": "Learn how Go init functions work, their execution order, best practices, and when to use or avoid them for package initialization.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Init",
+      "Initialization",
+      "Package",
+      "Startup"
+    ],
+    "post": "2026-01-23-go-init-functions"
+  },
+  {
+    "title": "How to Write Table-Driven Tests in Go",
+    "description": "Learn how to write effective table-driven tests in Go. This pattern makes tests more readable, maintainable, and comprehensive by defining test cases as data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Testing",
+      "Table-Driven Tests",
+      "Unit Tests",
+      "TDD"
+    ],
+    "post": "2026-01-23-go-table-tests"
+  },
+  {
+    "title": "How to Write Benchmarks in Go",
+    "description": "Learn how to write and run benchmarks in Go to measure code performance, compare implementations, and identify optimization opportunities.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Benchmarks",
+      "Performance",
+      "Testing",
+      "Optimization"
+    ],
+    "post": "2026-01-23-go-benchmarks"
+  },
+  {
+    "title": "How to Use go generate for Code Generation",
+    "description": "Learn how to use go generate to automate code generation in Go projects, including stringer, mock generation, and custom generators.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Code Generation",
+      "go generate",
+      "Tooling",
+      "Automation"
+    ],
+    "post": "2026-01-23-go-generate"
+  },
+  {
+    "title": "How to Use Build Tags in Go for Conditional Compilation",
+    "description": "Learn how to use Go build tags for conditional compilation to create platform-specific code, debug builds, feature flags, and integration tests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Build Tags",
+      "Conditional Compilation",
+      "Cross-Platform",
+      "Debugging"
+    ],
+    "post": "2026-01-23-go-build-tags"
+  },
+  {
+    "title": "How to Manage Dependencies with Go Modules",
+    "description": "Master Go modules for dependency management including go.mod, go.sum, version selection, vendoring, and best practices for managing packages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Modules",
+      "Dependencies",
+      "go.mod",
+      "Vendoring",
+      "Package Management"
+    ],
+    "post": "2026-01-23-go-modules"
+  },
+  {
+    "title": "How to Implement Structured Logging in Go",
+    "description": "Learn how to implement structured logging in Go using the standard slog package and popular libraries like zerolog and zap for better observability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Logging",
+      "Structured Logging",
+      "Observability",
+      "JSON",
+      "slog"
+    ],
+    "post": "2026-01-23-go-structured-logging"
+  },
+  {
+    "title": "How to Implement Graceful Shutdown in Go",
+    "description": "Learn how to implement graceful shutdown in Go applications to properly handle termination signals, finish in-flight requests, and clean up resources.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Graceful Shutdown",
+      "Signals",
+      "HTTP Server",
+      "Kubernetes",
+      "Production"
+    ],
+    "post": "2026-01-23-go-graceful-shutdown"
+  },
+  {
+    "title": "How to Use Generics with Type Constraints in Go",
+    "description": "Learn how to use Go generics effectively with type constraints including any, comparable, custom constraints, and the constraints package.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Generics",
+      "Type Constraints",
+      "Type Parameters",
+      "Go 1.18"
+    ],
+    "post": "2026-01-23-go-generics-constraints"
+  },
+  {
+    "title": "How to Use the Comparable Constraint in Go Generics",
+    "description": "Learn how to use Go's comparable constraint for generic functions that need equality comparison, map keys, and deduplication operations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Generics",
+      "Comparable",
+      "Type Constraints",
+      "Maps"
+    ],
+    "post": "2026-01-23-go-comparable"
+  },
+  {
+    "title": "Go Channel Patterns: A Complete Guide",
+    "description": "Master Go channel patterns including fan-out/fan-in, pipelines, cancellation, timeouts, and common concurrent programming idioms.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Channels",
+      "Concurrency",
+      "Patterns",
+      "Goroutines"
+    ],
+    "post": "2026-01-23-go-channel-patterns"
+  },
+  {
+    "title": "How to Use Select with Timeout in Go",
+    "description": "Learn how to use Go's select statement with timeouts for non-blocking channel operations, deadline handling, and graceful timeout management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Select",
+      "Timeout",
+      "Channels",
+      "Concurrency"
+    ],
+    "post": "2026-01-23-go-select-timeout"
+  },
+  {
+    "title": "How to Implement Worker Pools in Go",
+    "description": "Learn how to implement efficient worker pools in Go for processing jobs concurrently with controlled parallelism and graceful shutdown.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Worker Pool",
+      "Concurrency",
+      "Goroutines",
+      "Channels"
+    ],
+    "post": "2026-01-23-go-worker-pools"
+  },
+  {
+    "title": "How to Implement Rate Limiting in Go",
+    "description": "Learn how to implement rate limiting patterns in Go using token buckets, leaky buckets, sliding windows, and the golang.org/x/time/rate package.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Rate Limiting",
+      "Throttling",
+      "Token Bucket",
+      "Leaky Bucket"
+    ],
+    "post": "2026-01-23-go-rate-limiting"
+  },
+  {
+    "title": "How Context Cancellation Propagates in Go",
+    "description": "Learn how context cancellation propagates through goroutine hierarchies in Go, including best practices for graceful shutdown and resource cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Context",
+      "Cancellation",
+      "Goroutines",
+      "Concurrency"
+    ],
+    "post": "2026-01-23-go-context-cancellation"
+  },
+  {
+    "title": "How to Use sync.Pool for Object Reuse in Go",
+    "description": "Learn how to use sync.Pool in Go to reuse objects, reduce garbage collection pressure, and improve application performance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "sync.Pool",
+      "Memory",
+      "Performance",
+      "Object Pool"
+    ],
+    "post": "2026-01-23-go-sync-pool"
+  },
+  {
+    "title": "How to Use Atomic Operations in Go",
+    "description": "Learn how to use atomic operations in Go for lock-free concurrent programming with the sync/atomic package.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Atomic",
+      "Concurrency",
+      "sync/atomic",
+      "Thread Safety"
+    ],
+    "post": "2026-01-23-go-atomic-operations"
+  },
+  {
+    "title": "How to Use sync.Once for One-Time Initialization in Go",
+    "description": "Learn how to use sync.Once in Go for thread-safe one-time initialization, implementing singletons, and lazy loading resources.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "sync.Once",
+      "Singleton",
+      "Initialization",
+      "Concurrency"
+    ],
+    "post": "2026-01-23-go-sync-once"
+  },
+  {
+    "title": "How to Fix \"declared and not used\" Errors in Go",
+    "description": "Learn how to fix the \"declared and not used\" error in Go by understanding why Go requires all variables to be used and various solutions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Errors",
+      "Variables",
+      "Unused",
+      "Compiler"
+    ],
+    "post": "2026-01-23-go-declared-not-used"
+  },
+  {
+    "title": "How to Use Vendoring in Go",
+    "description": "Learn how to use vendoring in Go to manage dependencies locally, ensure reproducible builds, and work offline with the vendor directory.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Vendoring",
+      "Dependencies",
+      "Modules",
+      "vendor"
+    ],
+    "post": "2026-01-23-go-vendoring"
+  },
+  {
+    "title": "How to Fix \"cannot refer to unexported name\" Errors in Go",
+    "description": "Learn how to fix \"cannot refer to unexported name\" errors in Go by understanding Go's visibility rules and proper package design.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Errors",
+      "Export",
+      "Visibility",
+      "Packages"
+    ],
+    "post": "2026-01-23-go-unexported-name"
+  },
+  {
+    "title": "How to Use Go Modules for Dependency Management",
+    "description": "Learn how to use Go modules for dependency management, including initialization, versioning, updates, and best practices for managing Go packages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Modules",
+      "Dependencies",
+      "go.mod",
+      "Package Management"
+    ],
+    "post": "2026-01-23-go-modules-dependency"
+  },
+  {
+    "title": "How to Fix \"ambiguous import\" Errors in Go",
+    "description": "Learn how to fix \"ambiguous import\" errors in Go when multiple modules provide the same package path.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Errors",
+      "Import",
+      "Modules",
+      "Dependencies"
+    ],
+    "post": "2026-01-23-go-ambiguous-import"
+  },
+  {
+    "title": "How to Fix \"invalid operation\" Errors in Go",
+    "description": "Learn how to fix \"invalid operation\" errors in Go, including type mismatches, unsupported operators, and interface assertions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Errors",
+      "Types",
+      "Operations",
+      "Compiler"
+    ],
+    "post": "2026-01-23-go-invalid-operation"
+  },
+  {
+    "title": "How to Fix \"cannot use X as type any\" Errors in Go",
+    "description": "Learn how to fix \"cannot use X as type any\" errors in Go when working with generics, interfaces, and the any type alias.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Errors",
+      "Generics",
+      "any",
+      "interface",
+      "Types"
+    ],
+    "post": "2026-01-23-go-cannot-use-type-any"
+  },
+  {
+    "title": "How to Use Generics Effectively in Go",
+    "description": "Learn how to use generics effectively in Go including type parameters, constraints, generic data structures, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Generics",
+      "Type Parameters",
+      "Constraints",
+      "Go 1.18"
+    ],
+    "post": "2026-01-23-go-generics-effective"
+  },
+  {
+    "title": "How to Fix \"cannot take address of\" Errors in Go",
+    "description": "Learn how to fix \"cannot take address of\" errors in Go when trying to get pointers to temporary values, literals, and map values.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Errors",
+      "Pointers",
+      "Address",
+      "Memory"
+    ],
+    "post": "2026-01-23-go-cannot-take-address"
+  },
+  {
+    "title": "How to Fix \"index out of range\" Panics in Go",
+    "description": "Learn how to prevent and fix \"index out of range\" panics in Go when accessing arrays, slices, and strings with invalid indices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Errors",
+      "Panic",
+      "Arrays",
+      "Slices",
+      "Bounds Checking"
+    ],
+    "post": "2026-01-23-go-index-out-of-range"
+  },
+  {
+    "title": "How to Use Channels for Goroutine Communication in Go",
+    "description": "Learn how to use channels effectively in Go for safe communication between goroutines, including buffered channels, select, and common patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Channels",
+      "Goroutines",
+      "Concurrency",
+      "Communication"
+    ],
+    "post": "2026-01-23-go-channels-goroutines"
   }
 ]

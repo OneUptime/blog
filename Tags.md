@@ -18,6 +18,7 @@
 - Active-Passive
 - ActiveMQ
 - Ad Blocker
+- Address
 - Address Assignment
 - Administration
 - Admission Control
@@ -60,6 +61,7 @@
 - Ansible
 - Anti-Affinity
 - Antivirus
+- any
 - Anycast
 - anyhow
 - AOF
@@ -91,6 +93,7 @@
 - App Signing
 - App Store
 - AppArmor
+- Append
 - Apple Silicon
 - Application Development
 - Application Logs
@@ -118,6 +121,7 @@
 - AsyncStorage
 - At-Least-Once
 - At-Rest Encryption
+- Atomic
 - Atomic Operations
 - Atomicity
 - Attack Vectors
@@ -204,6 +208,7 @@
 - bidirectional streaming
 - Big Data
 - BigQuery
+- Binary
 - Binary Size
 - BIND
 - Bind Mounts
@@ -227,6 +232,7 @@
 - Bootable USB
 - borg
 - Bottom Sheet
+- Bounds Checking
 - bpftrace
 - Breaking Changes
 - Bridge
@@ -239,6 +245,7 @@
 - Buffers
 - Build Automation
 - Build Optimization
+- Build Tags
 - Build Tools
 - BuildKit
 - Bulk API
@@ -269,6 +276,7 @@
 - Callbacks
 - Canary
 - Canary Deployment
+- Cancellation
 - Capabilities
 - Capacity Planning
 - Cardinality
@@ -318,11 +326,13 @@
 - Clean Architecture
 - Cleanup
 - CLI
+- CLI Tools
 - ClickHouse
 - ClickHouse Cloud
 - ClickHouse Keeper
 - clickhouse-backup
 - Clickstream
+- Client
 - Client Authentication
 - Client Development
 - Client IP
@@ -374,21 +384,29 @@
 - Command Query Separation
 - Command Queue
 - CommandLine
+- Common Bugs
+- Common Errors
+- Common Mistakes
 - CommonJS
+- Communication
 - Communities
 - Compaction
+- Comparable
 - Compare-and-Swap
 - Comparison
 - Compatibility
 - Compensation
 - Compilation
+- Compiler
 - Completion Suggester
 - Compliance
 - Components
 - Compose
+- Composition
 - compression
 - Concurrency
 - CONCURRENTLY
+- Conditional Compilation
 - Configuration
 - Configuration Management
 - Conflicts
@@ -402,6 +420,8 @@
 - connection states
 - connections
 - Connectors
+- Constants
+- Constraints
 - Consul
 - Consumer
 - Consumer Configuration
@@ -421,6 +441,7 @@
 - Content Search
 - Content Security Policy
 - Content Trust
+- Context
 - Context API
 - context cancellation
 - Context Propagation
@@ -564,6 +585,7 @@
 - Databases
 - DataDog
 - DataLoader
+- Date
 - dbt
 - dd
 - DDL
@@ -581,6 +603,7 @@
 - Deduplication
 - Deep Learning
 - Deep Linking
+- defer
 - Delayed Jobs
 - Deluge
 - Dense Vectors
@@ -592,6 +615,7 @@
 - Design Patterns
 - Desktop
 - Desktop Applications
+- Deterministic Order
 - Detox
 - Developer Experience
 - Developer Productivity
@@ -676,9 +700,12 @@
 - DRY
 - Dual-Stack
 - Dual-Write
+- Duck Typing
 - Duplicity
 - Durability
+- Duration
 - Dynamic Discovery
+- Dynamic JSON
 - Dynamic Mapping
 - E-commerce
 - E2E Testing
@@ -707,6 +734,8 @@
 - Email
 - Email Queue
 - Email Security
+- Embed
+- Embedding
 - Embeddings
 - Emby
 - Emissary
@@ -718,6 +747,7 @@
 - Enterprise Analytics
 - Enterprise Backup
 - Enterprise Security
+- Enums
 - Environment
 - Environment Variables
 - Environments
@@ -732,7 +762,9 @@
 - error details
 - Error Handling
 - Error Tracking
+- Error Wrapping
 - ErrorHandling
+- Errors
 - ES6
 - ESLint
 - etcd
@@ -800,6 +832,7 @@
 - FID
 - Field Data
 - Field-Level Security
+- Fields
 - FIFO
 - File Descriptors
 - File Download
@@ -842,6 +875,7 @@
 - Flux CD
 - FluxCD
 - Flyway
+- fmt.Errorf
 - Focus Management
 - Font Scaling
 - Foreign Data Wrappers
@@ -897,7 +931,12 @@
 - GlusterFS
 - GNOME
 - Go
+- Go 1.18
+- go build
+- go generate
+- go install
 - Go Templates
+- go.mod
 - GoAccess
 - gobreaker
 - GoDaddy
@@ -906,8 +945,10 @@
 - Google Cloud
 - Google Domains
 - Google Play Console
+- GOPATH
 - Gorilla
 - GORM
+- GOROOT
 - Goroutines
 - Gossip Protocol
 - governor
@@ -984,8 +1025,11 @@
 - HPA
 - HSET
 - HSM
+- HTML
+- html/template
 - HTTP
 - HTTP Delivery
+- HTTP Server
 - HTTP/2
 - HTTP2
 - HTTPRoute
@@ -1019,6 +1063,7 @@
 - Immutable
 - Implementation
 - Import
+- Imports
 - Incident Management
 - Incident Response
 - Inclusive Design
@@ -1040,7 +1085,10 @@
 - Ingress
 - Ingress Gateway
 - ingressroute
+- Inheritance
+- Init
 - Init Containers
+- Initialization
 - Injection
 - Inline Signing
 - InnoDB Cluster
@@ -1058,6 +1106,8 @@
 - Integrations
 - Interactive
 - Interceptors
+- interface
+- Interfaces
 - Internationalization
 - Interoperability
 - Intrusion Detection
@@ -1068,6 +1118,7 @@
 - IOPS
 - iOS
 - IoT
+- iota
 - ip command
 - IP Management
 - IP Monitoring
@@ -1085,6 +1136,7 @@
 - ISR
 - Istio
 - Item Storage
+- Iteration
 - Jaeger
 - Jailbreak Detection
 - Java
@@ -1199,6 +1251,7 @@
 - Leader Election
 - Leaderboards
 - Leadership
+- Leaky Bucket
 - Learning Resource
 - Legacy Systems
 - Lemmatization
@@ -1312,6 +1365,7 @@
 - MariaDB
 - Markdown
 - Market Data
+- Marshaling
 - Mass Insert
 - Master-Replica
 - Matchmaking
@@ -1345,6 +1399,8 @@
 - Metadata
 - Metadata Refresh
 - MetalLB
+- Metaprogramming
+- Methods
 - Metrics
 - Metrics Correlation
 - Metro
@@ -1459,6 +1515,7 @@
 - nftables
 - NGINX
 - ngrambf_v1
+- Nil Pointer
 - NLP
 - Node Affinity
 - Node Conditions
@@ -1495,6 +1552,7 @@
 - OAuth 2.0
 - OAuth2
 - Obfuscation
+- Object Pool
 - Object Pooling
 - Object Storage
 - Objective-C
@@ -1517,6 +1575,7 @@
 - OOM
 - OOM Killer
 - OOMKilled
+- OOP
 - OPA
 - OPA Gatekeeper
 - Open Policy Agent
@@ -1559,22 +1618,26 @@
 - OWASP
 - Ownership
 - Pacemaker
+- Package
 - Package Management
 - Package Manager
 - package.json
 - PackageManagement
 - PackageManager
+- Packages
 - packet analysis
 - Packet Capture
 - page tokens
 - PagerDuty
 - pagination
 - PAM
+- Panic
 - Parallel Processing
 - Parallel Query
 - Parametric Functions
 - Parent-Child Jobs
 - Parquet
+- Parsing
 - Partition Assignment
 - Partition Hotspots
 - Partitioning
@@ -1662,12 +1725,15 @@
 - Poetry
 - Point In Time
 - Point-in-Time Recovery
+- Pointer Receiver
+- Pointers
 - Poison Messages
 - Policy
 - Policy as Code
 - Policy Enforcement
 - Policy Management
 - Policy Testing
+- Polymorphism
 - Port Mapping
 - Port Monitoring
 - Portability
@@ -1782,6 +1848,7 @@
 - Queues
 - Quotas
 - RabbitMQ
+- Race Conditions
 - Race Detection
 - Rack Awareness
 - Radarr
@@ -1789,6 +1856,7 @@
 - Rails
 - Rancher
 - Rancher Desktop
+- Range
 - Rankings
 - Rate
 - Rate Limiting
@@ -1844,6 +1912,8 @@
 - Redundancy
 - Redux
 - Redux Toolkit
+- reflect Package
+- Reflection
 - Refresh Tokens
 - Regex Filters
 - Registrar
@@ -1903,6 +1973,7 @@
 - Reverse Proxy
 - reverse-proxy
 - RFC3164
+- RFC3339
 - RFC5424
 - RGW
 - Right to Erasure
@@ -2001,6 +2072,7 @@
 - securityContext
 - Seedbox
 - Seek
+- Select
 - Self-Healing
 - Self-hosted
 - Self-Hosted Analytics
@@ -2046,6 +2118,7 @@
 - Set Operations
 - SETBIT
 - Sets
+- Setup
 - sFlow
 - Shard Allocation
 - Sharding
@@ -2059,9 +2132,11 @@
 - Shopping Cart
 - Sidecar
 - SIEM
+- Signals
 - Signing
 - SIGTERM
 - Single Flight
+- Singleton
 - Sink Connector
 - SINTER
 - Site Reliability Engineering
@@ -2072,8 +2147,10 @@
 - SLAAC
 - Slack
 - SLI
+- Slices
 - Sliding Window
 - SLO
+- slog
 - SLOs
 - Slow Queries
 - SLOWLOG
@@ -2099,6 +2176,7 @@
 - Sonarr
 - SOPS
 - Sorted Sets
+- Sorting
 - Source Connector
 - SPA
 - Spam Filter
@@ -2133,6 +2211,7 @@
 - Standardization
 - Standards
 - Starlette
+- Startup
 - Startup Time
 - Startups
 - State
@@ -2142,6 +2221,7 @@
 - Stateful Processing
 - StatefulSet
 - StatefulSets
+- Static Files
 - Static IP
 - Static Linking
 - Statistics
@@ -2168,6 +2248,9 @@
 - Strict Mode
 - Strimzi
 - Strings
+- Struct
+- Struct Tags
+- Structs
 - Structured Logging
 - Structured Logs
 - Subcharts
@@ -2182,6 +2265,10 @@
 - Swarm
 - Swift
 - Sync
+- sync.Map
+- sync.Once
+- sync.Pool
+- sync/atomic
 - Synchronization
 - Synchronous Replication
 - Synonyms
@@ -2248,9 +2335,11 @@
 - Tetragon
 - Text Analysis
 - Text Extraction
+- text/template
 - TF-IDF
 - TFTP
 - thiserror
+- Thread Safety
 - Threat Detection
 - throttling
 - Throughput
@@ -2259,6 +2348,7 @@
 - Tick Data
 - Tiling
 - Tilt
+- Time
 - Time Series
 - Time Synchronization
 - Time Windows
@@ -2340,9 +2430,17 @@
 - Tutorial
 - Twelve-Factor
 - Twitch
+- Type Assertion
+- Type Assertions
+- Type Constraints
+- Type Conversion
 - Type Definitions
+- Type Inspection
+- Type Parameters
 - Type Safety
+- Type Switch
 - Type-Ahead
+- Types
 - TypeScript
 - Typo Tolerance
 - Typography
@@ -2357,6 +2455,7 @@
 - Unassigned Shards
 - Unauthorized Access
 - Unbound
+- Undefined Errors
 - Under-Replicated Partitions
 - Uninstall
 - Unique Collections
@@ -2366,8 +2465,12 @@
 - unit-testing
 - UnitTests
 - Universal Links
+- Unknown Fields
+- Unmarshal
 - unsafe
 - Unstructured Logs
+- Untyped Constants
+- Unused
 - Upgrade
 - Upgrades
 - Uptime Monitoring
@@ -2391,13 +2494,17 @@
 - VAAPI
 - VACUUM
 - Validation
+- Value Receiver
 - Values
+- Variables
 - Vault
 - Vaultwarden
 - Vector
 - Vector Search
 - Velero
+- vendor
 - Vendor Lock-in
+- Vendoring
 - venv
 - Version
 - Version Compatibility
@@ -2416,6 +2523,7 @@
 - Virtual Machines
 - VirtualBox
 - Virtualization
+- Visibility
 - Visual Regression
 - Visualization
 - Vite
@@ -2432,6 +2540,7 @@
 - VS Code
 - Vulnerability Scanning
 - waf
+- WaitGroup
 - Wake-on-LAN
 - WAL
 - WAL Archiving
