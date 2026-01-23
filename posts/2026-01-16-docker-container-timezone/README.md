@@ -34,21 +34,20 @@ services:
 
 ## How Timezone Works in Linux Containers
 
-```
-Timezone Configuration Flow
+```mermaid
+flowchart TB
+    App["Application reads time"]
+    TZ{"Check TZ<br/>environment variable"}
+    UseTZ["Use TZ value"]
+    Localtime{"Read /etc/localtime"}
+    UseLocaltime["Use timezone data file"]
+    UTC["Default to UTC"]
 
-┌─────────────────────────────────────────────────────────────┐
-│  Application reads time                                      │
-│           │                                                  │
-│           ▼                                                  │
-│  Check TZ environment variable ─────► If set, use it        │
-│           │                                                  │
-│           ▼ (if not set)                                     │
-│  Read /etc/localtime ───────────────► Timezone data file    │
-│           │                                                  │
-│           ▼ (if not exists)                                  │
-│  Default to UTC                                              │
-└─────────────────────────────────────────────────────────────┘
+    App --> TZ
+    TZ -->|"Set"| UseTZ
+    TZ -->|"Not set"| Localtime
+    Localtime -->|"Exists"| UseLocaltime
+    Localtime -->|"Not exists"| UTC
 ```
 
 ## Method 1: TZ Environment Variable

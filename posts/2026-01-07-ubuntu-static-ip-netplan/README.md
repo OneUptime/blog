@@ -35,25 +35,16 @@ Netplan is a utility for easily configuring networking on Linux systems. It uses
 
 Netplan sits between you and the network configuration backends:
 
-```
-+------------------+
-|   YAML Config    |
-|  (/etc/netplan)  |
-+--------+---------+
-         |
-         v
-+--------+---------+
-|     Netplan      |
-|    (generate)    |
-+--------+---------+
-         |
-    +----+----+
-    |         |
-    v         v
-+-------+ +------------+
-|systemd| |NetworkMgr  |
-|networkd| |            |
-+-------+ +------------+
+```mermaid
+flowchart TB
+    yaml["YAML Config<br/>(/etc/netplan)"]
+    netplan["Netplan<br/>(generate)"]
+    systemd["systemd-networkd"]
+    nm["NetworkManager"]
+    
+    yaml --> netplan
+    netplan --> systemd
+    netplan --> nm
 ```
 
 ### Configuration File Location

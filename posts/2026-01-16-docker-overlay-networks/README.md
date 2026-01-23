@@ -12,19 +12,17 @@ Overlay networks enable communication between Docker containers across multiple 
 
 ## Understanding Overlay Networks
 
-```
-Overlay Network Architecture
-┌─────────────────────────────────────────────────────────────┐
-│                   Overlay Network (VXLAN)                    │
-│                     10.0.0.0/24                              │
-├─────────────────────────────────────────────────────────────┤
-│  Host 1                              Host 2                  │
-│  ┌──────────────────┐               ┌──────────────────┐    │
-│  │ Container A      │               │ Container B      │    │
-│  │ 10.0.0.2        │───────────────│ 10.0.0.3        │    │
-│  └──────────────────┘               └──────────────────┘    │
-│  Physical: 192.168.1.10              Physical: 192.168.1.11  │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph overlay["Overlay Network (VXLAN) - 10.0.0.0/24"]
+        subgraph host1["Host 1 - Physical: 192.168.1.10"]
+            A["Container A<br/>10.0.0.2"]
+        end
+        subgraph host2["Host 2 - Physical: 192.168.1.11"]
+            B["Container B<br/>10.0.0.3"]
+        end
+        A <-->|"VXLAN Tunnel"| B
+    end
 ```
 
 ## Initialize Swarm Mode

@@ -48,26 +48,16 @@ A floating IP (or virtual IP) is an IP address that is not permanently assigned 
 
 ### How Floating IPs Work
 
-```
-                    +------------------+
-                    |   Client Request |
-                    |   to VIP: 10.0.0.100
-                    +--------+---------+
-                             |
-                             v
-              +-----------------------------+
-              |         Network Switch       |
-              +-----------------------------+
-                    /              \
-                   /                \
-            +-----+------+    +------+-----+
-            |  Server A  |    |  Server B  |
-            | Primary    |    | Standby    |
-            | eth0:      |    | eth0:      |
-            | 10.0.0.10  |    | 10.0.0.11  |
-            | VIP:       |    |            |
-            | 10.0.0.100 |    |            |
-            +------------+    +------------+
+```mermaid
+flowchart TB
+    Client["Client Request<br/>to VIP: 10.0.0.100"]
+    Switch["Network Switch"]
+    ServerA["Server A (Primary)<br/>eth0: 10.0.0.10<br/>VIP: 10.0.0.100"]
+    ServerB["Server B (Standby)<br/>eth0: 10.0.0.11"]
+
+    Client --> Switch
+    Switch --> ServerA
+    Switch --> ServerB
 ```
 
 When Server A fails, the VIP (10.0.0.100) moves to Server B, and clients continue connecting without any configuration changes.

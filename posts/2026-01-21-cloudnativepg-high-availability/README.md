@@ -25,22 +25,16 @@ CloudNativePG implements HA through:
 3. **Automatic Failover**: Operator promotes replica when primary fails
 4. **Self-Healing**: Automatic recovery of failed instances
 
-```
-                    +------------------+
-                    |   Write Traffic  |
-                    +--------+---------+
-                             |
-                    +--------v---------+
-                    |   Primary (RW)   |
-                    |   postgres-1     |
-                    +--------+---------+
-                             |
-            +----------------+----------------+
-            |                                 |
-   +--------v---------+            +----------v-------+
-   |   Replica (RO)   |            |   Replica (RO)   |
-   |   postgres-2     |            |   postgres-3     |
-   +------------------+            +------------------+
+```mermaid
+flowchart TB
+    Write["Write Traffic"]
+    Primary["Primary (RW)<br/>postgres-1"]
+    Replica1["Replica (RO)<br/>postgres-2"]
+    Replica2["Replica (RO)<br/>postgres-3"]
+
+    Write --> Primary
+    Primary --> Replica1
+    Primary --> Replica2
 ```
 
 ## Basic HA Configuration

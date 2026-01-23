@@ -36,20 +36,29 @@ The bottom line: if you're running production infrastructure in 2026 and not mon
 
 Here's what we're building:
 
-```
-+------------------+     +------------------+     +------------------+
-|   Network        |     |   Prometheus     |     |   Grafana        |
-|   Infrastructure |---->|   Server         |---->|   Dashboards     |
-|                  |     |                  |     |                  |
-+------------------+     +------------------+     +------------------+
-        |                        |                        |
-        v                        v                        v
-+------------------+     +------------------+     +------------------+
-| - node_exporter  |     | - PromQL Queries |     | - Traffic Panels |
-| - snmp_exporter  |     | - Recording Rules|     | - Alert Panels   |
-| - blackbox       |     | - Alerting Rules |     | - Heatmaps       |
-| - ipmi_exporter  |     |                  |     | - Tables         |
-+------------------+     +------------------+     +------------------+
+```mermaid
+flowchart LR
+    subgraph infra["Network Infrastructure"]
+        ne["node_exporter"]
+        snmp["snmp_exporter"]
+        bb["blackbox"]
+        ipmi["ipmi_exporter"]
+    end
+    
+    subgraph prom["Prometheus Server"]
+        promql["PromQL Queries"]
+        rec["Recording Rules"]
+        alert["Alerting Rules"]
+    end
+    
+    subgraph grafana["Grafana Dashboards"]
+        traffic["Traffic Panels"]
+        alerts["Alert Panels"]
+        heat["Heatmaps"]
+        tables["Tables"]
+    end
+    
+    infra --> prom --> grafana
 ```
 
 We'll use multiple exporters to capture different aspects of IPv6 traffic:

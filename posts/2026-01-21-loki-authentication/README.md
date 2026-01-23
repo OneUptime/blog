@@ -21,24 +21,26 @@ Before starting, ensure you have:
 
 ## Authentication Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Production Setup                             │
-│                                                                  │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
-│  │   Clients    │───▶│ Auth Layer   │───▶│    Loki      │       │
-│  │ (Promtail,   │    │ (Reverse     │    │   Backend    │       │
-│  │  Grafana)    │    │  Proxy)      │    │              │       │
-│  └──────────────┘    └──────────────┘    └──────────────┘       │
-│         │                   │                                    │
-│         │            ┌──────┴───────┐                           │
-│         │            │              │                           │
-│         │     ┌──────────────┐ ┌──────────────┐                │
-│         │     │ Basic Auth   │ │  OAuth2/     │                │
-│         │     │              │ │  OIDC        │                │
-│         │     └──────────────┘ └──────────────┘                │
-│         │                                                       │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Production["Production Setup"]
+        subgraph Clients["Clients"]
+            C1["Promtail"]
+            C2["Grafana"]
+        end
+
+        subgraph AuthLayer["Auth Layer<br/>(Reverse Proxy)"]
+            BA["Basic Auth"]
+            OAuth["OAuth2/OIDC"]
+        end
+
+        subgraph Backend["Loki Backend"]
+            Loki["Loki"]
+        end
+
+        Clients --> AuthLayer
+        AuthLayer --> Backend
+    end
 ```
 
 ## Basic Authentication with NGINX

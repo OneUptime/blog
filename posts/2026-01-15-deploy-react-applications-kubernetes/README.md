@@ -50,23 +50,24 @@ kubectl version --client
 
 When deploying a React application to Kubernetes, the typical architecture looks like this:
 
-```
-                    ┌─────────────────────────────────────────────────────────┐
-                    │                    Kubernetes Cluster                    │
-                    │                                                          │
-┌──────────┐       │  ┌─────────────┐    ┌─────────────────────────────────┐ │
-│  Users   │──────►│  │   Ingress   │───►│          Service                │ │
-└──────────┘       │  │  Controller │    │     (ClusterIP/NodePort)        │ │
-                    │  └─────────────┘    └───────────────┬─────────────────┘ │
-                    │                                      │                   │
-                    │                     ┌────────────────┼────────────────┐  │
-                    │                     │                │                │  │
-                    │                ┌────▼────┐     ┌────▼────┐     ┌────▼────┐│
-                    │                │  Pod 1  │     │  Pod 2  │     │  Pod 3  ││
-                    │                │ (nginx) │     │ (nginx) │     │ (nginx) ││
-                    │                └─────────┘     └─────────┘     └─────────┘│
-                    │                                                          │
-                    └─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    Users["Users"]
+    
+    subgraph K8s["Kubernetes Cluster"]
+        Ingress["Ingress Controller"]
+        Service["Service<br/>(ClusterIP/NodePort)"]
+        Pod1["Pod 1<br/>(nginx)"]
+        Pod2["Pod 2<br/>(nginx)"]
+        Pod3["Pod 3<br/>(nginx)"]
+        
+        Ingress --> Service
+        Service --> Pod1
+        Service --> Pod2
+        Service --> Pod3
+    end
+    
+    Users --> Ingress
 ```
 
 The key components are:

@@ -37,26 +37,21 @@ Galera Cluster implements synchronous replication using a certification-based ap
 
 ### Architecture Overview
 
-```
-                    ┌─────────────────┐
-                    │   Application   │
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │    HAProxy      │
-                    │  Load Balancer  │
-                    └────────┬────────┘
-                             │
-        ┌────────────────────┼────────────────────┐
-        │                    │                    │
-┌───────▼───────┐   ┌───────▼───────┐   ┌───────▼───────┐
-│    Node 1     │◄──►    Node 2     │◄──►    Node 3     │
-│  (MariaDB +   │   │  (MariaDB +   │   │  (MariaDB +   │
-│    Galera)    │   │    Galera)    │   │    Galera)    │
-└───────────────┘   └───────────────┘   └───────────────┘
-        │                    │                    │
-        └────────────────────┼────────────────────┘
-                    Galera Replication
+```mermaid
+flowchart TB
+    App["Application"]
+    HAProxy["HAProxy<br/>Load Balancer"]
+    Node1["Node 1<br/>(MariaDB + Galera)"]
+    Node2["Node 2<br/>(MariaDB + Galera)"]
+    Node3["Node 3<br/>(MariaDB + Galera)"]
+
+    App --> HAProxy
+    HAProxy --> Node1
+    HAProxy --> Node2
+    HAProxy --> Node3
+    Node1 <-->|"Galera Replication"| Node2
+    Node2 <-->|"Galera Replication"| Node3
+    Node3 <-->|"Galera Replication"| Node1
 ```
 
 ## Prerequisites

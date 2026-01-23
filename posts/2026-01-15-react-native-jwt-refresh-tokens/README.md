@@ -100,34 +100,26 @@ interface RefreshToken {
 
 ### Token Flow Diagram
 
-```
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│   Client    │      │   Server    │      │  Database   │
-└──────┬──────┘      └──────┬──────┘      └──────┬──────┘
-       │                    │                    │
-       │  Login Request     │                    │
-       │───────────────────>│                    │
-       │                    │  Validate User     │
-       │                    │───────────────────>│
-       │                    │<───────────────────│
-       │  Access + Refresh  │                    │
-       │<───────────────────│                    │
-       │                    │                    │
-       │  API Request       │                    │
-       │  + Access Token    │                    │
-       │───────────────────>│                    │
-       │                    │  Validate Token    │
-       │  Response          │                    │
-       │<───────────────────│                    │
-       │                    │                    │
-       │  Token Expired     │                    │
-       │  Refresh Request   │                    │
-       │───────────────────>│                    │
-       │                    │  Validate Refresh  │
-       │                    │───────────────────>│
-       │  New Access Token  │                    │
-       │<───────────────────│                    │
-       └────────────────────┴────────────────────┘
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server
+    participant Database
+
+    Client->>Server: Login Request
+    Server->>Database: Validate User
+    Database-->>Server: User Valid
+    Server-->>Client: Access + Refresh Tokens
+
+    Client->>Server: API Request + Access Token
+    Server->>Server: Validate Token
+    Server-->>Client: Response
+
+    Note over Client: Token Expired
+    Client->>Server: Refresh Request
+    Server->>Database: Validate Refresh Token
+    Database-->>Server: Refresh Valid
+    Server-->>Client: New Access Token
 ```
 
 ## Secure Token Storage in React Native

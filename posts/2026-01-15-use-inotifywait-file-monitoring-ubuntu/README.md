@@ -23,32 +23,30 @@ When you set up an inotify watch, the kernel maintains a watch descriptor for th
 
 ### How inotify Works Under the Hood
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     User Space                              │
-│  ┌─────────────┐    ┌──────────────┐    ┌───────────────┐   │
-│  │ inotifywait │───▶│ Read Events  │───▶│ Process/React │   │
-│  └─────────────┘    └──────────────┘    └───────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-         │                    ▲
-         │ Set Watch          │ Event Notification
-         ▼                    │
-┌─────────────────────────────────────────────────────────────┐
-│                    Kernel Space                             │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │              inotify Subsystem                      │    │
-│  │   • Watch Descriptors                               │    │
-│  │   • Event Queue                                     │    │
-│  │   • File System Hooks                               │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-         ▲
-         │ File System Events
-         │
-┌─────────────────────────────────────────────────────────────┐
-│                    File System                              │
-│           /home/user/project/file.txt                       │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph UserSpace["User Space"]
+        inotify["inotifywait"]
+        Read["Read Events"]
+        Process["Process/React"]
+        inotify --> Read --> Process
+    end
+
+    subgraph Kernel["Kernel Space"]
+        subgraph Inotify["inotify Subsystem"]
+            WD["Watch Descriptors"]
+            EQ["Event Queue"]
+            FSH["File System Hooks"]
+        end
+    end
+
+    subgraph FS["File System"]
+        File["/home/user/project/file.txt"]
+    end
+
+    inotify -->|"Set Watch"| Inotify
+    Inotify -->|"Event Notification"| Read
+    File -->|"File System Events"| Inotify
 ```
 
 ## Installing inotify-tools

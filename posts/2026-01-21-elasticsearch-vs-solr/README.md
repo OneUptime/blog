@@ -32,45 +32,38 @@ Both Elasticsearch and Apache Solr are built on Apache Lucene but have different
 
 ### Elasticsearch Architecture
 
-```plaintext
-Elasticsearch Cluster
-+-------------------+
-|   Master Node     | - Cluster management
-+-------------------+ - Index metadata
-         |
-    +----+----+
-    |         |
-+-------+ +-------+
-| Data  | | Data  | - Primary shards
-| Node  | | Node  | - Replica shards
-+-------+ +-------+
-    |         |
-+-------+ +-------+
-|Coord. | |Ingest | - Query routing
-| Node  | | Node  | - Pipeline processing
-+-------+ +-------+
+```mermaid
+flowchart TB
+    subgraph ES["Elasticsearch Cluster"]
+        Master["Master Node<br/>- Cluster management<br/>- Index metadata"]
+        Data1["Data Node<br/>- Primary shards<br/>- Replica shards"]
+        Data2["Data Node<br/>- Primary shards<br/>- Replica shards"]
+        Coord["Coordinator Node<br/>- Query routing"]
+        Ingest["Ingest Node<br/>- Pipeline processing"]
+        
+        Master --> Data1
+        Master --> Data2
+        Data1 --- Coord
+        Data2 --- Ingest
+    end
 ```
 
 ### Solr Architecture
 
-```plaintext
-SolrCloud Cluster
-+-------------------+
-|    ZooKeeper      | - Configuration
-|    Ensemble       | - Cluster state
-+-------------------+
-         |
-    +----+----+
-    |         |
-+-------+ +-------+
-| Solr  | | Solr  | - Collections
-| Node  | | Node  | - Shards & replicas
-+-------+ +-------+
-    |         |
-+-------+ +-------+
-| Solr  | | Solr  |
-| Node  | | Node  |
-+-------+ +-------+
+```mermaid
+flowchart TB
+    subgraph Solr["SolrCloud Cluster"]
+        ZK["ZooKeeper Ensemble<br/>- Configuration<br/>- Cluster state"]
+        Solr1["Solr Node<br/>- Collections<br/>- Shards & replicas"]
+        Solr2["Solr Node<br/>- Collections<br/>- Shards & replicas"]
+        Solr3["Solr Node"]
+        Solr4["Solr Node"]
+        
+        ZK --> Solr1
+        ZK --> Solr2
+        Solr1 --- Solr3
+        Solr2 --- Solr4
+    end
 ```
 
 ### Key Architectural Differences

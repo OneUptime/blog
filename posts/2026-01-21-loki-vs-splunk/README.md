@@ -27,31 +27,28 @@ Choosing between Grafana Loki and Splunk represents a fundamental decision betwe
 
 ### Architecture Comparison
 
+```mermaid
+flowchart TB
+    subgraph Loki["Grafana Loki"]
+        direction LR
+        Promtail["Promtail<br/>(Collector)"]
+        LokiCore["Loki<br/>(Labels + Chunks)"]
+        Grafana["Grafana<br/>(Query UI)"]
+        Promtail --> LokiCore --> Grafana
+    end
+
+    subgraph Splunk["Splunk"]
+        direction LR
+        Forwarder["Forwarder"]
+        Indexer["Indexer<br/>(Full-text Index)"]
+        SearchHead["Search Head"]
+        Forwarder --> Indexer --> SearchHead
+    end
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Architecture Comparison                       │
-│                                                                  │
-│  Grafana Loki:                                                   │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐                    │
-│  │ Promtail │──▶│  Loki    │──▶│ Grafana  │                    │
-│  │(Collector)│   │(Labels + │   │(Query UI)│                    │
-│  │          │   │ Chunks)  │   │          │                    │
-│  └──────────┘   └──────────┘   └──────────┘                    │
-│  - Only indexes labels                                          │
-│  - Stores compressed log chunks                                 │
-│  - Cheaper storage, slower arbitrary searches                   │
-│                                                                  │
-│  Splunk:                                                         │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐                    │
-│  │ Forwarder│──▶│ Indexer  │──▶│ Search   │                    │
-│  │          │   │(Full-text│   │ Head     │                    │
-│  │          │   │ Index)   │   │          │                    │
-│  └──────────┘   └──────────┘   └──────────┘                    │
-│  - Indexes every word                                           │
-│  - Faster arbitrary searches                                    │
-│  - Higher storage costs                                         │
-└─────────────────────────────────────────────────────────────────┘
-```
+
+**Loki**: Only indexes labels, stores compressed log chunks. Cheaper storage, slower arbitrary searches.
+
+**Splunk**: Indexes every word. Faster arbitrary searches, higher storage costs.
 
 ## Cost Comparison
 

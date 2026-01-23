@@ -14,23 +14,18 @@ Storage issues in Grafana Loki can manifest as missing logs, query failures, ing
 
 ### Storage Components
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Loki Storage Architecture                     │
-│                                                                  │
-│  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐    │
-│  │   Ingester   │────▶│    Chunks    │────▶│   Storage    │    │
-│  │   (Memory)   │     │  (Compressed │     │  (S3/GCS/    │    │
-│  │              │     │   Log Data)  │     │   Filesystem)│    │
-│  └──────────────┘     └──────────────┘     └──────────────┘    │
-│         │                                          │            │
-│         │                                          │            │
-│         ▼                                          │            │
-│  ┌──────────────┐                                 │            │
-│  │    Index     │─────────────────────────────────┘            │
-│  │  (TSDB/BoltDB)│                                              │
-│  └──────────────┘                                               │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph LokiStorage["Loki Storage Architecture"]
+        Ingester["Ingester<br/>(Memory)"]
+        Chunks["Chunks<br/>(Compressed Log Data)"]
+        Storage["Storage<br/>(S3/GCS/Filesystem)"]
+        Index["Index<br/>(TSDB/BoltDB)"]
+
+        Ingester --> Chunks --> Storage
+        Ingester --> Index
+        Index --> Storage
+    end
 ```
 
 ### Common Storage Issues

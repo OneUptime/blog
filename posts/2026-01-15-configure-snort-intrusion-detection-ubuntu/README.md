@@ -16,15 +16,21 @@ Snort 3 represents a complete rewrite of the Snort engine. Unlike Snort 2.x whic
 
 ### Key Architectural Changes
 
-```
-+------------------+     +------------------+
-|   Snort 2.x      |     |   Snort 3        |
-+------------------+     +------------------+
-| Single-threaded  |     | Multi-threaded   |
-| C-based config   |     | Lua-based config |
-| Preprocessors    |     | Inspectors       |
-| Limited modules  |     | Plugin system    |
-+------------------+     +------------------+
+```mermaid
+flowchart LR
+    subgraph snort2["Snort 2.x"]
+        s2a["Single-threaded"]
+        s2b["C-based config"]
+        s2c["Preprocessors"]
+        s2d["Limited modules"]
+    end
+    
+    subgraph snort3["Snort 3"]
+        s3a["Multi-threaded"]
+        s3b["Lua-based config"]
+        s3c["Inspectors"]
+        s3d["Plugin system"]
+    end
 ```
 
 **Snort 3 Components:**
@@ -40,21 +46,17 @@ Snort 3 represents a complete rewrite of the Snort engine. Unlike Snort 2.x whic
 
 Snort 3 uses a packet-thread model where each thread handles packets independently:
 
-```
-                    +------------------+
-                    |   Main Thread    |
-                    | (Configuration)  |
-                    +--------+---------+
-                             |
-        +--------------------+--------------------+
-        |                    |                    |
-+-------v-------+    +-------v-------+    +-------v-------+
-| Packet Thread |    | Packet Thread |    | Packet Thread |
-|    (Core 0)   |    |    (Core 1)   |    |    (Core N)   |
-+---------------+    +---------------+    +---------------+
-        |                    |                    |
-        v                    v                    v
-   [DAQ -> Decode -> Inspect -> Detect -> Log/Alert]
+```mermaid
+flowchart TB
+    main["Main Thread<br/>(Configuration)"]
+    
+    main --> t0["Packet Thread<br/>(Core 0)"]
+    main --> t1["Packet Thread<br/>(Core 1)"]
+    main --> tn["Packet Thread<br/>(Core N)"]
+    
+    t0 --> p0["DAQ → Decode → Inspect → Detect → Log/Alert"]
+    t1 --> p1["DAQ → Decode → Inspect → Detect → Log/Alert"]
+    tn --> pn["DAQ → Decode → Inspect → Detect → Log/Alert"]
 ```
 
 ## Installing Snort 3

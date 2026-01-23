@@ -22,14 +22,14 @@ Sending every sensor reading to a central database is often impractical:
 
 ## Aggregation Architecture
 
-```
-+-------------+     +-------------+     +-------------+     +-----------+
-|   Sensors   | --> | Edge Redis  | --> | Aggregation | --> | Time Series|
-| (1000/sec)  |     | (Buffer)    |     |  Workers    |     |    DB     |
-+-------------+     +-------------+     +-------------+     +-----------+
-                          |                    |
-                    Raw readings          1-min averages
-                    (60 sec TTL)          (stored forever)
+```mermaid
+flowchart LR
+    S["Sensors<br/>(1000/sec)"] --> R["Edge Redis<br/>(Buffer)"]
+    R --> A["Aggregation<br/>Workers"]
+    A --> T["Time Series<br/>DB"]
+    
+    R -.- N1["Raw readings<br/>(60 sec TTL)"]
+    A -.- N2["1-min averages<br/>(stored forever)"]
 ```
 
 ## Basic Aggregation Implementation

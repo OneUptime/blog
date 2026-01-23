@@ -12,22 +12,19 @@ Elasticsearch requires careful memory configuration to perform well in Docker. T
 
 ## Memory Configuration Overview
 
-```
-Elasticsearch Memory Layout
-┌─────────────────────────────────────────────────────────────┐
-│                    Container Memory (4GB)                    │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │               JVM Heap (2GB)                         │   │
-│  │   - Index data                                       │   │
-│  │   - Field data cache                                 │   │
-│  │   - Query cache                                      │   │
-│  └─────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │           Off-Heap Memory (2GB)                      │   │
-│  │   - Lucene segments                                  │   │
-│  │   - File system cache                                │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph container["Container Memory (4GB)"]
+        subgraph heap["JVM Heap (2GB)"]
+            h1["Index data"]
+            h2["Field data cache"]
+            h3["Query cache"]
+        end
+        subgraph offheap["Off-Heap Memory (2GB)"]
+            o1["Lucene segments"]
+            o2["File system cache"]
+        end
+    end
 ```
 
 ## Basic Setup

@@ -31,14 +31,21 @@ PHP-FPM operates as a standalone FastCGI server that manages PHP worker processe
 
 ### Key Components
 
-```
-+------------------+     +------------------+     +------------------+
-|   Web Server     | --> |    PHP-FPM       | --> |   PHP Workers    |
-|  (Nginx/Apache)  |     |  Master Process  |     |   (Child Procs)  |
-+------------------+     +------------------+     +------------------+
-         |                        |                        |
-    HTTP Request          Process Manager            Execute PHP
-    FastCGI Protocol      Pool Management            Return Response
+```mermaid
+flowchart LR
+    subgraph webserver["Web Server (Nginx/Apache)"]
+        req["HTTP Request<br/>FastCGI Protocol"]
+    end
+    
+    subgraph fpm["PHP-FPM Master Process"]
+        pm["Process Manager<br/>Pool Management"]
+    end
+    
+    subgraph workers["PHP Workers (Child Procs)"]
+        exec["Execute PHP<br/>Return Response"]
+    end
+    
+    webserver --> fpm --> workers
 ```
 
 ### How PHP-FPM Works

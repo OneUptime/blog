@@ -50,20 +50,14 @@ HSMs provide:
 
 ### Network HSMs (Recommended for Production)
 
-```
-+------------------+     +------------------+
-|  DNS Server 1    |     |  DNS Server 2    |
-|  BIND/PowerDNS   |     |  BIND/PowerDNS   |
-+--------+---------+     +--------+---------+
-         |                        |
-         +----------+-------------+
-                    |
-         +----------v-----------+
-         |    Network HSM       |
-         |  (Thales Luna/AWS    |
-         |   CloudHSM/Azure     |
-         |   Dedicated HSM)     |
-         +----------------------+
+```mermaid
+flowchart TB
+    dns1["DNS Server 1<br/>BIND/PowerDNS"]
+    dns2["DNS Server 2<br/>BIND/PowerDNS"]
+    hsm["Network HSM<br/>(Thales Luna/AWS CloudHSM/<br/>Azure Dedicated HSM)"]
+    
+    dns1 --> hsm
+    dns2 --> hsm
 ```
 
 Popular options:
@@ -85,24 +79,14 @@ PKCS#11 (Cryptoki) is the standard API for HSM communication. DNS servers like B
 
 ### PKCS#11 Architecture
 
-```
-+------------------+
-|   DNS Server     |
-|   (BIND 9)       |
-+--------+---------+
-         |
-+--------v---------+
-|   PKCS#11 API    |
-+--------+---------+
-         |
-+--------v---------+
-| PKCS#11 Library  |
-| (HSM Vendor)     |
-+--------+---------+
-         |
-+--------v---------+
-|   HSM Hardware   |
-+------------------+
+```mermaid
+flowchart TB
+    dns["DNS Server<br/>(BIND 9)"]
+    api["PKCS#11 API"]
+    lib["PKCS#11 Library<br/>(HSM Vendor)"]
+    hsm["HSM Hardware"]
+    
+    dns --> api --> lib --> hsm
 ```
 
 ### Key PKCS#11 Concepts
@@ -817,30 +801,28 @@ echo "ZSK rollover complete"
 
 ### Active-Active HSM Configuration
 
-```
-                    +----------------+
-                    |  Load Balancer |
-                    +-------+--------+
-                            |
-            +---------------+---------------+
-            |                               |
-    +-------v-------+               +-------v-------+
-    | DNS Server 1  |               | DNS Server 2  |
-    | BIND 9        |               | BIND 9        |
-    +-------+-------+               +-------+-------+
-            |                               |
-    +-------v-------+               +-------v-------+
-    | HSM Client    |               | HSM Client    |
-    +-------+-------+               +-------+-------+
-            |                               |
-            +---------------+---------------+
-                            |
-            +---------------v---------------+
-            |        HSM Cluster            |
-            | +-------+     +-------+       |
-            | | HSM 1 |<--->| HSM 2 |       |
-            | +-------+     +-------+       |
-            +-------------------------------+
+```mermaid
+flowchart TB
+    lb["Load Balancer"]
+    
+    dns1["DNS Server 1<br/>BIND 9"]
+    dns2["DNS Server 2<br/>BIND 9"]
+    
+    client1["HSM Client"]
+    client2["HSM Client"]
+    
+    subgraph cluster["HSM Cluster"]
+        hsm1["HSM 1"]
+        hsm2["HSM 2"]
+        hsm1 <--> hsm2
+    end
+    
+    lb --> dns1
+    lb --> dns2
+    dns1 --> client1
+    dns2 --> client2
+    client1 --> cluster
+    client2 --> cluster
 ```
 
 ### Luna HSM HA Group Configuration

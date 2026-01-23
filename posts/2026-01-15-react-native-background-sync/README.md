@@ -25,14 +25,26 @@ Background sync allows your application to synchronize data with a remote server
 
 ### How Background Sync Works
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   App State     │     │  Sync Engine    │     │  Remote Server  │
-│                 │     │                 │     │                 │
-│  Local Changes  │────►│  Queue Manager  │────►│  API Endpoints  │
-│  Pending Queue  │◄────│  Conflict       │◄────│  Database       │
-│  Sync Status    │     │  Resolution     │     │                 │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+```mermaid
+flowchart LR
+    subgraph App["App State"]
+        Local["Local Changes"]
+        Queue["Pending Queue"]
+        Status["Sync Status"]
+    end
+
+    subgraph Engine["Sync Engine"]
+        QueueMgr["Queue Manager"]
+        Conflict["Conflict Resolution"]
+    end
+
+    subgraph Server["Remote Server"]
+        API["API Endpoints"]
+        DB["Database"]
+    end
+
+    Local --> QueueMgr --> API
+    API --> Conflict --> Queue
 ```
 
 The typical background sync flow involves:

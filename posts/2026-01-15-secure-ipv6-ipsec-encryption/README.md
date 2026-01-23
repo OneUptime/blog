@@ -30,24 +30,38 @@ IPsec uses two main protocols:
 
 AH provides data integrity and authentication but does not encrypt the payload:
 
-```
-+------------------+------------------+------------------+
-|   IPv6 Header    |    AH Header     |    Payload       |
-+------------------+------------------+------------------+
-                   |                  |
-                   +---> Authenticated <---+
+```mermaid
+flowchart LR
+    IPv6["IPv6 Header"]
+    AH["AH Header"]
+    Payload["Payload"]
+
+    IPv6 --- AH --- Payload
+
+    subgraph Authenticated
+        AH
+        Payload
+    end
 ```
 
 #### Encapsulating Security Payload (ESP)
 
 ESP provides encryption, authentication, and integrity:
 
-```
-+------------------+------------------+------------------+------------------+
-|   IPv6 Header    |   ESP Header     | Encrypted Payload|   ESP Trailer    |
-+------------------+------------------+------------------+------------------+
-                   |                                      |
-                   +---> Encrypted and Authenticated <----+
+```mermaid
+flowchart LR
+    IPv6["IPv6 Header"]
+    ESP["ESP Header"]
+    Encrypted["Encrypted Payload"]
+    Trailer["ESP Trailer"]
+
+    IPv6 --- ESP --- Encrypted --- Trailer
+
+    subgraph EncAuth["Encrypted and Authenticated"]
+        ESP
+        Encrypted
+        Trailer
+    end
 ```
 
 ### IPsec Modes
@@ -240,11 +254,12 @@ Let's configure a secure connection between two IPv6 hosts.
 
 **Network Topology:**
 
-```
-+-------------------+                    +-------------------+
-|    Host A         |                    |    Host B         |
-| 2001:db8:1::10/64 |<---- IPsec ----->  | 2001:db8:2::20/64 |
-+-------------------+                    +-------------------+
+```mermaid
+flowchart LR
+    HostA["Host A<br/>2001:db8:1::10/64"]
+    HostB["Host B<br/>2001:db8:2::20/64"]
+
+    HostA <-->|"IPsec"| HostB
 ```
 
 #### Host A Configuration
@@ -414,18 +429,21 @@ ping6 -c 5 2001:db8:2::20
 For connecting entire networks, use tunnel mode to encrypt all traffic between sites.
 
 ### Network Topology
+mermaid
+flowchart LR
+    subgraph SiteA["Site A"]
+        NetA["Internal Net<br/>fd00:a::/64"]
+        GwA["Gateway A<br/>2001:db8::1::1"]
+        NetA --- GwA
+    end
 
-```
-       Site A                                          Site B
-+------------------+                            +------------------+
-|  Internal Net    |                            |  Internal Net    |
-| fd00:a::/64      |                            | fd00:b::/64      |
-|                  |                            |                  |
-|  +------------+  |                            |  +------------+  |
-|  | Gateway A  |  |<====== IPsec Tunnel =====>|  | Gateway B  |  |
-|  | 2001:db8:: |  |                            |  | 2001:db8:: |  |
-|  | 1::1       |  |                            |  | 2::1       |  |
-|  +------------+  |                            |  +------------+  |
+    subgraph SiteB["Site B"]
+        GwB["Gateway B<br/>2001:db8::2::1"]
+        NetB["Internal Net<br/>fd00:b::/64"]
+        GwB --- NetB
+    end
+
+    GwA <-->|"IPsec Tunnel"| GwB
 +------------------+                            +------------------+
 ```
 

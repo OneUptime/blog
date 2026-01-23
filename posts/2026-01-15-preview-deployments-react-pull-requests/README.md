@@ -32,36 +32,19 @@ Preview deployments work by:
 4. Posting the URL as a PR comment or status check
 5. Cleaning up when the PR closes or merges
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        GitHub Repository                         │
-├─────────────────────────────────────────────────────────────────┤
-│  Pull Request Created/Updated                                    │
-│         │                                                        │
-│         ▼                                                        │
-│  ┌─────────────────────┐                                        │
-│  │   GitHub Actions    │                                        │
-│  │   or Platform CI    │                                        │
-│  └──────────┬──────────┘                                        │
-│             │                                                    │
-│             ▼                                                    │
-│  ┌─────────────────────┐                                        │
-│  │   Build React App   │                                        │
-│  │   npm run build     │                                        │
-│  └──────────┬──────────┘                                        │
-│             │                                                    │
-│             ▼                                                    │
-│  ┌─────────────────────┐     ┌─────────────────────┐           │
-│  │  Deploy to Preview  │────▶│  https://pr-42.    │           │
-│  │  Environment        │     │  preview.app.com   │           │
-│  └──────────┬──────────┘     └─────────────────────┘           │
-│             │                                                    │
-│             ▼                                                    │
-│  ┌─────────────────────┐                                        │
-│  │  Post URL to PR     │                                        │
-│  │  Comment/Status     │                                        │
-│  └─────────────────────┘                                        │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph GH["GitHub Repository"]
+        PR["Pull Request Created/Updated"]
+        CI["GitHub Actions<br/>or Platform CI"]
+        Build["Build React App<br/>npm run build"]
+        Deploy["Deploy to Preview<br/>Environment"]
+        URL["https://pr-42.preview.app.com"]
+        Post["Post URL to PR<br/>Comment/Status"]
+
+        PR --> CI --> Build --> Deploy --> URL
+        Deploy --> Post
+    end
 ```
 
 ## Option 1: Vercel (Recommended for Most Teams)

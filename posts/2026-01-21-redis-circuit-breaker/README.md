@@ -21,16 +21,13 @@ In microservices architectures, you need circuit breakers that:
 
 ## Circuit Breaker States
 
-```
-    +--------+     failures >= threshold     +---------+
-    | CLOSED | ---------------------------> |  OPEN   |
-    +--------+                              +---------+
-        ^                                        |
-        |     success in half-open               | timeout
-        |                                        v
-        +---------------------------------- +----------+
-                                           | HALF-OPEN|
-                                           +----------+
+```mermaid
+stateDiagram-v2
+    [*] --> CLOSED
+    CLOSED --> OPEN: failures >= threshold
+    OPEN --> HALF_OPEN: timeout
+    HALF_OPEN --> CLOSED: success in half-open
+    HALF_OPEN --> OPEN: failure in half-open
 ```
 
 ## Basic Circuit Breaker Implementation

@@ -49,39 +49,18 @@ Before enabling DNSSEC, ensure you have:
 
 Route 53 DNSSEC uses a two-tier key hierarchy:
 
-```
-                    +-----------------------+
-                    |      Root Zone        |
-                    |   (ICANN managed)     |
-                    +-----------------------+
-                              |
-                              | DS Record
-                              v
-                    +-----------------------+
-                    |    TLD Zone (.com)    |
-                    | (Registry managed)    |
-                    +-----------------------+
-                              |
-                              | DS Record (you add this)
-                              v
-                    +-----------------------+
-                    |   Your Hosted Zone    |
-                    |    (Route 53)         |
-                    +-----------------------+
-                              |
-                              | DNSKEY, RRSIG records
-                              v
-                    +-----------------------+
-                    | Key Signing Key (KSK) |
-                    |   (KMS protected)     |
-                    +-----------------------+
-                              |
-                              | Signs ZSK
-                              v
-                    +-----------------------+
-                    | Zone Signing Key(ZSK) |
-                    |  (Route 53 managed)   |
-                    +-----------------------+
+```mermaid
+flowchart TB
+    Root["Root Zone<br/>(ICANN managed)"]
+    TLD["TLD Zone (.com)<br/>(Registry managed)"]
+    Hosted["Your Hosted Zone<br/>(Route 53)"]
+    KSK["Key Signing Key (KSK)<br/>(KMS protected)"]
+    ZSK["Zone Signing Key (ZSK)<br/>(Route 53 managed)"]
+
+    Root -->|"DS Record"| TLD
+    TLD -->|"DS Record (you add this)"| Hosted
+    Hosted -->|"DNSKEY, RRSIG records"| KSK
+    KSK -->|"Signs ZSK"| ZSK
 ```
 
 - **Key Signing Key (KSK)**: A long-lived key stored in AWS KMS that signs the Zone Signing Key. You create and manage the KMS key.

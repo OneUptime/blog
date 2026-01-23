@@ -28,33 +28,26 @@ Multipath I/O allows a server to use multiple physical connections to access the
 
 ### How It Works
 
-```
-                    +------------------+
-                    |    Application   |
-                    +--------+---------+
-                             |
-                    +--------+---------+
-                    | Multipath Device |
-                    |   /dev/mapper/   |
-                    +--------+---------+
-                             |
-            +----------------+----------------+
-            |                |                |
-    +-------+-------+ +------+------+ +------+------+
-    |    Path 1     | |   Path 2    | |   Path 3    |
-    | /dev/sdb      | | /dev/sdc    | | /dev/sdd    |
-    +-------+-------+ +------+------+ +------+------+
-            |                |                |
-    +-------+-------+ +------+------+ +------+------+
-    |    HBA 1      | |   HBA 1     | |   HBA 2    |
-    +-------+-------+ +------+------+ +------+------+
-            |                |                |
-            +----------------+----------------+
-                             |
-                    +--------+---------+
-                    |   Storage Array  |
-                    |      (LUN)       |
-                    +------------------+
+```mermaid
+flowchart TB
+    app["Application"]
+    mp["Multipath Device<br/>/dev/mapper/"]
+    
+    app --> mp
+    
+    mp --> p1["Path 1<br/>/dev/sdb"]
+    mp --> p2["Path 2<br/>/dev/sdc"]
+    mp --> p3["Path 3<br/>/dev/sdd"]
+    
+    p1 --> hba1["HBA 1"]
+    p2 --> hba1b["HBA 1"]
+    p3 --> hba2["HBA 2"]
+    
+    hba1 --> storage
+    hba1b --> storage
+    hba2 --> storage
+    
+    storage["Storage Array<br/>(LUN)"]
 ```
 
 ## When and Why to Use Multipath

@@ -14,25 +14,16 @@ ClickHouse and Apache Druid are both powerful OLAP databases designed for real-t
 
 ### ClickHouse Architecture
 
-```
-ClickHouse Components:
-+------------------+
-|   ClickHouse     |
-|     Server       |
-|  +------------+  |
-|  | Query      |  |
-|  | Processor  |  |
-|  +------------+  |
-|  | MergeTree  |  |
-|  | Storage    |  |
-|  +------------+  |
-+------------------+
-        |
-+------------------+
-|   ClickHouse     |
-|    Keeper        |
-|  (Coordination)  |
-+------------------+
+```mermaid
+flowchart TB
+    subgraph CH["ClickHouse Server"]
+        QP["Query Processor"]
+        MT["MergeTree Storage"]
+    end
+    
+    CK["ClickHouse Keeper<br/>(Coordination)"]
+    
+    CH --> CK
 ```
 
 Key characteristics:
@@ -44,23 +35,24 @@ Key characteristics:
 
 ### Apache Druid Architecture
 
-```
-Druid Components:
-+----------+  +----------+  +----------+
-|  Router  |  | Broker   |  |Coordinator|
-+----------+  +----------+  +----------+
-                  |
-    +-------------+-------------+
-    |             |             |
-+--------+  +----------+  +-----------+
-|Historical| | Middle   |  | Overlord  |
-| Nodes   |  | Managers |  |           |
-+--------+  +----------+  +-----------+
-    |             |
-+--------+  +----------+
-| Deep   |  | ZooKeeper|
-| Storage|  |          |
-+--------+  +----------+
+```mermaid
+flowchart TB
+    Router["Router"]
+    Broker["Broker"]
+    Coordinator["Coordinator"]
+    Historical["Historical Nodes"]
+    MM["Middle Managers"]
+    Overlord["Overlord"]
+    Deep["Deep Storage"]
+    ZK["ZooKeeper"]
+    
+    Router --- Broker
+    Broker --- Coordinator
+    Broker --> Historical
+    Broker --> MM
+    Broker --> Overlord
+    Historical --> Deep
+    MM --> ZK
 ```
 
 Key characteristics:

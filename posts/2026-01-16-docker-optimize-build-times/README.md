@@ -12,34 +12,17 @@ Docker build times can significantly impact development velocity and CI/CD pipel
 
 ## Understanding Build Cache
 
-```
-Docker Build Cache Flow
-┌─────────────────────────────────────────────────────────────┐
-│  Step 1: FROM node:20                                        │
-│  ┌─────────────────┐                                        │
-│  │  CACHE HIT ✓    │ ──► Reuse existing layer               │
-│  └─────────────────┘                                        │
-├─────────────────────────────────────────────────────────────┤
-│  Step 2: COPY package.json                                   │
-│  ┌─────────────────┐     ┌─────────────────┐               │
-│  │ File unchanged? │ Yes │  CACHE HIT ✓    │               │
-│  └─────────────────┘     └─────────────────┘               │
-├─────────────────────────────────────────────────────────────┤
-│  Step 3: RUN npm install                                     │
-│  ┌─────────────────┐     ┌─────────────────┐               │
-│  │ Previous cached?│ Yes │  CACHE HIT ✓    │               │
-│  └─────────────────┘     └─────────────────┘               │
-├─────────────────────────────────────────────────────────────┤
-│  Step 4: COPY src/                                           │
-│  ┌─────────────────┐     ┌─────────────────┐               │
-│  │ Files changed   │ Yes │  CACHE MISS ✗   │ ──► Rebuild   │
-│  └─────────────────┘     └─────────────────┘               │
-├─────────────────────────────────────────────────────────────┤
-│  Step 5+: All subsequent layers                              │
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │  CACHE INVALIDATED - Must rebuild all remaining layers  ││
-│  └─────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph BuildCache["Docker Build Cache Flow"]
+        Step1["Step 1: FROM node:20<br/>CACHE HIT ✓ → Reuse existing layer"]
+        Step2["Step 2: COPY package.json<br/>File unchanged? → CACHE HIT ✓"]
+        Step3["Step 3: RUN npm install<br/>Previous cached? → CACHE HIT ✓"]
+        Step4["Step 4: COPY src/<br/>Files changed → CACHE MISS ✗ → Rebuild"]
+        Step5["Step 5+: All subsequent layers<br/>CACHE INVALIDATED - Must rebuild"]
+
+        Step1 --> Step2 --> Step3 --> Step4 --> Step5
+    end
 ```
 
 ## Dockerfile Optimization

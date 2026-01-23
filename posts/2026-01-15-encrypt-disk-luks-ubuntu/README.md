@@ -18,18 +18,15 @@ LUKS is the standard for Linux hard disk encryption. It provides a platform-inde
 
 LUKS operates at the block device level, encrypting entire partitions. Here's the architecture:
 
-```
-+------------------+
-|   Filesystem     |  (ext4, xfs, btrfs, etc.)
-+------------------+
-|   dm-crypt       |  (Device mapper crypto target)
-+------------------+
-|   LUKS Header    |  (Contains metadata and key slots)
-+------------------+
-|   Encrypted Data |  (Your actual data, encrypted)
-+------------------+
-|   Physical Disk  |  (HDD, SSD, NVMe)
-+------------------+
+```mermaid
+flowchart TB
+    FS["Filesystem<br/>(ext4, xfs, btrfs, etc.)"]
+    DM["dm-crypt<br/>(Device mapper crypto target)"]
+    Header["LUKS Header<br/>(Contains metadata and key slots)"]
+    Encrypted["Encrypted Data<br/>(Your actual data, encrypted)"]
+    Disk["Physical Disk<br/>(HDD, SSD, NVMe)"]
+
+    FS --> DM --> Header --> Encrypted --> Disk
 ```
 
 ### Key LUKS Features

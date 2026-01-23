@@ -19,18 +19,16 @@ In a distributed system:
 - Local counters would allow limit bypass
 - Redis provides shared state across all instances
 
-```
-+----------+     +----------+     +----------+
-| Instance |     | Instance |     | Instance |
-|    1     |     |    2     |     |    3     |
-+----+-----+     +----+-----+     +----+-----+
-     |               |               |
-     +---------------+---------------+
-                     |
-              +------+------+
-              |    Redis    |
-              | Rate Limits |
-              +-------------+
+```mermaid
+flowchart TB
+    I1["Instance 1"]
+    I2["Instance 2"]
+    I3["Instance 3"]
+    Redis["Redis<br/>Rate Limits"]
+
+    I1 --> Redis
+    I2 --> Redis
+    I3 --> Redis
 ```
 
 ## Atomic Rate Limiting with Lua Scripts

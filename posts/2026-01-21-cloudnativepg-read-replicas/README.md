@@ -20,24 +20,22 @@ Read replicas are essential for scaling PostgreSQL read-heavy workloads. CloudNa
 
 CloudNativePG clusters automatically include replicas:
 
-```
-                    Write Traffic
-                         |
-                +--------v--------+
-                |    Primary      |
-                |  (Read-Write)   |
-                +--------+--------+
-                         |
-            +------------+------------+
-            |            |            |
-    +-------v------+ +---v-------+ +-v---------+
-    |   Replica 1  | | Replica 2 | | Replica 3 |
-    |  (Read-Only) | | (Read-Only)| | (Read-Only)|
-    +--------------+ +-----------+ +-----------+
-            |            |            |
-            +------------+------------+
-                         |
-                   Read Traffic
+```mermaid
+flowchart TB
+    Write["Write Traffic"]
+    Primary["Primary<br/>(Read-Write)"]
+    R1["Replica 1<br/>(Read-Only)"]
+    R2["Replica 2<br/>(Read-Only)"]
+    R3["Replica 3<br/>(Read-Only)"]
+    Read["Read Traffic"]
+
+    Write --> Primary
+    Primary --> R1
+    Primary --> R2
+    Primary --> R3
+    R1 --> Read
+    R2 --> Read
+    R3 --> Read
 ```
 
 ## Basic Replica Configuration

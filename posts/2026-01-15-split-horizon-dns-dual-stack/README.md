@@ -62,29 +62,19 @@ Internal DNS should never leak private addressing to the internet. Similarly, in
 
 A typical split-horizon dual-stack deployment has these components:
 
-```
-                    +------------------+
-                    |   External DNS   |
-                    |   (Public View)  |
-                    +--------+---------+
-                             |
-                    +--------+---------+
-                    |    Firewall      |
-                    +--------+---------+
-                             |
-         +-------------------+-------------------+
-         |                                       |
-+--------+---------+                   +---------+--------+
-|   Internal DNS   |                   |   Internal DNS   |
-|   (IPv4 View)    |                   |   (IPv6 View)    |
-+--------+---------+                   +---------+--------+
-         |                                       |
-         +-------------------+-------------------+
-                             |
-                    +--------+---------+
-                    |  Internal Hosts  |
-                    |  (Dual-Stack)    |
-                    +------------------+
+```mermaid
+flowchart TB
+    External["External DNS<br/>(Public View)"]
+    Firewall["Firewall"]
+    IPv4DNS["Internal DNS<br/>(IPv4 View)"]
+    IPv6DNS["Internal DNS<br/>(IPv6 View)"]
+    Hosts["Internal Hosts<br/>(Dual-Stack)"]
+
+    External --> Firewall
+    Firewall --> IPv4DNS
+    Firewall --> IPv6DNS
+    IPv4DNS --> Hosts
+    IPv6DNS --> Hosts
 ```
 
 You can implement this with:

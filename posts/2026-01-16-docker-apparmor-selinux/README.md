@@ -12,22 +12,21 @@ AppArmor and SELinux are Linux Security Modules (LSMs) that provide mandatory ac
 
 ## Understanding MAC vs DAC
 
-```
-Discretionary Access Control (DAC):
-┌────────────────────────────────────────┐
-│  Owner decides permissions             │
-│  - chmod, chown                        │
-│  - User/Group based                    │
-│  - Can be bypassed by root            │
-└────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph DAC["Discretionary Access Control (DAC)"]
+        D1["Owner decides permissions"]
+        D2["chmod, chown"]
+        D3["User/Group based"]
+        D4["Can be bypassed by root"]
+    end
 
-Mandatory Access Control (MAC):
-┌────────────────────────────────────────┐
-│  System enforces security policy       │
-│  - AppArmor/SELinux profiles          │
-│  - Cannot be bypassed by root         │
-│  - Confines even privileged processes │
-└────────────────────────────────────────┘
+    subgraph MAC["Mandatory Access Control (MAC)"]
+        M1["System enforces security policy"]
+        M2["AppArmor/SELinux profiles"]
+        M3["Cannot be bypassed by root"]
+        M4["Confines even privileged processes"]
+    end
 ```
 
 ## AppArmor

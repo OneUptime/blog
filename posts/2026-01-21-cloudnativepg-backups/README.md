@@ -26,16 +26,14 @@ CloudNativePG supports two backup types:
 
 Together, they enable Point-in-Time Recovery (PITR) to any moment between backups.
 
-```
-                     Continuous WAL Streaming
-                              |
-+-------------+     +-------v--------+     +------------------+
-|  PostgreSQL | --> | WAL Archiver   | --> | Object Storage   |
-|   Cluster   |     | (Barman)       |     | (S3/GCS/Azure)   |
-+------+------+     +----------------+     +--------+---------+
-       |                                            |
-       |  Scheduled Base Backup                     |
-       +--------------------------------------------+
+```mermaid
+flowchart LR
+    PG["PostgreSQL<br/>Cluster"]
+    WAL["WAL Archiver<br/>(Barman)"]
+    Storage["Object Storage<br/>(S3/GCS/Azure)"]
+
+    PG -->|"Continuous WAL Streaming"| WAL --> Storage
+    PG -->|"Scheduled Base Backup"| Storage
 ```
 
 ## Basic Backup Configuration

@@ -14,17 +14,14 @@ System auditing is a critical component of any security-conscious infrastructure
 
 The Linux Audit System operates at the kernel level, intercepting system calls and generating audit records based on configurable rules. This architecture provides several key advantages:
 
-```
-+------------------+     +------------------+     +------------------+
-|   Applications   | --> |   Kernel Audit   | --> |     auditd       |
-|  (system calls)  |     |    Framework     |     |    (userspace)   |
-+------------------+     +------------------+     +------------------+
-                                                           |
-                                                           v
-                                                  +------------------+
-                                                  |   /var/log/audit |
-                                                  |    audit.log     |
-                                                  +------------------+
+```mermaid
+flowchart LR
+    Apps["Applications<br/>(system calls)"]
+    Kernel["Kernel Audit<br/>Framework"]
+    Auditd["auditd<br/>(userspace)"]
+    Log["/var/log/audit<br/>audit.log"]
+
+    Apps --> Kernel --> Auditd --> Log
 ```
 
 ### Key Components

@@ -19,20 +19,17 @@ Barman (Backup and Recovery Manager) is an open-source administration tool for d
 
 ## Architecture Overview
 
-```
-                    +----------------+
-                    |  Barman Server |
-                    |                |
-                    | - Backup Catalog
-                    | - WAL Archive  |
-                    +-------+--------+
-                            |
-              +-------------+-------------+
-              |             |             |
-        +-----v-----+ +-----v-----+ +-----v-----+
-        |  PG Server| |  PG Server| |  PG Server|
-        |  (primary)| |  (replica)| |  (standby)|
-        +-----------+ +-----------+ +-----------+
+```mermaid
+flowchart TB
+    Barman["Barman Server<br/>- Backup Catalog<br/>- WAL Archive"]
+    
+    PG1["PG Server<br/>(primary)"]
+    PG2["PG Server<br/>(replica)"]
+    PG3["PG Server<br/>(standby)"]
+    
+    Barman --> PG1
+    Barman --> PG2
+    Barman --> PG3
 ```
 
 ## Installation

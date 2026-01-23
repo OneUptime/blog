@@ -1754,34 +1754,18 @@ You have now set up a complete mail server with:
 
 ### Architecture Overview
 
-```
-                                    +------------------+
-                                    |   Email Client   |
-                                    | (Thunderbird,    |
-                                    |  Outlook, etc.)  |
-                                    +--------+---------+
-                                             |
-                              IMAP (993) / SMTP (587)
-                                             |
-+------------------+                +--------v---------+
-|  Remote Mail     |    SMTP (25)   |                  |
-|  Servers         +--------------->+    Postfix       |
-|  (Gmail, etc.)   |                |    (MTA)         |
-+------------------+                +--------+---------+
-                                             |
-                                        LMTP |
-                                             |
-                                    +--------v---------+
-                                    |                  |
-                                    |    Dovecot       |
-                                    |  (IMAP/LDA)      |
-                                    +--------+---------+
-                                             |
-                                    +--------v---------+
-                                    |    Maildir       |
-                                    |  /var/mail/      |
-                                    |   vhosts/        |
-                                    +------------------+
+```mermaid
+flowchart TB
+    client["Email Client<br/>(Thunderbird, Outlook, etc.)"]
+    remote["Remote Mail Servers<br/>(Gmail, etc.)"]
+    postfix["Postfix<br/>(MTA)"]
+    dovecot["Dovecot<br/>(IMAP/LDA)"]
+    maildir["Maildir<br/>/var/mail/vhosts/"]
+    
+    client -->|"IMAP (993) / SMTP (587)"| postfix
+    remote -->|"SMTP (25)"| postfix
+    postfix -->|"LMTP"| dovecot
+    dovecot --> maildir
 ```
 
 ### Quick Reference

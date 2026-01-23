@@ -22,16 +22,15 @@ Before diving into implementation, let's understand what makes a good matchmakin
 
 ## Basic Architecture Overview
 
-```
-+------------+     +----------------+     +-------------+
-|   Player   | --> |  Matchmaking   | --> |    Redis    |
-|   Client   |     |    Service     |     |   Cluster   |
-+------------+     +----------------+     +-------------+
-                          |
-                          v
-                   +-------------+
-                   | Game Server |
-                   +-------------+
+```mermaid
+flowchart LR
+    Player["Player Client"]
+    MM["Matchmaking Service"]
+    Redis["Redis Cluster"]
+    Game["Game Server"]
+
+    Player --> MM --> Redis
+    MM --> Game
 ```
 
 ## Setting Up the Redis Data Structures

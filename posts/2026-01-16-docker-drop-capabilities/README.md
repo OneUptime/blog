@@ -14,23 +14,21 @@ Linux capabilities divide root privileges into distinct units that can be indepe
 
 Traditional Unix systems have a binary privilege model: processes run as either root (all privileges) or non-root (restricted). Capabilities break root privileges into smaller, manageable pieces.
 
-```
-Traditional Model:
-┌─────────────────────────────────────────┐
-│              ROOT (UID 0)                │
-│   - All permissions                      │
-│   - All system calls                     │
-│   - Full access                          │
-└─────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Traditional["Traditional Model"]
+        Root["ROOT (UID 0)<br/>All permissions<br/>All system calls<br/>Full access"]
+    end
 
-Capabilities Model:
-┌─────────────┬─────────────┬─────────────┐
-│ CAP_NET_BIND│ CAP_CHOWN   │ CAP_SYS_ADMIN│
-│ Low ports   │ Change owner│ Many syscalls│
-├─────────────┼─────────────┼─────────────┤
-│ CAP_KILL    │ CAP_SETUID  │ CAP_MKNOD   │
-│ Send signals│ Change UID  │ Create devs │
-└─────────────┴─────────────┴─────────────┘
+    subgraph Capabilities["Capabilities Model"]
+        direction LR
+        CAP1["CAP_NET_BIND<br/>Low ports"]
+        CAP2["CAP_CHOWN<br/>Change owner"]
+        CAP3["CAP_SYS_ADMIN<br/>Many syscalls"]
+        CAP4["CAP_KILL<br/>Send signals"]
+        CAP5["CAP_SETUID<br/>Change UID"]
+        CAP6["CAP_MKNOD<br/>Create devs"]
+    end
 ```
 
 ## Docker Default Capabilities

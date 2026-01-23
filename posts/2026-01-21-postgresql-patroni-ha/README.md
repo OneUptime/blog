@@ -19,23 +19,28 @@ Patroni is a template for PostgreSQL HA with ZooKeeper, etcd, Consul, or Kuberne
 
 ## Architecture Overview
 
-```
-                    Application
-                         |
-                    HAProxy/PgBouncer
-                         |
-         +---------------+---------------+
-         |               |               |
-    +----v----+    +-----v-----+   +-----v-----+
-    | Patroni |    |  Patroni  |   |  Patroni  |
-    |   +     |    |    +      |   |    +      |
-    |  PG     |    |   PG      |   |   PG      |
-    | Primary |    | Replica   |   | Replica   |
-    +---------+    +-----------+   +-----------+
-         |               |               |
-         +---------------+---------------+
-                         |
-                   etcd Cluster
+```mermaid
+flowchart TB
+    App[Application]
+    LB[HAProxy/PgBouncer]
+    
+    App --> LB
+    
+    LB --> P1
+    LB --> P2
+    LB --> P3
+    
+    subgraph cluster["PostgreSQL Cluster"]
+        P1["Patroni + PG<br/>Primary"]
+        P2["Patroni + PG<br/>Replica"]
+        P3["Patroni + PG<br/>Replica"]
+    end
+    
+    P1 --> etcd
+    P2 --> etcd
+    P3 --> etcd
+    
+    etcd[("etcd Cluster")]
 ```
 
 ## Install Prerequisites

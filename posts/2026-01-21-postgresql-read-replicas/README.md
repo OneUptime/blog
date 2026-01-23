@@ -19,21 +19,17 @@ Read replicas allow you to scale PostgreSQL read capacity by distributing querie
 
 ## Architecture Overview
 
-```
-        Application
-             |
-      Connection Pooler
-      (PgBouncer/HAProxy)
-             |
-    +--------+--------+
-    |                 |
-    v                 v
- Primary           Replicas
-(Read/Write)      (Read Only)
-    |                 |
-    +-----------------+
-          |
-    Streaming Replication
+```mermaid
+flowchart TB
+    app["Application"]
+    pool["Connection Pooler<br/>(PgBouncer/HAProxy)"]
+    primary["Primary<br/>(Read/Write)"]
+    replicas["Replicas<br/>(Read Only)"]
+    
+    app --> pool
+    pool --> primary
+    pool --> replicas
+    primary <-->|"Streaming Replication"| replicas
 ```
 
 ## Setting Up the Primary Server

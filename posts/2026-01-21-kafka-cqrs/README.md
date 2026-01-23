@@ -12,34 +12,20 @@ CQRS (Command Query Responsibility Segregation) separates read and write operati
 
 ## CQRS Architecture Overview
 
-```
-                    +-----------------+
-                    |   Command API   |
-                    +--------+--------+
-                             |
-                             v
-                    +--------+--------+
-                    | Command Handler |
-                    +--------+--------+
-                             |
-                             v
-                    +--------+--------+
-                    |  Kafka Topics   |
-                    |    (Events)     |
-                    +--------+--------+
-                             |
-              +--------------+--------------+
-              |                             |
-              v                             v
-    +---------+----------+       +----------+---------+
-    | Projection Service |       | Projection Service |
-    +----------+---------+       +----------+---------+
-               |                            |
-               v                            v
-    +----------+----------+      +----------+----------+
-    |    Read Database    |      |    Search Index     |
-    |    (PostgreSQL)     |      |   (Elasticsearch)   |
-    +---------------------+      +---------------------+
+```mermaid
+flowchart TB
+    api["Command API"]
+    handler["Command Handler"]
+    kafka["Kafka Topics<br/>(Events)"]
+    
+    api --> handler
+    handler --> kafka
+    
+    kafka --> proj1["Projection Service"]
+    kafka --> proj2["Projection Service"]
+    
+    proj1 --> db["Read Database<br/>(PostgreSQL)"]
+    proj2 --> search["Search Index<br/>(Elasticsearch)"]
 ```
 
 ## Domain Events

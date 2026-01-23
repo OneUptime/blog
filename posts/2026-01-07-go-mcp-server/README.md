@@ -26,13 +26,12 @@ The protocol enables bidirectional communication between AI assistants (clients)
 
 Before diving into code, let us understand the MCP architecture:
 
-```
-┌─────────────────┐         JSON-RPC 2.0          ┌─────────────────┐
-│                 │ ◄─────────────────────────────► │                 │
-│   AI Assistant  │         (stdio/HTTP)          │   MCP Server    │
-│   (Claude, etc) │                               │   (Your Go App) │
-│                 │ ◄─────────────────────────────► │                 │
-└─────────────────┘      Tools/Resources/Prompts   └─────────────────┘
+```mermaid
+flowchart LR
+    AI["AI Assistant<br/>(Claude, etc)"]
+    MCP["MCP Server<br/>(Your Go App)"]
+
+    AI <-->|"JSON-RPC 2.0<br/>(stdio/HTTP)<br/>Tools/Resources/Prompts"| MCP
 ```
 
 The AI assistant acts as the MCP client, sending requests to your server which processes them and returns results.

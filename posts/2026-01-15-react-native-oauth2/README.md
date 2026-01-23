@@ -32,30 +32,17 @@ Here's how it works:
 
 5. **API Access**: Use the access token to make authenticated API requests.
 
-```
-┌──────────────┐                              ┌──────────────────┐
-│              │                              │                  │
-│  React Native│                              │  Authorization   │
-│     App      │                              │     Server       │
-│              │                              │                  │
-└──────┬───────┘                              └────────┬─────────┘
-       │                                               │
-       │  1. Generate code_verifier & code_challenge   │
-       │                                               │
-       │  2. Authorization Request + code_challenge    │
-       │──────────────────────────────────────────────>│
-       │                                               │
-       │              3. User authenticates            │
-       │                                               │
-       │  4. Redirect with authorization_code          │
-       │<──────────────────────────────────────────────│
-       │                                               │
-       │  5. Token Request + code_verifier             │
-       │──────────────────────────────────────────────>│
-       │                                               │
-       │  6. Access Token + Refresh Token              │
-       │<──────────────────────────────────────────────│
-       │                                               │
+```mermaid
+sequenceDiagram
+    participant App as React Native App
+    participant Auth as Authorization Server
+    
+    Note over App: 1. Generate code_verifier & code_challenge
+    App->>Auth: 2. Authorization Request + code_challenge
+    Note over Auth: 3. User authenticates
+    Auth->>App: 4. Redirect with authorization_code
+    App->>Auth: 5. Token Request + code_verifier
+    Auth->>App: 6. Access Token + Refresh Token
 ```
 
 ## Setting Up react-native-app-auth

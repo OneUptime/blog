@@ -53,22 +53,18 @@ The Console is the administrator's interface to the Director. It allows you to s
 
 ### Architecture Diagram
 
-```
-+------------------+       +-------------------+       +------------------+
-|                  |       |                   |       |                  |
-|  Bacula Director |<----->|  Catalog Database |       |  Storage Daemon  |
-|   (bacula-dir)   |       |   (PostgreSQL)    |       |   (bacula-sd)    |
-|                  |       |                   |       |                  |
-+--------+---------+       +-------------------+       +--------+---------+
-         |                                                      |
-         |                                                      |
-         v                                                      v
-+--------+---------+                                   +--------+---------+
-|                  |                                   |                  |
-|   File Daemon    |                                   |  Backup Storage  |
-|   (bacula-fd)    |                                   |   (Disk/Tape)    |
-|                  |                                   |                  |
-+------------------+                                   +------------------+
+```mermaid
+flowchart TB
+    Director["Bacula Director<br/>(bacula-dir)"]
+    Catalog["Catalog Database<br/>(PostgreSQL)"]
+    Storage["Storage Daemon<br/>(bacula-sd)"]
+    FileDaemon["File Daemon<br/>(bacula-fd)"]
+    BackupStorage["Backup Storage<br/>(Disk/Tape)"]
+
+    Director <--> Catalog
+    Director --> FileDaemon
+    Director --> Storage
+    Storage --> BackupStorage
 ```
 
 ### Communication Flow

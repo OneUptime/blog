@@ -22,16 +22,11 @@ Redis offers key benefits for event-driven systems:
 
 ## Event Bus Architecture
 
-```
-+------------+    publish    +--------------+    subscribe    +------------+
-|  Service A | ------------> |  Redis Bus   | --------------> |  Service B |
-+------------+               +--------------+                 +------------+
-                                   |
-                                   | subscribe
-                                   v
-                             +------------+
-                             |  Service C |
-                             +------------+
+```mermaid
+flowchart LR
+    A["Service A"] -->|"publish"| Redis["Redis Bus"]
+    Redis -->|"subscribe"| B["Service B"]
+    Redis -->|"subscribe"| C["Service C"]
 ```
 
 ## Pattern 1: Simple Pub/Sub Event Bus

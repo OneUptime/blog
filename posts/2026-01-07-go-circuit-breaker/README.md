@@ -41,25 +41,13 @@ A testing state where the circuit breaker allows a limited number of requests th
 
 Here is a visual representation of the state transitions:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│    ┌─────────┐     failures     ┌─────────┐                 │
-│    │ CLOSED  │ ───────────────> │  OPEN   │                 │
-│    └─────────┘   exceed limit   └─────────┘                 │
-│         ^                            │                      │
-│         │                            │ timeout              │
-│         │        success             v                      │
-│         └──────────────────── ┌───────────┐                 │
-│                               │ HALF-OPEN │                 │
-│         ┌──────────────────── └───────────┘                 │
-│         │        failure                                    │
-│         v                                                   │
-│    ┌─────────┐                                              │
-│    │  OPEN   │                                              │
-│    └─────────┘                                              │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> CLOSED
+    CLOSED --> OPEN : failures exceed limit
+    OPEN --> HALF_OPEN : timeout expires
+    HALF_OPEN --> CLOSED : success
+    HALF_OPEN --> OPEN : failure
 ```
 
 ## Getting Started with sony/gobreaker

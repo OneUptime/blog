@@ -12,20 +12,20 @@ Building custom base images gives you complete control over what goes into your 
 
 ## Understanding Base Images
 
-```
-Image Layer Hierarchy
-
-┌─────────────────────────────────────────────────────────────┐
-│                   Your Application                           │
-├─────────────────────────────────────────────────────────────┤
-│                   Runtime (e.g., Node)                       │
-├─────────────────────────────────────────────────────────────┤
-│                   OS (e.g., Ubuntu, Alpine)                  │
-├─────────────────────────────────────────────────────────────┤
-│                   scratch (empty)                            │
-└─────────────────────────────────────────────────────────────┘
-
-Custom base images let you control any layer
+```mermaid
+flowchart TB
+    subgraph layers["Image Layer Hierarchy"]
+        app["Your Application"]
+        runtime["Runtime (e.g., Node)"]
+        os["OS (e.g., Ubuntu, Alpine)"]
+        scratch["scratch (empty)"]
+        
+        app --> runtime
+        runtime --> os
+        os --> scratch
+    end
+    
+    note["Custom base images let you control any layer"]
 ```
 
 ## Building from Scratch

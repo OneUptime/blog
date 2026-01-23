@@ -21,32 +21,30 @@ Before starting, ensure you have:
 
 ## Log Analytics Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                    Log Analytics Pipeline                         │
-│                                                                   │
-│  ┌────────────┐   ┌────────────┐   ┌────────────┐               │
-│  │ Collection │──▶│ Processing │──▶│  Storage   │               │
-│  │ (Promtail) │   │ (Parsing)  │   │  (Loki)    │               │
-│  └────────────┘   └────────────┘   └────────────┘               │
-│                                            │                      │
-│                                            ▼                      │
-│                    ┌─────────────────────────────────┐           │
-│                    │        Analytics Layer          │           │
-│                    │  - Pattern Detection            │           │
-│                    │  - Trend Analysis               │           │
-│                    │  - Anomaly Identification       │           │
-│                    │  - Statistical Aggregations     │           │
-│                    └─────────────────────────────────┘           │
-│                                            │                      │
-│                                            ▼                      │
-│                    ┌─────────────────────────────────┐           │
-│                    │     Insights & Actions          │           │
-│                    │  - Dashboards                   │           │
-│                    │  - Alerts                       │           │
-│                    │  - Reports                      │           │
-│                    └─────────────────────────────────┘           │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Pipeline["Log Analytics Pipeline"]
+        Collection["Collection<br/>(Promtail)"]
+        Processing["Processing<br/>(Parsing)"]
+        Storage["Storage<br/>(Loki)"]
+
+        subgraph Analytics["Analytics Layer"]
+            Pattern["Pattern Detection"]
+            Trend["Trend Analysis"]
+            Anomaly["Anomaly Identification"]
+            Stats["Statistical Aggregations"]
+        end
+
+        subgraph Insights["Insights & Actions"]
+            Dashboards["Dashboards"]
+            Alerts["Alerts"]
+            Reports["Reports"]
+        end
+
+        Collection --> Processing --> Storage
+        Storage --> Analytics
+        Analytics --> Insights
+    end
 ```
 
 ## Error Pattern Analysis

@@ -12,24 +12,16 @@ Docker networking issues can be frustrating because containers seem isolated fro
 
 ## Docker Network Basics
 
-```
-Docker Network Architecture
-
-┌─────────────────────────────────────────────────────────────┐
-│                        Host                                  │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                  docker0 bridge                      │    │
-│  │                   172.17.0.1                         │    │
-│  │     ┌───────────┐     ┌───────────┐                 │    │
-│  │     │ Container │     │ Container │                 │    │
-│  │     │ 172.17.0.2│     │ 172.17.0.3│                 │    │
-│  │     └───────────┘     └───────────┘                 │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                           │                                  │
-│                     NAT / Port Mapping                       │
-│                           │                                  │
-│                    Host Port 8080 ──────► Container 80       │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Host["Host"]
+        subgraph Bridge["docker0 bridge<br/>172.17.0.1"]
+            C1["Container<br/>172.17.0.2"]
+            C2["Container<br/>172.17.0.3"]
+        end
+        NAT["NAT / Port Mapping<br/>Host Port 8080 → Container 80"]
+        Bridge --> NAT
+    end
 ```
 
 ## Diagnostic Commands

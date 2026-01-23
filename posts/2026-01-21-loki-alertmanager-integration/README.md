@@ -21,33 +21,21 @@ Before starting, ensure you have:
 
 ## Architecture Overview
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                         Loki Cluster                              │
-│                                                                   │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
-│  │  Distributor │───▶│   Ingester   │───▶│    Querier   │       │
-│  └──────────────┘    └──────────────┘    └──────────────┘       │
-│                                                  │                │
-│                      ┌──────────────┐            │                │
-│                      │    Ruler     │────────────┘                │
-│                      │              │   Evaluates                 │
-│                      │  - Rules     │   LogQL Queries             │
-│                      │  - Alerts    │                             │
-│                      └──────┬───────┘                             │
-│                             │                                     │
-└─────────────────────────────┼─────────────────────────────────────┘
-                              │ Sends Alerts
-                              ▼
-                    ┌──────────────────┐
-                    │   Alertmanager   │
-                    │                  │
-                    │  - Deduplication │
-                    │  - Grouping      │
-                    │  - Routing       │
-                    │  - Silencing     │
-                    │  - Notifications │
-                    └──────────────────┘
+```mermaid
+flowchart TB
+    subgraph Loki["Loki Cluster"]
+        Distributor["Distributor"]
+        Ingester["Ingester"]
+        Querier["Querier"]
+        Ruler["Ruler<br/>- Rules<br/>- Alerts"]
+
+        Distributor --> Ingester --> Querier
+        Ruler --> Querier
+    end
+
+    AlertManager["Alertmanager<br/>- Deduplication<br/>- Grouping<br/>- Routing<br/>- Silencing<br/>- Notifications"]
+
+    Ruler -->|"Sends Alerts"| AlertManager
 ```
 
 ## Deploying the Stack

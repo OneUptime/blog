@@ -34,52 +34,62 @@ RTO defines the maximum acceptable downtime:
 
 Primary cluster handles all traffic; secondary cluster receives replicated data.
 
-```
-┌─────────────────┐         ┌─────────────────┐
-│  Primary DC     │         │  Secondary DC   │
-│  ┌───────────┐  │         │  ┌───────────┐  │
-│  │  Kafka    │──┼────────>│  │  Kafka    │  │
-│  │  Cluster  │  │  MM2    │  │  Cluster  │  │
-│  └───────────┘  │         │  └───────────┘  │
-│       ▲         │         │       │         │
-│  Producers      │         │  (Standby)      │
-│  Consumers      │         │                 │
-└─────────────────┘         └─────────────────┘
+```mermaid
+flowchart LR
+    subgraph Primary["Primary DC"]
+        Kafka1["Kafka Cluster"]
+        P1["Producers"]
+        C1["Consumers"]
+        P1 --> Kafka1
+        C1 --> Kafka1
+    end
+
+    subgraph Secondary["Secondary DC"]
+        Kafka2["Kafka Cluster<br/>(Standby)"]
+    end
+
+    Kafka1 -->|"MM2"| Kafka2
 ```
 
 ### Pattern 2: Active-Active
 
 Both clusters handle traffic; bi-directional replication.
 
-```
-┌─────────────────┐         ┌─────────────────┐
-│  DC 1           │         │  DC 2           │
-│  ┌───────────┐  │  MM2    │  ┌───────────┐  │
-│  │  Kafka    │◄─┼────────>│  │  Kafka    │  │
-│  │  Cluster  │  │         │  │  Cluster  │  │
-│  └───────────┘  │         │  └───────────┘  │
-│       ▲         │         │       ▲         │
-│  Producers      │         │  Producers      │
-│  Consumers      │         │  Consumers      │
-└─────────────────┘         └─────────────────┘
+```mermaid
+flowchart LR
+    subgraph DC1["DC 1"]
+        Kafka1["Kafka Cluster"]
+        P1["Producers"]
+        C1["Consumers"]
+        P1 --> Kafka1
+        C1 --> Kafka1
+    end
+
+    subgraph DC2["DC 2"]
+        Kafka2["Kafka Cluster"]
+        P2["Producers"]
+        C2["Consumers"]
+        P2 --> Kafka2
+        C2 --> Kafka2
+    end
+
+    Kafka1 <-->|"MM2"| Kafka2
 ```
 
 ### Pattern 3: Stretched Cluster
 
 Single cluster spanning multiple data centers (requires low latency).
 
-```
-┌─────────────────────────────────────────────┐
-│              Stretched Cluster              │
-│  ┌─────────┐    ┌─────────┐    ┌─────────┐ │
-│  │Broker 1 │    │Broker 2 │    │Broker 3 │ │
-│  │ (DC 1)  │    │ (DC 2)  │    │ (DC 1)  │ │
-│  └─────────┘    └─────────┘    └─────────┘ │
-│       │              │              │       │
-│       └──────────────┼──────────────┘       │
-│                      │                      │
-│            Synchronous Replication          │
-└─────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Stretched["Stretched Cluster"]
+        B1["Broker 1<br/>(DC 1)"]
+        B2["Broker 2<br/>(DC 2)"]
+        B3["Broker 3<br/>(DC 1)"]
+        
+        B1 <-->|"Synchronous Replication"| B2
+        B2 <-->|"Synchronous Replication"| B3
+    end
 ```
 
 ## Implementing MirrorMaker 2 for DR

@@ -41,31 +41,39 @@ Volume Groups are pools of storage created by combining one or more Physical Vol
 
 Logical Volumes are the virtual partitions you create from Volume Groups. These are the volumes that you format with a file system and mount for actual use. The key advantage is that Logical Volumes can be resized, moved, and modified independently of the underlying physical storage.
 
-```
-+-------------------------------------------------------------------+
-|                         File Systems                               |
-|                    (ext4, xfs, btrfs, etc.)                       |
-+-------------------------------------------------------------------+
-                               |
-+-------------------------------------------------------------------+
-|                      Logical Volumes (LV)                          |
-|              lv_root    lv_home    lv_data    lv_backup           |
-+-------------------------------------------------------------------+
-                               |
-+-------------------------------------------------------------------+
-|                       Volume Groups (VG)                           |
-|                          vg_storage                                |
-+-------------------------------------------------------------------+
-                               |
-+-------------------------------------------------------------------+
-|                     Physical Volumes (PV)                          |
-|              /dev/sda1     /dev/sdb1     /dev/sdc1                |
-+-------------------------------------------------------------------+
-                               |
-+-------------------------------------------------------------------+
-|                      Physical Disks                                |
-|                 /dev/sda   /dev/sdb   /dev/sdc                    |
-+-------------------------------------------------------------------+
+```mermaid
+flowchart TB
+    subgraph fs["File Systems (ext4, xfs, btrfs, etc.)"]
+        f1[" "]
+    end
+    
+    subgraph lv["Logical Volumes (LV)"]
+        lv1["lv_root"]
+        lv2["lv_home"]
+        lv3["lv_data"]
+        lv4["lv_backup"]
+    end
+    
+    subgraph vg["Volume Groups (VG)"]
+        vg1["vg_storage"]
+    end
+    
+    subgraph pv["Physical Volumes (PV)"]
+        pv1["/dev/sda1"]
+        pv2["/dev/sdb1"]
+        pv3["/dev/sdc1"]
+    end
+    
+    subgraph disk["Physical Disks"]
+        d1["/dev/sda"]
+        d2["/dev/sdb"]
+        d3["/dev/sdc"]
+    end
+    
+    fs --- lv
+    lv --- vg
+    vg --- pv
+    pv --- disk
 ```
 
 ## Prerequisites

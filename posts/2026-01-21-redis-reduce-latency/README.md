@@ -18,13 +18,17 @@ This guide covers latency measurement, common causes, and practical optimization
 
 ### Latency Components
 
-```
-Total Latency = Network RTT + Redis Processing + Serialization
+```mermaid
+flowchart LR
+    Client["Client"]
+    Network["Network<br/>(RTT)"]
+    Redis["Redis Server"]
 
-┌──────────┐     ┌─────────────┐     ┌──────────┐
-│  Client  │────▶│   Network   │────▶│  Redis   │
-│          │◀────│   (RTT)     │◀────│  Server  │
-└──────────┘     └─────────────┘     └──────────┘
+    Client -->|"Request"| Network -->|"Request"| Redis
+    Redis -->|"Response"| Network -->|"Response"| Client
+```
+
+**Total Latency = Network RTT + Redis Processing + Serialization**
 
 Typical breakdown:
 - Network RTT: 0.1-1ms (same datacenter)
@@ -32,7 +36,6 @@ Typical breakdown:
 - Serialization: 0.01-0.05ms
 
 Target: < 1ms for 99th percentile
-```
 
 ### Measuring Latency
 
