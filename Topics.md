@@ -282,3 +282,214 @@
 - Garbage collection tuning
 - JIT compilation
 - WASM optimization
+- Rate limiting
+- Request throttling
+- Database indexing
+- N+1 query problems
+- Lazy loading
+- Eager loading
+- CDN optimization
+- Image optimization
+- Code splitting
+- Tree shaking
+
+## Site Reliability Engineering
+
+- Incident management
+- On-call best practices
+- Runbooks
+- Postmortems/Blameless reviews
+- Error budgets
+- SLIs/SLOs/SLAs
+- Capacity planning
+- Chaos engineering
+- Toil reduction
+- Change management
+- Release engineering
+- Rollback strategies
+- Feature flags
+- Canary deployments
+- Blue-green deployments
+- Progressive delivery
+- Disaster recovery planning
+
+## Serverless & FaaS
+
+- AWS Lambda
+- Google Cloud Functions
+- Azure Functions
+- Cloudflare Workers
+- Vercel Edge Functions
+- Netlify Functions
+- Deno Deploy
+- Supabase Edge Functions
+- Cold start optimization
+- Function composition
+- Event-driven architectures
+- Serverless databases (PlanetScale, Neon, Turso)
+
+## API Management & Design
+
+- API versioning
+- API documentation (Swagger/OpenAPI)
+- API rate limiting
+- API authentication patterns
+- API gateway patterns
+- API monetization
+- GraphQL federation
+- REST best practices
+- Hypermedia APIs (HATEOAS)
+- API mocking
+- Contract testing (Pact)
+
+## Cost Management & FinOps
+
+- Cloud cost optimization
+- Resource rightsizing
+- Reserved instances
+- Spot instances
+- Cost allocation
+- Showback/chargeback
+- FinOps practices
+- Cloud billing analysis
+- Kubecost
+- Infracost
+- OpenCost
+
+## Documentation & Knowledge Management
+
+- Docusaurus
+- MkDocs
+- Sphinx
+- GitBook
+- Notion
+- Confluence
+- README best practices
+- Architecture Decision Records (ADRs)
+- Technical writing
+- API documentation
+
+## Real-time & Streaming
+
+- Apache Kafka Streams
+- Apache Flink
+- Apache Spark Streaming
+- Debezium (CDC)
+- Socket.io
+- WebRTC
+- Pusher
+- Ably
+- Firebase Realtime Database
+- Supabase Realtime
+- Change Data Capture patterns
+
+## Mobile Development
+
+- React Native
+- Flutter
+- Swift/SwiftUI
+- Kotlin/Jetpack Compose
+- Expo
+- Capacitor
+- Ionic
+- Mobile CI/CD
+- App Store deployment
+- Mobile crash reporting
+- Mobile analytics
+- Push notifications
+
+## Frontend Frameworks & Tools
+
+- React
+- Vue.js
+- Angular
+- Svelte
+- SolidJS
+- Qwik
+- Astro
+- Next.js
+- Nuxt.js
+- Remix
+- SvelteKit
+- Vite
+- Webpack
+- esbuild
+- Turbopack
+
+## Authentication & Identity
+
+- OAuth 2.0
+- OpenID Connect
+- SAML
+- JWT best practices
+- Passwordless authentication
+- Passkeys/WebAuthn
+- Auth0
+- Okta
+- Clerk
+- Supabase Auth
+- Firebase Auth
+- AWS Cognito
+- Keycloak
+- Session management
+- Multi-factor authentication
+
+## Collaboration & Communication
+
+- Slack integrations
+- Microsoft Teams integrations
+- Discord bots
+- PagerDuty
+- Opsgenie
+- Splunk On-Call
+- Incident.io
+- Statuspage
+- Atlassian tools
+- Linear
+- Jira
+
+## Data Engineering & Analytics
+
+- Apache Airflow
+- Dagster
+- Prefect
+- dbt (data build tool)
+- Snowflake
+- Databricks
+- BigQuery
+- Redshift
+- Looker
+- Metabase
+- Apache Superset
+- Cube.js
+- Data lineage
+- Data quality tools (Great Expectations)
+
+## Infrastructure Platforms
+
+- Heroku
+- Railway
+- Render
+- Fly.io
+- DigitalOcean
+- Linode/Akamai
+- Vultr
+- Hetzner
+- OVH
+- Scaleway
+- Oracle Cloud
+- IBM Cloud
+- Cloudflare
+
+## Version Control & Collaboration
+
+- Git workflows (GitFlow, trunk-based)
+- GitHub
+- GitLab
+- Bitbucket
+- Code review best practices
+- Branch protection
+- Merge strategies
+- Monorepo management (Nx, Turborepo, Lerna)
+- Git hooks
+- Conventional commits
