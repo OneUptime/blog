@@ -65640,6 +65640,119 @@
     "post": "2026-01-25-nestjs-custom-transformers"
   },
   {
+    "title": "How to Build Effective Runbooks",
+    "description": "A practical guide to creating runbooks that actually work during incidents - covering structure, writing style, testing, and maintenance strategies that keep your documentation useful.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Site Reliability Engineering",
+      "SRE",
+      "Runbooks",
+      "Incident Response",
+      "DevOps",
+      "Documentation",
+      "Operational Excellence"
+    ],
+    "post": "2026-01-26-effective-runbooks-guide"
+  },
+  {
+    "title": "How to Use Redis Data Structures Effectively",
+    "description": "A practical guide to Redis data structures including Strings, Lists, Sets, Hashes, Sorted Sets, and Streams - with real-world examples and performance tips for building efficient applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Redis",
+      "Data Structures",
+      "Caching",
+      "Performance",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-redis-data-structures-guide"
+  },
+  {
+    "title": "How to Use Terraform Modules Effectively",
+    "description": "A practical guide to using Terraform modules effectively, covering module consumption patterns, input/output design, versioning strategies, debugging techniques, and common pitfalls to avoid.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "Infrastructure as Code",
+      "DevOps",
+      "Modules",
+      "IaC Best Practices",
+      "Cloud Infrastructure"
+    ],
+    "post": "2026-01-26-terraform-modules-guide"
+  },
+  {
+    "title": "How to Set Up RabbitMQ for Production",
+    "description": "A comprehensive guide to setting up RabbitMQ for production environments, covering installation, security hardening, performance tuning, clustering, monitoring, and operational best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RabbitMQ",
+      "Message Queue",
+      "DevOps",
+      "Production",
+      "Infrastructure",
+      "High Availability",
+      "Monitoring"
+    ],
+    "post": "2026-01-26-rabbitmq-production-setup"
+  },
+  {
+    "title": "How to Build a REST API with Phoenix Framework",
+    "description": "Learn how to build a production-ready REST API with Phoenix Framework and Elixir. This guide covers project setup, database configuration with Ecto, context modules, controllers, authentication, error handling, and testing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Phoenix Framework",
+      "REST API",
+      "Backend Development",
+      "Functional Programming",
+      "Web Development"
+    ],
+    "post": "2026-01-26-phoenix-elixir-rest-api"
+  },
+  {
+    "title": "How to Build a REST API with Laravel",
+    "description": "Learn how to build a production-ready REST API with Laravel from scratch. This guide covers project setup, database configuration, Eloquent models, API resources, authentication with Sanctum, validation, error handling, and testing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "PHP",
+      "REST API",
+      "Backend Development",
+      "Web Development",
+      "API Design"
+    ],
+    "post": "2026-01-26-laravel-rest-api"
+  },
+  {
+    "title": "How to Build REST APIs with Django REST Framework",
+    "description": "Learn how to build production-ready REST APIs with Django REST Framework. This guide covers project setup, serializers, viewsets, authentication, permissions, pagination, filtering, and testing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Django",
+      "REST API",
+      "Django REST Framework",
+      "Backend Development",
+      "Web Development"
+    ],
+    "post": "2026-01-26-django-rest-framework-api"
+  },
+  {
+    "title": "How to Build a REST API with Ruby on Rails",
+    "description": "Learn how to build a production-ready REST API with Ruby on Rails from scratch. This guide covers project setup, model creation, controllers, authentication, serialization, error handling, and testing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "REST API",
+      "Backend Development",
+      "Web Development",
+      "API Design"
+    ],
+    "post": "2026-01-26-ruby-rails-rest-api"
+  },
+  {
     "title": "How to Fix \"ImportError: No module named\" in Python",
     "description": "Learn how to diagnose and fix the \"ImportError: No module named\" error in Python. This guide covers common causes including virtual environments, path issues, and package installation problems.",
     "authorGitHubUsername": "nawazdhandala",
@@ -66741,6 +66854,514 @@
       "SRE"
     ],
     "post": "2026-01-26-oncall-integration-grafana"
+  },
+  {
+    "title": "How to Build a REST API with Actix Web",
+    "description": "Learn how to build a production-ready REST API using Actix Web in Rust, covering project setup, routing, middleware, database integration, and error handling with practical code examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Actix Web",
+      "REST API",
+      "Backend",
+      "Web Development"
+    ],
+    "post": "2026-01-26-build-rest-api-actix-web-rust"
+  },
+  {
+    "title": "How to Use Rust Ownership and Borrowing",
+    "description": "Master Rust's ownership and borrowing system to write memory-safe code without a garbage collector. This guide covers the rules, common patterns, and practical examples that will help you think like a Rustacean.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Ownership",
+      "Borrowing",
+      "Memory Safety",
+      "Programming"
+    ],
+    "post": "2026-01-26-rust-ownership-borrowing-guide"
+  },
+  {
+    "title": "How to Connect Rust Applications to PostgreSQL with Diesel",
+    "description": "Learn how to connect your Rust applications to PostgreSQL using Diesel ORM. This guide covers setup, schema management, CRUD operations, and best practices for building type-safe database-driven applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "PostgreSQL",
+      "Diesel",
+      "ORM",
+      "Database"
+    ],
+    "post": "2026-01-26-rust-postgresql-diesel-orm"
+  },
+  {
+    "title": "How to Use Spring Data JPA with PostgreSQL",
+    "description": "A practical guide to integrating Spring Data JPA with PostgreSQL, covering project setup, entity mapping, repository patterns, custom queries, and production-ready configurations with real-world examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Spring Data JPA",
+      "PostgreSQL",
+      "Database",
+      "Backend",
+      "ORM"
+    ],
+    "post": "2026-01-26-spring-data-jpa-postgresql"
+  },
+  {
+    "title": "How to Implement Dependency Injection in Node.js",
+    "description": "Learn how to implement dependency injection in Node.js applications to build testable, maintainable code. This guide covers manual DI patterns, containers, and practical examples with Express and TypeScript.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Dependency Injection",
+      "Architecture",
+      "Testing",
+      "TypeScript"
+    ],
+    "post": "2026-01-26-nodejs-dependency-injection"
+  },
+  {
+    "title": "How to Use TypeScript with Express.js",
+    "description": "A hands-on guide to building Express.js applications with TypeScript, covering project setup, typed middleware, request and response handling, error management, and patterns for scalable API development.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "Express.js",
+      "Node.js",
+      "Backend",
+      "Web Development",
+      "API"
+    ],
+    "post": "2026-01-26-typescript-express-guide"
+  },
+  {
+    "title": "How to Structure a Production Node.js Application",
+    "description": "Learn how to structure a production-ready Node.js application with a scalable folder organization, separation of concerns, and practical patterns that make your codebase maintainable as it grows.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Project Structure",
+      "Backend",
+      "Architecture",
+      "Express",
+      "TypeScript",
+      "Best Practices"
+    ],
+    "post": "2026-01-26-structure-production-nodejs-application"
+  },
+  {
+    "title": "How to Implement CQRS Pattern in Node.js",
+    "description": "A practical guide to implementing the Command Query Responsibility Segregation (CQRS) pattern in Node.js. Learn how to separate read and write operations with working code examples for building scalable, maintainable applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "CQRS",
+      "Architecture",
+      "Design Patterns",
+      "Event-Driven Architecture"
+    ],
+    "post": "2026-01-26-nodejs-cqrs-pattern"
+  },
+  {
+    "title": "How to Build Event Sourcing Systems in Node.js",
+    "description": "Learn how to build event sourcing systems in Node.js from scratch. This guide covers event stores, aggregates, projections, snapshots, and CQRS patterns with practical TypeScript examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Event Sourcing",
+      "TypeScript",
+      "CQRS",
+      "Architecture",
+      "Backend",
+      "Design Patterns"
+    ],
+    "post": "2026-01-26-nodejs-event-sourcing"
+  },
+  {
+    "title": "How to Use Entity Framework Core with PostgreSQL",
+    "description": "Learn how to connect Entity Framework Core to PostgreSQL with practical examples covering setup, configuration, migrations, CRUD operations, and production-ready patterns for building .NET applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "C#",
+      "Entity Framework Core",
+      "PostgreSQL",
+      ".NET",
+      "Database",
+      "ORM",
+      "Npgsql",
+      "ASP.NET Core"
+    ],
+    "post": "2026-01-26-entity-framework-core-postgresql"
+  },
+  {
+    "title": "How to Implement Authentication with Devise in Rails",
+    "description": "Learn how to implement robust user authentication in Rails using Devise. This guide covers installation, configuration, customization, and security best practices with practical code examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby on Rails",
+      "Devise",
+      "Authentication",
+      "Security",
+      "User Management",
+      "Web Development"
+    ],
+    "post": "2026-01-26-rails-devise-authentication"
+  },
+  {
+    "title": "How to Implement Background Jobs with Sidekiq in Rails",
+    "description": "A practical guide to implementing background jobs with Sidekiq in Rails applications. Learn how to set up Redis, create workers, handle retries, schedule jobs, and monitor your background processing in production.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby on Rails",
+      "Sidekiq",
+      "Background Jobs",
+      "Redis",
+      "Performance",
+      "Ruby"
+    ],
+    "post": "2026-01-26-rails-sidekiq-background-jobs"
+  },
+  {
+    "title": "How to Implement Authentication with Laravel Sanctum",
+    "description": "Learn how to implement secure API authentication in Laravel using Sanctum. This guide covers installation, SPA authentication, token-based authentication for mobile apps, token abilities, and best practices for production.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "PHP",
+      "Authentication",
+      "API",
+      "Security",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-laravel-sanctum-authentication"
+  },
+  {
+    "title": "How to Build Background Tasks with Django Celery",
+    "description": "Learn how to build reliable background tasks in Django using Celery. This guide covers setup, task creation, scheduling, error handling, and production deployment patterns for scalable Django applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Django",
+      "Celery",
+      "Python",
+      "Background Tasks",
+      "Redis",
+      "Web Development",
+      "Async"
+    ],
+    "post": "2026-01-26-django-celery-background-tasks"
+  },
+  {
+    "title": "How to Get Started with Chaos Engineering",
+    "description": "Learn the fundamentals of chaos engineering and how to build more resilient systems by intentionally introducing controlled failures. This guide covers core principles, planning your first experiments, and building a chaos engineering practice from scratch.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Chaos Engineering",
+      "Reliability",
+      "SRE",
+      "DevOps",
+      "Site Reliability Engineering",
+      "Resilience"
+    ],
+    "post": "2026-01-26-chaos-engineering-getting-started"
+  },
+  {
+    "title": "How to Build Applications with Cloudflare Workers",
+    "description": "A practical guide to building and deploying applications on Cloudflare Workers. Learn how edge computing works, write your first Worker, handle routing, manage state with KV and Durable Objects, and deploy a production-ready API.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloudflare Workers",
+      "Edge Computing",
+      "Serverless",
+      "JavaScript",
+      "TypeScript",
+      "Performance"
+    ],
+    "post": "2026-01-26-cloudflare-workers-guide"
+  },
+  {
+    "title": "How to Implement Incident Severity Levels",
+    "description": "A practical guide to implementing incident severity levels that work for your team. Learn how to define, communicate, and operationalize severity classifications to improve incident response times and reduce alert fatigue.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Incident Management",
+      "SRE",
+      "Reliability",
+      "On-Call",
+      "Incident Response"
+    ],
+    "post": "2026-01-26-incident-severity-levels"
+  },
+  {
+    "title": "How to Set Up Apache Airflow for Production",
+    "description": "A practical guide to setting up Apache Airflow for production environments covering architecture decisions, deployment options, security hardening, and operational best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Airflow",
+      "Data Engineering",
+      "Workflow Orchestration",
+      "Production",
+      "DevOps",
+      "Python",
+      "Docker"
+    ],
+    "post": "2026-01-26-apache-airflow-production"
+  },
+  {
+    "title": "How to Build Production Lambda Functions",
+    "description": "A practical guide to building production-ready AWS Lambda functions covering project structure, error handling, cold start optimization, observability, testing, and deployment best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Lambda",
+      "Serverless",
+      "Production",
+      "Node.js",
+      "Python",
+      "Observability",
+      "Cold Start",
+      "Error Handling"
+    ],
+    "post": "2026-01-26-aws-lambda-production"
+  },
+  {
+    "title": "How to Deploy Ceph Cluster on Bare Metal",
+    "description": "A step-by-step guide to deploying a production-ready Ceph cluster on bare metal servers, covering hardware requirements, network configuration, and cluster setup with cephadm.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ceph",
+      "Storage",
+      "Bare Metal",
+      "Distributed Storage",
+      "Linux",
+      "Infrastructure",
+      "DevOps"
+    ],
+    "post": "2026-01-26-ceph-cluster-bare-metal"
+  },
+  {
+    "title": "How to Get Started with Open Policy Agent",
+    "description": "A beginner-friendly guide to Open Policy Agent (OPA) covering installation, Rego policy language basics, and practical examples for building authorization and validation logic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Open Policy Agent",
+      "OPA",
+      "Rego",
+      "Policy as Code",
+      "Authorization",
+      "Security",
+      "DevOps"
+    ],
+    "post": "2026-01-26-open-policy-agent-guide"
+  },
+  {
+    "title": "How to Get Started with Tekton Pipelines",
+    "description": "A practical introduction to Tekton Pipelines covering installation, core concepts, and building your first CI/CD pipeline on Kubernetes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Tekton",
+      "Kubernetes",
+      "CI/CD",
+      "Pipelines",
+      "DevOps",
+      "Cloud Native"
+    ],
+    "post": "2026-01-26-tekton-pipelines-guide"
+  },
+  {
+    "title": "How to Set Up Jenkins on Kubernetes",
+    "description": "A complete guide to deploying Jenkins on Kubernetes using Helm, including persistent storage configuration, agent pods, pipeline setup, and production-ready best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Jenkins",
+      "Kubernetes",
+      "CI/CD",
+      "DevOps",
+      "Helm",
+      "Automation"
+    ],
+    "post": "2026-01-26-jenkins-kubernetes-setup"
+  },
+  {
+    "title": "How to Set Up PagerDuty for Incident Management",
+    "description": "Learn how to set up PagerDuty for incident management from scratch. This guide covers service configuration, escalation policies, on-call schedules, integrations with monitoring tools, and best practices for effective incident response.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PagerDuty",
+      "Incident Management",
+      "On-Call",
+      "Alerting",
+      "DevOps",
+      "SRE",
+      "Monitoring",
+      "Escalation Policies"
+    ],
+    "post": "2026-01-26-pagerduty-incident-management"
+  },
+  {
+    "title": "How to Get Started with Envoy Proxy",
+    "description": "A practical guide to getting started with Envoy Proxy. Learn how to install, configure, and deploy Envoy for load balancing, traffic routing, and observability in modern application architectures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Envoy",
+      "Proxy",
+      "Load Balancing",
+      "Kubernetes",
+      "Service Mesh",
+      "Microservices",
+      "Observability",
+      "Traffic Management"
+    ],
+    "post": "2026-01-26-envoy-proxy-getting-started"
+  },
+  {
+    "title": "How to Configure HAProxy for Production",
+    "description": "A practical guide to configuring HAProxy for production environments with secure defaults, performance tuning, health checks, SSL termination, and monitoring best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "HAProxy",
+      "Load Balancing",
+      "DevOps",
+      "High Availability",
+      "SSL",
+      "Performance",
+      "Linux"
+    ],
+    "post": "2026-01-26-haproxy-production-config"
+  },
+  {
+    "title": "How to Get Started with HashiCorp Nomad",
+    "description": "A practical guide to getting started with HashiCorp Nomad for workload orchestration. Learn how to install, configure, and deploy your first containerized applications with Nomad.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nomad",
+      "HashiCorp",
+      "Container Orchestration",
+      "DevOps",
+      "Infrastructure",
+      "Workload Scheduling"
+    ],
+    "post": "2026-01-26-hashicorp-nomad-getting-started"
+  },
+  {
+    "title": "How to Use Pulumi with TypeScript",
+    "description": "A practical guide to building and managing cloud infrastructure using Pulumi with TypeScript. Learn how to set up projects, create resources, manage state, and implement best practices for type-safe infrastructure as code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Pulumi",
+      "TypeScript",
+      "IaC",
+      "Infrastructure as Code",
+      "DevOps",
+      "AWS",
+      "Cloud",
+      "Automation"
+    ],
+    "post": "2026-01-26-pulumi-typescript-iac"
+  },
+  {
+    "title": "How to Set Up K3s Production Cluster",
+    "description": "A comprehensive guide to deploying K3s in production with high availability, security hardening, external databases, TLS configuration, and operational best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "K3s",
+      "Kubernetes",
+      "Production",
+      "High Availability",
+      "DevOps",
+      "Infrastructure"
+    ],
+    "post": "2026-01-26-k3s-production-cluster"
+  },
+  {
+    "title": "How to Conduct Blameless Postmortems",
+    "description": "Learn how to conduct effective blameless postmortems that help your team learn from incidents without fear. This practical guide covers facilitation techniques, common pitfalls, and real examples from production environments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Incident Management",
+      "Postmortems",
+      "Blameless Culture",
+      "Site Reliability Engineering",
+      "Team Leadership"
+    ],
+    "post": "2026-01-26-blameless-postmortems-guide"
+  },
+  {
+    "title": "How to Get Started with NATS Messaging",
+    "description": "A beginner-friendly guide to NATS messaging. Learn what NATS is, why it matters for modern applications, and how to implement common messaging patterns with practical code examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Distributed Systems",
+      "Microservices",
+      "Pub/Sub",
+      "Event-Driven Architecture"
+    ],
+    "post": "2026-01-26-nats-messaging-getting-started"
+  },
+  {
+    "title": "How to Get Started with ClickHouse for Analytics",
+    "description": "A practical guide to getting started with ClickHouse for analytics workloads. Learn installation, table design, data loading, and query optimization to build fast analytical systems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "ClickHouse",
+      "Analytics",
+      "Database",
+      "Big Data",
+      "SQL",
+      "Time Series",
+      "OLAP"
+    ],
+    "post": "2026-01-26-clickhouse-analytics-getting-started"
+  },
+  {
+    "title": "How to Get Started with TimescaleDB for Time-Series Data",
+    "description": "A practical guide to getting started with TimescaleDB for time-series data. Learn how to install, configure, and use TimescaleDB for metrics, IoT data, and application monitoring with real-world examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TimescaleDB",
+      "Time-Series",
+      "PostgreSQL",
+      "Database",
+      "Monitoring",
+      "Metrics",
+      "Tutorial"
+    ],
+    "post": "2026-01-26-timescaledb-time-series-getting-started"
+  },
+  {
+    "title": "How to Implement Cloud Cost Allocation",
+    "description": "A practical guide to implementing cloud cost allocation across teams and projects. Learn tagging strategies, allocation models, and automation techniques to bring accountability to your cloud spend.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloud Cost Management",
+      "FinOps",
+      "Cost Allocation",
+      "AWS",
+      "Azure",
+      "GCP",
+      "Tagging",
+      "Chargeback",
+      "Showback"
+    ],
+    "post": "2026-01-26-cloud-cost-allocation"
+  },
+  {
+    "title": "How to Implement Capacity Planning for Services",
+    "description": "A practical guide to implementing capacity planning for services, covering resource forecasting, monitoring setup, load testing, and scaling strategies to ensure your systems handle growth without downtime.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Capacity Planning",
+      "DevOps",
+      "Infrastructure",
+      "Scaling",
+      "Monitoring",
+      "SRE",
+      "Performance"
+    ],
+    "post": "2026-01-26-capacity-planning-services"
   },
   {
     "title": "How to Use pathlib for File Paths in Python",

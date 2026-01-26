@@ -32,6 +32,7 @@
 - Active-Active
 - Active-Passive
 - ActiveMQ
+- Actix Web
 - Actuator
 - Ad Blocker
 - Ad-Hoc Queries
@@ -416,6 +417,7 @@
 - Bootable USB
 - borg
 - Borrow Checker
+- Borrowing
 - Bottom Sheet
 - Bounds Checking
 - Box
@@ -533,6 +535,7 @@
 - Chaos Engineering
 - Chaos Mesh
 - Character Encoding
+- Chargeback
 - Chart Repository
 - Charts
 - Chat
@@ -638,6 +641,7 @@
 - Cloud-init
 - cloud-native
 - Cloudflare
+- Cloudflare Workers
 - CloudFormation
 - CloudNativePG
 - CloudWatch Events
@@ -842,6 +846,7 @@
 - Cortex
 - Cosign
 - Cosmos DB
+- Cost Allocation
 - Cost Analysis
 - Cost Comparison
 - Cost Optimization
@@ -1134,6 +1139,7 @@
 - Device Services
 - Device State
 - Devices
+- Devise
 - DevOps
 - DevSecOps
 - DevTools
@@ -1143,6 +1149,7 @@
 - DI Scopes
 - Diagnostics
 - Dictionaries
+- Diesel
 - Diff
 - DinD
 - Direct Exchange
@@ -1189,6 +1196,7 @@
 - distributed-testing
 - Distroless
 - Django
+- Django REST Framework
 - DKIM
 - DLNA
 - DLQ
@@ -1297,6 +1305,7 @@
 - Elasticsearch
 - ELB
 - ElementTree
+- Elixir
 - ELK
 - ELK Alternative
 - ELK Stack
@@ -1354,6 +1363,7 @@
 - Errors
 - ES Modules
 - ES6
+- Escalation Policies
 - ESLint
 - ESM
 - etcd
@@ -1817,6 +1827,7 @@
 - i18n
 - i3
 - IaC
+- IaC Best Practices
 - IAM
 - ICMP
 - ICU
@@ -2602,6 +2613,7 @@
 - Nodemon
 - NodePort
 - Nodes
+- Nomad
 - Non-Blocking
 - Non-Production
 - Non-Root
@@ -2613,6 +2625,7 @@
 - Notifications
 - NOTIFY
 - NotLeaderForPartition
+- Npgsql
 - npm
 - NSA
 - NSEC
@@ -2842,6 +2855,7 @@
 - Pgpool-II
 - PhantomData
 - PHI
+- Phoenix Framework
 - Phone Number Search
 - PhotoRec
 - PHP
@@ -3231,6 +3245,7 @@
 - Register
 - Registrar
 - Registry
+- Rego
 - Regression Testing
 - Regular Expressions
 - Reindex
@@ -3379,6 +3394,7 @@
 - RTO
 - rTorrent
 - Ruby
+- Ruby on Rails
 - Rules
 - RUM
 - Runbooks
@@ -3589,10 +3605,12 @@
 - Short-lived Jobs
 - SHOULD
 - Shovel
+- Showback
 - Shuffle
 - Side Effects
 - Sidecar
 - Sidecar Pattern
+- Sidekiq
 - SIEM
 - SignalR
 - Signals
@@ -3913,6 +3931,7 @@
 - TDE
 - Team Chat
 - Team Development
+- Team Leadership
 - Team Management
 - Teaming
 - Teams
@@ -4412,6 +4431,7 @@
 - Workflow Templates
 - Workflows
 - Workload Identity
+- Workload Scheduling
 - Workloads
 - Workspace Connections
 - Workspaces
