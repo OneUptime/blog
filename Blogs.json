@@ -67991,6 +67991,1060 @@
     "post": "2026-01-26-grafana-tempo-tracing"
   },
   {
+    "title": "How to Build Production-Ready FastAPI Applications",
+    "description": "Learn how to build production-ready FastAPI applications with proper project structure, error handling, logging, testing, and deployment best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "FastAPI",
+      "Python",
+      "Production",
+      "API Development",
+      "Web Development"
+    ],
+    "post": "2026-01-26-fastapi-production-ready"
+  },
+  {
+    "title": "How to Use Laravel Queues with Redis",
+    "description": "Learn how to use Laravel Queues with Redis for background job processing including job creation, retries, rate limiting, and monitoring with Horizon.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "Queues",
+      "Redis",
+      "PHP",
+      "Background Jobs"
+    ],
+    "post": "2026-01-26-laravel-queues-redis"
+  },
+  {
+    "title": "How to Use Active Record Associations Effectively",
+    "description": "Learn how to use Active Record associations effectively with belongs_to, has_many, has_many through, polymorphic associations, and eager loading.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby on Rails",
+      "Active Record",
+      "Associations",
+      "Database",
+      "ORM"
+    ],
+    "post": "2026-01-26-rails-active-record-associations"
+  },
+  {
+    "title": "How to Build GraphQL Resolvers with N+1 Prevention",
+    "description": "Learn how to build efficient GraphQL resolvers that prevent N+1 query problems using DataLoader, batching, and caching strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GraphQL",
+      "N+1 Problem",
+      "DataLoader",
+      "Performance",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-graphql-n1-prevention"
+  },
+  {
+    "title": "How to Use Express with TypeORM",
+    "description": "Learn how to use Express with TypeORM for database operations including entities, repositories, relations, and migrations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Express.js",
+      "TypeORM",
+      "TypeScript",
+      "Database",
+      "Node.js"
+    ],
+    "post": "2026-01-26-express-typeorm"
+  },
+  {
+    "title": "How to Use Ecto for Database Operations in Elixir",
+    "description": "Learn how to use Ecto for database operations in Elixir including schemas, changesets, queries, associations, and migrations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Ecto",
+      "Database",
+      "ORM",
+      "PostgreSQL"
+    ],
+    "post": "2026-01-26-elixir-ecto-database"
+  },
+  {
+    "title": "How to Use Gin with GORM",
+    "description": "Learn how to use Gin with GORM for building REST APIs with database operations including models, CRUD, relationships, and migrations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Gin",
+      "GORM",
+      "Database",
+      "ORM"
+    ],
+    "post": "2026-01-26-gin-gorm"
+  },
+  {
+    "title": "How to Use Flask with SQLAlchemy",
+    "description": "Learn how to use Flask with SQLAlchemy for database operations including models, relationships, queries, and migrations with Flask-Migrate.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Flask",
+      "SQLAlchemy",
+      "Python",
+      "Database",
+      "ORM"
+    ],
+    "post": "2026-01-26-flask-sqlalchemy"
+  },
+  {
+    "title": "How to Use Kotlin Flow for Reactive Programming",
+    "description": "Learn how to use Kotlin Flow for reactive programming with cold streams, operators, state management, and integration with coroutines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kotlin",
+      "Flow",
+      "Reactive Programming",
+      "Coroutines",
+      "Android"
+    ],
+    "post": "2026-01-26-kotlin-flow-reactive"
+  },
+  {
+    "title": "How to Document REST APIs with OpenAPI",
+    "description": "Learn how to document REST APIs with OpenAPI specification including schemas, examples, authentication, and generating interactive documentation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenAPI",
+      "Swagger",
+      "API Documentation",
+      "REST API",
+      "Developer Experience"
+    ],
+    "post": "2026-01-26-openapi-rest-documentation"
+  },
+  {
+    "title": "How to Build Chat Applications with WebSockets",
+    "description": "Learn how to build a real-time chat application with WebSockets including rooms, private messages, typing indicators, and message persistence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "WebSocket",
+      "Chat Application",
+      "Real-Time",
+      "Node.js",
+      "JavaScript"
+    ],
+    "post": "2026-01-26-websocket-chat-application"
+  },
+  {
+    "title": "How to Build Batch Processing Jobs with Spring Batch",
+    "description": "Learn how to build batch processing jobs with Spring Batch including readers, processors, writers, job scheduling, and error handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Spring Batch",
+      "Java",
+      "Batch Processing",
+      "ETL",
+      "Spring Boot"
+    ],
+    "post": "2026-01-26-spring-batch-jobs"
+  },
+  {
+    "title": "How to Build Blazor Applications",
+    "description": "Learn how to build interactive web applications with Blazor including components, data binding, forms, authentication, and deployment options.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Blazor",
+      "C#",
+      ".NET",
+      "WebAssembly",
+      "Web Development"
+    ],
+    "post": "2026-01-26-blazor-applications"
+  },
+  {
+    "title": "How to Use Rails with Elasticsearch",
+    "description": "Learn how to integrate Rails with Elasticsearch using Searchkick for full-text search with indexing, querying, facets, and autocomplete.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby on Rails",
+      "Elasticsearch",
+      "Search",
+      "Full-Text Search",
+      "Searchkick"
+    ],
+    "post": "2026-01-26-rails-elasticsearch"
+  },
+  {
+    "title": "How to Use Django with Elasticsearch",
+    "description": "Learn how to integrate Django with Elasticsearch for full-text search using django-elasticsearch-dsl with indexing, searching, and filtering.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Django",
+      "Elasticsearch",
+      "Search",
+      "Python",
+      "Full-Text Search"
+    ],
+    "post": "2026-01-26-django-elasticsearch"
+  },
+  {
+    "title": "How to Implement Middleware in Go Web Applications",
+    "description": "Learn how to implement middleware in Go web applications for logging, authentication, rate limiting, and request processing chains.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Middleware",
+      "Web Development",
+      "HTTP",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-go-middleware"
+  },
+  {
+    "title": "How to Handle JSON in Go",
+    "description": "Learn how to handle JSON in Go with encoding/decoding, struct tags, custom marshalers, streaming, and working with dynamic JSON data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "JSON",
+      "Serialization",
+      "API Development",
+      "Data Processing"
+    ],
+    "post": "2026-01-26-go-json-handling"
+  },
+  {
+    "title": "How to Implement Redis Pub/Sub",
+    "description": "A practical guide to implementing Redis Pub/Sub for real-time messaging, covering publishers, subscribers, pattern subscriptions, and production deployment patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Redis",
+      "Pub/Sub",
+      "Messaging",
+      "Real-Time",
+      "Event-Driven Architecture",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-redis-pubsub-implementation"
+  },
+  {
+    "title": "How to Use Cargo for Rust Project Management",
+    "description": "A comprehensive guide to using Cargo for managing Rust projects, from creating new projects to publishing crates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Cargo",
+      "Package Management",
+      "Build Tools",
+      "Dependencies",
+      "Rust Development",
+      "Project Structure"
+    ],
+    "post": "2026-01-26-rust-cargo-project-management"
+  },
+  {
+    "title": "How to Use Rust FFI for C Interoperability",
+    "description": "Learn how to use Rust's Foreign Function Interface (FFI) to call C code from Rust and expose Rust functions to C, with practical examples and safety considerations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "FFI",
+      "C",
+      "Interoperability",
+      "Systems Programming",
+      "Unsafe Rust",
+      "Foreign Functions"
+    ],
+    "post": "2026-01-26-rust-ffi-c-interoperability"
+  },
+  {
+    "title": "How to Build Plugin Architecture in Node.js",
+    "description": "Learn how to design and implement a flexible plugin architecture in Node.js that allows third-party extensions without modifying core application code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Plugin Architecture",
+      "Software Design",
+      "Extensibility",
+      "Modular Design",
+      "TypeScript",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-nodejs-plugin-architecture"
+  },
+  {
+    "title": "How to Use Spring Boot Testcontainers",
+    "description": "Learn how to use Testcontainers with Spring Boot to run integration tests against real databases and services in Docker containers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Spring Boot",
+      "Testcontainers",
+      "Java",
+      "Integration Testing",
+      "Docker",
+      "JUnit 5",
+      "Database Testing"
+    ],
+    "post": "2026-01-26-spring-boot-testcontainers"
+  },
+  {
+    "title": "How to Use Rust with Redis",
+    "description": "A practical guide to integrating Redis with Rust applications using the redis-rs crate for caching, session management, and data persistence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Redis",
+      "Caching",
+      "Database",
+      "Backend Development",
+      "Async Programming"
+    ],
+    "post": "2026-01-26-rust-redis-integration"
+  },
+  {
+    "title": "How to Implement Authorization with Pundit",
+    "description": "Learn how to implement clean, maintainable authorization in Ruby on Rails applications using Pundit policies with practical examples and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby on Rails",
+      "Pundit",
+      "Authorization",
+      "Security",
+      "Policy Objects",
+      "RBAC",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-rails-pundit-authorization"
+  },
+  {
+    "title": "How to Implement Logging with Serilog in .NET",
+    "description": "A comprehensive guide to implementing structured logging in .NET applications using Serilog with practical examples for console, file, and external sink configurations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "C#",
+      ".NET",
+      "Serilog",
+      "Logging",
+      "Structured Logging",
+      "Observability",
+      "ASP.NET Core"
+    ],
+    "post": "2026-01-26-dotnet-serilog-logging"
+  },
+  {
+    "title": "How to Use Elixir for Distributed Systems",
+    "description": "A practical guide to building distributed systems with Elixir, covering node clustering, process distribution, data replication, and fault tolerance patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Distributed Systems",
+      "OTP",
+      "BEAM",
+      "Concurrency",
+      "Fault Tolerance",
+      "Clustering"
+    ],
+    "post": "2026-01-26-elixir-distributed-systems"
+  },
+  {
+    "title": "How to Build WebSocket Applications with Laravel Reverb",
+    "description": "Learn how to build real-time WebSocket applications using Laravel Reverb, covering installation, configuration, channel authorization, and practical examples for chat and notifications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "WebSocket",
+      "Reverb",
+      "Real-time",
+      "PHP",
+      "Broadcasting",
+      "Pusher"
+    ],
+    "post": "2026-01-26-laravel-reverb-websockets"
+  },
+  {
+    "title": "How to Use RabbitMQ Exchanges Effectively",
+    "description": "A comprehensive guide to understanding and using RabbitMQ exchanges for efficient message routing in distributed systems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RabbitMQ",
+      "Message Queues",
+      "Exchanges",
+      "Microservices",
+      "Distributed Systems",
+      "Messaging Patterns",
+      "Event-Driven"
+    ],
+    "post": "2026-01-26-rabbitmq-exchanges-guide"
+  },
+  {
+    "title": "How to Implement DynamoDB Single-Table Design",
+    "description": "A practical guide to implementing single-table design in DynamoDB, covering access patterns, key design, GSIs, and real-world examples for scalable NoSQL data modeling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DynamoDB",
+      "AWS",
+      "NoSQL",
+      "Database Design",
+      "Single-Table Design",
+      "Data Modeling",
+      "Serverless"
+    ],
+    "post": "2026-01-26-dynamodb-single-table-design"
+  },
+  {
+    "title": "How to Design ClickHouse Tables for Performance",
+    "description": "A comprehensive guide to designing ClickHouse tables for optimal query performance, covering primary keys, ordering keys, partitioning, compression, and real-world schema patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "ClickHouse",
+      "Database Design",
+      "Performance Optimization",
+      "Analytics",
+      "Schema Design",
+      "MergeTree"
+    ],
+    "post": "2026-01-26-clickhouse-table-design"
+  },
+  {
+    "title": "How to Design TimescaleDB Hypertables",
+    "description": "A practical guide to designing TimescaleDB hypertables for optimal performance, covering partitioning strategies, chunk sizing, indexing, and real-world schema patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TimescaleDB",
+      "Hypertables",
+      "Time-Series Database",
+      "PostgreSQL",
+      "Database Design",
+      "Data Partitioning",
+      "Performance Optimization"
+    ],
+    "post": "2026-01-26-timescaledb-hypertables"
+  },
+  {
+    "title": "How to Handle Tombstones in Cassandra",
+    "description": "Learn how to identify, manage, and prevent tombstone accumulation in Apache Cassandra to maintain optimal query performance and cluster health.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cassandra",
+      "Database",
+      "NoSQL",
+      "Performance",
+      "Data Management",
+      "Distributed Systems",
+      "DevOps"
+    ],
+    "post": "2026-01-26-cassandra-tombstones"
+  },
+  {
+    "title": "How to Implement Pulumi Stacks for Environments",
+    "description": "Learn how to use Pulumi stacks to manage multiple deployment environments like development, staging, and production with isolated configurations and shared code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Pulumi",
+      "Infrastructure as Code",
+      "DevOps",
+      "Multi-Environment",
+      "Cloud Infrastructure",
+      "Stack Management",
+      "Configuration Management"
+    ],
+    "post": "2026-01-26-pulumi-stacks-environments"
+  },
+  {
+    "title": "How to Use Linkerd for mTLS",
+    "description": "A practical guide to implementing mutual TLS (mTLS) with Linkerd for secure service-to-service communication in Kubernetes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linkerd",
+      "mTLS",
+      "Kubernetes",
+      "Service Mesh",
+      "Security",
+      "Zero Trust",
+      "Microservices"
+    ],
+    "post": "2026-01-26-linkerd-mtls"
+  },
+  {
+    "title": "How to Implement Vault PKI for Certificate Management",
+    "description": "Learn how to set up and use HashiCorp Vault's PKI secrets engine to build your own internal Certificate Authority for automated certificate management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "HashiCorp Vault",
+      "PKI",
+      "SSL/TLS",
+      "Certificate Management",
+      "Security",
+      "DevOps",
+      "Infrastructure"
+    ],
+    "post": "2026-01-26-vault-pki-certificates"
+  },
+  {
+    "title": "How to Configure Envoy as Sidecar Proxy",
+    "description": "Learn how to configure Envoy as a sidecar proxy for your microservices, enabling transparent traffic management, observability, and security without changing application code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Envoy",
+      "Sidecar Proxy",
+      "Service Mesh",
+      "Kubernetes",
+      "Microservices",
+      "Traffic Management",
+      "Observability"
+    ],
+    "post": "2026-01-26-envoy-sidecar-proxy"
+  },
+  {
+    "title": "How to Use GraphQL Federation for Microservices",
+    "description": "Learn how to implement GraphQL Federation to unify your microservices into a single, cohesive API layer.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GraphQL",
+      "Federation",
+      "Microservices",
+      "API Gateway",
+      "Apollo",
+      "Distributed Systems",
+      "Backend Architecture"
+    ],
+    "post": "2026-01-26-graphql-federation-microservices"
+  },
+  {
+    "title": "How to Implement HATEOAS in REST APIs",
+    "description": "Learn how to implement HATEOAS (Hypermedia as the Engine of Application State) in your REST APIs to create self-documenting, discoverable endpoints that guide clients through available actions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "REST API",
+      "HATEOAS",
+      "API Design",
+      "Hypermedia",
+      "Web Services",
+      "Backend Development",
+      "API Architecture"
+    ],
+    "post": "2026-01-26-rest-api-hateoas"
+  },
+  {
+    "title": "How to Use Laravel Scout for Full-Text Search",
+    "description": "A practical guide to implementing fast, full-text search in Laravel applications using Scout with various search drivers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "Laravel Scout",
+      "Full-Text Search",
+      "Algolia",
+      "Meilisearch",
+      "PHP",
+      "Elasticsearch"
+    ],
+    "post": "2026-01-26-laravel-scout-search"
+  },
+  {
+    "title": "How to Build the Outbox Pattern in .NET",
+    "description": "Learn how to implement the transactional outbox pattern in .NET using Entity Framework Core to ensure reliable message delivery in distributed systems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "Outbox Pattern",
+      "Entity Framework Core",
+      "Distributed Systems",
+      "Messaging",
+      "MassTransit",
+      "Event-Driven Architecture"
+    ],
+    "post": "2026-01-26-dotnet-outbox-pattern"
+  },
+  {
+    "title": "How to Configure SQS FIFO Queues",
+    "description": "A practical guide to configuring Amazon SQS FIFO queues for guaranteed message ordering and exactly-once delivery in your distributed applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "SQS",
+      "FIFO Queue",
+      "Message Ordering",
+      "Exactly-Once Processing",
+      "Distributed Systems",
+      "Message Deduplication"
+    ],
+    "post": "2026-01-26-sqs-fifo-queues"
+  },
+  {
+    "title": "How to Get Started with Rust for Backend Development",
+    "description": "A practical guide to building your first backend service with Rust, covering project setup, web frameworks, database integration, and deployment strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Backend Development",
+      "Web API",
+      "Actix-web",
+      "Axum",
+      "REST API",
+      "Systems Programming"
+    ],
+    "post": "2026-01-26-rust-backend-development"
+  },
+  {
+    "title": "How to Implement Pub/Sub Dead Letter Topics",
+    "description": "Learn how to implement dead letter topics in Google Cloud Pub/Sub for handling failed messages, including configuration, retry strategies, and monitoring.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GCP",
+      "Google Cloud Pub/Sub",
+      "Dead Letter Topic",
+      "Message Processing",
+      "Error Handling",
+      "Reliability",
+      "Event-Driven Architecture"
+    ],
+    "post": "2026-01-26-pubsub-dead-letter-topics"
+  },
+  {
+    "title": "How to Use Rails Concerns for Code Reuse",
+    "description": "Learn how to use Rails Concerns to extract shared behavior into reusable modules, keeping your models and controllers DRY and maintainable.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby on Rails",
+      "Concerns",
+      "Code Reuse",
+      "DRY",
+      "ActiveSupport",
+      "Mixins",
+      "Best Practices"
+    ],
+    "post": "2026-01-26-rails-concerns-code-reuse"
+  },
+  {
+    "title": "How to Use Kotlin with Spring Boot",
+    "description": "Learn how to build modern web applications with Kotlin and Spring Boot, covering project setup, REST APIs, data persistence, and Kotlin-specific features.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kotlin",
+      "Spring Boot",
+      "JVM",
+      "Web Development",
+      "REST API",
+      "Backend Development",
+      "Microservices"
+    ],
+    "post": "2026-01-26-kotlin-spring-boot"
+  },
+  {
+    "title": "How to Implement Functional Programming in Scala",
+    "description": "A practical guide to functional programming in Scala covering immutability, pure functions, higher-order functions, pattern matching, and real-world application patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Scala",
+      "Functional Programming",
+      "Immutability",
+      "Higher-Order Functions",
+      "Pattern Matching",
+      "JVM"
+    ],
+    "post": "2026-01-26-scala-functional-programming"
+  },
+  {
+    "title": "How to Use Gin with MongoDB",
+    "description": "A practical guide to building REST APIs with Gin and MongoDB in Go, covering database connections, CRUD operations, and production-ready patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Gin",
+      "MongoDB",
+      "REST API",
+      "CRUD",
+      "Database",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-gin-mongodb-guide"
+  },
+  {
+    "title": "How to Use Terragrunt for DRY Terraform",
+    "description": "Learn how to eliminate code duplication in your Terraform projects using Terragrunt, with practical examples for managing multi-environment and multi-region deployments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "Terragrunt",
+      "Infrastructure as Code",
+      "DevOps",
+      "DRY",
+      "Cloud Infrastructure",
+      "Automation"
+    ],
+    "post": "2026-01-26-terragrunt-dry-terraform"
+  },
+  {
+    "title": "How to Use DynamoDB Global Secondary Indexes",
+    "description": "A practical guide to using DynamoDB Global Secondary Indexes (GSIs) to enable flexible query patterns beyond your table's primary key.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "DynamoDB",
+      "NoSQL",
+      "Database",
+      "Global Secondary Index",
+      "Cloud",
+      "Backend"
+    ],
+    "post": "2026-01-26-dynamodb-global-secondary-indexes"
+  },
+  {
+    "title": "How to Use DynamoDB Streams",
+    "description": "Learn how to capture and process real-time data changes in DynamoDB using Streams for event-driven architectures, data replication, and audit logging.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "DynamoDB",
+      "DynamoDB Streams",
+      "Event-Driven Architecture",
+      "Serverless",
+      "Lambda"
+    ],
+    "post": "2026-01-26-dynamodb-streams"
+  },
+  {
+    "title": "How to Use Pulsar Functions for Stream Processing",
+    "description": "A practical guide to building serverless stream processing pipelines with Apache Pulsar Functions, covering stateless transformations, stateful processing, and deployment patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Pulsar",
+      "Pulsar Functions",
+      "Stream Processing",
+      "Serverless",
+      "Event-Driven Architecture",
+      "Real-Time Data"
+    ],
+    "post": "2026-01-26-pulsar-functions-streaming"
+  },
+  {
+    "title": "How to Implement Vault Transit Secrets Engine",
+    "description": "A practical guide to implementing HashiCorp Vault's Transit Secrets Engine for encryption as a service. Learn how to encrypt, decrypt, sign, and verify data without managing encryption keys in your applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "HashiCorp Vault",
+      "Transit Secrets Engine",
+      "Encryption",
+      "Data Protection",
+      "Security",
+      "Key Management"
+    ],
+    "post": "2026-01-26-vault-transit-secrets"
+  },
+  {
+    "title": "How to Use Cilium with AWS EKS",
+    "description": "Learn how to deploy and configure Cilium as the CNI for AWS EKS clusters, replacing the default AWS VPC CNI with eBPF-powered networking.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cilium",
+      "AWS",
+      "EKS",
+      "Kubernetes",
+      "eBPF",
+      "Networking",
+      "CNI"
+    ],
+    "post": "2026-01-26-cilium-aws-eks"
+  },
+  {
+    "title": "How to Implement Linkerd Canary Deployments",
+    "description": "A practical guide to implementing canary deployments with Linkerd and Flagger for safe, automated progressive rollouts in Kubernetes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linkerd",
+      "Canary Deployments",
+      "Kubernetes",
+      "Service Mesh",
+      "Progressive Delivery",
+      "Flagger",
+      "Traffic Management"
+    ],
+    "post": "2026-01-26-linkerd-canary-deployments"
+  },
+  {
+    "title": "How to Profile Node.js Applications for Memory Leaks",
+    "description": "A hands-on guide to profiling Node.js applications for memory leaks using heap snapshots, allocation timelines, and systematic comparison techniques.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Memory Leaks",
+      "Profiling",
+      "Heap Snapshots",
+      "Chrome DevTools",
+      "Performance",
+      "Debugging"
+    ],
+    "post": "2026-01-26-nodejs-memory-leak-profiling"
+  },
+  {
+    "title": "How to Implement HAProxy ACLs",
+    "description": "Learn how to implement HAProxy Access Control Lists (ACLs) for intelligent traffic routing, content-based switching, and request filtering.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "HAProxy",
+      "ACLs",
+      "Load Balancing",
+      "Traffic Routing",
+      "DevOps",
+      "Networking",
+      "Linux"
+    ],
+    "post": "2026-01-26-haproxy-acls"
+  },
+  {
+    "title": "How to Use Envoy Filters",
+    "description": "Learn how to configure and use Envoy's native filter system to customize request processing, add authentication, implement rate limiting, and transform traffic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Envoy",
+      "Filters",
+      "Proxy",
+      "Traffic Management",
+      "HTTP Filters",
+      "Network Filters",
+      "Load Balancing"
+    ],
+    "post": "2026-01-26-envoy-filters"
+  },
+  {
+    "title": "How to Build HTTP Clients in Rust with Reqwest",
+    "description": "A practical guide to building HTTP clients in Rust using the reqwest library, covering GET, POST, headers, JSON handling, and error management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Reqwest",
+      "HTTP Client",
+      "REST API",
+      "Async Rust",
+      "Web Development",
+      "Networking"
+    ],
+    "post": "2026-01-26-rust-reqwest-http-client"
+  },
+  {
+    "title": "How to Implement File Uploads in FastAPI",
+    "description": "A hands-on guide to implementing secure and scalable file uploads in FastAPI with validation, progress tracking, and cloud storage integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "FastAPI",
+      "File Uploads",
+      "Python",
+      "REST API",
+      "Multipart Forms",
+      "Async",
+      "Web Development"
+    ],
+    "post": "2026-01-26-fastapi-file-uploads"
+  },
+  {
+    "title": "How to Version REST APIs Effectively",
+    "description": "A practical guide to implementing REST API versioning strategies that keep your clients happy while allowing your API to evolve.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "REST API",
+      "API Versioning",
+      "Web Development",
+      "Backend Development",
+      "API Design",
+      "Semantic Versioning",
+      "Microservices"
+    ],
+    "post": "2026-01-26-rest-api-versioning"
+  },
+  {
+    "title": "How to Use Spring Boot with MongoDB",
+    "description": "Learn how to build production-ready Spring Boot applications with MongoDB, covering setup, repositories, queries, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Spring Boot",
+      "MongoDB",
+      "Java",
+      "NoSQL",
+      "Database",
+      "REST API",
+      "Backend"
+    ],
+    "post": "2026-01-26-spring-boot-mongodb"
+  },
+  {
+    "title": "How to Use Laravel Horizon for Queue Management",
+    "description": "A complete guide to installing, configuring, and using Laravel Horizon for managing and monitoring your Redis queues in production.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "Horizon",
+      "Queue Management",
+      "Redis",
+      "PHP",
+      "Background Jobs",
+      "Monitoring"
+    ],
+    "post": "2026-01-26-laravel-horizon-queues"
+  },
+  {
+    "title": "How to Test Rust Applications with Integration Tests",
+    "description": "A practical guide to writing integration tests for Rust applications, covering test organization, shared fixtures, async testing patterns, and database testing strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Integration Testing",
+      "Testing",
+      "Cargo",
+      "Test Organization",
+      "Fixtures",
+      "Async Testing"
+    ],
+    "post": "2026-01-26-rust-integration-tests"
+  },
+  {
+    "title": "How to Implement File Uploads in Django",
+    "description": "Learn how to implement secure file uploads in Django with validation, storage backends, and best practices for handling user-uploaded content.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Django",
+      "File Uploads",
+      "Web Development",
+      "Backend Development",
+      "Media Files",
+      "Forms"
+    ],
+    "post": "2026-01-26-django-file-uploads"
+  },
+  {
+    "title": "How to Use Service Objects in Rails",
+    "description": "Learn how to implement service objects in Rails to keep your controllers thin, models focused, and business logic organized.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby on Rails",
+      "Service Objects",
+      "Design Patterns",
+      "Ruby",
+      "Refactoring",
+      "Clean Code",
+      "Software Architecture"
+    ],
+    "post": "2026-01-26-rails-service-objects"
+  },
+  {
+    "title": "How to Build Redis Caching Patterns",
+    "description": "A practical guide to implementing Redis caching patterns including cache-aside, write-through, write-behind, and read-through strategies with real-world examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Redis",
+      "Caching",
+      "Cache Patterns",
+      "Performance",
+      "Database",
+      "Node.js",
+      "Python"
+    ],
+    "post": "2026-01-26-redis-caching-patterns"
+  },
+  {
+    "title": "How to Implement Error Handling in Express",
+    "description": "Learn how to build production-ready error handling in Express.js with custom error classes, middleware, async wrappers, and structured responses.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Express",
+      "NodeJS",
+      "Error Handling",
+      "Middleware",
+      "Backend",
+      "JavaScript",
+      "REST API"
+    ],
+    "post": "2026-01-26-express-error-handling"
+  },
+  {
+    "title": "How to Build File Upload APIs with Gin",
+    "description": "A practical guide to building file upload APIs using Gin framework in Go, covering single and multiple file uploads, validation, and storage strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Gin",
+      "File Upload",
+      "REST API",
+      "Backend Development",
+      "Web Development",
+      "Golang"
+    ],
+    "post": "2026-01-26-gin-file-upload-api"
+  },
+  {
+    "title": "How to Configure Spring Boot Actuator for Health Checks",
+    "description": "A practical guide to configuring Spring Boot Actuator health checks for production environments, including custom health indicators, Kubernetes probes, and security best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Actuator",
+      "Health Checks",
+      "Monitoring",
+      "Kubernetes",
+      "Microservices"
+    ],
+    "post": "2026-01-26-spring-boot-actuator-health"
+  },
+  {
+    "title": "How to Build Android Apps with Kotlin",
+    "description": "A practical guide to building Android applications with Kotlin, covering project setup, UI development with Jetpack Compose, architecture patterns, and real-world examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Android",
+      "Kotlin",
+      "Mobile Development",
+      "Jetpack Compose",
+      "MVVM",
+      "Android Studio",
+      "App Development"
+    ],
+    "post": "2026-01-26-kotlin-android-development"
+  },
+  {
+    "title": "How to Implement Testing in Elixir Applications",
+    "description": "Learn how to write effective tests for Elixir applications using ExUnit, including unit tests, integration tests, doctests, and property-based testing with real-world examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Testing",
+      "ExUnit",
+      "TDD",
+      "Phoenix",
+      "Functional Programming",
+      "Quality Assurance"
+    ],
+    "post": "2026-01-26-elixir-testing"
+  },
+  {
+    "title": "How to Use Flask with Redis",
+    "description": "Learn how to integrate Redis with Flask for caching, session management, and real-time features with practical code examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Flask",
+      "Redis",
+      "Caching",
+      "Session Management",
+      "Web Development",
+      "Backend"
+    ],
+    "post": "2026-01-26-flask-redis-integration"
+  },
+  {
+    "title": "How to Implement Filtering and Sorting in REST APIs",
+    "description": "A practical guide to implementing filtering and sorting in REST APIs with query parameters, covering common patterns, performance considerations, and real-world examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "REST API",
+      "Filtering",
+      "Sorting",
+      "API Design",
+      "Backend",
+      "Pagination",
+      "Query Parameters"
+    ],
+    "post": "2026-01-26-rest-api-filtering-sorting"
+  },
+  {
     "title": "How to Use pathlib for File Paths in Python",
     "description": "Master Python's pathlib module for elegant file path handling. Learn to navigate directories, manipulate paths, and perform file operations with clean, cross-platform code.",
     "authorGitHubUsername": "nawazdhandala",

@@ -30,10 +30,13 @@
 - ACR
 - ActionCable
 - Active Directory
+- Active Record
 - Active-Active
 - Active-Passive
 - ActiveMQ
+- ActiveSupport
 - Actix Web
+- Actix-web
 - Actuator
 - Ad Blocker
 - Ad-Hoc Queries
@@ -73,6 +76,7 @@
 - Alertmanager
 - AlertmanagerConfig
 - Alerts
+- Algolia
 - Aliases
 - Allocator
 - Alpine
@@ -131,6 +135,7 @@
 - Apache Spark
 - Apache Zookeeper
 - API
+- API Architecture
 - API design
 - API Development
 - API Docs
@@ -154,6 +159,7 @@
 - Apollo Federation
 - Apollo Server
 - App Center
+- App Development
 - App Engine
 - App Protection
 - App Router
@@ -211,6 +217,7 @@
 - Assertions
 - Assets
 - Associated Types
+- Associations
 - Async
 - Async Communication
 - Async Components
@@ -218,7 +225,9 @@
 - Async Data
 - Async Processing
 - Async Programming
+- Async Rust
 - Async Streams
+- Async Testing
 - async-graphql
 - Async/Await
 - Asynchronous
@@ -312,6 +321,7 @@
 - B-tree
 - Babel
 - Backend
+- Backend Architecture
 - Backend Configuration
 - Backend Development
 - Backend Integration
@@ -353,6 +363,7 @@
 - bb8
 - BCC
 - bcrypt
+- BEAM
 - Bean Configuration
 - Bean Validation
 - Beats
@@ -491,6 +502,7 @@
 - C++
 - Cache
 - Cache Invalidation
+- Cache Patterns
 - Cache Stampede
 - Cache-Aside
 - Caching
@@ -525,6 +537,7 @@
 - CephFS
 - cert-manager
 - Certbot
+- Certificate Management
 - Certificate Monitoring
 - Certificate Pinning
 - Certificates
@@ -738,6 +751,7 @@
 - Compute Engine
 - Computed Properties
 - Concept Drift
+- Concerns
 - Concurrency
 - Concurrent Mode
 - Concurrent React
@@ -899,6 +913,7 @@
 - Crossplane
 - CrossPlatform
 - Crosstab
+- CRUD
 - CRUD Operations
 - CRUSH
 - Cryptography
@@ -1002,6 +1017,7 @@
 - Data Modeling
 - Data Models
 - Data Mutations
+- Data Partitioning
 - Data Persistence
 - Data Pipeline
 - Data Pipelines
@@ -1082,6 +1098,7 @@
 - ddos-protection
 - Dead Letter Exchange
 - Dead Letter Queue
+- Dead Letter Topic
 - deadlines
 - Deadlock
 - Deadlocks
@@ -1280,6 +1297,7 @@
 - Dynamic Routing
 - Dynamic Secrets
 - DynamoDB
+- DynamoDB Streams
 - E-commerce
 - E2E Testing
 - eBPF
@@ -1289,6 +1307,7 @@
 - ECK
 - ECR
 - ECS
+- Ecto
 - Edge
 - Edge Analytics
 - Edge Computing
@@ -1401,9 +1420,11 @@
 - Eviction
 - Eviction Policies
 - Exactly-Once
+- Exactly-Once Processing
 - Exception Handling
 - Exceptions
 - Exchange Types
+- Exchanges
 - EXEC
 - Exemplars
 - expect
@@ -1434,6 +1455,7 @@
 - External Secrets Operator
 - External Services
 - External-DNS
+- ExUnit
 - f-strings
 - FaaS
 - Face ID
@@ -1469,6 +1491,7 @@
 - Federation
 - Fedora
 - Feeds
+- FFI
 - Fiber
 - FID
 - FIDO2
@@ -1477,6 +1500,7 @@
 - Field-Level Security
 - Fields
 - FIFO
+- FIFO Queue
 - File Access
 - File Descriptors
 - File Download
@@ -1496,6 +1520,7 @@
 - File Systems
 - File Transfer
 - File Upload
+- File Uploads
 - File Watcher
 - File Watching
 - Filebeat
@@ -1529,6 +1554,7 @@
 - Fleet Management
 - Flipper
 - Floating IP
+- Flow
 - Flow Configuration
 - Flow Control
 - Flow Producer
@@ -1548,6 +1574,7 @@
 - For Each
 - for_each
 - Foreign Data Wrappers
+- Foreign Functions
 - Foreign Key
 - Foreign Keys
 - Form Validation
@@ -1657,6 +1684,7 @@
 - Global Infrastructure
 - Global Monitoring
 - Global Routing
+- Global Secondary Index
 - Global State
 - Global View
 - Glue
@@ -1681,6 +1709,7 @@
 - Google Cloud
 - Google Cloud Functions
 - Google Cloud Platform
+- Google Cloud Pub/Sub
 - Google Dataflow
 - Google Domains
 - Google Play Console
@@ -1742,6 +1771,7 @@
 - HashiCorp Boundary
 - HashiCorp Vault
 - HashMap
+- HATEOAS
 - HCL
 - HDFS
 - Head Sampling
@@ -1752,6 +1782,7 @@
 - Health Probes
 - Healthcare
 - Heap
+- Heap Snapshots
 - HeapMemory
 - Heartbeat
 - Helm
@@ -1776,6 +1807,7 @@
 - High Volume Logging
 - high-availability
 - High-Frequency Data
+- Higher-Order Functions
 - HikariCP
 - Hints
 - HIPAA
@@ -1811,6 +1843,7 @@
 - HTTP Cache
 - HTTP Client
 - HTTP Delivery
+- HTTP Filters
 - HTTP Headers
 - HTTP Keep-Alive
 - HTTP Methods
@@ -1832,7 +1865,9 @@
 - hybrid-cloud
 - Hydration
 - HyperLogLog
+- Hypermedia
 - Hyperparameter Tuning
+- Hypertables
 - Hypothesis
 - hystrix
 - I/O
@@ -1870,6 +1905,7 @@
 - Image Verification
 - ImagePullBackOff
 - Images
+- Immutability
 - Immutable
 - Immutable Infrastructure
 - impl Trait
@@ -2011,6 +2047,7 @@
 - Jellyfin
 - Jenkins
 - Jest
+- Jetpack Compose
 - JetStream
 - Jimp
 - Jinja2
@@ -2051,6 +2088,7 @@
 - jsonwebtoken
 - JSX
 - JUnit
+- JUnit 5
 - Jupyter
 - JVM
 - JVM Tuning
@@ -2132,6 +2170,7 @@
 - LangChain
 - Laravel
 - Laravel Echo
+- Laravel Scout
 - Large Data
 - Large Files
 - Large Lists
@@ -2350,9 +2389,11 @@
 - MCP
 - mDNS
 - Medallion Architecture
+- Media Files
 - Media Pipeline
 - Media Server
 - MediatR
+- Meilisearch
 - Memberlist
 - Memcached
 - Memoization
@@ -2376,6 +2417,7 @@
 - MergeTree
 - Mesh Network
 - Message Broker
+- Message Deduplication
 - Message Distribution
 - Message Expiration
 - Message Keys
@@ -2392,6 +2434,7 @@
 - Message TTL
 - MessagePack
 - Messaging
+- Messaging Patterns
 - Metabase
 - Metadata
 - Metadata Management
@@ -2430,6 +2473,7 @@
 - MirrorMaker 2
 - mise
 - MITRE ATT&CK
+- Mixins
 - MLflow
 - MLOps
 - MM2
@@ -2458,6 +2502,7 @@
 - Models
 - Modernization
 - ModSecurity
+- Modular Design
 - Module Design
 - Module Registry
 - Module Resolution
@@ -2517,6 +2562,7 @@
 - Multi-Threading
 - Multi-Zone
 - Multipart
+- Multipart Forms
 - Multipath
 - Multiplayer
 - Multiple Accounts
@@ -2533,6 +2579,7 @@
 - Mutual TLS
 - MVC
 - MVCC
+- MVVM
 - MyISAM
 - mypy
 - MySQL
@@ -2584,6 +2631,7 @@
 - Network Debugging
 - Network Devices
 - Network Error
+- Network Filters
 - Network Interface
 - Network Issues
 - network latency
@@ -2919,6 +2967,7 @@
 - Playbooks
 - Playwright
 - Plex
+- Plugin Architecture
 - Plugins
 - PM2
 - pnpm
@@ -2951,6 +3000,7 @@
 - Policy as Code
 - Policy Enforcement
 - Policy Management
+- Policy Objects
 - Policy Testing
 - Polling
 - Polly
@@ -3089,7 +3139,9 @@
 - Pull Errors
 - Pull Requests
 - Pull-to-Refresh
+- Pulsar Functions
 - Pulumi
+- Pundit
 - Puppet
 - Puppeteer
 - PureLB
@@ -3134,6 +3186,7 @@
 - Query Hints
 - Query Matching
 - Query Optimization
+- Query Parameters
 - Query Performance
 - Query Queuing
 - Query String
@@ -3368,6 +3421,7 @@
 - Reusable
 - Reusable Workflows
 - Revalidation
+- Reverb
 - Reverse DNS
 - Reverse Engineering
 - Reverse Proxy
@@ -3428,6 +3482,7 @@
 - Runtime Protection
 - Runtime Security
 - Rust
+- Rust Development
 - RxJS
 - S3
 - s3fs
@@ -3504,6 +3559,7 @@
 - Search Optimization
 - Search Performance
 - Search Relevance
+- Searchkick
 - seccomp
 - Secondary Index
 - Secret Management
@@ -3553,6 +3609,7 @@
 - Serial
 - SERIALIZABLE
 - Serialization
+- Serilog
 - Server
 - Server Actions
 - Server Administration
@@ -3580,6 +3637,7 @@
 - Service Mesh
 - Service Module
 - Service Name
+- Service Objects
 - Service Registry
 - Service Topology
 - Service Unavailable
@@ -3633,6 +3691,7 @@
 - Side Effects
 - Sidecar
 - Sidecar Pattern
+- Sidecar Proxy
 - Sidekiq
 - SIEM
 - SignalR
@@ -3648,6 +3707,7 @@
 - Single Page Application
 - Single Sign-On
 - Single Stat
+- Single-Table Design
 - Singleton
 - Sink Connector
 - SINTER
@@ -3696,6 +3756,8 @@
 - Sockets
 - SOCKS5
 - Soft Deletes
+- Software Architecture
+- Software Design
 - Software Development
 - Software Engineering
 - Software Quality
@@ -3768,9 +3830,11 @@
 - SSL
 - SSL Passthrough
 - SSL Pinning
+- SSL/TLS
 - SSO
 - SSR
 - SSRF
+- Stack Management
 - Stack Navigation
 - Stack Overflow
 - Stack Traces
@@ -3983,6 +4047,7 @@
 - TensorFlow Lite
 - Terminal
 - Terraform
+- Terragrunt
 - Terratest
 - Test Automation
 - Test Containers
@@ -3994,6 +4059,7 @@
 - Test Fixtures
 - Test Framework
 - Test Isolation
+- Test Organization
 - Test Patterns
 - Test Quality
 - Test Reporting
@@ -4045,6 +4111,7 @@
 - Time Zones
 - Time-Based Expiration
 - Time-Series
+- Time-Series Database
 - Time-To-Live
 - Time-Weighted Calculations
 - Timeline
@@ -4127,6 +4194,7 @@
 - Traffic Migration
 - Traffic Mirroring
 - Traffic Policy
+- Traffic Routing
 - Traffic Shaping
 - traffic splitting
 - Training
@@ -4137,6 +4205,7 @@
 - Transfer
 - Transformations
 - Transformers
+- Transit Secrets Engine
 - Transitions
 - Translation
 - Transport Layer
@@ -4193,6 +4262,7 @@
 - Type-Ahead
 - TypeDoc
 - TypeError
+- TypeORM
 - Types
 - TypeScript
 - typing
@@ -4235,6 +4305,7 @@
 - Unmarshal
 - unnest
 - unsafe
+- Unsafe Rust
 - Unstructured Logs
 - Untyped Constants
 - Unused
