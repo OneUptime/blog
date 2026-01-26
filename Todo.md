@@ -745,5 +745,3 @@ These are remaining blog ideas across different topics. Make sure to check exist
 1000. How to Scale Debezium Deployments
 
 ---
-
-Note: Topics 1001-2000 from the advanced section remain - check the original file for those if needed.
