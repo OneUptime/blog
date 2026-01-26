@@ -28,6 +28,7 @@
 - ACL
 - ACLs
 - ACR
+- ActionCable
 - Active Directory
 - Active-Active
 - Active-Passive
@@ -170,6 +171,7 @@
 - Application Performance
 - Application Performance Monitoring
 - Application Security
+- Application Structure
 - Applications
 - ApplicationSets
 - Approvals
@@ -201,6 +203,7 @@
 - Artifacts
 - Artillery
 - as keyword
+- ASGI
 - ASK
 - ASP.NET Core
 - ASP.NET Core 8
@@ -561,6 +564,7 @@
 - CI/CD
 - Cilium
 - cilium/ebpf
+- CircleCI
 - Circuit Breaker
 - Circular Buffer
 - Circular Dependencies
@@ -643,6 +647,7 @@
 - Cloudflare
 - Cloudflare Workers
 - CloudFormation
+- CloudFront
 - CloudNativePG
 - CloudWatch Events
 - CLS
@@ -796,6 +801,7 @@
 - Container Management
 - Container Monitoring
 - Container Orchestration
+- Container Platform
 - Container Registry
 - Container Runtime
 - Container Scanning
@@ -849,6 +855,7 @@
 - Cost Allocation
 - Cost Analysis
 - Cost Comparison
+- Cost Estimation
 - Cost Optimization
 - Cost Reduction
 - Cost Savings
@@ -1087,6 +1094,7 @@
 - Declaration Files
 - Declarative
 - Decorators
+- Decoupling
 - Deduplication
 - Deep Learning
 - Deep Linking
@@ -1270,6 +1278,7 @@
 - Dynamic Parsing
 - Dynamic Routes
 - Dynamic Routing
+- Dynamic Secrets
 - DynamoDB
 - E-commerce
 - E2E Testing
@@ -1599,6 +1608,7 @@
 - Generated Columns
 - Generators
 - Generics
+- GenServer
 - GEO
 - GEO Commands
 - Geo Search
@@ -1674,6 +1684,7 @@
 - Google Dataflow
 - Google Domains
 - Google Play Console
+- Google Pub/Sub
 - GOPATH
 - Gorilla
 - GORM
@@ -1698,6 +1709,7 @@
 - Graph Database
 - Graphics
 - GraphQL
+- GraphQL-Ruby
 - Graylog
 - Great Expectations
 - Gremlin
@@ -1896,6 +1908,7 @@
 - Infinite Scroll
 - InfluxDB
 - Information Schema
+- Infracost
 - Infrastructure
 - Infrastructure as Code
 - Infrastructure Automation
@@ -1998,6 +2011,7 @@
 - Jellyfin
 - Jenkins
 - Jest
+- JetStream
 - Jimp
 - Jinja2
 - JIT Compilation
@@ -2082,6 +2096,7 @@
 - KRaft
 - KSK
 - ksqlDB
+- Ktor
 - kube-bench
 - kube-proxy
 - kube-state-metrics
@@ -2116,6 +2131,7 @@
 - Landlock
 - LangChain
 - Laravel
+- Laravel Echo
 - Large Data
 - Large Files
 - Large Lists
@@ -2185,6 +2201,7 @@
 - Live Video
 - Liveness
 - Liveness Probes
+- LiveView
 - LlamaIndex
 - LLM
 - LLM Observability
@@ -2649,6 +2666,7 @@
 - OAuth
 - OAuth 2.0
 - OAuth2
+- Oban
 - Obfuscation
 - Object Pool
 - Object Pooling
@@ -2711,6 +2729,7 @@
 - Openlit
 - OpenSCAP
 - OpenSearch
+- OpenShift
 - OpenStack
 - OpenTelemetry
 - OpenTelemetry Collector
@@ -2742,6 +2761,7 @@
 - OTA Updates
 - OTel Collector
 - OTLP
+- OTP
 - Out of Memory
 - out of range
 - Outbox Pattern
@@ -2855,6 +2875,7 @@
 - Pgpool-II
 - PhantomData
 - PHI
+- Phoenix
 - Phoenix Framework
 - Phone Number Search
 - PhotoRec
@@ -3075,6 +3096,7 @@
 - Purge
 - Push Errors
 - Push Notifications
+- Pusher
 - Pushgateway
 - PVC
 - PWA
@@ -3208,6 +3230,7 @@
 - RecursionError
 - Recursive CTE
 - Recursive Resolver
+- Red Hat
 - Red Status
 - Red Team
 - Redirection
@@ -3829,6 +3852,7 @@
 - Struct
 - Struct Tags
 - Structs
+- Structured Concurrency
 - Structured Logging
 - Structured Logs
 - Structured Streaming

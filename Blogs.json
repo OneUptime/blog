@@ -67364,6 +67364,633 @@
     "post": "2026-01-26-capacity-planning-services"
   },
   {
+    "title": "How to Use NestJS for Enterprise Applications",
+    "description": "A practical guide to building enterprise-grade applications with NestJS. Learn about modular architecture, dependency injection, configuration management, testing strategies, and production patterns used in large-scale systems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NestJS",
+      "TypeScript",
+      "NodeJS",
+      "Enterprise",
+      "Architecture",
+      "Backend"
+    ],
+    "post": "2026-01-26-nestjs-enterprise-applications"
+  },
+  {
+    "title": "How to Build Real-Time Features with ActionCable",
+    "description": "Learn how to build real-time features in Ruby on Rails applications using ActionCable. This guide covers channels, broadcasting, authentication, scaling with Redis, and production deployment patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby on Rails",
+      "ActionCable",
+      "WebSockets",
+      "Real-Time",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-rails-actioncable-realtime"
+  },
+  {
+    "title": "How to Build GraphQL APIs with Rails and GraphQL-Ruby",
+    "description": "Learn how to build GraphQL APIs in Ruby on Rails using the graphql-ruby gem. This guide covers schema design, types, queries, mutations, subscriptions, authentication, and performance optimization with practical examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rails",
+      "GraphQL",
+      "GraphQL-Ruby",
+      "Ruby",
+      "API",
+      "Backend"
+    ],
+    "post": "2026-01-26-rails-graphql-ruby"
+  },
+  {
+    "title": "How to Build Real-Time Features with Laravel Broadcasting",
+    "description": "Learn how to build real-time features in Laravel applications using Broadcasting. This guide covers events, channels, Pusher integration, Laravel Echo setup, private channels with authentication, and practical examples for notifications and live updates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "Broadcasting",
+      "WebSockets",
+      "Real-Time",
+      "PHP",
+      "Pusher",
+      "Laravel Echo",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-laravel-broadcasting-realtime"
+  },
+  {
+    "title": "How to Build Real-Time Features with Django Channels",
+    "description": "Learn how to build real-time features in Django using Django Channels. This guide covers WebSocket consumers, channel layers, group broadcasting, and production deployment with practical code examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Django",
+      "Channels",
+      "WebSocket",
+      "Real-time",
+      "Python",
+      "ASGI"
+    ],
+    "post": "2026-01-26-django-channels-realtime"
+  },
+  {
+    "title": "How to Use Phoenix LiveView for Real-Time UIs",
+    "description": "Learn how to build real-time user interfaces with Phoenix LiveView. This guide covers setup, state management, real-time updates, forms, PubSub integration, and production deployment patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Phoenix",
+      "Elixir",
+      "LiveView",
+      "Real-Time",
+      "WebSockets",
+      "Functional Programming"
+    ],
+    "post": "2026-01-26-phoenix-liveview-realtime"
+  },
+  {
+    "title": "How to Implement Coroutines in Kotlin",
+    "description": "Learn how to implement coroutines in Kotlin for asynchronous programming. This guide covers coroutine basics, suspend functions, dispatchers, structured concurrency, error handling, and practical patterns for real-world applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kotlin",
+      "Coroutines",
+      "Async",
+      "Concurrency",
+      "Android",
+      "JVM",
+      "Structured Concurrency"
+    ],
+    "post": "2026-01-26-kotlin-coroutines"
+  },
+  {
+    "title": "How to Use GenServers for Background Processing",
+    "description": "Learn how to use GenServers in Elixir for background processing. This guide covers GenServer basics, state management, async task processing, supervision trees, and production patterns for building reliable background workers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "GenServer",
+      "Background Processing",
+      "OTP",
+      "Concurrency",
+      "Functional Programming"
+    ],
+    "post": "2026-01-26-elixir-genserver-background"
+  },
+  {
+    "title": "How to Use Ktor for Kotlin Web Applications",
+    "description": "A practical guide to building web applications with Ktor, the asynchronous Kotlin framework from JetBrains. Learn routing, authentication, database integration, and deployment best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kotlin",
+      "Ktor",
+      "Web Development",
+      "Backend",
+      "REST API",
+      "Coroutines",
+      "JVM"
+    ],
+    "post": "2026-01-26-kotlin-ktor-web"
+  },
+  {
+    "title": "How to Implement Background Jobs with Oban in Elixir",
+    "description": "A practical guide to implementing background jobs with Oban in Elixir applications. Learn how to set up workers, handle retries, schedule jobs, manage queues, and monitor job processing in production.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Oban",
+      "Background Jobs",
+      "Job Queue",
+      "Phoenix",
+      "PostgreSQL",
+      "Async Processing"
+    ],
+    "post": "2026-01-26-elixir-oban-background-jobs"
+  },
+  {
+    "title": "How to Optimize MySQL Query Performance",
+    "description": "Learn how to optimize MySQL query performance with indexing, EXPLAIN analysis, query rewriting, and server configuration tuning.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MySQL",
+      "Database",
+      "Performance",
+      "Query Optimization",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-mysql-query-optimization"
+  },
+  {
+    "title": "How to Optimize PostgreSQL Query Performance",
+    "description": "Learn how to optimize PostgreSQL query performance with indexing strategies, EXPLAIN ANALYZE, query rewriting, and configuration tuning.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Database",
+      "Performance",
+      "Query Optimization",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-postgresql-query-optimization"
+  },
+  {
+    "title": "How to Design GraphQL Schemas Effectively",
+    "description": "A comprehensive guide to designing effective GraphQL schemas with best practices for types, queries, mutations, and relationships.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GraphQL",
+      "API Design",
+      "Schema Design",
+      "Backend Development",
+      "Web Development"
+    ],
+    "post": "2026-01-26-graphql-schema-design"
+  },
+  {
+    "title": "How to Scale WebSocket Connections",
+    "description": "Learn how to scale WebSocket connections to handle millions of concurrent users with load balancing, sticky sessions, and pub/sub patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "WebSocket",
+      "Scaling",
+      "Real-Time",
+      "Backend Development",
+      "Architecture"
+    ],
+    "post": "2026-01-26-websocket-scaling"
+  },
+  {
+    "title": "How to Build gRPC Services from Scratch",
+    "description": "A step-by-step guide to building gRPC services from scratch, covering protocol buffers, service definitions, and client-server implementation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Microservices",
+      "API Development",
+      "Protocol Buffers",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-grpc-services-scratch"
+  },
+  {
+    "title": "How to Set Up Kafka for Production",
+    "description": "A comprehensive guide to setting up Apache Kafka for production environments, covering cluster configuration, replication, security, and monitoring.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kafka",
+      "Message Queue",
+      "Production",
+      "DevOps",
+      "Distributed Systems"
+    ],
+    "post": "2026-01-26-kafka-production-setup"
+  },
+  {
+    "title": "How to Design DynamoDB Table Schemas",
+    "description": "Learn how to design effective DynamoDB table schemas with partition keys, sort keys, and access patterns for scalable applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DynamoDB",
+      "AWS",
+      "NoSQL",
+      "Database Design",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-dynamodb-table-design"
+  },
+  {
+    "title": "How to Design Cassandra Data Models",
+    "description": "Learn how to design effective Cassandra data models with partition keys, clustering columns, and query-driven design principles.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cassandra",
+      "NoSQL",
+      "Data Modeling",
+      "Database Design",
+      "Distributed Systems"
+    ],
+    "post": "2026-01-26-cassandra-data-modeling"
+  },
+  {
+    "title": "How to Implement GraphQL Subscriptions",
+    "description": "Learn how to implement GraphQL subscriptions for real-time updates using WebSocket connections with Apollo Server and other frameworks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GraphQL",
+      "Subscriptions",
+      "Real-Time",
+      "WebSocket",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-graphql-subscriptions"
+  },
+  {
+    "title": "How to Design RESTful APIs Following Best Practices",
+    "description": "A comprehensive guide to designing RESTful APIs with proper resource naming, HTTP methods, status codes, versioning, and error handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "REST API",
+      "API Design",
+      "Best Practices",
+      "Backend Development",
+      "Web Development"
+    ],
+    "post": "2026-01-26-restful-api-best-practices"
+  },
+  {
+    "title": "How to Design MongoDB Schemas for Performance",
+    "description": "Learn how to design MongoDB schemas for performance with embedding vs referencing patterns, indexing strategies, and query optimization.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MongoDB",
+      "Schema Design",
+      "NoSQL",
+      "Performance",
+      "Database"
+    ],
+    "post": "2026-01-26-mongodb-schema-performance"
+  },
+  {
+    "title": "How to Structure Express.js Applications for Scale",
+    "description": "Learn how to structure Express.js applications for scale with proper folder organization, middleware patterns, and separation of concerns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Express.js",
+      "Node.js",
+      "Application Structure",
+      "Backend Development",
+      "Scalability"
+    ],
+    "post": "2026-01-26-expressjs-structure-scale"
+  },
+  {
+    "title": "How to Use NATS JetStream for Persistence",
+    "description": "Learn how to use NATS JetStream for persistent messaging with streams, consumers, and exactly-once delivery semantics.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "JetStream",
+      "Message Queue",
+      "Persistence",
+      "Distributed Systems"
+    ],
+    "post": "2026-01-26-nats-jetstream-persistence"
+  },
+  {
+    "title": "How to Structure Large Flask Applications",
+    "description": "Learn how to structure large Flask applications using blueprints, application factories, and proper project organization for maintainability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Flask",
+      "Python",
+      "Application Structure",
+      "Backend Development",
+      "Web Development"
+    ],
+    "post": "2026-01-26-flask-large-applications"
+  },
+  {
+    "title": "How to Use SQS for Decoupled Microservices",
+    "description": "Learn how to use Amazon SQS to build decoupled microservices with asynchronous communication, dead letter queues, and error handling patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "SQS",
+      "Microservices",
+      "Message Queue",
+      "Decoupling"
+    ],
+    "post": "2026-01-26-sqs-decoupled-microservices"
+  },
+  {
+    "title": "How to Get Started with Apache Pulsar",
+    "description": "A beginner's guide to Apache Pulsar covering installation, producers, consumers, topics, and subscriptions for building event-driven applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Pulsar",
+      "Message Queue",
+      "Distributed Systems",
+      "Streaming",
+      "Backend Development"
+    ],
+    "post": "2026-01-26-apache-pulsar-getting-started"
+  },
+  {
+    "title": "How to Get Started with Cilium for Kubernetes Networking",
+    "description": "A beginner's guide to Cilium for Kubernetes networking, covering installation, network policies, observability with Hubble, and eBPF-based networking.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cilium",
+      "Kubernetes",
+      "Networking",
+      "eBPF",
+      "Service Mesh"
+    ],
+    "post": "2026-01-26-cilium-kubernetes-networking"
+  },
+  {
+    "title": "How to Get Started with HashiCorp Vault",
+    "description": "A beginner's guide to HashiCorp Vault covering installation, secrets engines, authentication methods, and policies for secure secrets management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "HashiCorp Vault",
+      "Secrets Management",
+      "Security",
+      "DevOps",
+      "Infrastructure"
+    ],
+    "post": "2026-01-26-hashicorp-vault-getting-started"
+  },
+  {
+    "title": "How to Use Podman as Docker Alternative",
+    "description": "Learn how to use Podman as a drop-in replacement for Docker with rootless containers, pods, and seamless migration from Docker workflows.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Podman",
+      "Docker",
+      "Containers",
+      "DevOps",
+      "Linux"
+    ],
+    "post": "2026-01-26-podman-docker-alternative"
+  },
+  {
+    "title": "How to Build Reusable GitHub Actions",
+    "description": "Learn how to build reusable GitHub Actions with composite actions, reusable workflows, and custom JavaScript actions for DRY CI/CD pipelines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitHub Actions",
+      "CI/CD",
+      "Automation",
+      "Reusable Workflows",
+      "DevOps"
+    ],
+    "post": "2026-01-26-reusable-github-actions"
+  },
+  {
+    "title": "How to Use Grafana Loki for Log Analysis",
+    "description": "Learn how to use Grafana Loki for cost-effective log aggregation and analysis with LogQL queries, labels, and Promtail configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Grafana",
+      "Loki",
+      "Logging",
+      "Observability",
+      "Monitoring"
+    ],
+    "post": "2026-01-26-grafana-loki-log-analysis"
+  },
+  {
+    "title": "How to Build RAG Applications with LangChain",
+    "description": "Learn how to build Retrieval-Augmented Generation applications with LangChain, including document loading, embeddings, vector stores, and retrieval chains.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LangChain",
+      "RAG",
+      "LLM",
+      "Vector Database",
+      "AI"
+    ],
+    "post": "2026-01-26-langchain-rag-applications"
+  },
+  {
+    "title": "How to Configure Alertmanager Routing",
+    "description": "Learn how to configure Alertmanager routing rules to send alerts to the right teams with grouping, throttling, and receiver configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Alertmanager",
+      "Prometheus",
+      "Monitoring",
+      "Alerting",
+      "DevOps"
+    ],
+    "post": "2026-01-26-alertmanager-routing"
+  },
+  {
+    "title": "How to Get Started with Playwright for E2E Testing",
+    "description": "A beginner's guide to Playwright for end-to-end testing, covering installation, writing tests, selectors, and running tests across browsers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Playwright",
+      "E2E Testing",
+      "Testing",
+      "Automation",
+      "Web Development"
+    ],
+    "post": "2026-01-26-playwright-e2e-testing"
+  },
+  {
+    "title": "How to Get Started with dbt for Data Transformation",
+    "description": "A beginner's guide to dbt for data transformation, covering models, tests, documentation, and building a modern analytics workflow.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "dbt",
+      "Data Engineering",
+      "Data Transformation",
+      "SQL",
+      "Analytics"
+    ],
+    "post": "2026-01-26-dbt-data-transformation"
+  },
+  {
+    "title": "How to Get Started with Apache Flink",
+    "description": "A beginner's guide to Apache Flink for stream processing, covering DataStream API, windowing, state management, and Kafka integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Flink",
+      "Stream Processing",
+      "Real-Time",
+      "Big Data",
+      "Data Engineering"
+    ],
+    "post": "2026-01-26-apache-flink-getting-started"
+  },
+  {
+    "title": "How to Get Started with OpenShift",
+    "description": "A beginner's guide to OpenShift covering projects, deployments, routes, builds, and the differences from vanilla Kubernetes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenShift",
+      "Kubernetes",
+      "Red Hat",
+      "Container Platform",
+      "DevOps"
+    ],
+    "post": "2026-01-26-openshift-getting-started"
+  },
+  {
+    "title": "How to Set Up Rancher for Kubernetes Management",
+    "description": "A comprehensive guide to setting up Rancher for Kubernetes cluster management with cluster provisioning, RBAC, and multi-cluster visibility.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rancher",
+      "Kubernetes",
+      "Cluster Management",
+      "DevOps",
+      "Multi-Cluster"
+    ],
+    "post": "2026-01-26-rancher-kubernetes-management"
+  },
+  {
+    "title": "How to Get Started with Kubeflow on Kubernetes",
+    "description": "A beginner's guide to Kubeflow on Kubernetes covering installation, notebooks, pipelines, and model serving with KServe.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubeflow",
+      "Kubernetes",
+      "Machine Learning",
+      "MLOps",
+      "Pipelines"
+    ],
+    "post": "2026-01-26-kubeflow-kubernetes"
+  },
+  {
+    "title": "How to Get Started with MLflow for ML Lifecycle",
+    "description": "A beginner's guide to MLflow for machine learning lifecycle management with experiment tracking, model registry, and deployment.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "Machine Learning",
+      "MLOps",
+      "Model Registry",
+      "Experiment Tracking"
+    ],
+    "post": "2026-01-26-mlflow-ml-lifecycle"
+  },
+  {
+    "title": "How to Use Google Pub/Sub for Event-Driven Architecture",
+    "description": "Learn how to use Google Pub/Sub for event-driven architecture with topics, subscriptions, push/pull delivery, and ordering guarantees.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Google Pub/Sub",
+      "Event-Driven Architecture",
+      "GCP",
+      "Message Queue",
+      "Microservices"
+    ],
+    "post": "2026-01-26-google-pubsub-event-driven"
+  },
+  {
+    "title": "How to Set Up CircleCI for Production",
+    "description": "A comprehensive guide to setting up CircleCI for production with workflows, orbs, caching, and security best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CircleCI",
+      "CI/CD",
+      "DevOps",
+      "Automation",
+      "Production"
+    ],
+    "post": "2026-01-26-circleci-production-setup"
+  },
+  {
+    "title": "How to Configure CloudFront for Static Assets",
+    "description": "Learn how to configure Amazon CloudFront for static asset delivery with S3 origins, cache behaviors, and invalidation strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CloudFront",
+      "CDN",
+      "AWS",
+      "Static Assets",
+      "Performance",
+      "S3",
+      "Caching"
+    ],
+    "post": "2026-01-26-cloudfront-static-assets"
+  },
+  {
+    "title": "How to Use Vault Dynamic Secrets",
+    "description": "Learn how to use Vault dynamic secrets for databases, AWS, and other services with automatic credential rotation and TTLs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "HashiCorp Vault",
+      "Dynamic Secrets",
+      "Security",
+      "Database",
+      "DevOps"
+    ],
+    "post": "2026-01-26-vault-dynamic-secrets"
+  },
+  {
+    "title": "How to Use CoreDNS with Kubernetes",
+    "description": "Learn how to configure CoreDNS in Kubernetes for service discovery, custom DNS entries, and external DNS resolution.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CoreDNS",
+      "Kubernetes",
+      "DNS",
+      "Networking",
+      "Service Discovery"
+    ],
+    "post": "2026-01-26-coredns-kubernetes"
+  },
+  {
+    "title": "How to Use Infracost for IaC Cost Estimation",
+    "description": "Learn how to use Infracost to estimate infrastructure costs from Terraform code with CI/CD integration and pull request comments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Infracost",
+      "FinOps",
+      "Terraform",
+      "Cost Estimation",
+      "Infrastructure as Code"
+    ],
+    "post": "2026-01-26-infracost-iac-cost"
+  },
+  {
+    "title": "How to Use Grafana Tempo for Tracing",
+    "description": "Learn how to use Grafana Tempo for distributed tracing with OpenTelemetry integration, trace queries, and service graphs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Grafana Tempo",
+      "Distributed Tracing",
+      "Observability",
+      "Monitoring",
+      "DevOps"
+    ],
+    "post": "2026-01-26-grafana-tempo-tracing"
+  },
+  {
     "title": "How to Use pathlib for File Paths in Python",
     "description": "Master Python's pathlib module for elegant file path handling. Learn to navigate directories, manipulate paths, and perform file operations with clean, cross-platform code.",
     "authorGitHubUsername": "nawazdhandala",
