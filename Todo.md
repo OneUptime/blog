@@ -1280,7 +1280,7 @@ These are 1000 blog ideas across different topics that people frequently search 
 1001. How to Implement Wire for Compile-Time DI in Go
 1002. How to Build a Plugin System in Go
 1003. How to Use Go Reflection Safely
-1004. How to Implement Clean Architecture in Go
+1004. How to Implement Hexagonal Architecture in Go
 1005. How to Build a State Machine in Go
 1006. How to Handle Cancellation in Go with Context
 1007. How to Build a Configuration Management System in Go
