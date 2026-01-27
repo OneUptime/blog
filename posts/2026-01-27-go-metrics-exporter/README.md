@@ -1,6 +1,6 @@
 # How to Build a Metrics Exporter in Go
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Prometheus, Metrics, Observability, Monitoring, OpenTelemetry, SRE
 

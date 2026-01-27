@@ -1,6 +1,6 @@
 # How to Configure Linkerd Traffic Policies
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linkerd, Service Mesh, Kubernetes, Traffic Management, Authorization, HTTPRoute, Security, DevOps
 

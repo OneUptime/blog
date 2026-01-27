@@ -1,6 +1,6 @@
 # How to Migrate to TimescaleDB from PostgreSQL
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TimescaleDB, PostgreSQL, Database Migration, Time-Series, DevOps, Performance
 

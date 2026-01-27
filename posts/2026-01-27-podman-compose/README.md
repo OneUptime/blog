@@ -1,6 +1,6 @@
 # How to Use Podman Compose
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Podman Compose, Docker Compose, Containers, DevOps, Multi-Container, Rootless Containers
 

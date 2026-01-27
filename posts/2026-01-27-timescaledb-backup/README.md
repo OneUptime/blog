@@ -1,6 +1,6 @@
 # How to Backup TimescaleDB Databases
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TimescaleDB, PostgreSQL, Backup, Disaster Recovery, WAL, Point-in-Time Recovery, Database, DevOps, SRE
 

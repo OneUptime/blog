@@ -1,6 +1,6 @@
 # How to Run Rootless Containers with Podman
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Containers, Security, Rootless, Linux, DevOps, Docker Alternative
 

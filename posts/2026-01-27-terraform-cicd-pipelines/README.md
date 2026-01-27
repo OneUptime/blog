@@ -1,6 +1,6 @@
 # How to Implement Terraform CI/CD Pipelines
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, CI/CD, Infrastructure as Code, DevOps, Automation, GitOps, GitHub Actions, GitLab CI
 

@@ -1,6 +1,6 @@
 # How to Use Kafka MirrorMaker for Replication
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, MirrorMaker, Replication, Cross-Datacenter, Event Streaming, Disaster Recovery, High Availability
 

@@ -1,6 +1,6 @@
 # How to Use Cilium for Multi-Cluster Networking
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Multi-Cluster, Networking, ClusterMesh, Service Discovery, eBPF, DevOps
 

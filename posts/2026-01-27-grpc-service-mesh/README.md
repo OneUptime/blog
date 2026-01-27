@@ -1,6 +1,6 @@
 # How to Use gRPC with Service Mesh
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, Service Mesh, Istio, Linkerd, mTLS, Load Balancing, Kubernetes, Microservices, Observability, DevOps
 

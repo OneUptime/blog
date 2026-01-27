@@ -1,6 +1,6 @@
 # How to Use SQS with SNS for Fan-Out
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, SNS, Fan-Out, Messaging, Microservices, Event-Driven Architecture, DevOps
 

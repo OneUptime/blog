@@ -1,6 +1,6 @@
 # How to Use Rancher Continuous Delivery
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Fleet, GitOps, Kubernetes, Multi-Cluster, CI/CD, Continuous Delivery, DevOps
 

@@ -1,6 +1,6 @@
 # How to Migrate from ArgoCD to Flux
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, GitOps, Flux, ArgoCD, Migration, CI/CD, DevOps
 

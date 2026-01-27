@@ -1,6 +1,6 @@
 # How to Build File Upload APIs with Express and Multer
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NodeJS, Express, Multer, File Upload, API, Storage, AWS S3, DevOps
 

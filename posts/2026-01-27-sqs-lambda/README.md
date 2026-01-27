@@ -1,6 +1,6 @@
 # How to Use SQS with Lambda
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, Lambda, Serverless, Event-Driven Architecture, Message Queues, Node.js, Python
 

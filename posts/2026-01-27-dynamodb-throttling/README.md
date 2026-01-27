@@ -1,6 +1,6 @@
 # How to Handle DynamoDB Throttling
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, Throttling, Performance, Scalability, NoSQL, Observability
 

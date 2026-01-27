@@ -1,6 +1,6 @@
 # How to Build GraphQL Resolvers with N+1 Prevention
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GraphQL, Node.js, Apollo Server, DataLoader, Performance, Backend, API Design
 

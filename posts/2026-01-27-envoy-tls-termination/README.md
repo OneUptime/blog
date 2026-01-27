@@ -1,6 +1,6 @@
 # How to Configure Envoy TLS Termination
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, TLS, Security, mTLS, HTTPS, Proxy, Load Balancer, DevOps, Kubernetes
 

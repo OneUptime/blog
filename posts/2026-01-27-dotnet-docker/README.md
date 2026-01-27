@@ -1,6 +1,6 @@
 # How to Use Docker with .NET Applications
 
-Author: [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, Docker, DevOps, Containers, C#, ASP.NET Core, Microservices
 

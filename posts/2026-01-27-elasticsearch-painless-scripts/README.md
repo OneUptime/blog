@@ -1,6 +1,6 @@
 # How to Build Elasticsearch Painless Scripts
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Painless, Scripting, Search, Data Transformation, Update By Query, Aggregations
 

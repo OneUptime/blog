@@ -1,6 +1,6 @@
 # How to Secure K3s Cluster
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: K3s, Kubernetes, Security, RBAC, Network Policies, CIS Benchmark, Secret Encryption, DevOps
 

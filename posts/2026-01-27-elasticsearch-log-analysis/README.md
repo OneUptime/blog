@@ -1,6 +1,6 @@
 # How to Use Elasticsearch for Log Analysis
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Log Analysis, ECS, Logstash, Kibana, Observability, DevOps, Logging
 

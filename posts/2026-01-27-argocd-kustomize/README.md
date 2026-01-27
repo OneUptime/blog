@@ -1,6 +1,6 @@
 # How to Use ArgoCD with Kustomize
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ArgoCD, Kustomize, GitOps, DevOps, CI/CD, Configuration Management
 

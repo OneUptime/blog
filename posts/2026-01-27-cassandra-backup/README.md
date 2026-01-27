@@ -1,6 +1,6 @@
 # How to Backup Cassandra Databases
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cassandra, Database, Backup, Disaster Recovery, NoSQL, DevOps, Data Protection
 

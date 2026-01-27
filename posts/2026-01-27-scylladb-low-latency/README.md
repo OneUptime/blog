@@ -1,6 +1,6 @@
 # How to Use ScyllaDB for Low-Latency Workloads
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ScyllaDB, Database, Low-Latency, Performance, NoSQL, Cassandra, Real-Time
 

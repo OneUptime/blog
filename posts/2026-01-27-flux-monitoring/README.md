@@ -1,6 +1,6 @@
 # How to Monitor Flux Deployments
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Flux, GitOps, Monitoring, Observability, Prometheus, Grafana, Alerting
 

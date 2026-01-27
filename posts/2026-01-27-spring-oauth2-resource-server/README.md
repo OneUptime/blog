@@ -1,6 +1,6 @@
 # How to Implement OAuth2 Resource Server in Spring Boot
 
-By [nawazdhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Spring Boot, OAuth2, Security, JWT, Authorization, Java, API Security
 

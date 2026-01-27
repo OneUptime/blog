@@ -1,6 +1,6 @@
 # How to Implement Traefik Circuit Breaker
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Traefik, Circuit Breaker, Microservices, Resilience, Kubernetes, DevOps, Load Balancing, Middleware
 

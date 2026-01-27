@@ -1,6 +1,6 @@
 # How to Use Linkerd Multi-Cluster
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linkerd, Kubernetes, Service Mesh, Multi-Cluster, High Availability, Failover, Service Mirroring
 

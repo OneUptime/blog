@@ -1,6 +1,6 @@
 # How to Configure Pub/Sub Push Subscriptions
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Google Cloud, Pub/Sub, Push Subscriptions, Cloud Run, Serverless, Webhooks, Event-Driven Architecture, Messaging
 

@@ -1,6 +1,6 @@
 # How to Migrate from Cassandra to ScyllaDB
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cassandra, ScyllaDB, Database Migration, NoSQL, Performance, DevOps
 

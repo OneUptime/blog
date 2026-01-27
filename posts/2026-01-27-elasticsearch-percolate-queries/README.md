@@ -1,6 +1,6 @@
 # How to Implement Elasticsearch Percolate Queries
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Percolate Queries, Search, Alerting, Content Matching, Real-Time Monitoring
 

@@ -1,6 +1,6 @@
 # How to Debug Services with Linkerd
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linkerd, Service Mesh, Debugging, Kubernetes, Observability, DevOps, Microservices
 

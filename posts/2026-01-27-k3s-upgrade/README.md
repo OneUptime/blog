@@ -1,6 +1,6 @@
 # How to Upgrade K3s Safely
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: K3s, Kubernetes, Upgrade, High Availability, DevOps, Rolling Updates, System Upgrade Controller
 

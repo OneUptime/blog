@@ -1,6 +1,6 @@
 # How to Build Elasticsearch Suggester for Autocomplete
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Autocomplete, Search, Suggester, Performance, Full-Text Search
 

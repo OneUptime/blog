@@ -1,6 +1,6 @@
 # How to Handle Flux Secrets with SOPS
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Flux, SOPS, GitOps, Secrets Management, Age, GPG, Encryption, Security
 

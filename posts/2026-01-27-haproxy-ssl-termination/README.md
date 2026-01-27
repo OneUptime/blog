@@ -1,6 +1,6 @@
 # How to Configure HAProxy SSL Termination
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HAProxy, SSL, TLS, Load Balancing, Security, DevOps, Networking, HTTPS
 

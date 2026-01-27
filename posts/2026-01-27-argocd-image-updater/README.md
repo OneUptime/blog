@@ -1,6 +1,6 @@
 # How to Implement ArgoCD Image Updater Automation
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ArgoCD, Image Updater, GitOps, CI/CD, Automation, Container Registry, DevOps
 

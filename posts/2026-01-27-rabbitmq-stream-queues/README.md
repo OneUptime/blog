@@ -1,6 +1,6 @@
 # How to Build RabbitMQ Stream Queues
 
-By [nawazdhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RabbitMQ, Stream Queues, Message Queues, Event Streaming, Distributed Systems, AMQP, High Throughput, Offset-Based Consumption
 

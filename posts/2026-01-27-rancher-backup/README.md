@@ -1,6 +1,6 @@
 # How to Configure Rancher Backup
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Backup, Disaster Recovery, S3, DevOps, High Availability
 

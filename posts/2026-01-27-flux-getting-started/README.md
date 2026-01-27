@@ -1,6 +1,6 @@
 # How to Get Started with Flux for GitOps
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, GitOps, Flux, CD, DevOps, Automation, Helm, Kustomize
 

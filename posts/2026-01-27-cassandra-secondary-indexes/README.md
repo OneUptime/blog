@@ -1,6 +1,6 @@
 # How to Use Cassandra Secondary Indexes
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cassandra, Database, Secondary Indexes, SASI, SAI, NoSQL, Performance, Query Optimization
 

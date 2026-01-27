@@ -1,6 +1,6 @@
 # How to Use K3s with Traefik
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: K3s, Traefik, Kubernetes, Ingress, TLS, DevOps, Load Balancing, Middleware
 

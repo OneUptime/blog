@@ -1,6 +1,6 @@
 # How to Use Pulsar IO Connectors
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Pulsar, Messaging, Connectors, Data Integration, Event Streaming, Source Connectors, Sink Connectors, Real-Time Data
 

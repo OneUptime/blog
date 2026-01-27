@@ -1,6 +1,6 @@
 # How to Monitor SQS Queue Depth
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, CloudWatch, Monitoring, Queue Depth, Observability, Alarms, DevOps
 

@@ -1,6 +1,6 @@
 # How to Manage Multiple Clouds with Rancher
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Multi-Cloud, Kubernetes, Cloud Management, DevOps, AWS, GCP, Azure, Hybrid Cloud
 

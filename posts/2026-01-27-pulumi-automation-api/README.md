@@ -1,6 +1,6 @@
 # How to Use Pulumi Automation API
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, Infrastructure as Code, Automation API, DevOps, Dynamic Infrastructure, Self-Service, Platform Engineering
 

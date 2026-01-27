@@ -1,6 +1,6 @@
 # How to Implement MySQL Binary Log Parsing
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Binary Logs, CDC, Change Data Capture, Database Replication, Auditing, mysqlbinlog, Python, Go, Data Streaming
 

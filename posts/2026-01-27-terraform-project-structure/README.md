@@ -1,6 +1,6 @@
 # How to Structure Terraform Projects for Large Teams
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, DevOps, Team Collaboration, CI/CD, Remote State
 

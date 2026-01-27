@@ -1,6 +1,6 @@
 # How to Handle Memory Safety in Rust
 
-By [nawazdhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Rust, Memory Safety, Ownership, Borrowing, Lifetimes, Smart Pointers, Concurrency, Systems Programming
 

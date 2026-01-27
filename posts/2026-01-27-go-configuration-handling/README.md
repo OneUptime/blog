@@ -1,6 +1,6 @@
 # How to Handle Configuration in Go Applications
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Golang, Configuration, Viper, Environment Variables, YAML, JSON, TOML, Best Practices
 

@@ -1,6 +1,6 @@
 # How to Use Pub/Sub with Cloud Functions
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Google Cloud, Pub/Sub, Cloud Functions, Serverless, Event-Driven Architecture, Node.js, Python, DevOps
 

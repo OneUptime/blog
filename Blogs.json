@@ -30,7 +30,7 @@
     "post": "2023-11-06-configure-metallb-with-kubernetes-microk8s"
   },
   {
-    "title": "Why we dont like TDD: A Developer\u2019s Perspective",
+    "title": "Why we dont like TDD: A Developer’s Perspective",
     "description": "Test-Driven Development (TDD) is a software practice emphasizing writing tests before code. Many find drawbacks in committing to an API prematurely and hindering exploration during early development.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
@@ -450,7 +450,7 @@
   },
   {
     "title": "The Power of Three: How Small Teams Drive Big Results at OneUptime",
-    "description": "At OneUptime, we\u2019ve cracked the code: teams of three. Whether it\u2019s engineering squads or management hierarchies, we\u2019ve found that keeping teams small and focused isn\u2019t just efficient- it\u2019s transformative. Here\u2019s how this approach helped us deliver platforms rivaling the scope of Incident.io, StatusPage.io, and more- all with just two tiny teams.",
+    "description": "At OneUptime, we’ve cracked the code: teams of three. Whether it’s engineering squads or management hierarchies, we’ve found that keeping teams small and focused isn’t just efficient- it’s transformative. Here’s how this approach helped us deliver platforms rivaling the scope of Incident.io, StatusPage.io, and more- all with just two tiny teams.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "Team Management",
@@ -511,7 +511,7 @@
   },
   {
     "title": "Stop Paywalling Security: SSO Is a Basic Right, Not an Enterprise Perk",
-    "description": "SSO, SCIM, and 2FA are baseline security hygiene -  not enterprise upsells. Here\u2019s the short case and how OneUptime prices differently.",
+    "description": "SSO, SCIM, and 2FA are baseline security hygiene -  not enterprise upsells. Here’s the short case and how OneUptime prices differently.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "Security",
@@ -523,7 +523,7 @@
   },
   {
     "title": "Logs, Metrics & Traces: Turning Three Noisy Streams into One Story",
-    "description": "A practical, story-driven guide to weaving logs, metrics, and traces into one observability fabric with OpenTelemetry- while avoiding Datadog / New Relic lock\u2011in and cutting costs using OneUptime.",
+    "description": "A practical, story-driven guide to weaving logs, metrics, and traces into one observability fabric with OpenTelemetry- while avoiding Datadog / New Relic lock‑in and cutting costs using OneUptime.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "Observability",
@@ -551,7 +551,7 @@
   },
   {
     "title": "Traces vs Metrics in Software Observability",
-    "description": "Metrics tell you what changed. Traces tell you where. Logs tell you why. Here\u2019s how to design each signal intentionally with OpenTelemetry (and avoid wasting money or time).",
+    "description": "Metrics tell you what changed. Traces tell you where. Logs tell you why. Here’s how to design each signal intentionally with OpenTelemetry (and avoid wasting money or time).",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "Observability",
@@ -799,7 +799,7 @@
     "post": "2025-09-15-p50-vs-p95-vs-p99-latency-percentiles"
   },
   {
-    "title": "OpenTelemetry Collector: What It Is, When You Need It, and When You Don\u2019t",
+    "title": "OpenTelemetry Collector: What It Is, When You Need It, and When You Don’t",
     "description": "A practical, no-fluff guide to understanding the OpenTelemetry Collector - what it does, how it works, real architecture patterns (with and without it), and how to decide if/when you should deploy one for performance, control, security, and cost efficiency.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
@@ -816,8 +816,8 @@
     "post": "2025-09-18-what-is-opentelemetry-collector-and-why-use-one"
   },
   {
-    "title": "Connecitng Metrics \u2194 Traces with Exemplars in OpenTelemetry",
-    "description": "A hands-on guide to exemplars, how they connect metric points to the exact trace that caused them, why they matter for faster debugging and cost efficiency, and how to enable them end\u2011to\u2011end with OpenTelemetry (apps \u2192 collector \u2192 backend (like oneuptime)).",
+    "title": "Connecitng Metrics ↔ Traces with Exemplars in OpenTelemetry",
+    "description": "A hands-on guide to exemplars, how they connect metric points to the exact trace that caused them, why they matter for faster debugging and cost efficiency, and how to enable them end‑to‑end with OpenTelemetry (apps → collector → backend (like oneuptime)).",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "OpenTelemetry",
@@ -900,7 +900,7 @@
   },
   {
     "title": "Mastering OpenTelemetry Tracing: End-to-End User Journey Tracing in Distributed Systems",
-    "description": "A practical, end-to-end guide to propagating OpenTelemetry context (traceparent + baggage) across microservices- HTTP, gRPC, queues, and background jobs- so you can reconstruct real user journeys. We\u2019ll use the OTel API/SDK, W3C Trace Context, semantic conventions, and head/tail sampling via the OpenTelemetry Collector.",
+    "description": "A practical, end-to-end guide to propagating OpenTelemetry context (traceparent + baggage) across microservices- HTTP, gRPC, queues, and background jobs- so you can reconstruct real user journeys. We’ll use the OTel API/SDK, W3C Trace Context, semantic conventions, and head/tail sampling via the OpenTelemetry Collector.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "OpenTelemetry",
@@ -932,7 +932,7 @@
   },
   {
     "title": "Eliminating Toil: A Practical SRE Playbook",
-    "description": "What toil really is (and isn\u2019t), how to find and measure it, and pragmatic steps to eliminate it with automation, guardrails, and culture.",
+    "description": "What toil really is (and isn’t), how to find and measure it, and pragmatic steps to eliminate it with automation, guardrails, and culture.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Site Reliability Engineering",
@@ -1116,7 +1116,7 @@
   },
   {
     "title": "Organize Your Service Catalog with OneUptime",
-    "description": "Learn how to map services, owners, monitors, and dependencies inside OneUptime\u2019s Service Catalog so everyone knows what powers your product.",
+    "description": "Learn how to map services, owners, monitors, and dependencies inside OneUptime’s Service Catalog so everyone knows what powers your product.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Service Catalog",
@@ -1556,7 +1556,7 @@
   },
   {
     "title": "How to Build a kubectl Visibility Toolkit for Fast Incident Response",
-    "description": "A curated list of `kubectl` commands, aliases, and plugins that surface cluster health in seconds so you can answer \u201cwhat broke?\u201d without dashboards.",
+    "description": "A curated list of `kubectl` commands, aliases, and plugins that surface cluster health in seconds so you can answer “what broke?” without dashboards.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Kubernetes",
@@ -70677,290 +70677,6 @@
     "post": "2026-01-27-ollama-local-llm-inference"
   },
   {
-    "title": "How to Create Async Functions in Python",
-    "description": "Learn how to write asynchronous code in Python using async/await. This guide covers coroutines, tasks, event loops, and practical patterns for concurrent programming.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Python",
-      "Async",
-      "Asyncio",
-      "Concurrency",
-      "Performance",
-      "Coroutines"
-    ],
-    "post": "2026-01-28-create-async-functions-python"
-  },
-  {
-    "title": "How to Use Pydantic for Data Validation in Python",
-    "description": "Learn how to use Pydantic for data validation in Python. This guide covers models, validators, settings management, and integration patterns for building robust applications.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Python",
-      "Pydantic",
-      "Data Validation",
-      "Type Safety",
-      "FastAPI",
-      "Configuration"
-    ],
-    "post": "2026-01-28-use-pydantic-data-validation-python"
-  },
-  {
-    "title": "How to Fix \"TimeoutError\" in Python",
-    "description": "Learn how to handle and prevent TimeoutError in Python. This guide covers timeout configuration, retry strategies, and best practices for network operations and async code.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Python",
-      "TimeoutError",
-      "Networking",
-      "Error Handling",
-      "Async",
-      "Performance"
-    ],
-    "post": "2026-01-28-fix-timeouterror-in-python"
-  },
-  {
-    "title": "How to Work with Redis in Python",
-    "description": "Learn how to use Redis with Python for caching, session management, pub/sub messaging, and more. This guide covers redis-py, async operations, and common patterns.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Python",
-      "Redis",
-      "Caching",
-      "Database",
-      "Performance",
-      "Async"
-    ],
-    "post": "2026-01-28-work-with-redis-in-python"
-  },
-  {
-    "title": "How to Use unittest Module in Python",
-    "description": "Learn how to write effective tests using Python's built-in unittest module. This guide covers test cases, assertions, fixtures, mocking, and best practices for test organization.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Python",
-      "unittest",
-      "Testing",
-      "Test Automation",
-      "TDD",
-      "Quality Assurance"
-    ],
-    "post": "2026-01-28-use-unittest-module-python"
-  },
-  {
-    "title": "How to Build Full-Text Search with Elasticsearch in Spring",
-    "description": "Learn how to implement full-text search in Spring Boot applications using Elasticsearch. This guide covers indexing, querying, fuzzy matching, highlighting, autocomplete, and pagination for building powerful search features.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Java",
-      "Spring Boot",
-      "Elasticsearch",
-      "Search",
-      "Full-Text Search",
-      "Spring Data"
-    ],
-    "post": "2026-01-28-elasticsearch-full-text-search-spring"
-  },
-  {
-    "title": "How to Run Terraform with GitLab CI",
-    "description": "Learn how to run Terraform with GitLab CI for automated infrastructure management, including plan reviews, state management, and secure credential handling.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "GitLab CI",
-      "Terraform",
-      "Infrastructure as Code",
-      "DevOps",
-      "Cloud",
-      "IaC"
-    ],
-    "post": "2026-01-28-terraform-gitlab-ci"
-  },
-  {
-    "title": "How to Use Rules for Conditional Jobs in GitLab CI",
-    "description": "Learn how to use rules in GitLab CI to control when jobs run based on branches, file changes, variables, and complex conditions for optimized pipelines.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "GitLab CI",
-      "Rules",
-      "Conditional Jobs",
-      "CI/CD",
-      "Pipeline Logic"
-    ],
-    "post": "2026-01-28-rules-conditional-jobs-gitlab-ci"
-  },
-  {
-    "title": "How to Handle Monorepos with GitLab CI",
-    "description": "Learn how to configure GitLab CI for monorepos with selective builds, change detection, and efficient pipeline strategies that scale with your codebase.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "GitLab CI",
-      "Monorepo",
-      "CI/CD",
-      "Pipeline Optimization",
-      "DevOps"
-    ],
-    "post": "2026-01-28-monorepos-gitlab-ci"
-  },
-  {
-    "title": "How to Build Child Pipelines in GitLab CI",
-    "description": "Learn how to use child pipelines in GitLab CI to organize complex workflows, dynamically generate pipelines, and manage large-scale CI/CD configurations.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "GitLab CI",
-      "Child Pipelines",
-      "Parent Pipelines",
-      "CI/CD",
-      "Pipeline Organization"
-    ],
-    "post": "2026-01-28-child-pipelines-gitlab-ci"
-  },
-  {
-    "title": "How to Build Session Storage with Redis",
-    "description": "Learn how to implement secure, scalable session storage with Redis. This guide covers session management, Express integration, security best practices, and handling distributed deployments.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Redis",
-      "Session Storage",
-      "Authentication",
-      "Node.js",
-      "Express",
-      "Security"
-    ],
-    "post": "2026-01-28-session-storage-redis"
-  },
-  {
-    "title": "How to Implement Sliding Window Rate Limiting in Spring",
-    "description": "Learn how to implement sliding window rate limiting in Spring Boot to protect your APIs from abuse. This guide covers the algorithm, Redis-based implementation, and integration with Spring MVC interceptors.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Java",
-      "Spring Boot",
-      "Rate Limiting",
-      "Sliding Window",
-      "API",
-      "Security",
-      "Redis",
-      "Performance"
-    ],
-    "post": "2026-01-28-sliding-window-rate-limiting-spring"
-  },
-  {
-    "title": "How to Optimize Entity Framework Core Queries",
-    "description": "Learn practical techniques to optimize Entity Framework Core queries for better performance, including query optimization, proper loading strategies, and avoiding common performance pitfalls.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      ".NET",
-      "Entity Framework Core",
-      "Performance",
-      "C#",
-      "Database",
-      "SQL"
-    ],
-    "post": "2026-01-28-optimize-entity-framework-core-queries"
-  },
-  {
-    "title": "How to Implement CQRS with MediatR in .NET",
-    "description": "A practical guide to implementing the Command Query Responsibility Segregation pattern using MediatR in .NET. Learn how to structure commands, queries, handlers, and pipelines for maintainable applications.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      ".NET",
-      "C#",
-      "CQRS",
-      "MediatR",
-      "Clean Architecture",
-      "Design Patterns",
-      "Domain-Driven Design"
-    ],
-    "post": "2026-01-28-cqrs-mediatr-dotnet"
-  },
-  {
-    "title": "How to Use Container Registry in GitLab CI",
-    "description": "Learn how to use GitLab's built-in Container Registry to store, manage, and deploy Docker images directly from your CI/CD pipelines.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "GitLab CI",
-      "Container Registry",
-      "Docker",
-      "CI/CD",
-      "Containers"
-    ],
-    "post": "2026-01-28-container-registry-gitlab-ci"
-  },
-  {
-    "title": "How to Build a Service Registry with Eureka in Spring",
-    "description": "Learn how to build a service registry with Netflix Eureka in Spring Boot. This guide covers server setup, client registration, service discovery, and high availability configurations for microservices.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Java",
-      "Spring Boot",
-      "Eureka",
-      "Service Discovery",
-      "Microservices",
-      "Netflix OSS",
-      "Spring Cloud",
-      "Load Balancing"
-    ],
-    "post": "2026-01-29-service-registry-eureka-spring"
-  },
-  {
-    "title": "How to Implement Multi-Level Caching in Spring Boot",
-    "description": "Learn how to implement multi-level caching in Spring Boot using local (Caffeine) and distributed (Redis) caches. This guide covers cache configuration, invalidation strategies, and best practices for optimal performance.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Java",
-      "Spring Boot",
-      "Caching",
-      "Redis",
-      "Caffeine",
-      "Performance",
-      "Spring Cache"
-    ],
-    "post": "2026-01-29-multi-level-caching-spring-boot"
-  },
-  {
-    "title": "How to Build Real-Time Apps with SignalR in .NET",
-    "description": "Learn how to build real-time web applications using SignalR in .NET with practical examples for notifications, live updates, and collaborative features.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      ".NET",
-      "SignalR",
-      "Real-Time",
-      "WebSocket",
-      "C#",
-      "ASP.NET Core"
-    ],
-    "post": "2026-01-29-realtime-apps-signalr-dotnet"
-  },
-  {
-    "title": "How to Instrument .NET Apps with OpenTelemetry",
-    "description": "A practical guide to instrumenting .NET applications with OpenTelemetry for distributed tracing, metrics collection, and structured logging. Covers both automatic and manual instrumentation patterns.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      ".NET",
-      "C#",
-      "OpenTelemetry",
-      "Observability",
-      "Tracing",
-      "Metrics",
-      "Logging",
-      "ASP.NET Core"
-    ],
-    "post": "2026-01-29-opentelemetry-instrumentation-dotnet"
-  },
-  {
-    "title": "How to Configure Redis Persistence (RDB vs AOF)",
-    "description": "Learn how to configure Redis persistence using RDB snapshots and AOF logs, including hybrid persistence and choosing the right strategy for your use case.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Redis",
-      "Persistence",
-      "RDB",
-      "AOF",
-      "Database",
-      "Data Durability"
-    ],
-    "post": "2026-01-27-redis-persistence-rdb-aof"
-  },
-  {
     "title": "How to Implement Airflow Sensors",
     "description": "A comprehensive guide to implementing Airflow sensors for building event-driven data pipelines that wait for external conditions before proceeding.",
     "authorGitHubUsername": "nawazdhandala",
@@ -74634,5 +74350,275 @@
       "DevOps"
     ],
     "post": "2026-01-27-websocket-reconnection-logic"
+  },
+  {
+    "title": "How to Create Async Functions in Python",
+    "description": "Learn how to write asynchronous code in Python using async/await. This guide covers coroutines, tasks, event loops, and practical patterns for concurrent programming.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Async",
+      "Asyncio",
+      "Concurrency",
+      "Performance",
+      "Coroutines"
+    ],
+    "post": "2026-01-28-create-async-functions-python"
+  },
+  {
+    "title": "How to Use Pydantic for Data Validation in Python",
+    "description": "Learn how to use Pydantic for data validation in Python. This guide covers models, validators, settings management, and integration patterns for building robust applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Pydantic",
+      "Data Validation",
+      "Type Safety",
+      "FastAPI",
+      "Configuration"
+    ],
+    "post": "2026-01-28-use-pydantic-data-validation-python"
+  },
+  {
+    "title": "How to Fix \"TimeoutError\" in Python",
+    "description": "Learn how to handle and prevent TimeoutError in Python. This guide covers timeout configuration, retry strategies, and best practices for network operations and async code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "TimeoutError",
+      "Networking",
+      "Error Handling",
+      "Async",
+      "Performance"
+    ],
+    "post": "2026-01-28-fix-timeouterror-in-python"
+  },
+  {
+    "title": "How to Work with Redis in Python",
+    "description": "Learn how to use Redis with Python for caching, session management, pub/sub messaging, and more. This guide covers redis-py, async operations, and common patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Redis",
+      "Caching",
+      "Database",
+      "Performance",
+      "Async"
+    ],
+    "post": "2026-01-28-work-with-redis-in-python"
+  },
+  {
+    "title": "How to Use unittest Module in Python",
+    "description": "Learn how to write effective tests using Python's built-in unittest module. This guide covers test cases, assertions, fixtures, mocking, and best practices for test organization.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "unittest",
+      "Testing",
+      "Test Automation",
+      "TDD",
+      "Quality Assurance"
+    ],
+    "post": "2026-01-28-use-unittest-module-python"
+  },
+  {
+    "title": "How to Build Full-Text Search with Elasticsearch in Spring",
+    "description": "Learn how to implement full-text search in Spring Boot applications using Elasticsearch. This guide covers indexing, querying, fuzzy matching, highlighting, autocomplete, and pagination for building powerful search features.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Elasticsearch",
+      "Search",
+      "Full-Text Search",
+      "Spring Data"
+    ],
+    "post": "2026-01-28-elasticsearch-full-text-search-spring"
+  },
+  {
+    "title": "How to Run Terraform with GitLab CI",
+    "description": "Learn how to run Terraform with GitLab CI for automated infrastructure management, including plan reviews, state management, and secure credential handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitLab CI",
+      "Terraform",
+      "Infrastructure as Code",
+      "DevOps",
+      "Cloud",
+      "IaC"
+    ],
+    "post": "2026-01-28-terraform-gitlab-ci"
+  },
+  {
+    "title": "How to Use Rules for Conditional Jobs in GitLab CI",
+    "description": "Learn how to use rules in GitLab CI to control when jobs run based on branches, file changes, variables, and complex conditions for optimized pipelines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitLab CI",
+      "Rules",
+      "Conditional Jobs",
+      "CI/CD",
+      "Pipeline Logic"
+    ],
+    "post": "2026-01-28-rules-conditional-jobs-gitlab-ci"
+  },
+  {
+    "title": "How to Handle Monorepos with GitLab CI",
+    "description": "Learn how to configure GitLab CI for monorepos with selective builds, change detection, and efficient pipeline strategies that scale with your codebase.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitLab CI",
+      "Monorepo",
+      "CI/CD",
+      "Pipeline Optimization",
+      "DevOps"
+    ],
+    "post": "2026-01-28-monorepos-gitlab-ci"
+  },
+  {
+    "title": "How to Build Child Pipelines in GitLab CI",
+    "description": "Learn how to use child pipelines in GitLab CI to organize complex workflows, dynamically generate pipelines, and manage large-scale CI/CD configurations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitLab CI",
+      "Child Pipelines",
+      "Parent Pipelines",
+      "CI/CD",
+      "Pipeline Organization"
+    ],
+    "post": "2026-01-28-child-pipelines-gitlab-ci"
+  },
+  {
+    "title": "How to Build Session Storage with Redis",
+    "description": "Learn how to implement secure, scalable session storage with Redis. This guide covers session management, Express integration, security best practices, and handling distributed deployments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Redis",
+      "Session Storage",
+      "Authentication",
+      "Node.js",
+      "Express",
+      "Security"
+    ],
+    "post": "2026-01-28-session-storage-redis"
+  },
+  {
+    "title": "How to Implement Sliding Window Rate Limiting in Spring",
+    "description": "Learn how to implement sliding window rate limiting in Spring Boot to protect your APIs from abuse. This guide covers the algorithm, Redis-based implementation, and integration with Spring MVC interceptors.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Rate Limiting",
+      "Sliding Window",
+      "API",
+      "Security",
+      "Redis",
+      "Performance"
+    ],
+    "post": "2026-01-28-sliding-window-rate-limiting-spring"
+  },
+  {
+    "title": "How to Optimize Entity Framework Core Queries",
+    "description": "Learn practical techniques to optimize Entity Framework Core queries for better performance, including query optimization, proper loading strategies, and avoiding common performance pitfalls.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "Entity Framework Core",
+      "Performance",
+      "C#",
+      "Database",
+      "SQL"
+    ],
+    "post": "2026-01-28-optimize-entity-framework-core-queries"
+  },
+  {
+    "title": "How to Implement CQRS with MediatR in .NET",
+    "description": "A practical guide to implementing the Command Query Responsibility Segregation pattern using MediatR in .NET. Learn how to structure commands, queries, handlers, and pipelines for maintainable applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "C#",
+      "CQRS",
+      "MediatR",
+      "Clean Architecture",
+      "Design Patterns",
+      "Domain-Driven Design"
+    ],
+    "post": "2026-01-28-cqrs-mediatr-dotnet"
+  },
+  {
+    "title": "How to Use Container Registry in GitLab CI",
+    "description": "Learn how to use GitLab's built-in Container Registry to store, manage, and deploy Docker images directly from your CI/CD pipelines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitLab CI",
+      "Container Registry",
+      "Docker",
+      "CI/CD",
+      "Containers"
+    ],
+    "post": "2026-01-28-container-registry-gitlab-ci"
+  },
+  {
+    "title": "How to Build a Service Registry with Eureka in Spring",
+    "description": "Learn how to build a service registry with Netflix Eureka in Spring Boot. This guide covers server setup, client registration, service discovery, and high availability configurations for microservices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Eureka",
+      "Service Discovery",
+      "Microservices",
+      "Netflix OSS",
+      "Spring Cloud",
+      "Load Balancing"
+    ],
+    "post": "2026-01-29-service-registry-eureka-spring"
+  },
+  {
+    "title": "How to Implement Multi-Level Caching in Spring Boot",
+    "description": "Learn how to implement multi-level caching in Spring Boot using local (Caffeine) and distributed (Redis) caches. This guide covers cache configuration, invalidation strategies, and best practices for optimal performance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Caching",
+      "Redis",
+      "Caffeine",
+      "Performance",
+      "Spring Cache"
+    ],
+    "post": "2026-01-29-multi-level-caching-spring-boot"
+  },
+  {
+    "title": "How to Build Real-Time Apps with SignalR in .NET",
+    "description": "Learn how to build real-time web applications using SignalR in .NET with practical examples for notifications, live updates, and collaborative features.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "SignalR",
+      "Real-Time",
+      "WebSocket",
+      "C#",
+      "ASP.NET Core"
+    ],
+    "post": "2026-01-29-realtime-apps-signalr-dotnet"
+  },
+  {
+    "title": "How to Instrument .NET Apps with OpenTelemetry",
+    "description": "A practical guide to instrumenting .NET applications with OpenTelemetry for distributed tracing, metrics collection, and structured logging. Covers both automatic and manual instrumentation patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "C#",
+      "OpenTelemetry",
+      "Observability",
+      "Tracing",
+      "Metrics",
+      "Logging",
+      "ASP.NET Core"
+    ],
+    "post": "2026-01-29-opentelemetry-instrumentation-dotnet"
   }
 ]

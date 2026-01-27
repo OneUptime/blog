@@ -1,6 +1,6 @@
 # How to Use TimescaleDB for IoT Data
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TimescaleDB, IoT, Time-Series, PostgreSQL, Monitoring, Data Engineering, DevOps
 

@@ -1,6 +1,6 @@
 # How to Implement Elasticsearch Cross-Cluster Search
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Cross-Cluster Search, Distributed Systems, Search, Observability, DevOps
 

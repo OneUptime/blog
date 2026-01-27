@@ -1,6 +1,6 @@
 # How to Create Kubernetes Clusters with Rancher
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Rancher, RKE, Cloud Provider, Cluster Management, DevOps, Infrastructure, Container Orchestration
 

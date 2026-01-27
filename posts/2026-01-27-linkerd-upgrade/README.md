@@ -1,6 +1,6 @@
 # How to Upgrade Linkerd Safely
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linkerd, Service Mesh, Kubernetes, Upgrades, DevOps, SRE, Zero Downtime
 

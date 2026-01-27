@@ -1,6 +1,6 @@
 # How to Secure NATS Connections
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NATS, Security, TLS, JWT, NKey, Authentication, Authorization, Messaging, Microservices
 

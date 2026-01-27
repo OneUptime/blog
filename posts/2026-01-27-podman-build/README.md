@@ -1,6 +1,6 @@
 # How to Build Images with Podman
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Containers, Buildah, OCI, DevOps, Docker Alternative
 

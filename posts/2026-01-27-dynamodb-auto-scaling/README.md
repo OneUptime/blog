@@ -1,6 +1,6 @@
 # How to Configure DynamoDB Auto Scaling
 
-By [nawazdhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, Auto Scaling, Database, NoSQL, Performance, Cost Optimization, CloudWatch
 

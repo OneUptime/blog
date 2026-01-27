@@ -1,6 +1,6 @@
 # How to Implement Exactly-Once Processing with Pub/Sub
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pub/Sub, Exactly-Once Processing, Message Queues, Idempotency, Deduplication, Google Cloud, Distributed Systems
 

@@ -1,6 +1,6 @@
 # How to Install K3s on Raspberry Pi
 
-By [nawazdhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Kubernetes, K3s, Raspberry Pi, ARM, Edge Computing, Home Lab, IoT, Self-Hosting
 

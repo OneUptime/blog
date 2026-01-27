@@ -1,6 +1,6 @@
 # How to Implement Long Polling in SQS
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, Long Polling, Message Queue, Cost Optimization, Distributed Systems, Cloud Architecture
 

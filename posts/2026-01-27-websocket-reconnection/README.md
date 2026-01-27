@@ -1,6 +1,6 @@
 # How to Implement Reconnection Logic for WebSockets
 
-By [nawazdhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: WebSockets, JavaScript, Real-time, Networking, Reliability, DevOps
 

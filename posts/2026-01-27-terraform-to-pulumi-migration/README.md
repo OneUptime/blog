@@ -1,6 +1,6 @@
 # How to Migrate from Terraform to Pulumi
 
-By [nawazdhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Infrastructure as Code, Terraform, Pulumi, DevOps, Migration, Cloud Infrastructure
 

@@ -1,6 +1,6 @@
 # How to Optimize SQS Costs
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, Cost Optimization, Message Queue, Cloud, FinOps, DevOps, Infrastructure
 

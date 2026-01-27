@@ -1,6 +1,6 @@
 # How to Build RabbitMQ Shovel for Message Transfer
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Message Queue, Shovel, Federation, Distributed Systems, DevOps, Messaging, Cross-Cluster
 

@@ -1,6 +1,6 @@
 # How to Implement ArgoCD Sync Waves
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, Kubernetes, GitOps, Sync Waves, Hooks, DevOps, Deployment, CI/CD
 

@@ -1,6 +1,6 @@
 # How to Use Rails with PostgreSQL Full-Text Search
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rails, PostgreSQL, Full-Text Search, Ruby, Database, pg_search, Performance, Backend Development
 

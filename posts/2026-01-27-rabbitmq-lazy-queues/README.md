@@ -1,6 +1,6 @@
 # How to Implement RabbitMQ Lazy Queues for Large Messages
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Message Queues, Performance, Memory Management, DevOps, Microservices
 

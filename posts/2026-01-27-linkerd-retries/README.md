@@ -1,6 +1,6 @@
 # How to Configure Linkerd Retries
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linkerd, Service Mesh, Kubernetes, Retries, Reliability, Microservices, DevOps, SRE
 

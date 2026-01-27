@@ -1,6 +1,6 @@
 # How to Configure ArgoCD SSO
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, SSO, OIDC, SAML, Dex, Kubernetes, Authentication, RBAC, Security
 

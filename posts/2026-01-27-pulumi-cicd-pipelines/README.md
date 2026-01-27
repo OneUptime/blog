@@ -1,6 +1,6 @@
 # How to Implement Pulumi CI/CD Pipelines
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, CI/CD, Infrastructure as Code, DevOps, GitHub Actions, GitLab CI, Automation, Cloud Infrastructure
 

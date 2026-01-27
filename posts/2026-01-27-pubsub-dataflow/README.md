@@ -1,6 +1,6 @@
 # How to Use Pub/Sub with Dataflow
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Google Cloud, Pub/Sub, Dataflow, Apache Beam, Streaming, Windowing, Watermarks, Real-Time Processing
 

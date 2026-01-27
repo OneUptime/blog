@@ -1,6 +1,6 @@
 # How to Use Flux with Kustomize
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Flux, Kustomize, GitOps, CI/CD, DevOps, Automation
 

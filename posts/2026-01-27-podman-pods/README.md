@@ -1,6 +1,6 @@
 # How to Use Podman Pods
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Containers, DevOps, Kubernetes, Pods, Linux, Docker Alternative
 

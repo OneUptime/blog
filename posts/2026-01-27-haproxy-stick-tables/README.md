@@ -1,6 +1,6 @@
 # How to Configure HAProxy Stick Tables
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HAProxy, Load Balancing, Session Persistence, Rate Limiting, High Availability, DevOps, Networking
 

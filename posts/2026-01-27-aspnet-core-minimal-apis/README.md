@@ -1,6 +1,6 @@
 # How to Build Minimal APIs in ASP.NET Core 8
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ASP.NET Core, Minimal APIs, C#, .NET 8, Web Development, REST API, Backend Development, OpenAPI
 

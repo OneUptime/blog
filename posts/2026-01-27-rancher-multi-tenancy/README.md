@@ -1,6 +1,6 @@
 # How to Implement Rancher Multi-Tenancy
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Rancher, Multi-Tenancy, DevOps, Security, RBAC, Resource Management
 

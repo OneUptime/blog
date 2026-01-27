@@ -1,6 +1,6 @@
 # How to Use TimescaleDB with PostgreSQL Extensions
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TimescaleDB, PostgreSQL, Extensions, PostGIS, pg_partman, Time-Series, Database, Performance, DevOps
 

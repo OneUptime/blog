@@ -1,6 +1,6 @@
 # How to Implement Envoy Circuit Breaker
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, Circuit Breaker, Resilience, Service Mesh, Microservices, DevOps, Observability, Istio
 

@@ -1,6 +1,6 @@
 # How to Configure Podman for CI/CD
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, CI/CD, GitHub Actions, GitLab CI, Containers, DevOps, Docker Alternative
 

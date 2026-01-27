@@ -1,6 +1,6 @@
 # How to Implement Kafka Consumer Group Rebalancing
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, Consumer Groups, Rebalancing, Distributed Systems, Event Streaming, Microservices, Java, Node.js
 

@@ -1,6 +1,6 @@
 # How to Configure Podman Registry
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container Registry, Docker, Containers, DevOps, Security
 

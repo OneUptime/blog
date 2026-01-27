@@ -1,6 +1,6 @@
 # How to Secure RabbitMQ with TLS
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, TLS, Security, Message Queue, Encryption, Certificates, mTLS, DevOps
 

@@ -1,6 +1,6 @@
 # How to Build Kafka Connect Custom Connectors
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, Kafka Connect, Java, Data Integration, Streaming, ETL, Connectors, Apache Kafka
 

@@ -1,6 +1,6 @@
 # How to Use Laravel with PostgreSQL
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Laravel, PostgreSQL, PHP, Database, Backend, Full-Text Search, JSONB
 

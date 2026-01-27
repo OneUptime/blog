@@ -1,6 +1,6 @@
 # How to Debug Envoy Configuration Issues
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, Proxy, Debugging, Kubernetes, Service Mesh, DevOps, Troubleshooting
 

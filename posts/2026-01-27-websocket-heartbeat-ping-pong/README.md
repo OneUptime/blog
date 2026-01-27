@@ -1,6 +1,6 @@
 # How to Implement Heartbeat/Ping-Pong in WebSockets
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: WebSocket, Heartbeat, Ping-Pong, Connection Health, Real-Time, JavaScript, NodeJS
 

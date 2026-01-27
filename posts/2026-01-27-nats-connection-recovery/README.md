@@ -1,6 +1,6 @@
 # How to Handle NATS Connection Recovery
 
-By [nawazdhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: NATS, Messaging, Connection Recovery, Reliability, Distributed Systems, NodeJS, Go, DevOps
 

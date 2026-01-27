@@ -1,6 +1,6 @@
 # How to Build Production APIs with Gin
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Gin, API Development, Backend, Microservices, Production, REST API
 

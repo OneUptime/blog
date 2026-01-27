@@ -1,6 +1,6 @@
 # How to Use HTTP Caching Headers in REST APIs
 
-By [Nawaz Dhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HTTP, Caching, REST API, Performance, CDN, Web Development, Backend
 
