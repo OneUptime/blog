@@ -25,6 +25,7 @@
 - ACI
 - ACID
 - ACID Transactions
+- Acknowledgments
 - ACL
 - ACLs
 - ACR
@@ -34,6 +35,7 @@
 - Active-Active
 - Active-Passive
 - ActiveMQ
+- ActiveStorage
 - ActiveSupport
 - Actix Web
 - Actix-web
@@ -55,6 +57,7 @@
 - Advanced TypeScript
 - Advisory Locks
 - Agent Debugging
+- Agents
 - Aggregate Functions
 - Aggregates
 - AggregatingMergeTree
@@ -267,11 +270,13 @@
 - Auto-Scaling
 - Auto-Upgrade
 - Autocomplete
+- AutoMapper
 - Automated Cleanup
 - Automatic Cleanup
 - Automation
 - Automation Platform
 - AutoML
+- Autonomous Systems
 - Autoscaling
 - Autovacuum
 - Avahi
@@ -418,6 +423,7 @@
 - BLPOP
 - Blue-Green
 - Blue-Green Deployment
+- Blueprints
 - BlueStore
 - BM25
 - Bonding
@@ -631,12 +637,14 @@
 - Cloud Comparison
 - Cloud Computing
 - Cloud Cost Management
+- Cloud Costs
 - Cloud Data
 - Cloud Database
 - Cloud Deployment Manager
 - Cloud Development
 - Cloud DNS
 - Cloud Endpoints
+- Cloud Finance
 - Cloud Functions
 - Cloud Identity
 - Cloud Infrastructure
@@ -834,6 +842,7 @@
 - context cancellation
 - Context Managers
 - Context Propagation
+- Continuous Aggregates
 - Continuous Archiving
 - Continuous Deployment
 - Continuous Integration
@@ -1120,6 +1129,7 @@
 - Delayed Messages
 - delegate_to
 - Delegation
+- Delivery Semantics
 - Delta
 - Delta Lake
 - Deluge
@@ -1153,6 +1163,7 @@
 - Developer Productivity
 - Developer Tools
 - Development
+- Development Environment
 - Development Environments
 - Development Tools
 - Development Workflow
@@ -1272,6 +1283,7 @@
 - DROP DATABASE
 - Drop Logs
 - DRY
+- DTOs
 - du
 - Dual-Stack
 - Dual-Write
@@ -1355,6 +1367,7 @@
 - Encrypted Backup
 - Encryption
 - End-to-End Testing
+- Engineering
 - Engineering Culture
 - Engineering Efficiency
 - Enterprise
@@ -1407,6 +1420,7 @@
 - Event Schema Design
 - Event Sourcing
 - Event Store
+- Event Stream
 - Event Streaming
 - Event Time
 - Event Versioning
@@ -1415,6 +1429,7 @@
 - EventBridge
 - EventEmitter
 - Events
+- EventSource
 - EventStoreDB
 - Eventual Consistency
 - Eviction
@@ -1423,6 +1438,7 @@
 - Exactly-Once Processing
 - Exception Handling
 - Exceptions
+- Exchange
 - Exchange Types
 - Exchanges
 - EXEC
@@ -1744,6 +1760,7 @@
 - Gremlin
 - GridFS
 - Grok
+- Groovy
 - Group By
 - Groups
 - gRPC
@@ -1765,6 +1782,7 @@
 - Harbor
 - Hardening
 - Hardware
+- Hash Slots
 - Hash Tags
 - Hashes
 - HashiCorp
@@ -1905,6 +1923,7 @@
 - Image Verification
 - ImagePullBackOff
 - Images
+- IMemoryCache
 - Immutability
 - Immutable
 - Immutable Infrastructure
@@ -2046,6 +2065,7 @@
 - JDK
 - Jellyfin
 - Jenkins
+- Jenkinsfile
 - Jest
 - Jetpack Compose
 - JetStream
@@ -2150,6 +2170,7 @@
 - Kubernetes
 - Kubescape
 - Kustomize
+- KV
 - KV Store
 - KVM
 - Kyverno
@@ -2157,6 +2178,8 @@
 - L2
 - L2 Cache
 - L3
+- L4
+- L7
 - Label Cardinality
 - Label Matching
 - Label Studio
@@ -2216,6 +2239,7 @@
 - Lifecycle Management
 - Lifetimes
 - Lift and Shift
+- Lighthouse
 - Lightweight
 - LIME
 - Limit Ranges
@@ -2234,6 +2258,7 @@
 - Liquibase
 - List Comprehensions
 - LISTEN
+- Listeners
 - Lists
 - Litmus
 - Live Updates
@@ -2256,6 +2281,7 @@
 - LoadBalancer
 - Loading States
 - Local Development
+- Local Inference
 - Local Network
 - Local Preference
 - Local Setup
@@ -2510,6 +2536,7 @@
 - ModuleNotFoundError
 - Modules
 - Molecule
+- Moleculer
 - MongoDB
 - MongoDB Atlas
 - mongodump
@@ -2687,6 +2714,7 @@
 - Notary
 - Note-Taking
 - Notebook
+- Notification Policies
 - Notifications
 - NOTIFY
 - NotLeaderForPartition
@@ -2716,6 +2744,7 @@
 - OAuth2
 - Oban
 - Obfuscation
+- Object Mapping
 - Object Pool
 - Object Pooling
 - Object Safety
@@ -2860,6 +2889,7 @@
 - parted
 - Partial
 - Partial Search
+- Partial Updates
 - Partition Assignment
 - PARTITION BY
 - Partition Hotspots
@@ -2874,6 +2904,7 @@
 - Password Hashing
 - Password Manager
 - Passwordless
+- PATCH
 - Path
 - Path Aliases
 - Path Analysis
@@ -3084,6 +3115,7 @@
 - Production Systems
 - Productivity
 - Profiler
+- Profiles
 - Profiling
 - Programming
 - Progress Tracking
@@ -3195,6 +3227,7 @@
 - Query Types
 - query_log
 - Queue
+- Queue Architecture
 - Queue Configuration
 - Queue Management
 - Queue Mirroring
@@ -3301,6 +3334,7 @@
 - RedisInsight
 - RedisJSON
 - RedisTimeSeries
+- Redix
 - Redlock
 - Redshift
 - Redundancy
@@ -3372,12 +3406,14 @@
 - Request Routing
 - Request Tracking
 - Request Validation
+- Request-Reply
 - Requests
 - require
 - reqwest
 - Rescue
 - Reservations
 - Reset
+- Resharding
 - Resilience
 - Resilience Testing
 - Resilience4j
@@ -3669,6 +3705,7 @@
 - ShardingSphere
 - Shards
 - Shared Editing
+- Shared Libraries
 - Shared Memory
 - Shared Ownership
 - Shared State
@@ -3849,6 +3886,7 @@
 - Startups
 - Stat Panel
 - State
+- State Locking
 - State Management
 - State Parameter
 - State Reconstruction
@@ -4030,6 +4068,7 @@
 - Telemetry Pipeline
 - Teleport
 - Telepresence
+- Telescope
 - Temp Files
 - Template
 - Template Literals
@@ -4351,6 +4390,7 @@
 - Utility Types
 - uuid-ossp
 - uv
+- Uvicorn
 - uWSGI
 - UX
 - v-model
@@ -4403,6 +4443,7 @@
 - Virtualization
 - VirtualService
 - Visibility
+- Visibility Timeout
 - Visual Regression
 - Visual Testing
 - Visualization
@@ -4575,6 +4616,7 @@
 - Zero-Code Instrumentation
 - Zero-Copy
 - Zero-Cost Abstractions
+- Zero-Trust
 - Zeroconf
 - ZFS
 - Zigbee

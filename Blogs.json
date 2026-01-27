@@ -69707,6 +69707,976 @@
     "post": "2026-01-27-reports-grafana"
   },
   {
+    "title": "How to Use Connection Pooling Effectively",
+    "description": "Learn how to configure and use connection pooling for databases and HTTP clients, including pool sizing, timeout configuration, and monitoring.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Connection Pooling",
+      "Database",
+      "Performance",
+      "PostgreSQL",
+      "HTTP"
+    ],
+    "post": "2026-01-27-connection-pooling-effectively"
+  },
+  {
+    "title": "How to Implement GitHub Actions Composite Actions",
+    "description": "Learn how to create reusable GitHub Actions composite actions to share workflow logic across repositories and reduce duplication.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitHub Actions",
+      "Composite Actions",
+      "CI/CD",
+      "DevOps",
+      "Automation"
+    ],
+    "post": "2026-01-27-github-actions-composite-actions"
+  },
+  {
+    "title": "How to Write Flink Streaming Jobs",
+    "description": "Learn how to write Apache Flink streaming jobs for real-time data processing, including DataStream API, transformations, and state management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Apache Flink",
+      "Stream Processing",
+      "Real-time",
+      "Data Engineering",
+      "Java"
+    ],
+    "post": "2026-01-27-flink-streaming-jobs"
+  },
+  {
+    "title": "How to Implement Request-Reply Pattern in NATS",
+    "description": "Learn how to implement the request-reply pattern in NATS for synchronous communication between services, including timeouts and error handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Request-Reply",
+      "Messaging",
+      "Microservices",
+      "RPC"
+    ],
+    "post": "2026-01-27-nats-request-reply-pattern"
+  },
+  {
+    "title": "How to Write Effective Airflow DAGs",
+    "description": "Learn how to write effective Apache Airflow DAGs with best practices for task dependencies, operators, error handling, and testing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Airflow",
+      "DAG",
+      "Data Engineering",
+      "Workflow",
+      "ETL",
+      "Python",
+      "Scheduling",
+      "Apache Airflow"
+    ],
+    "post": "2026-01-27-airflow-dags-effective"
+  },
+  {
+    "title": "How to Design Chaos Experiments for Resilience Testing",
+    "description": "Learn how to design chaos engineering experiments to test system resilience, including hypothesis formation, blast radius control, and analysis.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Chaos Engineering",
+      "Resilience",
+      "SRE",
+      "Testing",
+      "Reliability",
+      "Fault Injection",
+      "Distributed Systems"
+    ],
+    "post": "2026-01-27-chaos-engineering-experiments"
+  },
+  {
+    "title": "How to Implement ClickHouse TTL for Data Retention",
+    "description": "Learn how to use ClickHouse TTL (Time To Live) for automatic data retention, tiered storage, and data lifecycle management with practical examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "ClickHouse",
+      "TTL",
+      "Data Retention",
+      "Time Series",
+      "Analytics",
+      "Database",
+      "Storage Management"
+    ],
+    "post": "2026-01-27-clickhouse-ttl-data-retention"
+  },
+  {
+    "title": "How to Use Cloudflare Workers KV for Edge Storage",
+    "description": "Learn how to use Cloudflare Workers KV for globally distributed key-value storage, including CRUD operations, expiration, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloudflare Workers",
+      "KV",
+      "Edge Computing",
+      "Serverless",
+      "Storage"
+    ],
+    "post": "2026-01-27-cloudflare-workers-kv"
+  },
+  {
+    "title": "How to Write Effective dbt Models",
+    "description": "A practical guide to writing effective dbt models - covering organization, materialization strategies, testing, documentation, and performance optimization for scalable data transformations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "dbt",
+      "Data Engineering",
+      "SQL",
+      "Data Transformation",
+      "Analytics",
+      "Data Modeling"
+    ],
+    "post": "2026-01-27-dbt-models-effective"
+  },
+  {
+    "title": "How to Set Up Debezium for Change Data Capture",
+    "description": "Learn how to set up Debezium for change data capture to stream database changes to Kafka in real-time for event-driven architectures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Debezium",
+      "CDC",
+      "Kafka",
+      "Database",
+      "Event Streaming",
+      "PostgreSQL",
+      "MySQL",
+      "Kafka Connect"
+    ],
+    "post": "2026-01-27-debezium-change-data-capture"
+  },
+  {
+    "title": "How to Create Dev Containers for Development Environments",
+    "description": "Learn how to create Dev Containers for consistent development environments, including configuration, features, and IDE integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Dev Containers",
+      "Docker",
+      "VS Code",
+      "Development Environment",
+      "DevEx"
+    ],
+    "post": "2026-01-27-dev-containers-development"
+  },
+  {
+    "title": "How to Use Django with PostgreSQL Full-Text Search",
+    "description": "Learn how to implement full-text search in Django using PostgreSQL's built-in capabilities including search vectors, ranking, and search configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Django",
+      "Python",
+      "PostgreSQL",
+      "Full-Text Search",
+      "Search",
+      "Database"
+    ],
+    "post": "2026-01-27-django-postgresql-full-text-search"
+  },
+  {
+    "title": "How to Use Django Caching with Redis",
+    "description": "Learn how to implement caching in Django applications using Redis, including cache backends, view caching, template caching, and cache invalidation strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Django",
+      "Python",
+      "Redis",
+      "Caching",
+      "Performance"
+    ],
+    "post": "2026-01-27-django-redis-caching"
+  },
+  {
+    "title": "How to Build DNS Failover with Health Checks",
+    "description": "Learn how to implement DNS failover with health checks for high availability, including active-passive and active-active configurations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Failover",
+      "Health Checks",
+      "High Availability",
+      "Reliability"
+    ],
+    "post": "2026-01-27-dns-failover-health-checks"
+  },
+  {
+    "title": "How to Use AutoMapper in .NET Applications",
+    "description": "Learn how to use AutoMapper in .NET applications for object-to-object mapping, including profiles, custom mappings, and best practices for clean, maintainable code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "C#",
+      "AutoMapper",
+      "Object Mapping",
+      "DTOs",
+      "Clean Architecture"
+    ],
+    "post": "2026-01-27-dotnet-automapper"
+  },
+  {
+    "title": "How to Implement Caching with IMemoryCache and Redis in .NET",
+    "description": "Learn how to implement caching in .NET applications using IMemoryCache for in-memory caching and Redis for distributed caching with practical examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "C#",
+      "Caching",
+      "Redis",
+      "IMemoryCache",
+      "Performance",
+      "ASP.NET Core"
+    ],
+    "post": "2026-01-27-dotnet-imemorycache-redis-caching"
+  },
+  {
+    "title": "How to Use Elixir with Redis",
+    "description": "Learn how to integrate Redis with Elixir applications using Redix, including connection pooling, pub/sub, caching, and common patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Redis",
+      "Redix",
+      "Caching",
+      "Pub/Sub",
+      "Connection Pooling",
+      "Session Storage"
+    ],
+    "post": "2026-01-27-elixir-redis"
+  },
+  {
+    "title": "How to Use Express with GraphQL",
+    "description": "Learn how to build GraphQL APIs with Express.js using Apollo Server, including schema design, resolvers, authentication, error handling, and production best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Express",
+      "Node.js",
+      "GraphQL",
+      "Apollo Server",
+      "API",
+      "Backend",
+      "TypeScript"
+    ],
+    "post": "2026-01-27-express-graphql"
+  },
+  {
+    "title": "How to Write Custom Falco Rules for Runtime Security",
+    "description": "Learn how to write custom Falco rules for Kubernetes runtime security, including rule syntax, macros, lists, and detection patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Falco",
+      "Security",
+      "Kubernetes",
+      "Runtime Security",
+      "Cloud Native"
+    ],
+    "post": "2026-01-27-falco-custom-rules"
+  },
+  {
+    "title": "How to Configure FastAPI Logging",
+    "description": "Learn how to configure logging in FastAPI applications including structured logging, request logging middleware, and integration with observability tools.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "FastAPI",
+      "Python",
+      "Logging",
+      "Observability",
+      "Structured Logging",
+      "Uvicorn",
+      "OpenTelemetry"
+    ],
+    "post": "2026-01-27-fastapi-logging"
+  },
+  {
+    "title": "How to Implement OAuth2 Scopes in FastAPI",
+    "description": "Learn how to implement OAuth2 scopes in FastAPI for fine-grained access control, including scope definitions, token validation, and permission checking.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "FastAPI",
+      "Python",
+      "OAuth2",
+      "Security",
+      "Scopes",
+      "Authentication",
+      "Authorization"
+    ],
+    "post": "2026-01-27-fastapi-oauth2-scopes"
+  },
+  {
+    "title": "How to Implement FinOps Culture in Your Organization",
+    "description": "Learn how to implement FinOps culture for cloud cost optimization, including team structure, processes, and collaboration between finance and engineering teams.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "FinOps",
+      "Cloud Costs",
+      "Cost Optimization",
+      "Culture",
+      "Cloud Finance",
+      "DevOps",
+      "Engineering"
+    ],
+    "post": "2026-01-27-finops-culture-implementation"
+  },
+  {
+    "title": "How to Use Flask Blueprints for Modular Applications",
+    "description": "Learn how to structure Flask applications using Blueprints for modularity, code organization, and reusability across projects.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Flask",
+      "Python",
+      "Blueprints",
+      "Architecture",
+      "Web Development",
+      "Modular Design"
+    ],
+    "post": "2026-01-27-flask-blueprints-modular"
+  },
+  {
+    "title": "How to Build WebSocket APIs with Flask-SocketIO",
+    "description": "Learn how to build real-time WebSocket applications with Flask-SocketIO including events, rooms, namespaces, and scaling with message queues.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Flask",
+      "Python",
+      "WebSocket",
+      "Socket.IO",
+      "Real-time",
+      "Async"
+    ],
+    "post": "2026-01-27-flask-socketio-websocket"
+  },
+  {
+    "title": "How to Use GitHub Actions with OIDC for Secure Cloud Access",
+    "description": "Learn how to use GitHub Actions OIDC to securely access AWS, GCP, and Azure without storing long-lived credentials as secrets.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitHub Actions",
+      "OIDC",
+      "AWS",
+      "GCP",
+      "Azure",
+      "Security",
+      "CI/CD",
+      "DevOps"
+    ],
+    "post": "2026-01-27-github-actions-oidc-cloud-access"
+  },
+  {
+    "title": "How to Implement Grafana Alerting Rules",
+    "description": "Learn how to create and manage Grafana alerting rules, including queries, conditions, notification policies, and contact points for effective incident response.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Grafana",
+      "Alerting",
+      "Monitoring",
+      "Observability",
+      "Alerts",
+      "Notification Policies"
+    ],
+    "post": "2026-01-27-grafana-alerting-rules"
+  },
+  {
+    "title": "How to Build Incident Response Playbooks",
+    "description": "Learn how to create effective incident response playbooks that guide teams through outages with clear steps, roles, and communication templates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Incident Response",
+      "SRE",
+      "Playbooks",
+      "On-Call",
+      "Reliability"
+    ],
+    "post": "2026-01-27-incident-response-playbooks"
+  },
+  {
+    "title": "How to Configure Jenkins Pipeline as Code",
+    "description": "Learn how to configure Jenkins Pipeline as Code using Jenkinsfile, including declarative and scripted pipelines, stages, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Jenkins",
+      "Pipeline",
+      "CI/CD",
+      "DevOps",
+      "Jenkinsfile"
+    ],
+    "post": "2026-01-27-jenkins-pipeline-as-code"
+  },
+  {
+    "title": "How to Use Jenkins Shared Libraries",
+    "description": "Learn how to create and use Jenkins Shared Libraries to share pipeline code across multiple projects and reduce duplication.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Jenkins",
+      "Shared Libraries",
+      "CI/CD",
+      "DevOps",
+      "Groovy"
+    ],
+    "post": "2026-01-27-jenkins-shared-libraries"
+  },
+  {
+    "title": "How to Get Started with k6 for Load Testing",
+    "description": "Learn how to get started with k6 for load testing APIs and web applications, including test scripts, virtual users, and result analysis.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "k6",
+      "Load Testing",
+      "Performance Testing",
+      "API Testing",
+      "DevOps"
+    ],
+    "post": "2026-01-27-k6-load-testing-getting-started"
+  },
+  {
+    "title": "How to Implement Kafka Consumers with At-Least-Once Semantics",
+    "description": "Learn how to implement Kafka consumers with at-least-once delivery semantics, including offset management, error handling, and idempotency patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kafka",
+      "Consumers",
+      "At-Least-Once",
+      "Message Processing",
+      "Delivery Semantics"
+    ],
+    "post": "2026-01-27-kafka-consumers-at-least-once"
+  },
+  {
+    "title": "How to Design Kafka Topics and Partitions",
+    "description": "Learn how to design Kafka topics and partitions for scalability, including partition strategies, replication factors, and ordering guarantees.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kafka",
+      "Topics",
+      "Partitions",
+      "Messaging",
+      "Event Streaming"
+    ],
+    "post": "2026-01-27-kafka-topics-partitions-design"
+  },
+  {
+    "title": "How to Configure Keycloak Realms and Clients",
+    "description": "Learn how to configure Keycloak realms and clients for identity management, including OAuth2 flows, roles, and application integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Keycloak",
+      "OAuth2",
+      "Identity Management",
+      "SSO",
+      "Authentication",
+      "OIDC"
+    ],
+    "post": "2026-01-27-keycloak-realms-clients"
+  },
+  {
+    "title": "How to Build ML Pipelines with Kubeflow",
+    "description": "Learn how to build machine learning pipelines with Kubeflow Pipelines, including component creation, pipeline authoring, and orchestration on Kubernetes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubeflow",
+      "MLOps",
+      "Machine Learning",
+      "Kubernetes",
+      "Pipelines"
+    ],
+    "post": "2026-01-27-kubeflow-ml-pipelines"
+  },
+  {
+    "title": "How to Optimize Lambda Cold Starts",
+    "description": "Learn how to minimize AWS Lambda cold start latency through code optimization, provisioned concurrency, and architectural patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS Lambda",
+      "Serverless",
+      "Cold Start",
+      "Performance",
+      "Optimization"
+    ],
+    "post": "2026-01-27-lambda-cold-start-optimization"
+  },
+  {
+    "title": "How to Use LangChain Agents for AI Applications",
+    "description": "Learn how to build AI agents with LangChain that can reason, use tools, and take actions to accomplish complex tasks autonomously. This guide covers agent types, custom tools, memory, streaming, and multi-agent systems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LangChain",
+      "AI",
+      "Agents",
+      "LLM",
+      "Python",
+      "OpenAI",
+      "Tools",
+      "Autonomous Systems"
+    ],
+    "post": "2026-01-27-langchain-agents"
+  },
+  {
+    "title": "How to Use Laravel Events and Listeners",
+    "description": "Learn how to use Laravel's event system for decoupled application architecture, including event creation, listeners, subscribers, and queue integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "PHP",
+      "Events",
+      "Listeners",
+      "Architecture",
+      "Design Patterns"
+    ],
+    "post": "2026-01-27-laravel-events-listeners"
+  },
+  {
+    "title": "How to Implement File Uploads with Laravel",
+    "description": "Learn how to implement file uploads in Laravel including validation, storage configuration, S3 integration, and chunked uploads for large files.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "PHP",
+      "File Uploads",
+      "Storage",
+      "AWS S3",
+      "Validation",
+      "Cloud Storage"
+    ],
+    "post": "2026-01-27-laravel-file-uploads"
+  },
+  {
+    "title": "How to Build GraphQL APIs with Laravel Lighthouse",
+    "description": "Learn how to build GraphQL APIs in Laravel using Lighthouse, including schema definition, resolvers, authentication, and N+1 query prevention.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "PHP",
+      "GraphQL",
+      "Lighthouse",
+      "API",
+      "Backend"
+    ],
+    "post": "2026-01-27-laravel-lighthouse-graphql"
+  },
+  {
+    "title": "How to Use Laravel Telescope for Debugging",
+    "description": "Learn how to use Laravel Telescope for debugging your applications, including request monitoring, database queries, exceptions, and queue jobs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "PHP",
+      "Telescope",
+      "Debugging",
+      "Monitoring"
+    ],
+    "post": "2026-01-27-laravel-telescope-debugging"
+  },
+  {
+    "title": "How to Implement Layer 4 vs Layer 7 Load Balancing",
+    "description": "Learn the differences between Layer 4 and Layer 7 load balancing, when to use each, and implementation examples with HAProxy, Nginx, and cloud load balancers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Load Balancing",
+      "L4",
+      "L7",
+      "Networking",
+      "High Availability",
+      "HAProxy",
+      "Nginx"
+    ],
+    "post": "2026-01-27-load-balancing-l4-vs-l7"
+  },
+  {
+    "title": "How to Use Memory Profiling Effectively",
+    "description": "Learn how to use memory profiling tools to identify memory leaks, optimize allocation patterns, and improve application performance across Python, Node.js, Go, and Java.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Memory Profiling",
+      "Performance",
+      "Debugging",
+      "Optimization",
+      "Profiling",
+      "Python",
+      "Node.js",
+      "Go",
+      "Java"
+    ],
+    "post": "2026-01-27-memory-profiling-effectively"
+  },
+  {
+    "title": "How to Set Up MinIO for S3-Compatible Storage",
+    "description": "Learn how to deploy MinIO for S3-compatible object storage, including single-node and distributed setups, bucket policies, and client configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MinIO",
+      "S3",
+      "Object Storage",
+      "Self-Hosted",
+      "Storage"
+    ],
+    "post": "2026-01-27-minio-s3-compatible-storage"
+  },
+  {
+    "title": "How to Use MLflow for Experiment Tracking",
+    "description": "Learn how to use MLflow Tracking for logging experiments, comparing runs, and managing the machine learning lifecycle.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "MLOps",
+      "Machine Learning",
+      "Experiment Tracking",
+      "Python"
+    ],
+    "post": "2026-01-27-mlflow-experiment-tracking"
+  },
+  {
+    "title": "How to Handle MySQL Deadlocks",
+    "description": "Learn how to identify, debug, and prevent MySQL deadlocks including analysis techniques, lock monitoring, and application-level solutions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MySQL",
+      "Deadlocks",
+      "Database",
+      "Transactions",
+      "Locking"
+    ],
+    "post": "2026-01-27-mysql-deadlocks"
+  },
+  {
+    "title": "How to Use MySQL Full-Text Search",
+    "description": "Learn how to implement full-text search in MySQL using FULLTEXT indexes, natural language and boolean modes, and optimization techniques for building fast, relevant search features.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MySQL",
+      "Full-Text Search",
+      "Database",
+      "Search",
+      "Indexing"
+    ],
+    "post": "2026-01-27-mysql-full-text-search"
+  },
+  {
+    "title": "How to Use MySQL InnoDB Effectively",
+    "description": "Learn how to optimize MySQL InnoDB storage engine for performance, including buffer pool configuration, indexing strategies, and transaction management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MySQL",
+      "InnoDB",
+      "Database",
+      "Performance",
+      "Optimization"
+    ],
+    "post": "2026-01-27-mysql-innodb-effectively"
+  },
+  {
+    "title": "How to Build Microservices with Node.js and Moleculer",
+    "description": "Learn how to build scalable microservices with Node.js using the Moleculer framework, including service creation, communication, and deployment.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Moleculer",
+      "Microservices",
+      "JavaScript",
+      "Distributed Systems"
+    ],
+    "post": "2026-01-27-nodejs-moleculer-microservices"
+  },
+  {
+    "title": "How to Build a Serverless API with Node.js",
+    "description": "Learn how to build serverless APIs with Node.js using AWS Lambda and API Gateway, including project structure, deployment, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Serverless",
+      "AWS Lambda",
+      "API Gateway",
+      "JavaScript"
+    ],
+    "post": "2026-01-27-nodejs-serverless-api"
+  },
+  {
+    "title": "How to Write OPA Policies with Rego",
+    "description": "Learn how to write Open Policy Agent (OPA) policies using Rego language for authorization, admission control, and policy enforcement across your infrastructure.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OPA",
+      "Rego",
+      "Policy",
+      "Authorization",
+      "Kubernetes",
+      "Security",
+      "Access Control"
+    ],
+    "post": "2026-01-27-opa-policies-rego"
+  },
+  {
+    "title": "How to Write Playwright Test Scripts",
+    "description": "Learn how to write effective Playwright test scripts for end-to-end testing, including selectors, actions, assertions, and page objects for maintainable test suites.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Playwright",
+      "E2E Testing",
+      "Test Automation",
+      "JavaScript",
+      "TypeScript"
+    ],
+    "post": "2026-01-27-playwright-test-scripts"
+  },
+  {
+    "title": "How to Implement RabbitMQ Consumers with Acknowledgments",
+    "description": "Learn how to implement reliable RabbitMQ consumers using manual acknowledgments, negative acknowledgments, and requeue strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RabbitMQ",
+      "Consumers",
+      "Acknowledgments",
+      "Message Processing",
+      "Reliability"
+    ],
+    "post": "2026-01-27-rabbitmq-consumer-acknowledgments"
+  },
+  {
+    "title": "How to Design RabbitMQ Queue Architecture",
+    "description": "Learn how to design RabbitMQ queue architecture including exchange types, routing patterns, queue types, and high availability configurations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RabbitMQ",
+      "Queue Architecture",
+      "Messaging",
+      "Exchange",
+      "Routing",
+      "High Availability"
+    ],
+    "post": "2026-01-27-rabbitmq-queue-architecture"
+  },
+  {
+    "title": "How to Implement File Uploads with ActiveStorage in Rails",
+    "description": "Learn how to implement file uploads in Ruby on Rails using ActiveStorage, including cloud storage integration, direct uploads, and image processing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby on Rails",
+      "ActiveStorage",
+      "File Uploads",
+      "AWS S3",
+      "Cloud Storage"
+    ],
+    "post": "2026-01-27-rails-activestorage-file-uploads"
+  },
+  {
+    "title": "How to Configure Redis Cluster Resharding",
+    "description": "Learn how to reshard Redis Cluster to redistribute hash slots, add or remove nodes, and rebalance data without downtime.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Redis",
+      "Redis Cluster",
+      "Resharding",
+      "Scaling",
+      "Hash Slots",
+      "DevOps"
+    ],
+    "post": "2026-01-27-redis-cluster-resharding"
+  },
+  {
+    "title": "How to Configure Redis Persistence (RDB vs AOF)",
+    "description": "Learn how to configure Redis persistence using RDB snapshots and AOF logs, including hybrid persistence and choosing the right strategy for your use case.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Redis",
+      "Persistence",
+      "RDB",
+      "AOF",
+      "Database",
+      "Data Durability"
+    ],
+    "post": "2026-01-27-redis-persistence-rdb-aof"
+  },
+  {
+    "title": "How to Implement Bulk Operations in REST APIs",
+    "description": "Learn how to design and implement bulk operations in REST APIs for creating, updating, and deleting multiple resources efficiently.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "REST API",
+      "Bulk Operations",
+      "API Design",
+      "Performance",
+      "Batch Processing"
+    ],
+    "post": "2026-01-27-rest-api-bulk-operations"
+  },
+  {
+    "title": "How to Design Error Responses in REST APIs",
+    "description": "Learn how to design consistent, informative error responses in REST APIs including status codes, error formats, and client-friendly messages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "REST API",
+      "Error Handling",
+      "API Design",
+      "HTTP Status Codes",
+      "Best Practices"
+    ],
+    "post": "2026-01-27-rest-api-error-responses"
+  },
+  {
+    "title": "How to Implement Partial Updates with PATCH in REST APIs",
+    "description": "Learn how to implement PATCH for partial updates in REST APIs including JSON Patch, JSON Merge Patch, and validation strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "REST API",
+      "PATCH",
+      "API Design",
+      "Partial Updates",
+      "HTTP"
+    ],
+    "post": "2026-01-27-rest-api-patch-partial-updates"
+  },
+  {
+    "title": "How to Use Spring Profiles for Environment Configuration",
+    "description": "Learn how to use Spring Profiles to manage environment-specific configuration for development, staging, and production environments with practical examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Spring Boot",
+      "Java",
+      "Configuration",
+      "Environment",
+      "Profiles",
+      "DevOps"
+    ],
+    "post": "2026-01-27-spring-profiles-environment-configuration"
+  },
+  {
+    "title": "How to Handle SQS Message Visibility Timeout",
+    "description": "Learn how to configure and handle SQS message visibility timeout for reliable message processing, including extension strategies, error handling, and dead letter queues.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "SQS",
+      "Visibility Timeout",
+      "Message Queue",
+      "Cloud",
+      "Distributed Systems"
+    ],
+    "post": "2026-01-27-sqs-message-visibility-timeout"
+  },
+  {
+    "title": "How to Implement SSE with Different Frameworks",
+    "description": "Learn how to implement Server-Sent Events in various frameworks including Express, FastAPI, Spring Boot, Gin, and Rails with practical code examples for real-time data streaming.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSE",
+      "Server-Sent Events",
+      "Real-time",
+      "Express",
+      "FastAPI",
+      "Spring Boot",
+      "Gin",
+      "Rails",
+      "EventSource"
+    ],
+    "post": "2026-01-27-sse-different-frameworks"
+  },
+  {
+    "title": "How to Use SSE vs WebSockets for Real-Time Communication",
+    "description": "Learn when to use Server-Sent Events vs WebSockets for real-time applications, including implementation examples and performance considerations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSE",
+      "WebSockets",
+      "Real-time",
+      "Event Stream",
+      "HTTP"
+    ],
+    "post": "2026-01-27-sse-vs-websockets"
+  },
+  {
+    "title": "How to Use Tailscale for Zero-Trust Networking",
+    "description": "Learn how to use Tailscale for zero-trust networking, including mesh VPN setup, ACLs, subnet routing, and integration with existing infrastructure.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Tailscale",
+      "Zero-Trust",
+      "VPN",
+      "Networking",
+      "Security"
+    ],
+    "post": "2026-01-27-tailscale-zero-trust-networking"
+  },
+  {
+    "title": "How to Implement Terraform State Locking",
+    "description": "Learn how to implement Terraform state locking to prevent concurrent modifications, including DynamoDB, GCS, and Azure Blob backends.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "State Locking",
+      "IaC",
+      "DevOps",
+      "Infrastructure"
+    ],
+    "post": "2026-01-27-terraform-state-locking"
+  },
+  {
+    "title": "How to Use TimescaleDB Continuous Aggregates",
+    "description": "Learn how to use TimescaleDB continuous aggregates for real-time materialized views that automatically refresh as new data arrives.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TimescaleDB",
+      "Continuous Aggregates",
+      "Time Series",
+      "PostgreSQL",
+      "Analytics"
+    ],
+    "post": "2026-01-27-timescaledb-continuous-aggregates"
+  },
+  {
+    "title": "How to Configure Velero Backup Schedules for Kubernetes",
+    "description": "Learn how to configure Velero backup schedules for Kubernetes cluster protection, including namespace selection, retention policies, and storage backends.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Velero",
+      "Kubernetes",
+      "Backup",
+      "Disaster Recovery",
+      "K8s"
+    ],
+    "post": "2026-01-27-velero-backup-schedules"
+  },
+  {
+    "title": "How to Deploy LLMs with vLLM for High-Performance Inference",
+    "description": "Learn how to deploy large language models with vLLM for high-throughput inference, including PagedAttention, continuous batching, and API serving.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "vLLM",
+      "LLM",
+      "AI",
+      "Inference",
+      "GPU",
+      "Machine Learning",
+      "Model Serving",
+      "Python"
+    ],
+    "post": "2026-01-27-vllm-llm-deployment"
+  },
+  {
+    "title": "How to Set Up WireGuard VPN for Secure Networking",
+    "description": "Learn how to set up WireGuard VPN for secure point-to-point and site-to-site connections, including key generation, peer configuration, and routing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "WireGuard",
+      "VPN",
+      "Networking",
+      "Security",
+      "Linux"
+    ],
+    "post": "2026-01-27-wireguard-vpn-setup"
+  },
+  {
+    "title": "How to Set Up Ollama for Local LLM Inference",
+    "description": "Learn how to set up Ollama for running large language models locally, including installation, model management, API usage, and integration patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ollama",
+      "LLM",
+      "AI",
+      "Local Inference",
+      "Machine Learning",
+      "Self-Hosted"
+    ],
+    "post": "2026-01-27-ollama-local-llm-inference"
+  },
+  {
     "title": "How to Create Async Functions in Python",
     "description": "Learn how to write asynchronous code in Python using async/await. This guide covers coroutines, tasks, event loops, and practical patterns for concurrent programming.",
     "authorGitHubUsername": "nawazdhandala",
@@ -69975,5 +70945,19 @@
       "ASP.NET Core"
     ],
     "post": "2026-01-29-opentelemetry-instrumentation-dotnet"
+  },
+  {
+    "title": "How to Configure Redis Persistence (RDB vs AOF)",
+    "description": "Learn how to configure Redis persistence using RDB snapshots and AOF logs, including hybrid persistence and choosing the right strategy for your use case.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Redis",
+      "Persistence",
+      "RDB",
+      "AOF",
+      "Database",
+      "Data Durability"
+    ],
+    "post": "2026-01-27-redis-persistence-rdb-aof"
   }
 ]

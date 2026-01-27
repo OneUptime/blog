@@ -15,13 +15,13 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Java and Spring Boot
 
-57. How to Use Spring Profiles for Environment Configuration
+~~57. How to Use Spring Profiles for Environment Configuration~~ (DONE)
 69. How to Implement OAuth2 Resource Server in Spring Boot
 
 ## Node.js and TypeScript
 
-81. How to Build a Serverless API with Node.js
-86. How to Build Microservices with Node.js and Moleculer
+~~81. How to Build a Serverless API with Node.js~~ (DONE)
+~~86. How to Build Microservices with Node.js and Moleculer~~ (DONE)
 90. How to Implement Multi-Tenancy in Node.js Applications
 
 ## .NET and C#
@@ -29,49 +29,49 @@ These are remaining blog ideas across different topics. Make sure to check exist
 94. How to Build Minimal APIs in ASP.NET Core 8
 102. How to Use Docker with .NET Applications
 105. How to Use Azure Service Bus with .NET
-106. How to Implement Caching with IMemoryCache and Redis
-108. How to Use AutoMapper in .NET Applications
+~~106. How to Implement Caching with IMemoryCache and Redis~~ (DONE)
+~~108. How to Use AutoMapper in .NET Applications~~ (DONE)
 
 ## Ruby on Rails
 
 119. How to Use Rails with PostgreSQL Full-Text Search
-126. How to Implement File Uploads with ActiveStorage
+~~126. How to Implement File Uploads with ActiveStorage~~ (DONE)
 
 ## PHP and Laravel
 
 133. How to Use Laravel Queues with Redis
-139. How to Use Laravel Telescope for Debugging
-140. How to Build GraphQL APIs with Laravel Lighthouse
+~~139. How to Use Laravel Telescope for Debugging~~ (DONE)
+~~140. How to Build GraphQL APIs with Laravel Lighthouse~~ (DONE)
 144. How to Use Laravel with PostgreSQL
-145. How to Implement File Uploads with Laravel
-147. How to Use Laravel Events and Listeners
+~~145. How to Implement File Uploads with Laravel~~ (DONE)
+~~147. How to Use Laravel Events and Listeners~~ (DONE)
 
 ## Elixir and Phoenix
 
-158. How to Use Elixir with Redis
+~~158. How to Use Elixir with Redis~~ (DONE)
 
 ## FastAPI (Python)
 
 176. How to Build Production-Ready FastAPI Applications
 178. How to Use SQLAlchemy with FastAPI
 183. How to Use FastAPI with Redis for Caching
-187. How to Implement OAuth2 Scopes in FastAPI
-189. How to Configure FastAPI Logging
+~~187. How to Implement OAuth2 Scopes in FastAPI~~ (DONE)
+~~189. How to Configure FastAPI Logging~~ (DONE)
 
 ## Django
 
-196. How to Use Django Caching with Redis
-199. How to Use Django with PostgreSQL Full-Text Search
+~~196. How to Use Django Caching with Redis~~ (DONE)
+~~199. How to Use Django with PostgreSQL Full-Text Search~~ (DONE)
 
 ## Flask
 
-211. How to Use Flask Blueprints for Modular Applications
-213. How to Build WebSocket APIs with Flask-SocketIO
+~~211. How to Use Flask Blueprints for Modular Applications~~ (DONE)
+~~213. How to Build WebSocket APIs with Flask-SocketIO~~ (DONE)
 
 ## Express.js
 
 219. How to Build File Upload APIs with Express and Multer
-221. How to Use Express with GraphQL
+~~221. How to Use Express with GraphQL~~ (DONE)
 
 ## Gin (Go Web Framework)
 
@@ -87,11 +87,11 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## REST API Design
 
-261. How to Design Error Responses in REST APIs
-262. How to Implement Partial Updates with PATCH
+~~261. How to Design Error Responses in REST APIs~~ (DONE)
+~~262. How to Implement Partial Updates with PATCH~~ (DONE)
 263. How to Use HTTP Caching Headers in REST APIs
 264. How to Document REST APIs with OpenAPI
-265. How to Implement Bulk Operations in REST APIs
+~~265. How to Implement Bulk Operations in REST APIs~~ (DONE)
 
 ## WebSockets
 
@@ -100,8 +100,8 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Server-Sent Events
 
-279. How to Use SSE vs WebSockets
-280. How to Implement SSE with Different Frameworks
+~~279. How to Use SSE vs WebSockets~~ (DONE)
+~~280. How to Implement SSE with Different Frameworks~~ (DONE)
 
 ## PostgreSQL
 
@@ -109,25 +109,25 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Redis
 
-301. How to Configure Redis Persistence (RDB vs AOF)
+~~301. How to Configure Redis Persistence (RDB vs AOF)~~ (DONE)
 305. How to Build Redis Geo Queries for Location Data
-306. How to Configure Redis Cluster Resharding
+~~306. How to Configure Redis Cluster Resharding~~ (DONE)
 
 ## MySQL and MariaDB
 
-313. How to Use MySQL InnoDB Effectively
-318. How to Handle MySQL Deadlocks
-319. How to Use MySQL Full-Text Search
+~~313. How to Use MySQL InnoDB Effectively~~ (DONE)
+~~318. How to Handle MySQL Deadlocks~~ (DONE)
+~~319. How to Use MySQL Full-Text Search~~ (DONE)
 320. How to Implement MySQL Binary Log Parsing
 
 ## ClickHouse
 
 323. How to Implement ClickHouse Dictionaries
-328. How to Implement ClickHouse TTL for Data Retention
+~~328. How to Implement ClickHouse TTL for Data Retention~~ (DONE)
 
 ## TimescaleDB
 
-333. How to Use TimescaleDB Continuous Aggregates
+~~333. How to Use TimescaleDB Continuous Aggregates~~ (DONE)
 336. How to Use TimescaleDB with PostgreSQL Extensions
 338. How to Backup TimescaleDB Databases
 339. How to Migrate to TimescaleDB from PostgreSQL
@@ -161,16 +161,16 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Kafka
 
-372. How to Design Kafka Topics and Partitions
-373. How to Implement Kafka Consumers with At-Least-Once Semantics
+~~372. How to Design Kafka Topics and Partitions~~ (DONE)
+~~373. How to Implement Kafka Consumers with At-Least-Once Semantics~~ (DONE)
 377. How to Implement Kafka Consumer Group Rebalancing
 379. How to Build Kafka Connect Custom Connectors
 384. How to Use Kafka MirrorMaker for Replication
 
 ## RabbitMQ
 
-387. How to Design RabbitMQ Queue Architecture
-388. How to Implement RabbitMQ Consumers with Acknowledgments
+~~387. How to Design RabbitMQ Queue Architecture~~ (DONE)
+~~388. How to Implement RabbitMQ Consumers with Acknowledgments~~ (DONE)
 389. How to Build RabbitMQ Shovel for Message Transfer
 394. How to Implement RabbitMQ Lazy Queues for Large Messages
 395. How to Secure RabbitMQ with TLS
@@ -180,7 +180,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## NATS
 
-403. How to Implement Request-Reply Pattern in NATS
+~~403. How to Implement Request-Reply Pattern in NATS~~ (DONE)
 408. How to Secure NATS Connections
 410. How to Handle NATS Connection Recovery
 
@@ -193,7 +193,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Amazon SQS
 
-424. How to Handle SQS Message Visibility Timeout
+~~424. How to Handle SQS Message Visibility Timeout~~ (DONE)
 425. How to Use SQS with Lambda
 426. How to Monitor SQS Queue Depth
 427. How to Implement Long Polling in SQS
@@ -213,10 +213,10 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## Terraform
 
 441. How to Structure Terraform Projects for Large Teams
-443. How to Implement Terraform State Locking
+~~443. How to Implement Terraform State Locking~~ (DONE)
 444. How to Use Terraform with Multiple Cloud Providers
 446. How to Implement Terraform CI/CD Pipelines
-447. How to Handle Terraform Drift Detection
+~~447. How to Handle Terraform Drift Detection~~ (DONE)
 
 ## Pulumi
 
@@ -339,8 +339,8 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## GitHub Actions (Advanced)
 
-592. How to Implement GitHub Actions Composite Actions
-593. How to Use GitHub Actions with OIDC
+~~592. How to Implement GitHub Actions Composite Actions~~ (DONE)
+~~593. How to Use GitHub Actions with OIDC~~ (DONE)
 594. How to Optimize GitHub Actions Costs
 595. How to Implement GitHub Actions Self-Hosted Runners on Kubernetes
 596. How to Use GitHub Actions for Monorepo CI/CD
@@ -364,8 +364,8 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Jenkins
 
-612. How to Configure Jenkins Pipeline as Code
-613. How to Use Jenkins Shared Libraries
+~~612. How to Configure Jenkins Pipeline as Code~~ (DONE)
+~~613. How to Use Jenkins Shared Libraries~~ (DONE)
 614. How to Implement Jenkins Blue Ocean
 615. How to Configure Jenkins Agents on Kubernetes
 616. How to Use Jenkins with GitHub Webhooks
@@ -406,7 +406,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## Grafana (Advanced)
 
 651. How to Build Custom Grafana Panels
-652. How to Implement Grafana Alerting Rules
+~~652. How to Implement Grafana Alerting Rules~~ (DONE)
 653. How to Configure Grafana Data Source Plugins
 655. How to Implement Grafana Annotations
 658. How to Implement Grafana Dashboard Templates
@@ -435,7 +435,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## Security (Falco)
 
 681. How to Get Started with Falco for Runtime Security
-682. How to Write Custom Falco Rules
+~~682. How to Write Custom Falco Rules~~ (DONE)
 684. How to Use Falco Sidekick for Alerting
 685. How to Monitor Falco Alerts
 686. How to Implement Falco for Container Security
@@ -456,7 +456,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Security (OPA/Gatekeeper)
 
-702. How to Write OPA Policies with Rego
+~~702. How to Write OPA Policies with Rego~~ (DONE)
 704. How to Implement OPA for API Authorization
 705. How to Use OPA Conftest for Policy Testing
 706. How to Configure Gatekeeper Constraint Templates
@@ -467,7 +467,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Security (Keycloak)
 
-712. How to Configure Keycloak Realms and Clients
+~~712. How to Configure Keycloak Realms and Clients~~ (DONE)
 713. How to Implement Keycloak SSO
 716. How to Implement Keycloak Social Login
 717. How to Use Keycloak Authorization Services
@@ -476,9 +476,9 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Security (WireGuard/Tailscale)
 
-721. How to Set Up WireGuard VPN
+~~721. How to Set Up WireGuard VPN~~ (DONE)
 722. How to Configure WireGuard for Site-to-Site Connectivity
-723. How to Use Tailscale for Zero-Trust Networking
+~~723. How to Use Tailscale for Zero-Trust Networking~~ (DONE)
 726. How to Use Tailscale Funnel for Service Publishing
 727. How to Implement WireGuard Road Warrior Setup
 728. How to Monitor WireGuard Connections
@@ -487,7 +487,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## AI/ML Ops (Kubeflow)
 
-732. How to Build ML Pipelines with Kubeflow
+~~732. How to Build ML Pipelines with Kubeflow~~ (DONE)
 733. How to Use Kubeflow for Model Training
 734. How to Configure Kubeflow Notebooks
 736. How to Use Kubeflow for Feature Engineering
@@ -498,7 +498,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## AI/ML Ops (MLflow)
 
-742. How to Use MLflow Tracking
+~~742. How to Use MLflow Tracking~~ (DONE)
 744. How to Configure MLflow Projects
 745. How to Deploy Models with MLflow
 746. How to Use MLflow with Databricks
@@ -507,8 +507,8 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## AI/ML Ops (vLLM/Ollama)
 
-751. How to Deploy LLMs with vLLM
-753. How to Set Up Ollama for Local LLM Inference
+~~751. How to Deploy LLMs with vLLM~~ (DONE)
+~~753. How to Set Up Ollama for Local LLM Inference~~ (DONE)
 754. How to Use Ollama with Custom Models
 755. How to Implement vLLM with OpenAI-Compatible API
 758. How to Use Ollama with Docker
@@ -516,7 +516,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## LangChain and LlamaIndex
 
-762. How to Use LangChain Agents
+~~762. How to Use LangChain Agents~~ (DONE)
 763. How to Implement LangChain Memory
 764. How to Build Document QA with LlamaIndex
 765. How to Use LangChain with Vector Databases
@@ -526,7 +526,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Networking (DNS)
 
-771. How to Build DNS Failover with Health Checks
+~~771. How to Build DNS Failover with Health Checks~~ (DONE)
 776. How to Build Private DNS Zones in Cloud
 777. How to Configure DNS over HTTPS (DoH)
 778. How to Use DNS TXT Records for Verification
@@ -534,7 +534,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Networking (Load Balancing)
 
-781. How to Implement Layer 4 vs Layer 7 Load Balancing
+~~781. How to Implement Layer 4 vs Layer 7 Load Balancing~~ (DONE)
 783. How to Implement Session Persistence
 785. How to Configure Load Balancer SSL Termination
 786. How to Implement Load Balancer Autoscaling
@@ -560,7 +560,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Storage (MinIO)
 
-811. How to Set Up MinIO for S3-Compatible Storage
+~~811. How to Set Up MinIO for S3-Compatible Storage~~ (DONE)
 813. How to Implement MinIO Bucket Policies
 817. How to Implement MinIO Lifecycle Rules
 818. How to Configure MinIO Multi-Tenancy
@@ -569,7 +569,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## Storage (Velero)
 
 821. How to Build Velero Custom Plugins
-822. How to Configure Velero Backup Schedules
+~~822. How to Configure Velero Backup Schedules~~ (DONE)
 823. How to Implement Velero for Disaster Recovery
 824. How to Use Velero with Cloud Storage
 825. How to Restore Kubernetes Applications with Velero
@@ -580,7 +580,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Testing (k6)
 
-831. How to Get Started with k6 for Load Testing
+~~831. How to Get Started with k6 for Load Testing~~ (DONE)
 832. How to Write k6 Test Scripts
 833. How to Use k6 Thresholds for SLOs
 834. How to Implement k6 Scenarios
@@ -605,7 +605,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Testing (Playwright)
 
-852. How to Write Playwright Test Scripts
+~~852. How to Write Playwright Test Scripts~~ (DONE)
 853. How to Use Playwright Test Fixtures
 854. How to Implement Playwright Page Object Pattern
 856. How to Use Playwright Tracing
@@ -627,7 +627,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 872. How to Use Chaos Monkey for Resilience Testing
 873. How to Implement Litmus for Kubernetes Chaos
 874. How to Use Gremlin for Controlled Chaos
-875. How to Design Chaos Experiments
+~~875. How to Design Chaos Experiments~~ (DONE)
 876. How to Implement Chaos Engineering Game Days
 877. How to Monitor Chaos Experiments
 878. How to Use Chaos Mesh for Kubernetes
@@ -636,23 +636,23 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Developer Experience (Dev Containers)
 
-881. How to Create Dev Containers for Projects
-883. How to Use Dev Containers with GitHub Codespaces
+~~881. How to Create Dev Containers for Projects~~ (DONE)
+~~883. How to Use Dev Containers with GitHub Codespaces~~ (DONE)
 884. How to Implement Dev Container Templates
 885. How to Configure Dev Container Port Forwarding
 888. How to Share Dev Container Configurations
-890. How to Use Dev Containers for CI
+~~890. How to Use Dev Containers for CI~~ (DONE)
 
 ## Performance Optimization
 
-892. How to Use Memory Profiling Effectively
+~~892. How to Use Memory Profiling Effectively~~ (DONE)
 894. How to Optimize API Response Times
-896. How to Use Connection Pooling Effectively
+~~896. How to Use Connection Pooling Effectively~~ (DONE)
 897. How to Optimize Container Image Sizes
 
 ## SRE (Incident Management)
 
-904. How to Build Incident Response Playbooks
+~~904. How to Build Incident Response Playbooks~~ (DONE)
 905. How to Implement Incident Communication Plans
 906. How to Use Incident Timeline Analysis
 907. How to Build On-Call Handoff Procedures
@@ -674,7 +674,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 922. How to Implement Lambda Layers
 923. How to Configure Lambda VPC Access
-924. How to Optimize Lambda Cold Starts
+~~924. How to Optimize Lambda Cold Starts~~ (DONE)
 925. How to Use Lambda Destinations
 926. How to Implement Lambda Extensions
 927. How to Configure Lambda Provisioned Concurrency
@@ -683,7 +683,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Serverless (Cloudflare Workers)
 
-932. How to Use Cloudflare Workers KV
+~~932. How to Use Cloudflare Workers KV~~ (DONE)
 933. How to Implement Cloudflare Durable Objects
 935. How to Use Cloudflare D1 Database
 936. How to Implement Cloudflare Queues
@@ -701,14 +701,14 @@ These are remaining blog ideas across different topics. Make sure to check exist
 952. How to Use Reserved Instances Effectively
 953. How to Optimize Spot Instance Usage
 955. How to Use Kubecost for Kubernetes Costs
-956. How to Implement FinOps Culture
+~~956. How to Implement FinOps Culture~~ (DONE)
 957. How to Optimize Storage Costs
 959. How to Implement Right-Sizing Recommendations
 960. How to Monitor Cloud Cost Trends
 
 ## Data Engineering (Apache Airflow)
 
-962. How to Write Effective Airflow DAGs
+~~962. How to Write Effective Airflow DAGs~~ (DONE)
 963. How to Implement Airflow Sensors
 964. How to Configure Airflow Executors
 967. How to Implement Airflow Backfills
@@ -717,7 +717,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Data Engineering (dbt)
 
-972. How to Write Effective dbt Models
+~~972. How to Write Effective dbt Models~~ (DONE)
 974. How to Configure dbt Incremental Models
 975. How to Use dbt with Snowflake
 978. How to Use dbt Seeds and Sources
@@ -725,7 +725,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Real-Time (Apache Flink)
 
-982. How to Write Flink Streaming Jobs
+~~982. How to Write Flink Streaming Jobs~~ (DONE)
 983. How to Implement Flink Windowing
 987. How to Implement Flink Exactly-Once Processing
 988. How to Configure Flink Checkpointing
@@ -734,7 +734,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Change Data Capture (Debezium)
 
-991. How to Set Up Debezium for Change Data Capture
+~~991. How to Set Up Debezium for Change Data Capture~~ (DONE)
 992. How to Configure Debezium with PostgreSQL
 994. How to Implement Debezium Transformations
 995. How to Monitor Debezium Connectors
