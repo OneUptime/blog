@@ -1,0 +1,15 @@
+{
+  "title": "How to Secure RabbitMQ with TLS",
+  "description": "A comprehensive guide to securing RabbitMQ with TLS encryption, covering certificate generation, server configuration, client connections, mutual TLS, cipher suites, and certificate rotation.",
+  "authorGitHubUsername": "nawazdhandala",
+  "tags": [
+    "RabbitMQ",
+    "TLS",
+    "Security",
+    "Message Queue",
+    "Encryption",
+    "Certificates",
+    "DevOps"
+  ],
+  "post": "2026-01-27-rabbitmq-tls-security"
+}
