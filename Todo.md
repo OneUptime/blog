@@ -93,12 +93,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Cassandra and ScyllaDB
 
-342. How to Configure Cassandra Cluster
-343. How to Use Cassandra Secondary Indexes
-346. How to Backup Cassandra Databases
-347. How to Tune Cassandra for Performance
-348. How to Use Cassandra with Time-Series Data
-349. How to Migrate from Cassandra to ScyllaDB
 350. How to Use ScyllaDB for Low-Latency Workloads
 
 ## DynamoDB
@@ -342,25 +336,19 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## OpenTelemetry (Advanced)
 
-642. How to Use OpenTelemetry Baggage
 645. How to Build OpenTelemetry Custom Processors
 646. How to Implement OpenTelemetry Auto-Instrumentation Libraries
-648. How to Use OpenTelemetry with Lambda Functions
 649. How to Implement OpenTelemetry Metric Aggregation
 650. How to Debug OpenTelemetry Instrumentation Issues
 
 ## Grafana (Advanced)
 
-651. How to Build Custom Grafana Panels
 653. How to Configure Grafana Data Source Plugins
 655. How to Implement Grafana Annotations
 658. How to Implement Grafana Dashboard Templates
-660. How to Use Grafana Mimir for Metrics
 
 ## Alertmanager
 
-662. How to Implement Alertmanager Silences
-663. How to Use Alertmanager Inhibition Rules
 665. How to Implement Alertmanager Clustering
 666. How to Monitor Alertmanager Health
 668. How to Use Alertmanager with PagerDuty
@@ -370,8 +358,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## PagerDuty
 
 673. How to Implement PagerDuty Event Rules
-674. How to Use PagerDuty with Prometheus
-675. How to Configure PagerDuty On-Call Schedules
 677. How to Use PagerDuty Status Dashboard
 678. How to Configure PagerDuty Webhooks
 679. How to Implement PagerDuty Response Plays
@@ -594,18 +580,14 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Serverless (AWS Lambda)
 
-922. How to Implement Lambda Layers
 923. How to Configure Lambda VPC Access
 925. How to Use Lambda Destinations
 926. How to Implement Lambda Extensions
 927. How to Configure Lambda Provisioned Concurrency
 928. How to Debug Lambda Functions
-930. How to Use Lambda with API Gateway
 
 ## Serverless (Cloudflare Workers)
 
-933. How to Implement Cloudflare Durable Objects
-935. How to Use Cloudflare D1 Database
 936. How to Implement Cloudflare Queues
 937. How to Debug Cloudflare Workers
 938. How to Monitor Cloudflare Workers Performance
@@ -620,7 +602,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 952. How to Use Reserved Instances Effectively
 953. How to Optimize Spot Instance Usage
-955. How to Use Kubecost for Kubernetes Costs
 957. How to Optimize Storage Costs
 959. How to Implement Right-Sizing Recommendations
 960. How to Monitor Cloud Cost Trends
@@ -642,18 +623,14 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Real-Time (Apache Flink)
 
-983. How to Implement Flink Windowing
 987. How to Implement Flink Exactly-Once Processing
-988. How to Configure Flink Checkpointing
 989. How to Debug Flink Job Failures
 990. How to Scale Flink Deployments
 
 ## Change Data Capture (Debezium)
 
-992. How to Configure Debezium with PostgreSQL
 994. How to Implement Debezium Transformations
 995. How to Monitor Debezium Connectors
-996. How to Configure Debezium for MySQL
 997. How to Handle Debezium Schema Changes
 998. How to Debug Debezium Connector Issues
 999. How to Implement Debezium for MongoDB
