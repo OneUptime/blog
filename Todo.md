@@ -9,131 +9,8 @@ These are remaining blog ideas across different topics. Make sure to check exist
 23. How to Handle Configuration in Go Applications
 24. How to Build a Metrics Exporter in Go
 
-## Rust Programming
-
-36. How to Handle Memory Safety in Rust
-
-## Java and Spring Boot
-
-69. How to Implement OAuth2 Resource Server in Spring Boot
-
-## Node.js and TypeScript
-
-90. How to Implement Multi-Tenancy in Node.js Applications
-
-## .NET and C#
-
-94. How to Build Minimal APIs in ASP.NET Core 8
-102. How to Use Docker with .NET Applications
-105. How to Use Azure Service Bus with .NET
-
-## Ruby on Rails
-
-119. How to Use Rails with PostgreSQL Full-Text Search
-
-## PHP and Laravel
-
-133. How to Use Laravel Queues with Redis
-144. How to Use Laravel with PostgreSQL
-
-## FastAPI (Python)
-
-176. How to Build Production-Ready FastAPI Applications
-178. How to Use SQLAlchemy with FastAPI
-183. How to Use FastAPI with Redis for Caching
-
-## Express.js
-
-219. How to Build File Upload APIs with Express and Multer
-
-## Gin (Go Web Framework)
-
-226. How to Build Production APIs with Gin
-
-## GraphQL
-
-238. How to Build GraphQL Resolvers with N+1 Prevention
-
-## gRPC
-
-255. How to Use gRPC with Service Mesh
-
-## REST API Design
-
-263. How to Use HTTP Caching Headers in REST APIs
-264. How to Document REST APIs with OpenAPI
-
-## WebSockets
-
-267. How to Implement Reconnection Logic for WebSockets
-271. How to Implement Heartbeat/Ping-Pong in WebSockets
-
-## PostgreSQL
-
-290. How to Use PostgreSQL Extensions (PostGIS, pg_trgm, etc.)
-
-## Redis
-
-305. How to Build Redis Geo Queries for Location Data
-
-## MySQL and MariaDB
-
-320. How to Implement MySQL Binary Log Parsing
-
-## ClickHouse
-
-323. How to Implement ClickHouse Dictionaries
-
-## TimescaleDB
-
-336. How to Use TimescaleDB with PostgreSQL Extensions
-338. How to Backup TimescaleDB Databases
-339. How to Migrate to TimescaleDB from PostgreSQL
-340. How to Use TimescaleDB for IoT Data
-
-## Cassandra and ScyllaDB
-
-350. How to Use ScyllaDB for Low-Latency Workloads
-
-## DynamoDB
-
-354. How to Configure DynamoDB Auto Scaling
-356. How to Optimize DynamoDB Costs
-357. How to Handle DynamoDB Throttling
-
-## Elasticsearch and OpenSearch
-
-361. How to Implement Elasticsearch Percolate Queries
-362. How to Build Elasticsearch Suggester for Autocomplete
-364. How to Implement Elasticsearch Cross-Cluster Search
-367. How to Monitor Elasticsearch Cluster Health
-368. How to Implement Elasticsearch Snapshot Lifecycle Management
-369. How to Build Elasticsearch Painless Scripts
-370. How to Use Elasticsearch for Log Analysis
-
-## Kafka
-
-377. How to Implement Kafka Consumer Group Rebalancing
-379. How to Build Kafka Connect Custom Connectors
-384. How to Use Kafka MirrorMaker for Replication
-
-## RabbitMQ
-
-389. How to Build RabbitMQ Shovel for Message Transfer
-394. How to Implement RabbitMQ Lazy Queues for Large Messages
-395. How to Secure RabbitMQ with TLS
-396. How to Use RabbitMQ Delayed Message Exchange
-398. How to Implement Request-Reply Pattern in RabbitMQ
-399. How to Build RabbitMQ Stream Queues
-
-## NATS
-
-408. How to Secure NATS Connections
-410. How to Handle NATS Connection Recovery
-
 ## Apache Pulsar
 
-412. How to Design Pulsar Topics and Namespaces
 416. How to Use Pulsar Schema Registry
 418. How to Configure Pulsar Tiered Storage
 419. How to Use Pulsar IO Connectors
@@ -144,14 +21,12 @@ These are remaining blog ideas across different topics. Make sure to check exist
 426. How to Monitor SQS Queue Depth
 427. How to Implement Long Polling in SQS
 429. How to Use SQS with SNS for Fan-Out
-430. How to Optimize SQS Costs
 
 ## Google Pub/Sub
 
 432. How to Configure Pub/Sub Subscriptions
 434. How to Handle Pub/Sub Message Ordering
 436. How to Use Pub/Sub with Dataflow
-437. How to Configure Pub/Sub Push Subscriptions
 438. How to Handle Pub/Sub Message Acknowledgment
 439. How to Use Pub/Sub with Cloud Functions
 440. How to Implement Exactly-Once Processing with Pub/Sub
@@ -179,21 +54,13 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## Cilium
 
 472. How to Use Cilium Network Policies
-473. How to Implement Cilium Service Mesh
 475. How to Use Cilium for Multi-Cluster Networking
 476. How to Configure Cilium Egress Gateway
 480. How to Configure Cilium Bandwidth Management
 
 ## Traefik
 
-481. How to Set Up Traefik as Ingress Controller
 488. How to Implement Traefik Circuit Breaker
-490. How to Use Traefik Plugins
-
-## HAProxy
-
-494. How to Configure HAProxy Stick Tables
-497. How to Configure HAProxy SSL Termination
 
 ## Envoy
 
@@ -204,9 +71,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Linkerd
 
-514. How to Monitor Linkerd with Grafana
 515. How to Configure Linkerd Traffic Policies
-517. How to Use Linkerd Multi-Cluster
 518. How to Debug Services with Linkerd
 519. How to Configure Linkerd Retries
 520. How to Upgrade Linkerd Safely
@@ -217,7 +82,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 523. How to Implement ArgoCD Sync Waves
 525. How to Configure ArgoCD SSO
 526. How to Implement ArgoCD Multi-Tenancy
-528. How to Handle ArgoCD Secrets with Sealed Secrets
 529. How to Implement ArgoCD Rollbacks
 530. How to Use ArgoCD with Kustomize
 
@@ -225,17 +89,13 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 531. How to Get Started with Flux for GitOps
 535. How to Monitor Flux Deployments
-536. How to Handle Flux Secrets with SOPS
 539. How to Use Flux with Kustomize
 540. How to Migrate from ArgoCD to Flux
 
 ## Podman
 
-542. How to Run Rootless Containers with Podman
-545. How to Use Podman Compose
 546. How to Build Images with Podman
 547. How to Configure Podman for CI/CD
-548. How to Use Podman Pods
 550. How to Configure Podman Registry
 
 ## K3s
@@ -262,9 +122,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## OpenShift
 
 572. How to Deploy Applications on OpenShift
-573. How to Configure OpenShift Routes
 574. How to Use OpenShift BuildConfigs
-575. How to Implement OpenShift Pipelines
 576. How to Configure OpenShift Security Context Constraints
 577. How to Monitor Applications on OpenShift
 578. How to Use OpenShift Operators
@@ -273,9 +131,7 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Nomad
 
-582. How to Deploy Docker Containers on Nomad
 584. How to Implement Nomad Service Discovery
-585. How to Use Nomad with Consul
 586. How to Monitor Nomad Jobs
 587. How to Configure Nomad Resource Constraints
 588. How to Implement Nomad Rolling Deployments
@@ -284,7 +140,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## GitHub Actions (Advanced)
 
 594. How to Optimize GitHub Actions Costs
-595. How to Implement GitHub Actions Self-Hosted Runners on Kubernetes
 596. How to Use GitHub Actions for Monorepo CI/CD
 597. How to Implement GitHub Actions Branch Protection Rules
 598. How to Use GitHub Actions with Terraform Cloud
@@ -296,7 +151,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 601. How to Optimize GitLab CI Pipeline Performance
 602. How to Use GitLab CI Parent-Child Pipelines
 603. How to Implement GitLab CI Multi-Project Pipelines
-604. How to Configure GitLab CI Runners on Kubernetes
 605. How to Use GitLab CI with HashiCorp Vault
 606. How to Implement GitLab CI Security Scanning
 607. How to Configure GitLab CI Caching Strategies
@@ -307,7 +161,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## Jenkins
 
 614. How to Implement Jenkins Blue Ocean
-615. How to Configure Jenkins Agents on Kubernetes
 616. How to Use Jenkins with GitHub Webhooks
 617. How to Implement Jenkins Security Best Practices
 618. How to Configure Jenkins Backup and Restore
@@ -315,7 +168,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## CircleCI
 
-622. How to Use CircleCI Orbs
 623. How to Implement CircleCI Workflows
 625. How to Use CircleCI with AWS
 627. How to Configure CircleCI Self-Hosted Runners
@@ -325,8 +177,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Tekton
 
-632. How to Create Tekton Tasks and Pipelines
-633. How to Use Tekton Triggers
 635. How to Implement Tekton Catalog Tasks
 636. How to Monitor Tekton Pipelines
 637. How to Use Tekton with ArgoCD
@@ -375,8 +225,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Security (Trivy)
 
-691. How to Use Trivy for Container Image Scanning
-693. How to Use Trivy for Kubernetes Security
 694. How to Implement Trivy for IaC Scanning
 695. How to Configure Trivy Severity Filtering
 697. How to Implement Trivy SBOM Generation
@@ -388,7 +236,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 704. How to Implement OPA for API Authorization
 705. How to Use OPA Conftest for Policy Testing
-706. How to Configure Gatekeeper Constraint Templates
 707. How to Implement OPA Bundles
 708. How to Monitor OPA Policy Decisions
 709. How to Debug OPA Policy Failures
@@ -438,7 +285,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## LangChain and LlamaIndex
 
-763. How to Implement LangChain Memory
 764. How to Build Document QA with LlamaIndex
 765. How to Use LangChain with Vector Databases
 766. How to Implement LangChain Tools
@@ -468,9 +314,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## Storage (Ceph)
 
 802. How to Build Ceph Dashboard for Monitoring
-803. How to Use Ceph Block Storage (RBD)
-804. How to Implement Ceph File System (CephFS)
-805. How to Build Ceph CRUSH Map Customization
 806. How to Configure Ceph Erasure Coding
 807. How to Build Ceph PG Autoscaling
 808. How to Implement Ceph Multi-Site Replication
@@ -479,7 +322,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Storage (MinIO)
 
-813. How to Implement MinIO Bucket Policies
 817. How to Implement MinIO Lifecycle Rules
 818. How to Configure MinIO Multi-Tenancy
 819. How to Debug MinIO Access Issues
@@ -497,8 +339,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Testing (k6)
 
-832. How to Write k6 Test Scripts
-833. How to Use k6 Thresholds for SLOs
 834. How to Implement k6 Scenarios
 835. How to Configure k6 for CI/CD
 836. How to Use k6 with Prometheus
@@ -509,7 +349,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Testing (Locust)
 
-842. How to Write Locust User Classes
 843. How to Implement Locust Distributed Mode
 844. How to Use Locust with Custom Metrics
 845. How to Configure Locust for CI/CD
@@ -521,10 +360,8 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Testing (Playwright)
 
-853. How to Use Playwright Test Fixtures
 854. How to Implement Playwright Page Object Pattern
 856. How to Use Playwright Tracing
-857. How to Implement Playwright Visual Testing
 858. How to Debug Playwright Test Failures
 860. How to Configure Playwright Parallel Execution
 
@@ -532,7 +369,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 862. How to Write Cypress Commands
 863. How to Use Cypress Fixtures
-864. How to Implement Cypress Component Testing
 866. How to Use Cypress Dashboard
 867. How to Debug Cypress Test Failures
 869. How to Configure Cypress Retry Logic
@@ -540,7 +376,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## Chaos Engineering
 
 872. How to Use Chaos Monkey for Resilience Testing
-873. How to Implement Litmus for Kubernetes Chaos
 874. How to Use Gremlin for Controlled Chaos
 876. How to Implement Chaos Engineering Game Days
 877. How to Monitor Chaos Experiments
@@ -616,7 +451,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Data Engineering (dbt)
 
-974. How to Configure dbt Incremental Models
 975. How to Use dbt with Snowflake
 978. How to Use dbt Seeds and Sources
 979. How to Debug dbt Model Failures
