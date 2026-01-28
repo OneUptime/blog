@@ -74951,6 +74951,136 @@
     "post": "2026-01-28-circleci-aws"
   },
   {
+    "title": "How to Configure CircleCI Self-Hosted Runners",
+    "description": "Learn how to set up CircleCI self-hosted runners for faster builds, custom environments, and lower CI costs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CircleCI",
+      "Self-Hosted Runners",
+      "CI/CD",
+      "DevOps",
+      "Automation"
+    ],
+    "post": "2026-01-28-circleci-self-hosted-runners"
+  },
+  {
+    "title": "How to Use CircleCI for Mobile Apps",
+    "description": "Learn how to build and test iOS and Android apps in CircleCI, manage signing, and speed up mobile pipelines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CircleCI",
+      "Mobile Apps",
+      "CI/CD",
+      "iOS",
+      "Android"
+    ],
+    "post": "2026-01-28-circleci-mobile-apps"
+  },
+  {
+    "title": "How to Optimize CircleCI Pipeline Performance",
+    "description": "Learn how to speed up CircleCI pipelines with caching, parallelism, resource tuning, and smarter workflows.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CircleCI",
+      "CI/CD",
+      "Performance",
+      "Optimization",
+      "DevOps"
+    ],
+    "post": "2026-01-28-optimize-circleci-performance"
+  },
+  {
+    "title": "How to Debug CircleCI Pipeline Failures",
+    "description": "Learn how to diagnose CircleCI pipeline failures using logs, SSH reruns, artifacts, and local reproduction.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CircleCI",
+      "Debugging",
+      "CI/CD",
+      "Troubleshooting",
+      "DevOps"
+    ],
+    "post": "2026-01-28-debug-circleci-pipeline-failures"
+  },
+  {
+    "title": "How to Implement Tekton Catalog Tasks",
+    "description": "Learn how to use Tekton Catalog tasks to build reusable pipelines, including installation, usage, and customization tips.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Tekton",
+      "CI/CD",
+      "Kubernetes",
+      "Pipelines",
+      "DevOps"
+    ],
+    "post": "2026-01-28-tekton-catalog-tasks"
+  },
+  {
+    "title": "How to Monitor Tekton Pipelines",
+    "description": "Learn how to monitor Tekton pipelines using metrics, events, and dashboards to track pipeline health and performance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Tekton",
+      "Monitoring",
+      "Observability",
+      "Prometheus",
+      "DevOps"
+    ],
+    "post": "2026-01-28-monitor-tekton-pipelines"
+  },
+  {
+    "title": "How to Use Tekton with ArgoCD",
+    "description": "Learn how to connect Tekton CI pipelines with ArgoCD GitOps deployments for automated delivery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Tekton",
+      "ArgoCD",
+      "GitOps",
+      "CI/CD",
+      "Kubernetes"
+    ],
+    "post": "2026-01-28-tekton-argocd"
+  },
+  {
+    "title": "How to Configure Tekton Results",
+    "description": "Learn how to configure Tekton Results to store and query pipeline run metadata and logs at scale.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Tekton",
+      "Results",
+      "CI/CD",
+      "Kubernetes",
+      "DevOps"
+    ],
+    "post": "2026-01-28-tekton-results"
+  },
+  {
+    "title": "How to Implement Tekton CI/CD for Kubernetes",
+    "description": "Learn how to build a full CI/CD workflow with Tekton, including build, test, and deployment stages for Kubernetes apps.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Tekton",
+      "CI/CD",
+      "Kubernetes",
+      "DevOps",
+      "Pipelines"
+    ],
+    "post": "2026-01-28-tekton-cicd-kubernetes"
+  },
+  {
+    "title": "How to Debug Tekton Pipeline Failures",
+    "description": "Learn how to troubleshoot Tekton pipeline failures using logs, events, and TaskRun inspection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Tekton",
+      "Debugging",
+      "CI/CD",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-01-28-debug-tekton-pipeline-failures"
+  },
+  {
     "title": "How to Build a Service Registry with Eureka in Spring",
     "description": "Learn how to build a service registry with Netflix Eureka in Spring Boot. This guide covers server setup, client registration, service discovery, and high availability configurations for microservices.",
     "authorGitHubUsername": "nawazdhandala",

@@ -62,19 +62,19 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 623. [x] How to Implement CircleCI Workflows
 625. [x] How to Use CircleCI with AWS
-627. How to Configure CircleCI Self-Hosted Runners
-628. How to Use CircleCI for Mobile Apps
-629. How to Optimize CircleCI Pipeline Performance
-630. How to Debug CircleCI Pipeline Failures
+627. [x] How to Configure CircleCI Self-Hosted Runners
+628. [x] How to Use CircleCI for Mobile Apps
+629. [x] How to Optimize CircleCI Pipeline Performance
+630. [x] How to Debug CircleCI Pipeline Failures
 
 ## Tekton
 
-635. How to Implement Tekton Catalog Tasks
-636. How to Monitor Tekton Pipelines
-637. How to Use Tekton with ArgoCD
-638. How to Configure Tekton Results
-639. How to Implement Tekton CI/CD for Kubernetes
-640. How to Debug Tekton Pipeline Failures
+635. [x] How to Implement Tekton Catalog Tasks
+636. [x] How to Monitor Tekton Pipelines
+637. [x] How to Use Tekton with ArgoCD
+638. [x] How to Configure Tekton Results
+639. [x] How to Implement Tekton CI/CD for Kubernetes
+640. [x] How to Debug Tekton Pipeline Failures
 
 ## OpenTelemetry (Advanced)
 

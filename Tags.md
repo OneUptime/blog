@@ -3529,6 +3529,7 @@
 - Restore
 - RestTemplate
 - Result
+- Results
 - Retention
 - retention.bytes
 - retention.ms
