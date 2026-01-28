@@ -74808,6 +74808,58 @@
     "post": "2026-01-28-gitlab-ci-hashicorp-vault"
   },
   {
+    "title": "How to Configure GitLab CI Caching Strategies",
+    "description": "Learn how to use GitLab CI cache effectively with keying strategies, fallback keys, and best practices to speed up pipelines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitLab CI",
+      "CI/CD",
+      "Caching",
+      "Performance",
+      "DevOps"
+    ],
+    "post": "2026-01-28-gitlab-ci-caching-strategies"
+  },
+  {
+    "title": "How to Use GitLab CI for Monorepo",
+    "description": "Learn how to structure GitLab CI for monorepos using rules, path filters, and child pipelines to reduce build time.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitLab CI",
+      "Monorepo",
+      "CI/CD",
+      "Automation",
+      "DevOps"
+    ],
+    "post": "2026-01-28-gitlab-ci-monorepo"
+  },
+  {
+    "title": "How to Implement GitLab CI Compliance Pipelines",
+    "description": "Learn how to enforce compliance in GitLab CI using compliance pipelines, templates, and protected branches.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitLab CI",
+      "Compliance",
+      "Security",
+      "CI/CD",
+      "DevOps"
+    ],
+    "post": "2026-01-28-gitlab-ci-compliance-pipelines"
+  },
+  {
+    "title": "How to Debug GitLab CI Pipeline Failures",
+    "description": "Learn how to diagnose and fix GitLab CI pipeline failures using logs, artifacts, retries, and local reproduction techniques.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitLab CI",
+      "Debugging",
+      "CI/CD",
+      "Troubleshooting",
+      "DevOps"
+    ],
+    "post": "2026-01-28-debug-gitlab-ci-pipeline-failures"
+  },
+  {
     "title": "How to Build a Service Registry with Eureka in Spring",
     "description": "Learn how to build a service registry with Netflix Eureka in Spring Boot. This guide covers server setup, client registration, service discovery, and high availability configurations for microservices.",
     "authorGitHubUsername": "nawazdhandala",

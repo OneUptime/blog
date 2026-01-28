@@ -45,10 +45,10 @@ These are remaining blog ideas across different topics. Make sure to check exist
 602. [x] How to Use GitLab CI Parent-Child Pipelines
 603. [x] How to Implement GitLab CI Multi-Project Pipelines
 605. [x] How to Use GitLab CI with HashiCorp Vault
-607. How to Configure GitLab CI Caching Strategies
-608. How to Use GitLab CI for Monorepo
-609. How to Implement GitLab CI Compliance Pipelines
-610. How to Debug GitLab CI Pipeline Failures
+607. [x] How to Configure GitLab CI Caching Strategies
+608. [x] How to Use GitLab CI for Monorepo
+609. [x] How to Implement GitLab CI Compliance Pipelines
+610. [x] How to Debug GitLab CI Pipeline Failures
 
 ## Jenkins
 
