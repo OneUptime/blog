@@ -74561,6 +74561,32 @@
     "post": "2026-01-28-container-registry-gitlab-ci"
   },
   {
+    "title": "How to Handle Pub/Sub Message Acknowledgment",
+    "description": "Learn how Pub/Sub acknowledgments work, how to tune ack deadlines, handle retries, and design reliable consumers that avoid duplicate processing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Google Pub/Sub",
+      "Google Cloud Pub/Sub",
+      "Acknowledgments",
+      "Messaging",
+      "Reliability"
+    ],
+    "post": "2026-01-28-handle-pubsub-message-acknowledgment"
+  },
+  {
+    "title": "How to Use OpenShift BuildConfigs",
+    "description": "Learn how OpenShift BuildConfigs work, how to configure source-to-image and Docker builds, trigger pipelines, and manage build history reliably.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenShift",
+      "BuildConfigs",
+      "CI/CD",
+      "Containers",
+      "DevOps"
+    ],
+    "post": "2026-01-28-openshift-buildconfigs"
+  },
+  {
     "title": "How to Build a Service Registry with Eureka in Spring",
     "description": "Learn how to build a service registry with Netflix Eureka in Spring Boot. This guide covers server setup, client registration, service discovery, and high availability configurations for microservices.",
     "authorGitHubUsername": "nawazdhandala",

@@ -6,19 +6,19 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Google Pub/Sub
 
-438. How to Handle Pub/Sub Message Acknowledgment
+438. [x] How to Handle Pub/Sub Message Acknowledgment
 
 ## ArgoCD and GitOps
 
-526. How to Implement ArgoCD Multi-Tenancy
+526. [x] How to Implement ArgoCD Multi-Tenancy (already exists)
 
 ## Rancher
 
-570. How to Manage Multiple Clouds with Rancher
+570. [x] How to Manage Multiple Clouds with Rancher (already exists)
 
 ## OpenShift
 
-574. How to Use OpenShift BuildConfigs
+574. [x] How to Use OpenShift BuildConfigs
 576. How to Configure OpenShift Security Context Constraints
 577. How to Monitor Applications on OpenShift
 578. How to Use OpenShift Operators

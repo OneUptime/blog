@@ -494,6 +494,7 @@
 - Build Tool
 - Build Tools
 - Buildah
+- BuildConfigs
 - BuildKit
 - Bulk API
 - Bulk Import
