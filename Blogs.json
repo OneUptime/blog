@@ -74860,6 +74860,97 @@
     "post": "2026-01-28-debug-gitlab-ci-pipeline-failures"
   },
   {
+    "title": "How to Implement Jenkins Blue Ocean",
+    "description": "Learn how to set up Jenkins Blue Ocean, convert freestyle jobs to pipelines, and visualize builds with the modern UI.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Jenkins",
+      "Blue Ocean",
+      "CI/CD",
+      "Pipelines",
+      "DevOps"
+    ],
+    "post": "2026-01-28-jenkins-blue-ocean"
+  },
+  {
+    "title": "How to Use Jenkins with GitHub Webhooks",
+    "description": "Learn how to connect GitHub webhooks to Jenkins so builds trigger automatically on pushes and pull requests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Jenkins",
+      "GitHub",
+      "Webhooks",
+      "CI/CD",
+      "Automation"
+    ],
+    "post": "2026-01-28-jenkins-github-webhooks"
+  },
+  {
+    "title": "How to Implement Jenkins Security Best Practices",
+    "description": "Learn how to harden Jenkins with RBAC, plugin hygiene, credential management, and secure build agents.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Jenkins",
+      "Security",
+      "CI/CD",
+      "DevOps",
+      "Best Practices"
+    ],
+    "post": "2026-01-28-jenkins-security-best-practices"
+  },
+  {
+    "title": "How to Configure Jenkins Backup and Restore",
+    "description": "Learn how to back up Jenkins safely, including JENKINS_HOME, plugins, and credentials, and how to restore with minimal downtime.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Jenkins",
+      "Backup",
+      "Restore",
+      "CI/CD",
+      "DevOps"
+    ],
+    "post": "2026-01-28-jenkins-backup-restore"
+  },
+  {
+    "title": "How to Use Jenkins with Docker",
+    "description": "Learn how to run Jenkins builds in Docker, use Docker agents, and build container images safely in pipelines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Jenkins",
+      "Docker",
+      "CI/CD",
+      "Containers",
+      "DevOps"
+    ],
+    "post": "2026-01-28-jenkins-docker"
+  },
+  {
+    "title": "How to Implement CircleCI Workflows",
+    "description": "Learn how to define CircleCI workflows, run jobs in parallel, and control job dependencies for faster pipelines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CircleCI",
+      "CI/CD",
+      "Workflows",
+      "Automation",
+      "DevOps"
+    ],
+    "post": "2026-01-28-circleci-workflows"
+  },
+  {
+    "title": "How to Use CircleCI with AWS",
+    "description": "Learn how to integrate CircleCI with AWS using IAM roles, OIDC, and secure environment variables for deployments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CircleCI",
+      "AWS",
+      "CI/CD",
+      "DevOps",
+      "Cloud"
+    ],
+    "post": "2026-01-28-circleci-aws"
+  },
+  {
     "title": "How to Build a Service Registry with Eureka in Spring",
     "description": "Learn how to build a service registry with Netflix Eureka in Spring Boot. This guide covers server setup, client registration, service discovery, and high availability configurations for microservices.",
     "authorGitHubUsername": "nawazdhandala",

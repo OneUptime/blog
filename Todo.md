@@ -52,16 +52,16 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Jenkins
 
-614. How to Implement Jenkins Blue Ocean
-616. How to Use Jenkins with GitHub Webhooks
-617. How to Implement Jenkins Security Best Practices
-618. How to Configure Jenkins Backup and Restore
-619. How to Use Jenkins with Docker
+614. [x] How to Implement Jenkins Blue Ocean
+616. [x] How to Use Jenkins with GitHub Webhooks
+617. [x] How to Implement Jenkins Security Best Practices
+618. [x] How to Configure Jenkins Backup and Restore
+619. [x] How to Use Jenkins with Docker
 
 ## CircleCI
 
-623. How to Implement CircleCI Workflows
-625. How to Use CircleCI with AWS
+623. [x] How to Implement CircleCI Workflows
+625. [x] How to Use CircleCI with AWS
 627. How to Configure CircleCI Self-Hosted Runners
 628. How to Use CircleCI for Mobile Apps
 629. How to Optimize CircleCI Pipeline Performance
