@@ -4,124 +4,20 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ---
 
-## Go Programming
-
-23. How to Handle Configuration in Go Applications
-24. How to Build a Metrics Exporter in Go
-
-## Apache Pulsar
-
-416. How to Use Pulsar Schema Registry
-418. How to Configure Pulsar Tiered Storage
-419. How to Use Pulsar IO Connectors
-
-## Amazon SQS
-
-425. How to Use SQS with Lambda
-426. How to Monitor SQS Queue Depth
-427. How to Implement Long Polling in SQS
-429. How to Use SQS with SNS for Fan-Out
-
 ## Google Pub/Sub
 
-432. How to Configure Pub/Sub Subscriptions
-434. How to Handle Pub/Sub Message Ordering
-436. How to Use Pub/Sub with Dataflow
 438. How to Handle Pub/Sub Message Acknowledgment
-439. How to Use Pub/Sub with Cloud Functions
-440. How to Implement Exactly-Once Processing with Pub/Sub
-
-## Terraform
-
-441. How to Structure Terraform Projects for Large Teams
-444. How to Use Terraform with Multiple Cloud Providers
-446. How to Implement Terraform CI/CD Pipelines
-
-## Pulumi
-
-451. How to Get Started with Pulumi for Infrastructure as Code
-455. How to Migrate from Terraform to Pulumi
-456. How to Test Pulumi Programs
-457. How to Use Pulumi Automation API
-458. How to Implement Pulumi CI/CD Pipelines
-
-## Vault (HashiCorp)
-
-463. How to Configure Vault Auto-Unseal
-469. How to Use Vault Agent for Secret Injection
-470. How to Configure Vault Audit Logging
-
-## Cilium
-
-472. How to Use Cilium Network Policies
-475. How to Use Cilium for Multi-Cluster Networking
-476. How to Configure Cilium Egress Gateway
-480. How to Configure Cilium Bandwidth Management
-
-## Traefik
-
-488. How to Implement Traefik Circuit Breaker
-
-## Envoy
-
-506. How to Implement Envoy Circuit Breaker
-507. How to Use Envoy for gRPC Load Balancing
-508. How to Configure Envoy TLS Termination
-510. How to Debug Envoy Configuration Issues
-
-## Linkerd
-
-515. How to Configure Linkerd Traffic Policies
-518. How to Debug Services with Linkerd
-519. How to Configure Linkerd Retries
-520. How to Upgrade Linkerd Safely
 
 ## ArgoCD and GitOps
 
-521. How to Implement ArgoCD Image Updater Automation
-523. How to Implement ArgoCD Sync Waves
-525. How to Configure ArgoCD SSO
 526. How to Implement ArgoCD Multi-Tenancy
-529. How to Implement ArgoCD Rollbacks
-530. How to Use ArgoCD with Kustomize
-
-## Flux
-
-531. How to Get Started with Flux for GitOps
-535. How to Monitor Flux Deployments
-539. How to Use Flux with Kustomize
-540. How to Migrate from ArgoCD to Flux
-
-## Podman
-
-546. How to Build Images with Podman
-547. How to Configure Podman for CI/CD
-550. How to Configure Podman Registry
-
-## K3s
-
-553. How to Use K3s with External Database
-554. How to Install K3s on Raspberry Pi
-555. How to Configure K3s Storage Classes
-557. How to Secure K3s Cluster
-558. How to Upgrade K3s Safely
-559. How to Use K3s with Traefik
-560. How to Configure K3s for Edge Deployment
 
 ## Rancher
 
-562. How to Create Kubernetes Clusters with Rancher
-563. How to Configure Rancher RBAC
-564. How to Use Rancher Continuous Delivery
-565. How to Monitor Clusters with Rancher
-566. How to Configure Rancher Backup
-567. How to Implement Rancher Multi-Tenancy
-568. How to Build Rancher Cluster Templates
 570. How to Manage Multiple Clouds with Rancher
 
 ## OpenShift
 
-572. How to Deploy Applications on OpenShift
 574. How to Use OpenShift BuildConfigs
 576. How to Configure OpenShift Security Context Constraints
 577. How to Monitor Applications on OpenShift
@@ -143,12 +39,10 @@ These are remaining blog ideas across different topics. Make sure to check exist
 596. How to Use GitHub Actions for Monorepo CI/CD
 597. How to Implement GitHub Actions Branch Protection Rules
 598. How to Use GitHub Actions with Terraform Cloud
-599. How to Debug GitHub Actions Failures Effectively
 600. How to Implement GitHub Actions for Mobile Apps
 
 ## GitLab CI (Advanced)
 
-601. How to Optimize GitLab CI Pipeline Performance
 602. How to Use GitLab CI Parent-Child Pipelines
 603. How to Implement GitLab CI Multi-Project Pipelines
 605. How to Use GitLab CI with HashiCorp Vault
@@ -201,7 +95,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 665. How to Implement Alertmanager Clustering
 666. How to Monitor Alertmanager Health
-668. How to Use Alertmanager with PagerDuty
 669. How to Implement Alertmanager Alert Groups
 670. How to Debug Alertmanager Issues
 
@@ -215,7 +108,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Security (Falco)
 
-681. How to Get Started with Falco for Runtime Security
 684. How to Use Falco Sidekick for Alerting
 685. How to Monitor Falco Alerts
 686. How to Implement Falco for Container Security
@@ -243,8 +135,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Security (Keycloak)
 
-713. How to Implement Keycloak SSO
-716. How to Implement Keycloak Social Login
 717. How to Use Keycloak Authorization Services
 719. How to Implement Keycloak Custom Themes
 720. How to Debug Keycloak Authentication Issues
@@ -256,11 +146,9 @@ These are remaining blog ideas across different topics. Make sure to check exist
 727. How to Implement WireGuard Road Warrior Setup
 728. How to Monitor WireGuard Connections
 729. How to Debug WireGuard Connection Issues
-730. How to Use Tailscale SSH
 
 ## AI/ML Ops (Kubeflow)
 
-733. How to Use Kubeflow for Model Training
 734. How to Configure Kubeflow Notebooks
 736. How to Use Kubeflow for Feature Engineering
 737. How to Monitor ML Experiments with Kubeflow
@@ -271,7 +159,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## AI/ML Ops (MLflow)
 
 744. How to Configure MLflow Projects
-745. How to Deploy Models with MLflow
 746. How to Use MLflow with Databricks
 747. How to Implement MLflow for A/B Testing
 748. How to Monitor Models with MLflow
@@ -285,26 +172,19 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## LangChain and LlamaIndex
 
-764. How to Build Document QA with LlamaIndex
-765. How to Use LangChain with Vector Databases
-766. How to Implement LangChain Tools
-767. How to Use LlamaIndex for Data Indexing
 769. How to Debug LangChain Applications
 
 ## Networking (DNS)
 
-776. How to Build Private DNS Zones in Cloud
 777. How to Configure DNS over HTTPS (DoH)
 778. How to Use DNS TXT Records for Verification
 779. How to Build GeoDNS for Global Traffic Routing
 
 ## Networking (Load Balancing)
 
-783. How to Implement Session Persistence
 785. How to Configure Load Balancer SSL Termination
 786. How to Implement Load Balancer Autoscaling
 787. How to Debug Load Balancer Issues
-789. How to Implement Load Balancer Rate Limiting
 
 ## Networking (CDN)
 
@@ -313,12 +193,8 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Storage (Ceph)
 
-802. How to Build Ceph Dashboard for Monitoring
-806. How to Configure Ceph Erasure Coding
 807. How to Build Ceph PG Autoscaling
-808. How to Implement Ceph Multi-Site Replication
 809. How to Debug Ceph OSD Issues
-810. How to Implement Ceph Placement Groups Tuning
 
 ## Storage (MinIO)
 
@@ -329,7 +205,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## Storage (Velero)
 
 821. How to Build Velero Custom Plugins
-823. How to Implement Velero for Disaster Recovery
 824. How to Use Velero with Cloud Storage
 825. How to Restore Kubernetes Applications with Velero
 826. How to Configure Velero Backup Hooks
@@ -367,7 +242,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Testing (Cypress)
 
-862. How to Write Cypress Commands
 863. How to Use Cypress Fixtures
 866. How to Use Cypress Dashboard
 867. How to Debug Cypress Test Failures
@@ -379,7 +253,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 874. How to Use Gremlin for Controlled Chaos
 876. How to Implement Chaos Engineering Game Days
 877. How to Monitor Chaos Experiments
-878. How to Use Chaos Mesh for Kubernetes
 879. How to Implement Steady State Hypothesis
 880. How to Debug Chaos Experiment Failures
 
@@ -389,24 +262,15 @@ These are remaining blog ideas across different topics. Make sure to check exist
 885. How to Configure Dev Container Port Forwarding
 888. How to Share Dev Container Configurations
 
-## Performance Optimization
-
-894. How to Optimize API Response Times
-897. How to Optimize Container Image Sizes
-
 ## SRE (Incident Management)
 
-905. How to Implement Incident Communication Plans
 906. How to Use Incident Timeline Analysis
-907. How to Build On-Call Handoff Procedures
 908. How to Implement Incident Escalation Paths
 909. How to Measure Incident Response Effectiveness
 910. How to Build Incident Learning Culture
 
 ## SRE (Capacity Planning)
 
-912. How to Use Load Testing for Capacity Estimation
-914. How to Plan for Traffic Spikes
 915. How to Implement Cost-Aware Capacity Planning
 916. How to Use Historical Data for Capacity Planning
 918. How to Plan Database Capacity
@@ -443,7 +307,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Data Engineering (Apache Airflow)
 
-963. How to Implement Airflow Sensors
 964. How to Configure Airflow Executors
 967. How to Implement Airflow Backfills
 969. How to Debug Airflow Task Failures
@@ -451,7 +314,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 
 ## Data Engineering (dbt)
 
-975. How to Use dbt with Snowflake
 978. How to Use dbt Seeds and Sources
 979. How to Debug dbt Model Failures
 
