@@ -19,32 +19,32 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## OpenShift
 
 574. [x] How to Use OpenShift BuildConfigs
-576. How to Configure OpenShift Security Context Constraints
-577. How to Monitor Applications on OpenShift
-578. How to Use OpenShift Operators
-579. How to Configure OpenShift Networking
-580. How to Implement OpenShift GitOps
+576. [x] How to Configure OpenShift Security Context Constraints
+577. [x] How to Monitor Applications on OpenShift
+578. [x] How to Use OpenShift Operators
+579. [x] How to Configure OpenShift Networking
+580. [x] How to Implement OpenShift GitOps
 
 ## Nomad
 
-584. How to Implement Nomad Service Discovery
-586. How to Monitor Nomad Jobs
-587. How to Configure Nomad Resource Constraints
-588. How to Implement Nomad Rolling Deployments
-590. How to Secure Nomad Cluster
+584. [x] How to Implement Nomad Service Discovery
+586. [x] How to Monitor Nomad Jobs
+587. [x] How to Configure Nomad Resource Constraints
+588. [x] How to Implement Nomad Rolling Deployments
+590. [x] How to Secure Nomad Cluster
 
 ## GitHub Actions (Advanced)
 
-594. How to Optimize GitHub Actions Costs
-597. How to Implement GitHub Actions Branch Protection Rules
-598. How to Use GitHub Actions with Terraform Cloud
-600. How to Implement GitHub Actions for Mobile Apps
+594. [x] How to Optimize GitHub Actions Costs
+597. [x] How to Implement GitHub Actions Branch Protection Rules
+598. [x] How to Use GitHub Actions with Terraform Cloud
+600. [x] How to Implement GitHub Actions for Mobile Apps
 
 ## GitLab CI (Advanced)
 
-602. How to Use GitLab CI Parent-Child Pipelines
-603. How to Implement GitLab CI Multi-Project Pipelines
-605. How to Use GitLab CI with HashiCorp Vault
+602. [x] How to Use GitLab CI Parent-Child Pipelines
+603. [x] How to Implement GitLab CI Multi-Project Pipelines
+605. [x] How to Use GitLab CI with HashiCorp Vault
 607. How to Configure GitLab CI Caching Strategies
 608. How to Use GitLab CI for Monorepo
 609. How to Implement GitLab CI Compliance Pipelines

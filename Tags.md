@@ -2563,6 +2563,7 @@
 - MM2
 - MMKV
 - Mobile
+- Mobile Apps
 - Mobile Development
 - Mobile Testing
 - Mocha
@@ -3564,6 +3565,7 @@
 - RocksDB
 - Roles
 - Rollback
+- Rolling Deployments
 - Rolling Update
 - Rolling Updates
 - Rolling Upgrade
@@ -3706,6 +3708,7 @@
 - Security
 - Security Analytics
 - Security Audit
+- Security Context Constraints
 - Security Events
 - Security Groups
 - Security Monitoring
@@ -4197,6 +4200,7 @@
 - TensorFlow Lite
 - Terminal
 - Terraform
+- Terraform Cloud
 - Terragrunt
 - Terratest
 - Test Automation

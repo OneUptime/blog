@@ -74587,6 +74587,227 @@
     "post": "2026-01-28-openshift-buildconfigs"
   },
   {
+    "title": "How to Configure OpenShift Security Context Constraints",
+    "description": "Learn how OpenShift Security Context Constraints (SCC) work, how to grant them safely, and how to troubleshoot common pod admission failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenShift",
+      "Security",
+      "Security Context Constraints",
+      "Kubernetes",
+      "RBAC"
+    ],
+    "post": "2026-01-28-openshift-security-context-constraints"
+  },
+  {
+    "title": "How to Monitor Applications on OpenShift",
+    "description": "Learn how to monitor applications on OpenShift using built-in Prometheus and Grafana, custom metrics endpoints, and alerting for production workloads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenShift",
+      "Monitoring",
+      "Observability",
+      "Prometheus",
+      "Grafana"
+    ],
+    "post": "2026-01-28-monitor-applications-openshift"
+  },
+  {
+    "title": "How to Use OpenShift Operators",
+    "description": "Learn how OpenShift Operators work, how to install them from OperatorHub, configure them safely, and manage upgrades in production.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenShift",
+      "Operators",
+      "Kubernetes",
+      "Automation",
+      "DevOps"
+    ],
+    "post": "2026-01-28-openshift-operators"
+  },
+  {
+    "title": "How to Configure OpenShift Networking",
+    "description": "Learn how OpenShift networking works, how to expose services with Routes, and how to configure common network policies for production clusters.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenShift",
+      "Networking",
+      "Kubernetes",
+      "Routes",
+      "Load Balancing"
+    ],
+    "post": "2026-01-28-openshift-networking"
+  },
+  {
+    "title": "How to Implement OpenShift GitOps",
+    "description": "Learn how to implement GitOps on OpenShift using OpenShift GitOps (Argo CD), including installation, app definitions, and safe sync strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenShift",
+      "GitOps",
+      "ArgoCD",
+      "Kubernetes",
+      "DevOps"
+    ],
+    "post": "2026-01-28-openshift-gitops"
+  },
+  {
+    "title": "How to Implement Nomad Service Discovery",
+    "description": "Learn how to set up service discovery in Nomad using Consul, including service registration, health checks, and DNS-based discovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nomad",
+      "Service Discovery",
+      "Consul",
+      "Networking",
+      "DevOps"
+    ],
+    "post": "2026-01-28-nomad-service-discovery"
+  },
+  {
+    "title": "How to Monitor Nomad Jobs",
+    "description": "Learn how to monitor Nomad jobs using the built-in metrics, Prometheus scraping, and alerts for allocation failures and job health.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nomad",
+      "Monitoring",
+      "Observability",
+      "Prometheus",
+      "Grafana"
+    ],
+    "post": "2026-01-28-monitor-nomad-jobs"
+  },
+  {
+    "title": "How to Configure Nomad Resource Constraints",
+    "description": "Learn how to set CPU and memory limits in Nomad jobs, avoid noisy neighbors, and tune reservations for reliable scheduling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nomad",
+      "Resource Constraints",
+      "Performance",
+      "Scheduling",
+      "DevOps"
+    ],
+    "post": "2026-01-28-nomad-resource-constraints"
+  },
+  {
+    "title": "How to Implement Nomad Rolling Deployments",
+    "description": "Learn how to configure rolling updates in Nomad with update stanzas, health checks, and canary deployments for safe releases.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nomad",
+      "Rolling Deployments",
+      "CI/CD",
+      "Reliability",
+      "DevOps"
+    ],
+    "post": "2026-01-28-nomad-rolling-deployments"
+  },
+  {
+    "title": "How to Secure Nomad Cluster",
+    "description": "Learn how to secure a Nomad cluster with TLS, ACLs, and secure gossip, plus hardening tips for production deployments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nomad",
+      "Security",
+      "TLS",
+      "ACLs",
+      "DevOps"
+    ],
+    "post": "2026-01-28-secure-nomad-cluster"
+  },
+  {
+    "title": "How to Optimize GitHub Actions Costs",
+    "description": "Learn practical ways to reduce GitHub Actions costs using caching, workflow tuning, concurrency controls, and self-hosted runners.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitHub Actions",
+      "CI/CD",
+      "Cost Optimization",
+      "DevOps",
+      "Automation"
+    ],
+    "post": "2026-01-28-optimize-github-actions-costs"
+  },
+  {
+    "title": "How to Implement GitHub Actions Branch Protection Rules",
+    "description": "Learn how to enforce branch protection with GitHub Actions, required checks, and merge policies to keep your main branch safe.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitHub Actions",
+      "Branch Protection",
+      "CI/CD",
+      "Security",
+      "DevOps"
+    ],
+    "post": "2026-01-28-github-actions-branch-protection"
+  },
+  {
+    "title": "How to Use GitHub Actions with Terraform Cloud",
+    "description": "Learn how to integrate GitHub Actions with Terraform Cloud for secure, automated infrastructure changes and remote state management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitHub Actions",
+      "Terraform",
+      "Terraform Cloud",
+      "CI/CD",
+      "Infrastructure as Code"
+    ],
+    "post": "2026-01-28-github-actions-terraform-cloud"
+  },
+  {
+    "title": "How to Implement GitHub Actions for Mobile Apps",
+    "description": "Learn how to build and test iOS and Android apps with GitHub Actions, manage signing secrets, and optimize workflows for mobile CI.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitHub Actions",
+      "Mobile Apps",
+      "CI/CD",
+      "iOS",
+      "Android"
+    ],
+    "post": "2026-01-28-github-actions-mobile-apps"
+  },
+  {
+    "title": "How to Use GitLab CI Parent-Child Pipelines",
+    "description": "Learn how to structure GitLab CI parent-child pipelines for modular builds, parallel stages, and reusable pipeline templates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitLab CI",
+      "CI/CD",
+      "Pipelines",
+      "Automation",
+      "DevOps"
+    ],
+    "post": "2026-01-28-gitlab-ci-parent-child-pipelines"
+  },
+  {
+    "title": "How to Implement GitLab CI Multi-Project Pipelines",
+    "description": "Learn how to trigger pipelines across multiple GitLab projects, pass variables, and coordinate releases safely.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitLab CI",
+      "CI/CD",
+      "Multi-Project",
+      "Automation",
+      "DevOps"
+    ],
+    "post": "2026-01-28-gitlab-ci-multi-project-pipelines"
+  },
+  {
+    "title": "How to Use GitLab CI with HashiCorp Vault",
+    "description": "Learn how to fetch secrets from HashiCorp Vault in GitLab CI using JWT auth, short-lived tokens, and secure job templates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitLab CI",
+      "HashiCorp Vault",
+      "Secrets",
+      "Security",
+      "CI/CD"
+    ],
+    "post": "2026-01-28-gitlab-ci-hashicorp-vault"
+  },
+  {
     "title": "How to Build a Service Registry with Eureka in Spring",
     "description": "Learn how to build a service registry with Netflix Eureka in Spring Boot. This guide covers server setup, client registration, service discovery, and high availability configurations for microservices.",
     "authorGitHubUsername": "nawazdhandala",
