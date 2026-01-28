@@ -36,7 +36,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## GitHub Actions (Advanced)
 
 594. How to Optimize GitHub Actions Costs
-596. How to Use GitHub Actions for Monorepo CI/CD
 597. How to Implement GitHub Actions Branch Protection Rules
 598. How to Use GitHub Actions with Terraform Cloud
 600. How to Implement GitHub Actions for Mobile Apps
@@ -46,7 +45,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 602. How to Use GitLab CI Parent-Child Pipelines
 603. How to Implement GitLab CI Multi-Project Pipelines
 605. How to Use GitLab CI with HashiCorp Vault
-606. How to Implement GitLab CI Security Scanning
 607. How to Configure GitLab CI Caching Strategies
 608. How to Use GitLab CI for Monorepo
 609. How to Implement GitLab CI Compliance Pipelines
@@ -81,7 +79,6 @@ These are remaining blog ideas across different topics. Make sure to check exist
 ## OpenTelemetry (Advanced)
 
 645. How to Build OpenTelemetry Custom Processors
-646. How to Implement OpenTelemetry Auto-Instrumentation Libraries
 649. How to Implement OpenTelemetry Metric Aggregation
 650. How to Debug OpenTelemetry Instrumentation Issues
 
