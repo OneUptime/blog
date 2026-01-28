@@ -69,6 +69,7 @@
 - AI
 - AI Integration
 - AI Platform
+- AI/ML
 - aiohttp
 - Air-Gapped
 - Airbyte
@@ -78,6 +79,7 @@
 - ALB
 - Alembic
 - Alert Fatigue
+- Alert Routing
 - Alert Rules
 - Alerting
 - Alertmanager
@@ -298,6 +300,7 @@
 - AWS API Gateway
 - AWS CloudFront
 - AWS CloudWatch
+- AWS Cost Explorer
 - AWS ECR
 - AWS ElastiCache
 - AWS Glacier
@@ -457,6 +460,7 @@
 - Branch Management
 - Branch Protection
 - Branching
+- Branding
 - Breaking Changes
 - Bridge
 - BRIN
@@ -476,6 +480,7 @@
 - Bucket4j
 - Buckets
 - Budget
+- Budgets
 - Buf
 - Buffered I/O
 - BufferExhaustedException
@@ -511,6 +516,7 @@
 - BullMQ
 - Bundle Size
 - Bundler
+- Bundles
 - Bundling
 - Burp Suite
 - Business Continuity
@@ -573,6 +579,7 @@
 - Channels
 - Chaos Engineering
 - Chaos Mesh
+- Chaos Monkey
 - Character Encoding
 - Chargeback
 - Chart Repository
@@ -580,6 +587,7 @@
 - Chat
 - chat application
 - Chat Applications
+- ChatOps
 - Checkout
 - Checkpoint
 - Checkpointing
@@ -720,6 +728,7 @@
 - Code Quality
 - Code Reuse
 - Code Review
+- Code Security
 - Code Signing
 - Code Splitting
 - Code Standards
@@ -909,6 +918,7 @@
 - Cost Comparison
 - Cost Estimation
 - Cost Management
+- Cost Monitoring
 - Cost Optimization
 - Cost Reduction
 - Cost Savings
@@ -984,7 +994,9 @@
 - Custom Headers
 - Custom Hooks
 - Custom Metrics
+- Custom Models
 - Custom Partitioner
+- Custom Processors
 - Custom Providers
 - Custom Resources
 - Custom Sampler
@@ -993,6 +1005,7 @@
 - Customer Experience
 - Customer Support
 - Customization
+- CycloneDX
 - Cypher
 - Cypress
 - d.ts
@@ -1003,6 +1016,7 @@
 - DANE
 - Dapr
 - Dart
+- DASH
 - Dashboard
 - Dashboard Links
 - Dashboard Management
@@ -1098,6 +1112,7 @@
 - Database
 - Database Administration
 - Database Architecture
+- Database Backup
 - Database Comparison
 - Database Configuration
 - Database Design
@@ -1115,6 +1130,7 @@
 - Database Streaming
 - Database Testing
 - Database Tuning
+- Database Updates
 - Database Versioning
 - Databases
 - Databricks
@@ -1262,6 +1278,7 @@
 - Distributed Storage
 - Distributed Systems
 - Distributed Tables
+- Distributed Testing
 - Distributed Tracing
 - Distributed Training
 - Distributed Transactions
@@ -1297,8 +1314,10 @@
 - Document Store
 - Documentation
 - Documents
+- DoH
 - DOM
 - Domain Events
+- Domain Ownership
 - Domain Security
 - Domain-Driven Design
 - Domains
@@ -1445,6 +1464,7 @@
 - Errors
 - ES Modules
 - ES6
+- Escalation
 - Escalation Policies
 - ESLint
 - ESM
@@ -1459,6 +1479,7 @@
 - Event Loop
 - Event Processing
 - Event Replay
+- Event Rules
 - Event Schema Design
 - Event Sourcing
 - Event Store
@@ -1484,6 +1505,7 @@
 - Exchange Types
 - Exchanges
 - EXEC
+- Executors
 - Exemplars
 - expect
 - Experiment Tracking
@@ -1545,6 +1567,7 @@
 - FDW
 - Feast
 - Feature Branches
+- Feature Engineering
 - Feature Flags
 - Feature Store
 - Feature Toggles
@@ -1588,6 +1611,7 @@
 - Filenames
 - Files
 - Filesystem
+- Filesystem Scanning
 - Filesystems
 - FileUpload
 - Filtering
@@ -1633,6 +1657,7 @@
 - Fonts
 - For Each
 - for_each
+- Forecasting
 - Foreign Data Wrappers
 - Foreign Functions
 - Foreign Key
@@ -1671,6 +1696,7 @@
 - Fuzzy Search
 - Galaxy
 - Galera
+- Game Days
 - Game Development
 - Game State
 - Gamification
@@ -1775,6 +1801,7 @@
 - Google Cloud Functions
 - Google Cloud Platform
 - Google Cloud Pub/Sub
+- Google Cloud Storage
 - Google Dataflow
 - Google Domains
 - Google Play Console
@@ -1882,6 +1909,7 @@
 - HIPAA
 - Histogram
 - Histograms
+- HLS
 - HMAC
 - HMR
 - Hold
@@ -1989,6 +2017,8 @@
 - Import Tasks
 - ImportError
 - Imports
+- Incident Analysis
+- Incident Communication
 - Incident Management
 - Incident Response
 - Include
@@ -2278,6 +2308,7 @@
 - Leadership
 - Leaky Bucket
 - Learning
+- Learning Organization
 - Learning Resource
 - Legacy
 - Legacy Systems
@@ -2559,6 +2590,7 @@
 - mise
 - MITRE ATT&CK
 - Mixins
+- ML Ops
 - MLflow
 - MLOps
 - MM2
@@ -2931,6 +2963,7 @@
 - Packet Capture
 - Packet Filtering
 - Pact
+- Page Object Pattern
 - Page Speed
 - page tokens
 - PagerDuty
@@ -3074,6 +3107,7 @@
 - Playwright
 - Plex
 - Plugin Architecture
+- Plugin Development
 - Plugins
 - PM2
 - pnpm
@@ -3109,12 +3143,14 @@
 - Policy Management
 - Policy Objects
 - Policy Testing
+- Policy-as-Code
 - Polling
 - Polly
 - Polymorphism
 - Populate
 - Port Binding
 - Port Conflict
+- Port Forwarding
 - Port Mapping
 - Port Monitoring
 - Portability
@@ -3514,6 +3550,7 @@
 - Resource Locks
 - Resource Management
 - Resource Monitoring
+- Resource Optimization
 - Resource Pressure
 - Resource Prioritization
 - Resource Quotas
@@ -3521,6 +3558,7 @@
 - Resources
 - Response Aggregation
 - Response Modification
+- Response Plays
 - responses
 - Responsive Design
 - REST
@@ -3558,6 +3596,7 @@
 - RGW
 - RHEL
 - Right to Erasure
+- Right-Sizing
 - Ring Buffer
 - Risk Management
 - RKE
@@ -3576,6 +3615,7 @@
 - Rollouts
 - Rollover
 - Rook
+- Root Cause Analysis
 - Root Detection
 - Rootkit
 - Rootless
@@ -3646,6 +3686,7 @@
 - SCAN
 - Scanning
 - SCAP
+- Scenarios
 - Scheduled Maintenance
 - Scheduled Reports
 - Scheduled Tasks
@@ -3779,6 +3820,7 @@
 - Service Module
 - Service Name
 - Service Objects
+- Service Publishing
 - Service Registry
 - Service Topology
 - Service Unavailable
@@ -3859,6 +3901,7 @@
 - Site Reliability
 - Site Reliability Engineering
 - Site Search
+- Site-to-Site
 - Skaffold
 - Skeleton Loading
 - Skip Indexes
@@ -3883,6 +3926,7 @@
 - Smart Pointers
 - Smoke Testing
 - SMS
+- SMT
 - SMTP
 - Snap
 - snappy
@@ -3931,6 +3975,7 @@
 - Spark
 - Spark Streaming
 - Sparse Checkout
+- SPDX
 - Specifications
 - SPF
 - Sphinx
@@ -3987,6 +4032,7 @@
 - Stack Overflow
 - Stack Traces
 - Staging
+- Stakeholder Updates
 - Stalled Jobs
 - Standard Library
 - Standardization
@@ -4022,7 +4068,9 @@
 - StatsD
 - Status Checks
 - status codes
+- Status Dashboard
 - Status Page
+- Steady State Hypothesis
 - Steam
 - Stemming
 - Step Functions
@@ -4175,6 +4223,7 @@
 - Team Development
 - Team Leadership
 - Team Management
+- Team Training
 - Teaming
 - Teams
 - Technical Writing
@@ -4205,6 +4254,7 @@
 - Terraform Cloud
 - Terragrunt
 - Terratest
+- Test Analytics
 - Test Automation
 - Test Containers
 - Test Coverage
@@ -4218,6 +4268,7 @@
 - Test Organization
 - Test Patterns
 - Test Quality
+- Test Reliability
 - Test Reporting
 - Test Reports
 - Test Setup
@@ -4242,6 +4293,7 @@
 - TFJob
 - TFTP
 - Thanos
+- Themes
 - thiserror
 - Thread Pool
 - Thread Pools
@@ -4273,6 +4325,7 @@
 - Time-To-Live
 - Time-Weighted Calculations
 - Timeline
+- Timeline Analysis
 - Timelines
 - Timeout
 - Timeout Configuration
@@ -4399,6 +4452,7 @@
 - Twitch
 - Two-Factor Authentication
 - Two-way Binding
+- TXT Records
 - Type Annotations
 - Type Assertion
 - Type Assertions
@@ -4539,6 +4593,7 @@
 - Vendoring
 - venv
 - Vercel
+- Verification
 - Version
 - Version Compatibility
 - Version Constraints
@@ -4549,6 +4604,7 @@
 - Vertex AI
 - Vertical Pod Autoscaler
 - Video Conferencing
+- Video Streaming
 - View Counter
 - ViewManager
 - Views
@@ -4599,6 +4655,7 @@
 - Vulnerabilities
 - Vulnerability
 - Vulnerability Assessment
+- Vulnerability Database
 - Vulnerability Management
 - Vulnerability Scanning
 - W3C Trace Context
@@ -4685,6 +4742,7 @@
 - Worker Service
 - Worker Threads
 - Workers
+- Workers AI
 - Workflow
 - Workflow Automation
 - Workflow Dispatch
@@ -4699,6 +4757,7 @@
 - Workspaces
 - Worktrees
 - Worldmap
+- Wrangler
 - Write Concern
 - Write Optimization
 - Write Throughput
