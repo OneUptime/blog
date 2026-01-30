@@ -77195,5 +77195,21 @@
       "ASP.NET Core"
     ],
     "post": "2026-01-29-opentelemetry-instrumentation-dotnet"
+  },
+  {
+    "title": "Running Self-Hosted LLMs on Kubernetes: A Complete Guide",
+    "description": "A comprehensive guide to deploying and running self-hosted large language models on Kubernetes, covering GPU access, model serving, and production best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "LLM",
+      "GPU",
+      "Docker",
+      "Machine Learning",
+      "AI",
+      "Self-Hosting",
+      "vLLM"
+    ],
+    "post": "2026-01-29-self-hosted-llms-on-kubernetes"
   }
 ]
