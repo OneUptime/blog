@@ -40,16 +40,11 @@
 - ClickHouse
 - TimescaleDB
 - MySQL/MariaDB
-- Cassandra
-- ScyllaDB
 - CockroachDB
 - DynamoDB
 - Elasticsearch
 - OpenSearch
 - SQLite
-- SurrealDB
-- Dragonfly
-- Valkey
 
 ## Message Queues & Event Streaming
 
@@ -100,6 +95,34 @@
 - OpenShift
 - Nomad
 - Docker Swarm
+
+## Kubernetes Ecosystem
+
+- MetalLB
+- Helm
+- Kustomize
+- Kubernetes Operators
+- Ingress Controllers (NGINX Ingress, Kong, Ambassador)
+- Kubernetes RBAC
+- Kubernetes Network Policies
+- Kubernetes Autoscaling (HPA, VPA, KEDA)
+- Kubernetes Secrets Management (External Secrets, Sealed Secrets)
+- Kubernetes CRDs (Custom Resource Definitions)
+- Kubernetes Admission Controllers
+- Pod Disruption Budgets
+- Kubernetes StatefulSets
+- Kubernetes DaemonSets
+- Kubernetes Jobs/CronJobs
+- Kubernetes Resource Limits & Requests
+- Kubernetes Pod Security Standards
+- Kubernetes Service Accounts
+- Kubernetes Affinity & Anti-Affinity
+- Kubernetes Taints & Tolerations
+- Kubernetes ConfigMaps
+- Kubernetes PersistentVolumes & StorageClasses
+- Kubernetes Multi-tenancy
+- Kubernetes Cluster API
+- Virtual Kubelet
 
 ## CI/CD & Automation
 
@@ -356,18 +379,6 @@
 - Infracost
 - OpenCost
 
-## Documentation & Knowledge Management
-
-- Docusaurus
-- MkDocs
-- Sphinx
-- GitBook
-- Notion
-- Confluence
-- README best practices
-- Architecture Decision Records (ADRs)
-- Technical writing
-- API documentation
 
 ## Real-time & Streaming
 
@@ -447,23 +458,6 @@
 - Atlassian tools
 - Linear
 - Jira
-
-## Data Engineering & Analytics
-
-- Apache Airflow
-- Dagster
-- Prefect
-- dbt (data build tool)
-- Snowflake
-- Databricks
-- BigQuery
-- Redshift
-- Looker
-- Metabase
-- Apache Superset
-- Cube.js
-- Data lineage
-- Data quality tools (Great Expectations)
 
 ## Infrastructure Platforms
 
