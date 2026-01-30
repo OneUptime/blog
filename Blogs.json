@@ -77211,5 +77211,21 @@
       "vLLM"
     ],
     "post": "2026-01-29-self-hosted-llms-on-kubernetes"
+  },
+  {
+    "title": "Running Out of Claude Credits? How to Use Self-Hosted LLMs with Moltbot",
+    "description": "A practical guide to running self-hosted open-source LLMs with Moltbot when you need an alternative to Claude or other API-based AI assistants. Covers model selection, hardware requirements, and step-by-step configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "AI",
+      "Self-Hosting",
+      "Ollama",
+      "Moltbot",
+      "Machine Learning",
+      "Open Source",
+      "GPU"
+    ],
+    "post": "2026-01-30-self-hosted-llm-with-moltbot"
   }
 ]
