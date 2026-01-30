@@ -271,6 +271,7 @@
 - Auto DevOps
 - Auto Scaling
 - Auto-Auth
+- Auto-Configuration
 - Auto-Instrumentation
 - Auto-Merge
 - Auto-Reconnection
@@ -632,6 +633,7 @@
 - Cleanup
 - CLI
 - CLI Tools
+- Click
 - ClickHouse
 - ClickHouse Cloud
 - ClickHouse Keeper
@@ -1368,7 +1370,7 @@
 - Dynamic Secrets
 - DynamoDB
 - DynamoDB Streams
-- E-commerce
+- E-Commerce
 - E2E Testing
 - eBPF
 - EC2
@@ -1629,7 +1631,7 @@
 - Fixtures
 - Flagger
 - Flaky Tests
-- flamegraph
+- Flamegraph
 - Flash Sales
 - Flask
 - FlatList
@@ -2137,6 +2139,7 @@
 - Istio
 - Item Storage
 - Iteration
+- Iterator
 - Iterators
 - itertools
 - Jackson
@@ -2552,6 +2555,7 @@
 - Messaging
 - Messaging Patterns
 - Metabase
+- Metaclasses
 - Metadata
 - Metadata Management
 - Metadata Refresh
@@ -2675,11 +2679,12 @@
 - Multi-Region
 - Multi-Registry
 - Multi-Site
+- Multi-Stage
 - Multi-Stage Build
 - Multi-Stage Builds
 - Multi-Tenancy
 - Multi-Tenant
-- Multi-Threading
+- Multi-threading
 - Multi-Zone
 - Multipart
 - Multipart Forms
@@ -2812,7 +2817,7 @@
 - Notebook
 - Notification Policies
 - Notifications
-- NOTIFY
+- notify
 - NotLeaderForPartition
 - Npgsql
 - npm
@@ -3787,7 +3792,7 @@
 - sequenceMatch
 - Sequences
 - Sequential Processing
-- Serde
+- serde
 - Serial
 - SERIALIZABLE
 - Serialization
@@ -3804,6 +3809,7 @@
 - Server State
 - Server-Sent Events
 - server-sent-events
+- Server-Side Events
 - Server-Side Rendering
 - server-streaming
 - Serverless
@@ -4039,6 +4045,7 @@
 - Standardization
 - Standards
 - Starlette
+- Starters
 - Startup
 - Startup Time
 - Startups
@@ -4475,7 +4482,7 @@
 - Type Safety
 - Type Switch
 - Type System
-- Type-Ahead
+- Type-ahead
 - TypeDoc
 - TypeError
 - TypeORM

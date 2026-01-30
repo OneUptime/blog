@@ -2,27 +2,27 @@
 
 ## Go Programming
 
-1. How to Use Context for Request Cancellation in Go
-2. How to Implement Middleware Chains in Go HTTP Servers
-3. How to Build RESTful APIs with Standard Library in Go
+[x] How to Use Context for Request Cancellation in Go
+2. ~~How to Implement Middleware Chains in Go HTTP Servers~~
+3. ~~How to Build RESTful APIs with Standard Library in Go~~
 4. How to Handle Large File Downloads in Go
 5. How to Implement Server Push with HTTP/2 in Go
-6. How to Build a Rate Limiter with Redis in Go
+6. ~~How to Build a Rate Limiter with Redis in Go~~
 7. How to Use Semaphores for Concurrency Control in Go
 8. How to Implement Retry with Circuit Breaker Pattern in Go
 9. How to Build Custom HTTP Transport in Go
 10. How to Create Memory-Efficient Slices in Go
 11. How to Parse and Validate JSON Schema in Go
-12. How to Build a Prometheus Client in Go
-13. How to Implement Server-Side Events in Go
+~~12. How to Build a Prometheus Client in Go~~
+[x] How to Implement Server-Side Events in Go
 14. How to Create Custom Logger with Context in Go
 15. How to Build a Simple ORM from Scratch in Go
-16. How to Implement Background Job Processing in Go
+~~16. How to Implement Background Job Processing in Go~~
 17. How to Build Real-Time Notifications with Go
 18. How to Create Custom Middleware for Gin in Go
 19. How to Implement OAuth2 Client in Go
 20. How to Build WebSocket Server with Gorilla in Go
-21. How to Create Thread-Safe Cache in Go
+[x] How to Create Thread-Safe Cache in Go
 22. How to Implement Request Validation with Go-Playground
 23. How to Build Command Line Tools with Bubbletea in Go
 24. How to Create Database Connection Wrapper in Go
@@ -35,15 +35,15 @@
 
 ## Rust Programming
 
-31. How to Build a TCP Echo Server in Rust
-32. How to Implement Custom Iterator in Rust
+31. ~~How to Build a TCP Echo Server in Rust~~
+32. ~~How to Implement Custom Iterator in Rust~~
 33. How to Use Pin and Unpin in Async Rust
 34. How to Build a Simple Database in Rust
 35. How to Implement Custom Derive Macros in Rust
 36. How to Create Memory-Mapped Files in Rust
 37. How to Build a Lock-Free Data Structure in Rust
 38. How to Implement Custom Allocator in Rust
-39. How to Create WASM Modules with Rust
+39. ~~How to Create WASM Modules with Rust~~
 40. How to Build a Compiler Frontend in Rust
 41. How to Implement Custom Protocol Decoder in Rust
 42. How to Create Safe FFI Bindings in Rust
@@ -56,7 +56,7 @@
 49. How to Build a Memory Pool in Rust
 50. How to Implement Custom Drop Logic in Rust
 51. How to Create Compile-Time Constants in Rust
-52. How to Build a Thread Pool in Rust
+~~52. How to Build a Thread Pool in Rust~~
 53. How to Implement Custom Hash Functions in Rust
 54. How to Create Type-State Pattern in Rust
 55. How to Build a Simple Shell in Rust
@@ -68,22 +68,22 @@
 
 ## Python Programming
 
-61. How to Build CLI Applications with Click in Python
-62. How to Implement Custom Context Managers in Python
-63. How to Create Metaclasses in Python
+[x] How to Build CLI Applications with Click in Python
+[x] How to Implement Custom Context Managers in Python
+[x] How to Create Metaclasses in Python
 64. How to Build Property-Based Testing with Hypothesis
 65. How to Implement Custom Descriptors in Python
 66. How to Create Custom Import Hooks in Python
 67. How to Build Asyncio Event Loops in Python
 68. How to Implement Custom Serializers in Python
 69. How to Create Thread-Local Storage in Python
-70. How to Build Plugin Systems in Python
+70. ~~How to Build Plugin Systems in Python~~
 71. How to Implement Custom Exceptions with Tracebacks in Python
 72. How to Create Memory-Efficient Classes with __slots__
 73. How to Build Custom Collections in Python
 74. How to Implement Weak References in Python
 75. How to Create Custom Decorators with Arguments in Python
-76. How to Build Asyncio Queues in Python
+76. ~~How to Build Asyncio Queues in Python~~
 77. How to Implement Custom Iterators in Python
 78. How to Create Context Variables in Python
 79. How to Build Custom ABC Classes in Python
@@ -101,7 +101,7 @@
 
 ## Node.js/TypeScript
 
-91. How to Build Event-Driven Architecture in Node.js
+91. ~~How to Build Event-Driven Architecture in Node.js~~
 92. How to Implement Custom Middleware Pattern in Node.js
 93. How to Create Worker Thread Pools in Node.js
 94. How to Build Streaming File Uploads in Node.js
@@ -113,7 +113,7 @@
 100. How to Build Request Tracing in Node.js
 101. How to Implement Custom Error Handlers in Express
 102. How to Create Dependency Injection Container in TypeScript
-103. How to Build Custom Decorators in TypeScript
+103. ~~How to Build Custom Decorators in TypeScript~~
 104. How to Implement Mapped Types in TypeScript
 105. How to Create Conditional Types in TypeScript
 106. How to Build Type-Safe Event Emitters in TypeScript
@@ -134,13 +134,13 @@
 
 ## Java/Spring Boot
 
-121. How to Build Custom Spring Boot Starters
+121. ~~How to Build Custom Spring Boot Starters~~
 122. How to Implement Custom Annotations in Spring
 123. How to Create Custom BeanPostProcessor in Spring
 124. How to Build Async Methods with CompletableFuture in Spring
 125. How to Implement Custom Converters in Spring
 126. How to Create Custom Scope in Spring
-127. How to Build Event Listeners in Spring
+127. ~~How to Build Event Listeners in Spring~~
 128. How to Implement Custom Validator Constraints in Spring
 129. How to Create Custom PropertySource in Spring
 130. How to Build Conditional Beans in Spring Boot
@@ -174,7 +174,7 @@
 155. How to Implement Custom Result Types in ASP.NET
 156. How to Create Custom Configuration Providers in .NET
 157. How to Build Custom Hosted Services in .NET
-158. How to Implement Custom Health Checks in ASP.NET
+158. ~~How to Implement Custom Health Checks in ASP.NET~~
 159. How to Create Custom Output Formatters in ASP.NET
 160. How to Build Custom Authorization Handlers in .NET
 161. How to Implement Custom Logging Providers in .NET
@@ -200,10 +200,10 @@
 
 ## Docker
 
-181. How to Build Docker Images with BuildKit Secrets
+181. ~~How to Build Docker Images with BuildKit Secrets~~
 182. How to Implement Docker Layer Caching Strategies
 183. How to Create Docker Images for Production
-184. How to Build Multi-Stage Dockerfiles for Monorepos
+184. ~~How to Build Multi-Stage Dockerfiles for Monorepos~~
 185. How to Implement Docker Compose Service Dependencies
 186. How to Create Custom Docker Networks
 187. How to Build Docker Images with Test Stages
@@ -212,7 +212,7 @@
 190. How to Build Docker Images for ARM Architecture
 191. How to Implement Docker Secrets Management
 192. How to Create Docker Compose Override Strategies
-193. How to Build Minimal Docker Images with Distroless
+193. ~~How to Build Minimal Docker Images with Distroless~~
 194. How to Implement Docker Logging Best Practices
 195. How to Create Docker Images with Security Scanning
 196. How to Build Docker Compose for Local Development
@@ -242,8 +242,8 @@
 217. How to Build Kubernetes Service Accounts
 218. How to Implement Kubernetes Pod Scheduling
 219. How to Create Kubernetes Resource Requests
-220. How to Build Kubernetes Init Container Patterns
-221. How to Implement Kubernetes Sidecar Patterns
+220. ~~How to Build Kubernetes Init Container Patterns~~
+221. ~~How to Implement Kubernetes Sidecar Patterns~~
 222. How to Create Kubernetes Ambassador Patterns
 223. How to Build Kubernetes Adapter Patterns
 224. How to Implement Kubernetes Leader Election
@@ -251,7 +251,7 @@
 226. How to Build Kubernetes Topology Spread
 227. How to Implement Kubernetes Pod Priority Classes
 228. How to Create Kubernetes Limit Ranges
-229. How to Build Kubernetes Resource Quotas
+229. ~~How to Build Kubernetes Resource Quotas~~
 230. How to Implement Kubernetes Ephemeral Containers
 231. How to Create Kubernetes Pod Security Policies
 232. How to Build Kubernetes Service Mesh Ready Apps
@@ -301,7 +301,7 @@
 
 271. How to Build PostgreSQL Performance Monitoring
 272. How to Implement PostgreSQL Query Parallelization
-273. How to Create PostgreSQL Partitioning Strategies
+273. ~~How to Create PostgreSQL Partitioning Strategies~~
 274. How to Build PostgreSQL Extension Development
 275. How to Implement PostgreSQL Custom Types
 276. How to Create PostgreSQL Stored Procedures Best Practices
@@ -332,7 +332,7 @@
 
 ## MySQL
 
-301. How to Build MySQL Query Optimization Strategies
+301. ~~How to Build MySQL Query Optimization Strategies~~
 302. How to Implement MySQL Index Design Patterns
 303. How to Create MySQL Partitioning for Large Tables
 304. How to Build MySQL Replication Topologies
@@ -365,7 +365,7 @@
 
 ## MongoDB Advanced
 
-331. How to Build MongoDB Aggregation Pipeline Optimization
+331. ~~How to Build MongoDB Aggregation Pipeline Optimization~~
 332. How to Implement MongoDB Index Intersection
 333. How to Create MongoDB Covered Queries
 334. How to Build MongoDB Compound Index Strategies
@@ -399,7 +399,7 @@
 ## Redis Advanced
 
 361. How to Build Redis Module Development
-362. How to Implement Redis Streams Consumer Groups Advanced
+362. ~~How to Implement Redis Streams Consumer Groups Advanced~~
 363. How to Create Redis Function Libraries
 364. How to Build Redis Custom Commands with Lua
 365. How to Implement Redis Cluster Slot Migration
@@ -431,7 +431,7 @@
 
 ## Elasticsearch Advanced
 
-391. How to Build Elasticsearch Custom Analyzers
+391. ~~How to Build Elasticsearch Custom Analyzers~~
 392. How to Implement Elasticsearch Token Filters
 393. How to Create Elasticsearch Character Filters
 394. How to Build Elasticsearch Custom Tokenizers
@@ -464,7 +464,7 @@
 
 ## Kafka Advanced
 
-421. How to Build Kafka Custom Partitioners
+421. ~~How to Build Kafka Custom Partitioners~~
 422. How to Implement Kafka Custom Serializers
 423. How to Create Kafka Interceptors
 424. How to Build Kafka Admin Client Operations
@@ -498,7 +498,7 @@
 ## RabbitMQ Advanced
 
 451. How to Build RabbitMQ Custom Exchange Types
-452. How to Implement RabbitMQ Message Tracing
+452. ~~How to Implement RabbitMQ Message Tracing~~
 453. How to Create RabbitMQ Shovel Dynamic
 454. How to Build RabbitMQ Federation Topologies
 455. How to Implement RabbitMQ Virtual Host Management
@@ -530,7 +530,7 @@
 
 ## Prometheus
 
-481. How to Build Prometheus Custom Collectors
+481. ~~How to Build Prometheus Custom Collectors~~
 482. How to Implement Prometheus Instrumentation Libraries
 483. How to Create Prometheus Histogram Bucket Design
 484. How to Build Prometheus Summary Quantiles
@@ -563,7 +563,7 @@
 
 ## Grafana Advanced
 
-511. How to Build Grafana Custom Plugins
+511. ~~How to Build Grafana Custom Plugins~~
 512. How to Implement Grafana Data Source Plugins
 513. How to Create Grafana Panel Plugins
 514. How to Build Grafana App Plugins
@@ -596,7 +596,7 @@
 
 ## OpenTelemetry Advanced
 
-541. How to Build OpenTelemetry Custom Instrumentation
+541. ~~How to Build OpenTelemetry Custom Instrumentation~~
 542. How to Implement OpenTelemetry Manual Instrumentation
 543. How to Create OpenTelemetry Span Processors Custom
 544. How to Build OpenTelemetry Metric Readers
@@ -629,7 +629,7 @@
 
 ## Terraform Advanced
 
-571. How to Build Terraform Custom Providers
+571. ~~How to Build Terraform Custom Providers~~
 572. How to Implement Terraform Provider Testing
 573. How to Create Terraform Resource Schemas
 574. How to Build Terraform Data Source Schemas
@@ -662,7 +662,7 @@
 
 ## Ansible Advanced
 
-601. How to Build Ansible Custom Modules
+601. ~~How to Build Ansible Custom Modules~~
 602. How to Implement Ansible Module Utils
 603. How to Create Ansible Action Plugins
 604. How to Build Ansible Filter Plugins
@@ -695,7 +695,7 @@
 
 ## CI/CD Advanced
 
-631. How to Build GitHub Actions Custom Actions
+631. ~~How to Build GitHub Actions Custom Actions~~
 632. How to Implement GitHub Actions Container Actions
 633. How to Create GitHub Actions JavaScript Actions
 634. How to Build GitHub Actions Composite Actions Advanced
@@ -717,7 +717,7 @@
 650. How to Implement GitLab CI Release Jobs
 651. How to Create Jenkins Declarative Pipelines
 652. How to Build Jenkins Scripted Pipelines
-653. How to Implement Jenkins Shared Libraries Advanced
+[x] How to Implement Jenkins Shared Libraries Advanced
 654. How to Create Jenkins Pipeline Templates
 655. How to Build Jenkins Multibranch Pipelines
 656. How to Implement Jenkins Pipeline Triggers
@@ -728,7 +728,7 @@
 
 ## Helm Advanced
 
-661. How to Build Helm Library Charts Advanced
+661. ~~How to Build Helm Library Charts Advanced~~
 662. How to Implement Helm Subcharts Dependencies
 663. How to Create Helm Global Values
 664. How to Build Helm Named Templates
@@ -761,7 +761,7 @@
 
 ## ArgoCD Advanced
 
-691. How to Build ArgoCD Application Sets Generators
+691. ~~How to Build ArgoCD Application Sets Generators~~
 692. How to Implement ArgoCD Git Generator
 693. How to Create ArgoCD List Generator
 694. How to Build ArgoCD Cluster Generator
@@ -794,7 +794,7 @@
 
 ## Service Mesh
 
-721. How to Build Istio EnvoyFilter Advanced
+721. ~~How to Build Istio EnvoyFilter Advanced~~
 722. How to Implement Istio Sidecar Resource
 723. How to Create Istio WorkloadEntry
 724. How to Build Istio WorkloadGroup
@@ -827,7 +827,7 @@
 
 ## Observability Stack
 
-751. How to Build Loki Custom Rules
+751. ~~How to Build Loki Custom Rules~~
 752. How to Implement Loki Retention Strategies
 753. How to Create Loki Chunk Cache
 754. How to Build Loki Index Cache
@@ -860,7 +860,7 @@
 
 ## Security Tools
 
-781. How to Build Falco Custom Rules Advanced
+781. ~~How to Build Falco Custom Rules Advanced~~
 782. How to Implement Falco Plugins Development
 783. How to Create Falco Rule Conditions
 784. How to Build Falco Rule Outputs
@@ -880,7 +880,7 @@
 798. How to Create OPA Gatekeeper Mutation
 799. How to Build OPA Gatekeeper External Data
 800. How to Implement OPA Gatekeeper Config
-801. How to Create Kyverno Policy Validation
+801. ~~How to Create Kyverno Policy Validation~~
 802. How to Build Kyverno Policy Mutation
 803. How to Implement Kyverno Policy Generation
 804. How to Create Kyverno Policy Verify Images
@@ -893,7 +893,7 @@
 
 ## Vault Advanced
 
-811. How to Build Vault Custom Auth Methods
+811. ~~How to Build Vault Custom Auth Methods~~
 812. How to Implement Vault Auth Method Configuration
 813. How to Create Vault Policy Templating
 814. How to Build Vault Policy Paths
@@ -933,7 +933,7 @@
 845. How to Implement QUIC Protocol Configuration
 846. How to Create HTTP/3 Server Configuration
 847. How to Build gRPC Connection Management
-848. How to Implement gRPC Retry Policies
+848. ~~How to Implement gRPC Retry Policies~~
 849. How to Create gRPC Deadlines Best Practices
 850. How to Build DNS Round Robin Load Balancing
 851. How to Implement DNS TTL Strategies
@@ -959,7 +959,7 @@
 
 ## Storage Systems
 
-871. How to Build Ceph Pool Configuration
+871. ~~How to Build Ceph Pool Configuration~~
 872. How to Implement Ceph Placement Group Tuning
 873. How to Create Ceph CRUSH Map Custom
 874. How to Build Ceph Device Classes
@@ -983,7 +983,7 @@
 892. How to Build OpenEBS Jiva Volumes
 893. How to Implement OpenEBS Local PV
 894. How to Create OpenEBS Mayastor
-895. How to Build MinIO Erasure Coding
+[x] How to Build MinIO Erasure Coding
 896. How to Implement MinIO Versioning
 897. How to Create MinIO Object Locking
 898. How to Build MinIO ILM Policies
@@ -992,7 +992,7 @@
 
 ## Cloud Platforms
 
-901. How to Build AWS EKS Blueprints
+901. ~~How to Build AWS EKS Blueprints~~
 902. How to Implement AWS EKS Managed Node Groups
 903. How to Create AWS EKS Fargate Profiles
 904. How to Build AWS EKS Add-ons Management
@@ -1025,7 +1025,7 @@
 
 ## SRE Practices
 
-931. How to Build SLO Alerting Strategies
+931. ~~How to Build SLO Alerting Strategies~~
 932. How to Implement Error Budget Policies
 933. How to Create SLI Specification
 934. How to Build Burn Rate Alerts
@@ -1053,12 +1053,12 @@
 956. How to Implement Alert Correlation
 957. How to Create Runbook Automation
 958. How to Build Self-Healing Systems
-959. How to Implement Chaos Engineering Practices
+959. ~~How to Implement Chaos Engineering Practices~~
 960. How to Create Game Day Exercises
 
 ## Testing Strategies
 
-961. How to Build Contract Testing with Pact Advanced
+961. ~~How to Build Contract Testing with Pact Advanced~~
 962. How to Implement Consumer Driven Contracts
 963. How to Create Provider Verification
 964. How to Build Bi-Directional Contract Testing
@@ -1127,7 +1127,7 @@
 1021. How to Build API Gateway Patterns
 1022. How to Implement Backend for Frontend Pattern
 1023. How to Create Service Discovery Patterns
-1024. How to Build Circuit Breaker Implementation
+1024. ~~How to Build Circuit Breaker Implementation~~
 1025. How to Implement Bulkhead Pattern Details
 1026. How to Create Retry Pattern Implementation
 1027. How to Build Timeout Pattern Implementation
@@ -1135,11 +1135,11 @@
 1029. How to Create Throttling Implementation
 1030. How to Build Load Shedding Strategies
 1031. How to Implement CQRS Implementation Details
-1032. How to Create Event Sourcing Implementation
-1033. How to Build Saga Pattern Implementation
+1032. ~~How to Create Event Sourcing Implementation~~
+1033. ~~How to Build Saga Pattern Implementation~~
 1034. How to Implement Choreography Pattern
 1035. How to Create Orchestration Pattern
-1036. How to Build Outbox Pattern Implementation
+1036. ~~How to Build Outbox Pattern Implementation~~
 1037. How to Implement Inbox Pattern
 1038. How to Create Idempotency Implementation
 1039. How to Build Deduplication Strategies
@@ -1158,7 +1158,7 @@
 ## API Design
 
 1051. How to Build RESTful API Versioning
-1052. How to Implement API Pagination Strategies
+1052. ~~How to Implement API Pagination Strategies~~
 1053. How to Create API Filtering Patterns
 1054. How to Build API Sorting Implementation
 1055. How to Implement API Field Selection
@@ -1181,7 +1181,7 @@
 1072. How to Build GraphQL Query Optimization
 1073. How to Implement GraphQL Pagination
 1074. How to Create GraphQL Error Handling
-1075. How to Build GraphQL Federation Implementation
+1075. ~~How to Build GraphQL Federation Implementation~~
 1076. How to Implement GraphQL Subscriptions Advanced
 1077. How to Create GraphQL Batching
 1078. How to Build GraphQL Caching
@@ -1225,7 +1225,7 @@
 
 1111. How to Build Database Normalization Strategies
 1112. How to Implement Denormalization Patterns
-1113. How to Create Database Sharding Strategies
+1113. ~~How to Create Database Sharding Strategies~~
 1114. How to Build Consistent Hashing Implementation
 1115. How to Implement Range Sharding
 1116. How to Create Directory-Based Sharding
@@ -1249,14 +1249,14 @@
 1134. How to Create Connection Retry Logic
 1135. How to Build Connection Health Checks
 1136. How to Implement Transaction Isolation Levels
-1137. How to Create Optimistic Locking Implementation
+[x] How to Create Optimistic Locking Implementation
 1138. How to Build Pessimistic Locking Implementation
 1139. How to Implement Deadlock Prevention
 1140. How to Create Deadlock Detection
 
 ## Caching Strategies
 
-1141. How to Build Cache Invalidation Strategies
+[x] How to Build Cache Invalidation Strategies
 1142. How to Implement Time-Based Invalidation
 1143. How to Create Event-Based Invalidation
 1144. How to Build Version-Based Invalidation
@@ -1327,12 +1327,12 @@
 1203. How to Create Max Surge Configuration
 1204. How to Build Max Unavailable Configuration
 1205. How to Implement Deployment Progress Deadline
-1206. How to Create Blue-Green Deployment Details
+[x] How to Create Blue-Green Deployment Details
 1207. How to Build Traffic Switching Strategies
 1208. How to Implement Environment Parity
 1209. How to Create Rollback Automation
 1210. How to Build Database Migration Coordination
-1211. How to Implement Canary Deployment Configuration
+[x] How to Implement Canary Deployment Configuration
 1212. How to Create Traffic Percentage Control
 1213. How to Build Canary Metrics Analysis
 1214. How to Implement Progressive Rollout
@@ -1356,7 +1356,7 @@
 ## Logging Best Practices
 
 1231. How to Build Log Format Standards
-1232. How to Implement Structured Logging Format
+[x] How to Implement Structured Logging Format
 1233. How to Create Log Level Guidelines
 1234. How to Build Log Message Conventions
 1235. How to Implement Log Context Propagation
@@ -1365,7 +1365,7 @@
 1238. How to Implement Trace ID Integration
 1239. How to Create User Context Logging
 1240. How to Build Business Context Logging
-1241. How to Implement Log Aggregation Patterns Details
+1241. ~~How to Implement Log Aggregation Patterns Details~~
 1242. How to Create Centralized Logging Architecture
 1243. How to Build Log Shipping Strategies
 1244. How to Implement Log Buffering
@@ -1652,7 +1652,7 @@
 
 ## Feature Flags
 
-1501. How to Build Feature Flag Architecture
+1501. ~~How to Build Feature Flag Architecture~~
 1502. How to Implement Flag Types Design
 1503. How to Create Boolean Flags
 1504. How to Build Multivariate Flags
@@ -1953,7 +1953,7 @@
 1772. How to Implement LLM Serving Patterns
 1773. How to Create LLM Load Balancing
 1774. How to Build LLM Caching Strategies
-1775. How to Implement Prompt Caching
+[x] How to Implement Prompt Caching
 1776. How to Create Response Caching
 1777. How to Build Semantic Caching
 1778. How to Implement LLM Rate Limiting
@@ -1982,7 +1982,7 @@
 
 ## RAG Implementation
 
-1801. How to Build RAG Architecture
+1801. ~~How to Build RAG Architecture~~
 1802. How to Implement Document Ingestion
 1803. How to Create Document Parsing
 1804. How to Build Text Extraction
@@ -2015,7 +2015,7 @@
 
 ## Vector Databases
 
-1831. How to Build Vector Database Architecture
+1831. ~~How to Build Vector Database Architecture~~
 1832. How to Implement Pinecone Integration
 1833. How to Create Weaviate Integration
 1834. How to Build Milvus Integration
@@ -2048,7 +2048,7 @@
 
 ## AI Agent Development
 
-1861. How to Build AI Agent Architecture
+1861. ~~How to Build AI Agent Architecture~~
 1862. How to Implement Agent Planning
 1863. How to Create Task Decomposition
 1864. How to Build Tool Selection
@@ -2081,7 +2081,7 @@
 
 ## Platform Engineering
 
-1891. How to Build Internal Developer Platform
+1891. ~~How to Build Internal Developer Platform~~
 1892. How to Implement Self-Service Infrastructure
 1893. How to Create Service Catalog Details
 1894. How to Build Template Management
