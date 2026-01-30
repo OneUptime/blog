@@ -30,7 +30,7 @@
     "post": "2023-11-06-configure-metallb-with-kubernetes-microk8s"
   },
   {
-    "title": "Why we dont like TDD: A Developer’s Perspective",
+    "title": "Why we dont like TDD: A Developer\u2019s Perspective",
     "description": "Test-Driven Development (TDD) is a software practice emphasizing writing tests before code. Many find drawbacks in committing to an API prematurely and hindering exploration during early development.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
@@ -450,7 +450,7 @@
   },
   {
     "title": "The Power of Three: How Small Teams Drive Big Results at OneUptime",
-    "description": "At OneUptime, we’ve cracked the code: teams of three. Whether it’s engineering squads or management hierarchies, we’ve found that keeping teams small and focused isn’t just efficient- it’s transformative. Here’s how this approach helped us deliver platforms rivaling the scope of Incident.io, StatusPage.io, and more- all with just two tiny teams.",
+    "description": "At OneUptime, we\u2019ve cracked the code: teams of three. Whether it\u2019s engineering squads or management hierarchies, we\u2019ve found that keeping teams small and focused isn\u2019t just efficient- it\u2019s transformative. Here\u2019s how this approach helped us deliver platforms rivaling the scope of Incident.io, StatusPage.io, and more- all with just two tiny teams.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "Team Management",
@@ -511,7 +511,7 @@
   },
   {
     "title": "Stop Paywalling Security: SSO Is a Basic Right, Not an Enterprise Perk",
-    "description": "SSO, SCIM, and 2FA are baseline security hygiene -  not enterprise upsells. Here’s the short case and how OneUptime prices differently.",
+    "description": "SSO, SCIM, and 2FA are baseline security hygiene -  not enterprise upsells. Here\u2019s the short case and how OneUptime prices differently.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "Security",
@@ -523,7 +523,7 @@
   },
   {
     "title": "Logs, Metrics & Traces: Turning Three Noisy Streams into One Story",
-    "description": "A practical, story-driven guide to weaving logs, metrics, and traces into one observability fabric with OpenTelemetry- while avoiding Datadog / New Relic lock‑in and cutting costs using OneUptime.",
+    "description": "A practical, story-driven guide to weaving logs, metrics, and traces into one observability fabric with OpenTelemetry- while avoiding Datadog / New Relic lock\u2011in and cutting costs using OneUptime.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "Observability",
@@ -551,7 +551,7 @@
   },
   {
     "title": "Traces vs Metrics in Software Observability",
-    "description": "Metrics tell you what changed. Traces tell you where. Logs tell you why. Here’s how to design each signal intentionally with OpenTelemetry (and avoid wasting money or time).",
+    "description": "Metrics tell you what changed. Traces tell you where. Logs tell you why. Here\u2019s how to design each signal intentionally with OpenTelemetry (and avoid wasting money or time).",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
       "Observability",
@@ -799,7 +799,7 @@
     "post": "2025-09-15-p50-vs-p95-vs-p99-latency-percentiles"
   },
   {
-    "title": "OpenTelemetry Collector: What It Is, When You Need It, and When You Don’t",
+    "title": "OpenTelemetry Collector: What It Is, When You Need It, and When You Don\u2019t",
     "description": "A practical, no-fluff guide to understanding the OpenTelemetry Collector - what it does, how it works, real architecture patterns (with and without it), and how to decide if/when you should deploy one for performance, control, security, and cost efficiency.",
     "authorGitHubUsername": "devneelpatel",
     "tags": [
@@ -816,8 +816,8 @@
     "post": "2025-09-18-what-is-opentelemetry-collector-and-why-use-one"
   },
   {
-    "title": "Connecitng Metrics ↔ Traces with Exemplars in OpenTelemetry",
-    "description": "A hands-on guide to exemplars, how they connect metric points to the exact trace that caused them, why they matter for faster debugging and cost efficiency, and how to enable them end‑to‑end with OpenTelemetry (apps → collector → backend (like oneuptime)).",
+    "title": "Connecitng Metrics \u2194 Traces with Exemplars in OpenTelemetry",
+    "description": "A hands-on guide to exemplars, how they connect metric points to the exact trace that caused them, why they matter for faster debugging and cost efficiency, and how to enable them end\u2011to\u2011end with OpenTelemetry (apps \u2192 collector \u2192 backend (like oneuptime)).",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "OpenTelemetry",
@@ -900,7 +900,7 @@
   },
   {
     "title": "Mastering OpenTelemetry Tracing: End-to-End User Journey Tracing in Distributed Systems",
-    "description": "A practical, end-to-end guide to propagating OpenTelemetry context (traceparent + baggage) across microservices- HTTP, gRPC, queues, and background jobs- so you can reconstruct real user journeys. We’ll use the OTel API/SDK, W3C Trace Context, semantic conventions, and head/tail sampling via the OpenTelemetry Collector.",
+    "description": "A practical, end-to-end guide to propagating OpenTelemetry context (traceparent + baggage) across microservices- HTTP, gRPC, queues, and background jobs- so you can reconstruct real user journeys. We\u2019ll use the OTel API/SDK, W3C Trace Context, semantic conventions, and head/tail sampling via the OpenTelemetry Collector.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "OpenTelemetry",
@@ -932,7 +932,7 @@
   },
   {
     "title": "Eliminating Toil: A Practical SRE Playbook",
-    "description": "What toil really is (and isn’t), how to find and measure it, and pragmatic steps to eliminate it with automation, guardrails, and culture.",
+    "description": "What toil really is (and isn\u2019t), how to find and measure it, and pragmatic steps to eliminate it with automation, guardrails, and culture.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Site Reliability Engineering",
@@ -1104,7 +1104,7 @@
   },
   {
     "title": "Organize Your Service Catalog with OneUptime",
-    "description": "Learn how to map services, owners, monitors, and dependencies inside OneUptime’s Service Catalog so everyone knows what powers your product.",
+    "description": "Learn how to map services, owners, monitors, and dependencies inside OneUptime\u2019s Service Catalog so everyone knows what powers your product.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Service Catalog",
@@ -1389,7 +1389,7 @@
   },
   {
     "title": "How to Build a kubectl Visibility Toolkit for Fast Incident Response",
-    "description": "A curated list of `kubectl` commands, aliases, and plugins that surface cluster health in seconds so you can answer “what broke?” without dashboards.",
+    "description": "A curated list of `kubectl` commands, aliases, and plugins that surface cluster health in seconds so you can answer \u201cwhat broke?\u201d without dashboards.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Kubernetes",
@@ -78897,5 +78897,70 @@
       "Background Jobs"
     ],
     "post": "2026-01-30-how-to-build-scheduled-task-runner-in-go"
+  },
+  {
+    "title": "How to Create MACSec Encryption",
+    "description": "A comprehensive guide to implementing MACSec (Media Access Control Security) encryption for Layer 2 network protection. Learn how to configure MACSec on Linux systems, network switches, and understand the protocol mechanics with practical examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MACSec",
+      "Networking",
+      "Security",
+      "Encryption"
+    ],
+    "post": "2026-01-30-macsec-encryption",
+    "link": "https://oneuptime.com/blog/post/macsec-encryption/view"
+  },
+  {
+    "title": "How to Create Terraform Sentinel Policies",
+    "description": "Learn how to create Terraform Sentinel policies from scratch, including policy structure, imports, testing strategies, and deployment to Terraform Cloud for automated infrastructure governance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "Sentinel",
+      "Policy",
+      "Compliance"
+    ],
+    "post": "2026-01-30-terraform-sentinel-policies",
+    "link": "https://oneuptime.com/blog/post/terraform-sentinel-policies/view"
+  },
+  {
+    "title": "How to Build Helm Test Hooks",
+    "description": "A practical guide to building Helm test hooks for validating your Kubernetes deployments, from simple connectivity tests to comprehensive integration test suites.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Helm",
+      "Kubernetes",
+      "Testing",
+      "Hooks"
+    ],
+    "post": "2026-01-30-helm-test-hooks",
+    "link": "https://oneuptime.com/blog/post/helm-test-hooks/view"
+  },
+  {
+    "title": "How to Implement Kafka Log Compaction Strategies",
+    "description": "A comprehensive guide to implementing Kafka log compaction strategies, including decision frameworks, advanced patterns, and production-ready configurations for different use cases.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kafka",
+      "Log Compaction",
+      "Storage",
+      "Performance"
+    ],
+    "post": "2026-01-30-kafka-log-compaction",
+    "link": "https://oneuptime.com/blog/post/kafka-log-compaction/view"
+  },
+  {
+    "title": "How to Create OpenTelemetry Log Bridge API",
+    "description": "Learn how to implement the OpenTelemetry Log Bridge API to connect your existing logging frameworks with OpenTelemetry, enabling unified observability with correlated logs, traces, and metrics across your distributed systems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Logging",
+      "Observability",
+      "APM"
+    ],
+    "post": "2026-01-30-opentelemetry-log-bridge-api",
+    "link": "https://oneuptime.com/blog/post/opentelemetry-log-bridge-api/view"
   }
 ]
