@@ -5,65 +5,65 @@
 [x] How to Use Context for Request Cancellation in Go
 2. ~~How to Implement Middleware Chains in Go HTTP Servers~~
 3. ~~How to Build RESTful APIs with Standard Library in Go~~
-4. How to Handle Large File Downloads in Go
-5. How to Implement Server Push with HTTP/2 in Go
+4. ~~How to Handle Large File Downloads in Go~~
+5. ~~How to Implement Server Push with HTTP/2 in Go~~
 6. ~~How to Build a Rate Limiter with Redis in Go~~
-7. How to Use Semaphores for Concurrency Control in Go
+7. ~~How to Use Semaphores for Concurrency Control in Go~~
 8. How to Implement Retry with Circuit Breaker Pattern in Go
-9. How to Build Custom HTTP Transport in Go
-10. How to Create Memory-Efficient Slices in Go
-11. How to Parse and Validate JSON Schema in Go
+9. ~~How to Build Custom HTTP Transport in Go~~
+10. ~~How to Create Memory-Efficient Slices in Go~~
+11. ~~How to Parse and Validate JSON Schema in Go~~
 ~~12. How to Build a Prometheus Client in Go~~
 [x] How to Implement Server-Side Events in Go
-14. How to Create Custom Logger with Context in Go
-15. How to Build a Simple ORM from Scratch in Go
+14. ~~How to Create Custom Logger with Context in Go~~
+15. ~~How to Build a Simple ORM from Scratch in Go~~
 ~~16. How to Implement Background Job Processing in Go~~
-17. How to Build Real-Time Notifications with Go
-18. How to Create Custom Middleware for Gin in Go
-19. How to Implement OAuth2 Client in Go
-20. How to Build WebSocket Server with Gorilla in Go
+17. ~~How to Build Real-Time Notifications with Go~~
+18. ~~How to Create Custom Middleware for Gin in Go~~
+19. ~~How to Implement OAuth2 Client in Go~~
+20. ~~How to Build WebSocket Server with Gorilla in Go~~
 [x] How to Create Thread-Safe Cache in Go
-22. How to Implement Request Validation with Go-Playground
-23. How to Build Command Line Tools with Bubbletea in Go
-24. How to Create Database Connection Wrapper in Go
-25. How to Implement Dependency Injection without Frameworks in Go
-26. How to Build File Upload Service in Go
-27. How to Create Custom JSON Marshaler in Go
+22. ~~How to Implement Request Validation with Go-Playground~~
+23. ~~How to Build Command Line Tools with Bubbletea in Go~~
+24. ~~How to Create Database Connection Wrapper in Go~~
+25. ~~How to Implement Dependency Injection without Frameworks in Go~~
+26. ~~How to Build File Upload Service in Go~~
+27. ~~How to Create Custom JSON Marshaler in Go~~
 28. How to Implement API Key Authentication in Go
-29. How to Build Scheduled Task Runner in Go
-30. How to Create Custom Error Types with Stack Traces in Go
+29. ~~How to Build Scheduled Task Runner in Go~~
+30. ~~How to Create Custom Error Types with Stack Traces in Go~~
 
 ## Rust Programming
 
 31. ~~How to Build a TCP Echo Server in Rust~~
 32. ~~How to Implement Custom Iterator in Rust~~
-33. How to Use Pin and Unpin in Async Rust
-34. How to Build a Simple Database in Rust
-35. How to Implement Custom Derive Macros in Rust
-36. How to Create Memory-Mapped Files in Rust
-37. How to Build a Lock-Free Data Structure in Rust
-38. How to Implement Custom Allocator in Rust
+33. ~~How to Use Pin and Unpin in Async Rust~~
+34. ~~How to Build a Simple Database in Rust~~
+35. ~~How to Implement Custom Derive Macros in Rust~~
+36. ~~How to Create Memory-Mapped Files in Rust~~
+37. ~~How to Build a Lock-Free Data Structure in Rust~~
+38. ~~How to Implement Custom Allocator in Rust~~
 39. ~~How to Create WASM Modules with Rust~~
 40. How to Build a Compiler Frontend in Rust
-41. How to Implement Custom Protocol Decoder in Rust
+41. ~~How to Implement Custom Protocol Decoder in Rust~~
 42. How to Create Safe FFI Bindings in Rust
-43. How to Build a Simple Regex Engine in Rust
-44. How to Implement Custom Synchronization Primitives in Rust
+43. ~~How to Build a Simple Regex Engine in Rust~~
+44. ~~How to Implement Custom Synchronization Primitives in Rust~~
 45. How to Create Zero-Copy Parsers in Rust
-46. How to Build a Simple HTTP Server from Scratch in Rust
-47. How to Implement Custom Futures in Rust
-48. How to Create Procedural Macros in Rust
-49. How to Build a Memory Pool in Rust
-50. How to Implement Custom Drop Logic in Rust
+46. ~~How to Build a Simple HTTP Server from Scratch in Rust~~
+47. ~~How to Implement Custom Futures in Rust~~
+48. ~~How to Create Procedural Macros in Rust~~
+49. ~~How to Build a Memory Pool in Rust~~
+50. ~~How to Implement Custom Drop Logic in Rust~~
 51. How to Create Compile-Time Constants in Rust
 ~~52. How to Build a Thread Pool in Rust~~
-53. How to Implement Custom Hash Functions in Rust
+53. ~~How to Implement Custom Hash Functions in Rust~~
 54. How to Create Type-State Pattern in Rust
-55. How to Build a Simple Shell in Rust
-56. How to Implement Custom Comparison Traits in Rust
+55. ~~How to Build a Simple Shell in Rust~~
+56. ~~How to Implement Custom Comparison Traits in Rust~~
 57. How to Create Const Generics in Rust
-58. How to Build a Simple Parser Combinator in Rust
-59. How to Implement Custom Iterators with Lifetimes in Rust
+58. ~~How to Build a Simple Parser Combinator in Rust~~
+59. ~~How to Implement Custom Iterators with Lifetimes in Rust~~
 60. How to Create Safe Wrapper for Unsafe Code in Rust
 
 ## Python Programming
@@ -71,41 +71,41 @@
 [x] How to Build CLI Applications with Click in Python
 [x] How to Implement Custom Context Managers in Python
 [x] How to Create Metaclasses in Python
-64. How to Build Property-Based Testing with Hypothesis
-65. How to Implement Custom Descriptors in Python
-66. How to Create Custom Import Hooks in Python
-67. How to Build Asyncio Event Loops in Python
-68. How to Implement Custom Serializers in Python
+64. ~~How to Build Property-Based Testing with Hypothesis~~
+65. ~~How to Implement Custom Descriptors in Python~~
+66. ~~How to Create Custom Import Hooks in Python~~
+67. ~~How to Build Asyncio Event Loops in Python~~
+68. ~~How to Implement Custom Serializers in Python~~
 69. How to Create Thread-Local Storage in Python
 70. ~~How to Build Plugin Systems in Python~~
-71. How to Implement Custom Exceptions with Tracebacks in Python
-72. How to Create Memory-Efficient Classes with __slots__
-73. How to Build Custom Collections in Python
+71. ~~How to Implement Custom Exceptions with Tracebacks in Python~~
+72. ~~How to Create Memory-Efficient Classes with __slots__~~
+73. ~~How to Build Custom Collections in Python~~
 74. How to Implement Weak References in Python
-75. How to Create Custom Decorators with Arguments in Python
+75. ~~How to Create Custom Decorators with Arguments in Python~~
 76. ~~How to Build Asyncio Queues in Python~~
-77. How to Implement Custom Iterators in Python
-78. How to Create Context Variables in Python
-79. How to Build Custom ABC Classes in Python
-80. How to Implement Custom __getattr__ and __setattr__ in Python
-81. How to Create Asyncio Semaphores in Python
-82. How to Build Custom Protocols with typing.Protocol in Python
-83. How to Implement Custom __new__ Method in Python
+77. ~~How to Implement Custom Iterators in Python~~
+78. ~~How to Create Context Variables in Python~~
+79. ~~How to Build Custom ABC Classes in Python~~
+80. ~~How to Implement Custom __getattr__ and __setattr__ in Python~~
+81. ~~How to Create Asyncio Semaphores in Python~~
+82. ~~How to Build Custom Protocols with typing.Protocol in Python~~
+83. ~~How to Implement Custom __new__ Method in Python~~
 84. How to Create Thread Pools with concurrent.futures in Python
 85. How to Build Dataclass Validators in Python
-86. How to Implement Custom __hash__ and __eq__ in Python
-87. How to Create Asyncio Locks in Python
+86. ~~How to Implement Custom __hash__ and __eq__ in Python~~
+87. ~~How to Create Asyncio Locks in Python~~
 88. How to Build Generic Types with TypeVar in Python
-89. How to Implement Custom __init_subclass__ in Python
-90. How to Create Asyncio Timeouts in Python
+89. ~~How to Implement Custom __init_subclass__ in Python~~
+90. ~~How to Create Asyncio Timeouts in Python~~
 
 ## Node.js/TypeScript
 
 91. ~~How to Build Event-Driven Architecture in Node.js~~
-92. How to Implement Custom Middleware Pattern in Node.js
-93. How to Create Worker Thread Pools in Node.js
+92. ~~How to Implement Custom Middleware Pattern in Node.js~~
+93. ~~How to Create Worker Thread Pools in Node.js~~
 94. How to Build Streaming File Uploads in Node.js
-95. How to Implement Custom Transform Streams in Node.js
+95. ~~How to Implement Custom Transform Streams in Node.js~~
 96. How to Create Memory Cache with TTL in Node.js
 97. How to Build Graceful Shutdown Handlers in Node.js
 98. How to Implement Custom Logging Framework in Node.js
@@ -114,47 +114,47 @@
 101. How to Implement Custom Error Handlers in Express
 102. How to Create Dependency Injection Container in TypeScript
 103. ~~How to Build Custom Decorators in TypeScript~~
-104. How to Implement Mapped Types in TypeScript
-105. How to Create Conditional Types in TypeScript
-106. How to Build Type-Safe Event Emitters in TypeScript
-107. How to Implement Branded Types in TypeScript
-108. How to Create Template Literal Types in TypeScript
-109. How to Build Custom Type Guards in TypeScript
-110. How to Implement Recursive Types in TypeScript
+104. ~~How to Implement Mapped Types in TypeScript~~
+105. ~~How to Create Conditional Types in TypeScript~~
+106. ~~How to Build Type-Safe Event Emitters in TypeScript~~
+107. ~~How to Implement Branded Types in TypeScript~~
+108. ~~How to Create Template Literal Types in TypeScript~~
+109. ~~How to Build Custom Type Guards in TypeScript~~
+110. ~~How to Implement Recursive Types in TypeScript~~
 111. How to Create Variance Annotations in TypeScript
-112. How to Build Type-Safe Builders in TypeScript
+112. ~~How to Build Type-Safe Builders in TypeScript~~
 113. How to Implement Index Signatures in TypeScript
 114. How to Create Abstract Factory Pattern in TypeScript
 115. How to Build Type-Safe State Machines in TypeScript
-116. How to Implement Custom Utility Types in TypeScript
+116. ~~How to Implement Custom Utility Types in TypeScript~~
 117. How to Create Const Assertions in TypeScript
 118. How to Build Type Inference Helpers in TypeScript
-119. How to Implement Nominal Types in TypeScript
+119. ~~How to Implement Nominal Types in TypeScript~~
 120. How to Create Type-Safe API Clients in TypeScript
 
 ## Java/Spring Boot
 
 121. ~~How to Build Custom Spring Boot Starters~~
-122. How to Implement Custom Annotations in Spring
-123. How to Create Custom BeanPostProcessor in Spring
+122. ~~How to Implement Custom Annotations in Spring~~
+123. ~~How to Create Custom BeanPostProcessor in Spring~~
 124. How to Build Async Methods with CompletableFuture in Spring
-125. How to Implement Custom Converters in Spring
-126. How to Create Custom Scope in Spring
+125. ~~How to Implement Custom Converters in Spring~~
+126. ~~How to Create Custom Scope in Spring~~
 127. ~~How to Build Event Listeners in Spring~~
-128. How to Implement Custom Validator Constraints in Spring
-129. How to Create Custom PropertySource in Spring
+128. ~~How to Implement Custom Validator Constraints in Spring~~
+129. ~~How to Create Custom PropertySource in Spring~~
 130. How to Build Conditional Beans in Spring Boot
 131. How to Implement Custom Error Decoder in Feign
 132. How to Create Custom Metrics with Micrometer
 133. How to Build Circuit Breaker with Resilience4j
-134. How to Implement Custom Security Filters in Spring
-135. How to Create Custom Cache Manager in Spring
+134. ~~How to Implement Custom Security Filters in Spring~~
+135. ~~How to Create Custom Cache Manager in Spring~~
 136. How to Build Scheduled Tasks with @Scheduled
-137. How to Implement Custom MessageConverter in Spring
+137. ~~How to Implement Custom MessageConverter in Spring~~
 138. How to Create Custom HandlerMethodArgumentResolver
-139. How to Build Custom ResponseBodyAdvice in Spring
-140. How to Implement Custom Transaction Manager in Spring
-141. How to Create Custom Reactor Operators in Spring WebFlux
+139. ~~How to Build Custom ResponseBodyAdvice in Spring~~
+140. ~~How to Implement Custom Transaction Manager in Spring~~
+141. ~~How to Create Custom Reactor Operators in Spring WebFlux~~
 142. How to Build Custom WebClient Filters
 143. How to Implement Custom R2DBC Converters
 144. How to Create Custom Spring Data Repository Methods
@@ -167,7 +167,7 @@
 
 ## .NET/C#
 
-151. How to Build Custom Middleware in ASP.NET Core
+151. ~~How to Build Custom Middleware in ASP.NET Core~~
 152. How to Implement Custom Model Binders in ASP.NET
 153. How to Create Custom Tag Helpers in Razor
 154. How to Build Custom Action Filters in ASP.NET
@@ -190,26 +190,26 @@
 171. How to Create Custom Razor Components in Blazor
 172. How to Build Custom StateContainer in Blazor
 173. How to Implement Custom JSInterop in Blazor
-174. How to Create Custom Middleware Pipeline in .NET
+174. ~~How to Create Custom Middleware Pipeline in .NET~~
 175. How to Build Custom Channel with System.Threading.Channels
-176. How to Implement Custom AsyncEnumerable in .NET
+176. ~~How to Implement Custom AsyncEnumerable in .NET~~
 177. How to Create Custom Memory Pool in .NET
 178. How to Build Custom Span Operations in .NET
-179. How to Implement Custom ArrayPool in .NET
+179. ~~How to Implement Custom ArrayPool in .NET~~
 180. How to Create Custom Minimal API Endpoint Filters
 
 ## Docker
 
 181. ~~How to Build Docker Images with BuildKit Secrets~~
-182. How to Implement Docker Layer Caching Strategies
-183. How to Create Docker Images for Production
+182. ~~How to Implement Docker Layer Caching Strategies~~
+183. ~~How to Create Docker Images for Production~~
 184. ~~How to Build Multi-Stage Dockerfiles for Monorepos~~
-185. How to Implement Docker Compose Service Dependencies
+185. ~~How to Implement Docker Compose Service Dependencies~~
 186. How to Create Custom Docker Networks
 187. How to Build Docker Images with Test Stages
 188. How to Implement Docker Health Check Best Practices
 189. How to Create Docker Volumes for Stateful Apps
-190. How to Build Docker Images for ARM Architecture
+190. ~~How to Build Docker Images for ARM Architecture~~
 191. How to Implement Docker Secrets Management
 192. How to Create Docker Compose Override Strategies
 193. ~~How to Build Minimal Docker Images with Distroless~~
@@ -221,7 +221,7 @@
 199. How to Build Docker Images with Build Arguments
 200. How to Implement Docker Container Networking Modes
 201. How to Create Docker Compose with Profiles
-202. How to Build Docker Images for Python Applications
+202. ~~How to Build Docker Images for Python Applications~~
 203. How to Implement Docker Container Security Context
 204. How to Create Docker Volumes with NFS
 205. How to Build Docker Images with Cache Busting
@@ -233,11 +233,11 @@
 
 ## Kubernetes Basics
 
-211. How to Create Kubernetes Deployments Best Practices
-212. How to Implement Kubernetes Service Types
-213. How to Create Kubernetes ConfigMap Strategies
+211. ~~How to Create Kubernetes Deployments Best Practices~~
+212. ~~How to Implement Kubernetes Service Types~~
+213. ~~How to Create Kubernetes ConfigMap Strategies~~
 214. How to Build Kubernetes Secrets Management
-215. How to Implement Kubernetes Rolling Updates
+215. ~~How to Implement Kubernetes Rolling Updates~~
 216. How to Create Kubernetes Namespace Isolation
 217. How to Build Kubernetes Service Accounts
 218. How to Implement Kubernetes Pod Scheduling
@@ -299,8 +299,8 @@
 
 ## PostgreSQL
 
-271. How to Build PostgreSQL Performance Monitoring
-272. How to Implement PostgreSQL Query Parallelization
+271. ~~How to Build PostgreSQL Performance Monitoring~~
+272. ~~How to Implement PostgreSQL Query Parallelization~~
 273. ~~How to Create PostgreSQL Partitioning Strategies~~
 274. How to Build PostgreSQL Extension Development
 275. How to Implement PostgreSQL Custom Types
@@ -333,7 +333,7 @@
 ## MySQL
 
 301. ~~How to Build MySQL Query Optimization Strategies~~
-302. How to Implement MySQL Index Design Patterns
+302. ~~How to Implement MySQL Index Design Patterns~~
 303. How to Create MySQL Partitioning for Large Tables
 304. How to Build MySQL Replication Topologies
 305. How to Implement MySQL Group Replication Troubleshooting
@@ -366,7 +366,7 @@
 ## MongoDB Advanced
 
 331. ~~How to Build MongoDB Aggregation Pipeline Optimization~~
-332. How to Implement MongoDB Index Intersection
+332. ~~How to Implement MongoDB Index Intersection~~
 333. How to Create MongoDB Covered Queries
 334. How to Build MongoDB Compound Index Strategies
 335. How to Implement MongoDB Text Index Optimization
@@ -400,7 +400,7 @@
 
 361. How to Build Redis Module Development
 362. ~~How to Implement Redis Streams Consumer Groups Advanced~~
-363. How to Create Redis Function Libraries
+363. ~~How to Create Redis Function Libraries~~
 364. How to Build Redis Custom Commands with Lua
 365. How to Implement Redis Cluster Slot Migration
 366. How to Create Redis Replication Buffer Optimization
@@ -432,7 +432,7 @@
 ## Elasticsearch Advanced
 
 391. ~~How to Build Elasticsearch Custom Analyzers~~
-392. How to Implement Elasticsearch Token Filters
+392. ~~How to Implement Elasticsearch Token Filters~~
 393. How to Create Elasticsearch Character Filters
 394. How to Build Elasticsearch Custom Tokenizers
 395. How to Implement Elasticsearch Normalizers
@@ -465,7 +465,7 @@
 ## Kafka Advanced
 
 421. ~~How to Build Kafka Custom Partitioners~~
-422. How to Implement Kafka Custom Serializers
+422. ~~How to Implement Kafka Custom Serializers~~
 423. How to Create Kafka Interceptors
 424. How to Build Kafka Admin Client Operations
 425. How to Implement Kafka Exactly-Once Transactions
@@ -564,7 +564,7 @@
 ## Grafana Advanced
 
 511. ~~How to Build Grafana Custom Plugins~~
-512. How to Implement Grafana Data Source Plugins
+512. ~~How to Implement Grafana Data Source Plugins~~
 513. How to Create Grafana Panel Plugins
 514. How to Build Grafana App Plugins
 515. How to Implement Grafana Backend Plugins
@@ -630,7 +630,7 @@
 ## Terraform Advanced
 
 571. ~~How to Build Terraform Custom Providers~~
-572. How to Implement Terraform Provider Testing
+572. ~~How to Implement Terraform Provider Testing~~
 573. How to Create Terraform Resource Schemas
 574. How to Build Terraform Data Source Schemas
 575. How to Implement Terraform Import Support
@@ -1026,7 +1026,7 @@
 ## SRE Practices
 
 931. ~~How to Build SLO Alerting Strategies~~
-932. How to Implement Error Budget Policies
+932. ~~How to Implement Error Budget Policies~~
 933. How to Create SLI Specification
 934. How to Build Burn Rate Alerts
 935. How to Implement Multi-Window Alerts
@@ -1086,7 +1086,7 @@
 986. How to Implement Secret Detection
 987. How to Create License Compliance Testing
 988. How to Build Mutation Testing Strategies
-989. How to Implement Property-Based Testing Patterns
+989. ~~How to Implement Property-Based Testing Patterns~~
 990. How to Create Fuzz Testing Integration
 
 ## Performance Optimization
@@ -1106,7 +1106,7 @@
 1003. How to Build Memory Pool Optimization
 1004. How to Implement Thread Pool Sizing
 1005. How to Create Connection Pool Tuning
-1006. How to Build Query Optimization Strategies
+1006. ~~How to Build Query Optimization Strategies~~
 1007. How to Implement Index Optimization
 1008. How to Create Query Plan Analysis
 1009. How to Build Query Caching Strategies
@@ -1153,7 +1153,7 @@
 1047. How to Create Branch by Abstraction
 1048. How to Build Feature Toggle Implementation
 1049. How to Implement Canary Release Pattern
-1050. How to Create Blue-Green Deployment Pattern
+1050. ~~How to Create Blue-Green Deployment Pattern~~
 
 ## API Design
 
@@ -1732,7 +1732,7 @@
 1572. How to Create TCP Health Checks
 1573. How to Build HTTP Health Checks
 1574. How to Implement gRPC Health Checks
-1575. How to Create Custom Health Checks
+1575. ~~How to Create Custom Health Checks~~
 1576. How to Build Health Check Intervals
 1577. How to Implement Health Check Thresholds
 1578. How to Create Health Check Timeouts
@@ -1912,7 +1912,7 @@
 1737. How to Create Data Access Patterns
 1738. How to Build Query Optimization Details
 1739. How to Implement Join Optimization
-1740. How to Create Aggregation Optimization
+1740. ~~How to Create Aggregation Optimization~~
 
 ## Machine Learning Ops
 

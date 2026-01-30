@@ -77369,7 +77369,7 @@
     "post": "2026-01-30-circuit-breaker-implementation"
   },
   {
-    "title": "How to Build Contract Testing with Pact Advanced",
+    "title": "How to Build Contract Testing with Pact",
     "description": "Implement consumer-driven contract testing with Pact for reliable API integrations between microservices with broker workflows.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -77519,7 +77519,8 @@
       "Go",
       "Context",
       "Concurrency",
-      "HTTP"
+      "HTTP",
+      "Request Handling"
     ],
     "post": "2026-01-30-go-context-request-cancellation"
   },
@@ -78200,5 +78201,701 @@
       "Machine Learning"
     ],
     "post": "2026-01-30-vector-database-architecture"
+  },
+  {
+    "title": "How to Create Custom Decorators with Arguments in Python",
+    "description": "Learn how to create Python decorators that accept arguments using nested functions and functools.wraps for flexible behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Decorators",
+      "Metaprogramming",
+      "Functions"
+    ],
+    "post": "2026-01-30-how-to-create-custom-decorators-with-arguments-in-python"
+  },
+  {
+    "title": "How to Parse and Validate JSON Schema in Go",
+    "description": "Learn how to parse and validate JSON data against schemas in Go using popular libraries for robust API validation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "JSON",
+      "Validation",
+      "API"
+    ],
+    "post": "2026-01-30-how-to-parse-and-validate-json-schema-in-go"
+  },
+  {
+    "title": "How to Implement Branded Types in TypeScript",
+    "description": "Learn how to use branded types in TypeScript to create distinct types that prevent accidental type mixing at compile time.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "Types",
+      "Branding",
+      "Type Safety"
+    ],
+    "post": "2026-01-30-how-to-implement-branded-types-in-typescript"
+  },
+  {
+    "title": "How to Implement MySQL Index Design Patterns",
+    "description": "Learn MySQL index design patterns including composite indexes, covering indexes, and strategies for optimal query performance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MySQL",
+      "Indexes",
+      "Performance",
+      "Database"
+    ],
+    "post": "2026-01-30-how-to-implement-mysql-index-design-patterns"
+  },
+  {
+    "title": "How to Implement Error Budget Policies",
+    "description": "Learn how to implement error budget policies that balance feature velocity with reliability using SLOs and automated responses.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SRE",
+      "Error Budget",
+      "Reliability",
+      "DevOps"
+    ],
+    "post": "2026-01-30-how-to-implement-error-budget-policies"
+  },
+  {
+    "title": "How to Build Property-Based Testing with Hypothesis",
+    "description": "Learn how to use property-based testing with Hypothesis in Python to discover edge cases and improve test coverage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Testing",
+      "Hypothesis",
+      "Quality"
+    ],
+    "post": "2026-01-30-how-to-build-property-based-testing-with-hypothesis"
+  },
+  {
+    "title": "How to Build Type-Safe Event Emitters in TypeScript",
+    "description": "Learn how to create type-safe event emitters in TypeScript with strongly typed event names and payloads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "Events",
+      "Type Safety",
+      "Patterns"
+    ],
+    "post": "2026-01-30-how-to-build-type-safe-event-emitters-in-typescript"
+  },
+  {
+    "title": "How to Create Database Connection Wrapper in Go",
+    "description": "Learn how to build a database connection wrapper in Go for connection pooling, transaction management, and query instrumentation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Database",
+      "SQL",
+      "Architecture"
+    ],
+    "post": "2026-01-30-how-to-create-database-connection-wrapper-in-go"
+  },
+  {
+    "title": "How to Build Asyncio Event Loops in Python",
+    "description": "Learn how asyncio event loops work in Python and how to customize them for advanced concurrency patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Asyncio",
+      "Concurrency",
+      "Event Loop"
+    ],
+    "post": "2026-01-30-how-to-build-asyncio-event-loops-in-python"
+  },
+  {
+    "title": "How to Create Redis Function Libraries",
+    "description": "Learn how to create Redis Function libraries for server-side scripting with improved performance and atomic operations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Redis",
+      "Functions",
+      "Lua",
+      "Performance"
+    ],
+    "post": "2026-01-30-how-to-create-redis-function-libraries"
+  },
+  {
+    "title": "How to Implement MongoDB Index Intersection",
+    "description": "Learn how MongoDB index intersection works and when to use multiple single-field indexes versus compound indexes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MongoDB",
+      "Indexes",
+      "Performance",
+      "Database"
+    ],
+    "post": "2026-01-30-how-to-implement-mongodb-index-intersection"
+  },
+  {
+    "title": "How to Build Command Line Tools with Bubbletea in Go",
+    "description": "Learn how to build interactive terminal user interfaces in Go using the Bubbletea framework with the Elm architecture.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "CLI",
+      "Bubbletea",
+      "TUI"
+    ],
+    "post": "2026-01-30-how-to-build-command-line-tools-with-bubbletea-in-go"
+  },
+  {
+    "title": "How to Create Memory-Efficient Slices in Go",
+    "description": "Learn techniques for creating memory-efficient slices in Go, including pre-allocation, capacity management, and avoiding common pitfalls.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Memory",
+      "Performance",
+      "Optimization"
+    ],
+    "post": "2026-01-30-how-to-create-memory-efficient-slices-in-go"
+  },
+  {
+    "title": "How to Implement Server Push with HTTP/2 in Go",
+    "description": "Learn how to implement HTTP/2 server push in Go to preemptively send resources to clients and improve page load times.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "HTTP/2",
+      "Performance",
+      "Web"
+    ],
+    "post": "2026-01-30-how-to-implement-server-push-with-http2-in-go"
+  },
+  {
+    "title": "How to Implement Mapped Types in TypeScript",
+    "description": "Learn how to use mapped types in TypeScript to transform existing types into new ones with powerful type manipulations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "Types",
+      "Advanced",
+      "Generics"
+    ],
+    "post": "2026-01-30-how-to-implement-mapped-types-in-typescript"
+  },
+  {
+    "title": "How to Create Docker Images for Production",
+    "description": "Learn best practices for creating production-ready Docker images with security, size optimization, and reliability in mind.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Production",
+      "Security",
+      "DevOps"
+    ],
+    "post": "2026-01-30-how-to-create-docker-images-for-production"
+  },
+  {
+    "title": "How to Implement Dependency Injection without Frameworks in Go",
+    "description": "Learn how to implement clean dependency injection in Go using interfaces and constructor injection without relying on frameworks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Dependency Injection",
+      "Architecture",
+      "Testing"
+    ],
+    "post": "2026-01-30-how-to-implement-dependency-injection-without-frameworks-in-go"
+  },
+  {
+    "title": "How to Implement Custom Transform Streams in Node.js",
+    "description": "Learn how to implement custom Transform streams in Node.js for efficient data processing pipelines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Streams",
+      "Transform",
+      "Performance"
+    ],
+    "post": "2026-01-30-how-to-implement-custom-transform-streams-in-nodejs"
+  },
+  {
+    "title": "How to Create Conditional Types in TypeScript",
+    "description": "Learn how to use conditional types in TypeScript for powerful type-level programming and type inference.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "Types",
+      "Conditional",
+      "Advanced"
+    ],
+    "post": "2026-01-30-how-to-create-conditional-types-in-typescript"
+  },
+  {
+    "title": "How to Build WebSocket Server with Gorilla in Go",
+    "description": "Learn how to build a production-ready WebSocket server in Go using the Gorilla WebSocket library with proper connection handling and scaling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "WebSocket",
+      "Gorilla",
+      "Real-Time"
+    ],
+    "post": "2026-01-30-how-to-build-websocket-server-with-gorilla-in-go"
+  },
+  {
+    "title": "How to Create Custom Error Types with Stack Traces in Go",
+    "description": "Learn how to create custom error types in Go with stack traces using pkg/errors for better debugging and error tracking.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Errors",
+      "Debugging",
+      "Observability"
+    ],
+    "post": "2026-01-30-how-to-create-custom-error-types-with-stack-traces-in-go"
+  },
+  {
+    "title": "How to Build Custom HTTP Transport in Go",
+    "description": "Learn how to build and configure custom HTTP transports in Go for connection pooling, timeouts, and advanced networking scenarios.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "HTTP",
+      "Networking",
+      "Performance"
+    ],
+    "post": "2026-01-30-how-to-build-custom-http-transport-in-go"
+  },
+  {
+    "title": "How to Create Custom JSON Marshaler in Go",
+    "description": "Learn how to implement custom JSON marshaling and unmarshaling in Go for complex data types and special formats.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "JSON",
+      "Serialization",
+      "API"
+    ],
+    "post": "2026-01-30-how-to-create-custom-json-marshaler-in-go"
+  },
+  {
+    "title": "How to Create Memory-Mapped Files in Rust",
+    "description": "Learn how to use memory-mapped files in Rust with the memmap2 crate for high-performance file operations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Memory",
+      "File I/O",
+      "Performance"
+    ],
+    "post": "2026-01-30-how-to-create-memory-mapped-files-in-rust"
+  },
+  {
+    "title": "How to Build a Simple HTTP Server from Scratch in Rust",
+    "description": "Learn how to build a basic HTTP server in Rust using TCP sockets without any frameworks to understand the protocol fundamentals.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "HTTP",
+      "Networking",
+      "TCP"
+    ],
+    "post": "2026-01-30-how-to-build-a-simple-http-server-from-scratch-in-rust"
+  },
+  {
+    "title": "How to Implement Kubernetes Rolling Updates",
+    "description": "Learn how to configure and manage Kubernetes rolling updates for zero-downtime deployments with rollback capabilities.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Deployments",
+      "Rolling Updates",
+      "DevOps"
+    ],
+    "post": "2026-01-30-how-to-implement-kubernetes-rolling-updates"
+  },
+  {
+    "title": "How to Implement Custom Annotations in Spring",
+    "description": "Learn how to create custom annotations in Spring with AOP for cross-cutting concerns like logging, validation, and security.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring",
+      "Annotations",
+      "AOP"
+    ],
+    "post": "2026-01-30-how-to-implement-custom-annotations-in-spring"
+  },
+  {
+    "title": "How to Build a Simple Database in Rust",
+    "description": "Learn how to build a simple key-value database in Rust with persistence, indexing, and basic query operations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Database",
+      "Storage",
+      "Systems"
+    ],
+    "post": "2026-01-30-how-to-build-a-simple-database-in-rust"
+  },
+  {
+    "title": "How to Implement Request Validation with Go-Playground",
+    "description": "Learn how to validate HTTP request data in Go using the go-playground/validator library with custom validators and error handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Validation",
+      "API",
+      "Web"
+    ],
+    "post": "2026-01-30-how-to-implement-request-validation-with-go-playground"
+  },
+  {
+    "title": "How to Implement Grafana Data Source Plugins",
+    "description": "Learn how to build custom Grafana data source plugins to connect to any backend service using the Grafana plugin SDK.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Grafana",
+      "Plugins",
+      "Monitoring",
+      "TypeScript"
+    ],
+    "post": "2026-01-30-how-to-implement-grafana-data-source-plugins"
+  },
+  {
+    "title": "How to Build PostgreSQL Performance Monitoring",
+    "description": "Learn how to monitor PostgreSQL performance using pg_stat views, query analysis, and integration with observability tools.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Performance",
+      "Monitoring",
+      "Database"
+    ],
+    "post": "2026-01-30-how-to-build-postgresql-performance-monitoring"
+  },
+  {
+    "title": "How to Create Custom Import Hooks in Python",
+    "description": "Learn how to create custom import hooks in Python to modify module loading behavior using finders and loaders.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Import",
+      "Metaprogramming",
+      "Advanced"
+    ],
+    "post": "2026-01-30-how-to-create-custom-import-hooks-in-python"
+  },
+  {
+    "title": "How to Implement Docker Compose Service Dependencies",
+    "description": "Learn how to properly configure service dependencies in Docker Compose with health checks and startup ordering.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Docker Compose",
+      "DevOps",
+      "Containers"
+    ],
+    "post": "2026-01-30-how-to-implement-docker-compose-service-dependencies"
+  },
+  {
+    "title": "How to Implement Kafka Custom Serializers",
+    "description": "Learn how to implement custom serializers and deserializers for Kafka to handle complex data types and optimize performance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kafka",
+      "Serialization",
+      "Messaging",
+      "Java"
+    ],
+    "post": "2026-01-30-how-to-implement-kafka-custom-serializers"
+  },
+  {
+    "title": "How to Create Worker Thread Pools in Node.js",
+    "description": "Learn how to create worker thread pools in Node.js for CPU-intensive operations without blocking the event loop.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Worker Threads",
+      "Concurrency",
+      "Performance"
+    ],
+    "post": "2026-01-30-how-to-create-worker-thread-pools-in-nodejs"
+  },
+  {
+    "title": "How to Implement Custom Descriptors in Python",
+    "description": "Learn how to implement custom descriptors in Python using __get__, __set__, and __delete__ for attribute management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Descriptors",
+      "OOP",
+      "Advanced"
+    ],
+    "post": "2026-01-30-how-to-implement-custom-descriptors-in-python"
+  },
+  {
+    "title": "How to Use Semaphores for Concurrency Control in Go",
+    "description": "Learn how to implement and use semaphores in Go to control access to limited resources and manage concurrent operations effectively.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Concurrency",
+      "Semaphores",
+      "Performance"
+    ],
+    "post": "2026-01-30-how-to-use-semaphores-for-concurrency-control-in-go"
+  },
+  {
+    "title": "How to Build a Simple ORM from Scratch in Go",
+    "description": "Learn how to build a basic ORM in Go using reflection and struct tags to map Go structs to database tables.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Database",
+      "ORM",
+      "SQL"
+    ],
+    "post": "2026-01-30-how-to-build-a-simple-orm-from-scratch-in-go"
+  },
+  {
+    "title": "How to Implement Docker Layer Caching Strategies",
+    "description": "Learn how to optimize Docker builds with layer caching strategies for faster build times in development and CI/CD.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Caching",
+      "CI/CD",
+      "Performance"
+    ],
+    "post": "2026-01-30-how-to-implement-docker-layer-caching-strategies"
+  },
+  {
+    "title": "How to Implement Custom Middleware Pattern in Node.js",
+    "description": "Learn how to implement the middleware pattern in Node.js for composable request processing pipelines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Middleware",
+      "Express",
+      "Architecture"
+    ],
+    "post": "2026-01-30-how-to-implement-custom-middleware-pattern-in-nodejs"
+  },
+  {
+    "title": "How to Build Custom Middleware in ASP.NET Core",
+    "description": "Learn how to build custom middleware in ASP.NET Core for request processing, logging, authentication, and error handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "ASP.NET Core",
+      "Middleware",
+      "C#"
+    ],
+    "post": "2026-01-30-how-to-build-custom-middleware-in-aspnet-core"
+  },
+  {
+    "title": "How to Build File Upload Service in Go",
+    "description": "Learn how to build a robust file upload service in Go with multipart handling, validation, and storage options.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "File Upload",
+      "HTTP",
+      "Storage"
+    ],
+    "post": "2026-01-30-how-to-build-file-upload-service-in-go"
+  },
+  {
+    "title": "How to Handle Large File Downloads in Go",
+    "description": "Learn how to efficiently handle large file downloads in Go with streaming, progress tracking, and proper resource management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "HTTP",
+      "Files",
+      "Performance"
+    ],
+    "post": "2026-01-30-how-to-handle-large-file-downloads-in-go"
+  },
+  {
+    "title": "How to Implement PostgreSQL Query Parallelization",
+    "description": "Learn how to configure and optimize parallel query execution in PostgreSQL for improved performance on large datasets.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Performance",
+      "Parallelization",
+      "Database"
+    ],
+    "post": "2026-01-30-how-to-implement-postgresql-query-parallelization"
+  },
+  {
+    "title": "How to Implement Custom Derive Macros in Rust",
+    "description": "Learn how to create custom derive macros in Rust using proc_macro, syn, and quote for automatic trait implementations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Macros",
+      "Metaprogramming",
+      "Code Generation"
+    ],
+    "post": "2026-01-30-how-to-implement-custom-derive-macros-in-rust"
+  },
+  {
+    "title": "How to Implement Kubernetes Service Types",
+    "description": "Learn about Kubernetes Service types - ClusterIP, NodePort, LoadBalancer, and ExternalName - and when to use each.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Services",
+      "Networking",
+      "DevOps"
+    ],
+    "post": "2026-01-30-how-to-implement-kubernetes-service-types"
+  },
+  {
+    "title": "How to Build a Lock-Free Data Structure in Rust",
+    "description": "Learn how to build lock-free data structures in Rust using atomics and compare-and-swap operations for high-performance concurrency.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Concurrency",
+      "Lock-Free",
+      "Performance"
+    ],
+    "post": "2026-01-30-how-to-build-a-lock-free-data-structure-in-rust"
+  },
+  {
+    "title": "How to Build Real-Time Notifications with Go",
+    "description": "Learn how to build a real-time notification system in Go using WebSockets and server-sent events for instant updates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "WebSocket",
+      "Real-Time",
+      "Notifications"
+    ],
+    "post": "2026-01-30-how-to-build-real-time-notifications-with-go"
+  },
+  {
+    "title": "How to Implement Elasticsearch Token Filters",
+    "description": "Learn how to implement custom token filters in Elasticsearch for advanced text processing and search optimization.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elasticsearch",
+      "Search",
+      "Text Analysis",
+      "Performance"
+    ],
+    "post": "2026-01-30-how-to-implement-elasticsearch-token-filters"
+  },
+  {
+    "title": "How to Create Kubernetes ConfigMap Strategies",
+    "description": "Learn strategies for managing ConfigMaps in Kubernetes including immutable configs, hot reloading, and environment-specific values.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "ConfigMaps",
+      "Configuration",
+      "DevOps"
+    ],
+    "post": "2026-01-30-how-to-create-kubernetes-configmap-strategies"
+  },
+  {
+    "title": "How to Implement Terraform Provider Testing",
+    "description": "Learn how to write and run tests for Terraform providers using the acceptance testing framework and mocking strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "Testing",
+      "IaC",
+      "DevOps"
+    ],
+    "post": "2026-01-30-how-to-implement-terraform-provider-testing"
+  },
+  {
+    "title": "How to Implement OAuth2 Client in Go",
+    "description": "Learn how to implement OAuth2 client flows in Go for authenticating with external services like Google, GitHub, and custom providers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "OAuth2",
+      "Authentication",
+      "Security"
+    ],
+    "post": "2026-01-30-how-to-implement-oauth2-client-in-go"
+  },
+  {
+    "title": "How to Create Custom Middleware for Gin in Go",
+    "description": "Learn how to create custom middleware for the Gin web framework in Go for authentication, logging, rate limiting, and more.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Gin",
+      "Middleware",
+      "Web"
+    ],
+    "post": "2026-01-30-how-to-create-custom-middleware-for-gin-in-go"
+  },
+  {
+    "title": "How to Create Custom Logger with Context in Go",
+    "description": "Learn how to build a custom logger in Go that propagates context values like request IDs and trace information for better observability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Logging",
+      "Context",
+      "Observability"
+    ],
+    "post": "2026-01-30-how-to-create-custom-logger-with-context-in-go"
+  },
+  {
+    "title": "How to Use Pin and Unpin in Async Rust",
+    "description": "Learn how Pin and Unpin work in Rust's async system and when you need to use them for self-referential types.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Async",
+      "Pin",
+      "Memory"
+    ],
+    "post": "2026-01-30-how-to-use-pin-and-unpin-in-async-rust"
+  },
+  {
+    "title": "How to Create Memory-Efficient Classes with __slots__",
+    "description": "Learn how to use __slots__ in Python classes to reduce memory usage and improve attribute access speed.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Memory",
+      "Performance",
+      "OOP"
+    ],
+    "post": "2026-01-30-how-to-create-memory-efficient-classes-with-slots"
+  },
+  {
+    "title": "How to Create Kubernetes Deployments Best Practices",
+    "description": "Learn best practices for creating robust Kubernetes Deployments with proper resource management, health checks, and update strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Deployments",
+      "DevOps",
+      "Best Practices"
+    ],
+    "post": "2026-01-30-how-to-create-kubernetes-deployments-best-practices"
+  },
+  {
+    "title": "How to Build Scheduled Task Runner in Go",
+    "description": "Learn how to build a scheduled task runner in Go using time.Ticker, cron expressions, and proper goroutine management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Scheduling",
+      "Cron",
+      "Background Jobs"
+    ],
+    "post": "2026-01-30-how-to-build-scheduled-task-runner-in-go"
   }
 ]

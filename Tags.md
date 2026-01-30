@@ -52,6 +52,7 @@
 - Admission Controller
 - Admission Controllers
 - Admission Webhooks
+- Advanced
 - Advanced Bash
 - Advanced Python
 - Advanced Queries
@@ -128,6 +129,7 @@
 - Anycast
 - anyhow
 - AOF
+- AOP
 - Apache
 - Apache Airflow
 - Apache APISIX
@@ -478,6 +480,7 @@
 - BRPOP
 - BSON
 - BTF
+- Bubbletea
 - Bucket4j
 - Buckets
 - Budget
@@ -1201,6 +1204,7 @@
 - deprecation
 - Deref
 - Derive
+- Descriptors
 - Deserialization
 - Design Patterns
 - Desktop
@@ -2385,6 +2389,7 @@
 - Location Data
 - Location-Based Services
 - Lock Management
+- Lock-Free
 - Lockfile
 - Locking
 - Locks
@@ -2989,6 +2994,7 @@
 - Parallel Routes
 - Parallel Testing
 - Parallelism
+- Parallelization
 - Parametric Functions
 - Parent Pipelines
 - Parent-Child
@@ -3080,6 +3086,7 @@
 - PII
 - PII Masking
 - Pika
+- Pin
 - Pinecone
 - Ping-Pong
 - Pinia
@@ -3321,6 +3328,7 @@
 - qBittorrent
 - QEMU
 - QoS
+- Quality
 - Quality Assurance
 - Quality Metrics
 - Quality of Service
@@ -3780,6 +3788,7 @@
 - Semantic Search
 - Semantic Versioning
 - Semaphore
+- Semaphores
 - SemVer
 - SendGrid
 - Sensor Data
@@ -4190,6 +4199,7 @@
 - systemd
 - systemd-networkd
 - systemd-timesyncd
+- Systems
 - Systems Programming
 - Tab Navigation
 - Table Bloat
@@ -4424,6 +4434,7 @@
 - Transactions
 - transcoding
 - Transfer
+- Transform
 - Transformations
 - Transformers
 - Transit Auto-Unseal
@@ -4448,6 +4459,7 @@
 - tsvector
 - TTFB
 - TTL
+- TUI
 - Tuning
 - Tunneling
 - Tunnels

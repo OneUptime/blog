@@ -1,0 +1,12 @@
+{
+  "title": "How to Implement Mapped Types in TypeScript",
+  "description": "Learn how to use mapped types in TypeScript to transform existing types into new ones with powerful type manipulations.",
+  "authorGitHubUsername": "nawazdhandala",
+  "tags": [
+    "TypeScript",
+    "Types",
+    "Advanced",
+    "Generics"
+  ],
+  "post": "2026-01-30-how-to-implement-mapped-types-in-typescript"
+}
