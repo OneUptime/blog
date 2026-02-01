@@ -34,14 +34,18 @@
 - ACL
 - ACLs
 - ACR
+- Action Cable
+- Action Mailer
 - Action Validation
 - ActionCable
 - ActionItems
 - Active Directory
 - Active Record
+- Active Storage
 - Active-Active
 - Active-Passive
 - ActiveMQ
+- ActiveRecord
 - ActiveStorage
 - ActiveSupport
 - ActivitySource
@@ -205,6 +209,7 @@
 - Application
 - Application Design
 - Application Development
+- Application Events
 - Application Gateway
 - Application Logs
 - Application Metrics
@@ -431,6 +436,7 @@
 - Bean Configuration
 - Bean Validation
 - Beats
+- BeautifulSoup
 - become
 - Beginner
 - Beginners
@@ -869,6 +875,7 @@
 - Compiler Configuration
 - Compiler Errors
 - Compilers
+- CompletableFuture
 - Completeness
 - Completion Suggester
 - Complex Queries
@@ -993,6 +1000,7 @@
 - Context Management
 - Context Managers
 - Context Propagation
+- contextlib
 - Continuous Aggregates
 - Continuous Archiving
 - Continuous Delivery
@@ -1285,7 +1293,7 @@
 - Database Versioning
 - Databases
 - Databricks
-- dataclasses
+- Dataclasses
 - DataDog
 - Dataflow
 - DataFrame
@@ -1522,6 +1530,7 @@
 - DROP DATABASE
 - Drop Logs
 - DRY
+- DTO
 - DTOs
 - du
 - Dual-Stack
@@ -1602,6 +1611,7 @@
 - ELK
 - ELK Alternative
 - ELK Stack
+- Eloquent
 - ELT
 - Elysia
 - Email
@@ -1695,7 +1705,7 @@
 - Event Streaming
 - Event Time
 - Event Versioning
-- Event-driven
+- Event-Driven
 - Event-Driven Architecture
 - EventBridge
 - EventDriven
@@ -1760,6 +1770,7 @@
 - Faceted Navigation
 - Faceted Search
 - Fact Tables
+- Factory
 - Factory Pattern
 - Facts
 - fail2ban
@@ -1908,6 +1919,7 @@
 - fosite
 - FPE
 - Fragment
+- Fragment Caching
 - Fragments
 - Frame Protocol
 - Framework
@@ -1991,6 +2003,7 @@
 - getStaticPaths
 - Getting Started
 - ghz
+- GIL
 - Gin
 - GIN Index
 - GIS
@@ -2131,6 +2144,7 @@
 - Headers
 - Headers Exchange
 - Headless Services
+- Health Check
 - Health Checking
 - Health Checks
 - Health Probes
@@ -2146,6 +2160,7 @@
 - Here Documents
 - Heredoc
 - Hermes
+- Heroku
 - Hexagonal Architecture
 - HGET
 - Hibernate
@@ -2195,6 +2210,7 @@
 - Hot Standby
 - Hot-Warm-Cold
 - HotReload
+- Hotwire
 - How-To
 - HPA
 - HSET
@@ -2516,6 +2532,7 @@
 - Kafka Connect
 - Kafka Operations
 - Kafka Streams
+- Kaminari
 - Karpenter
 - Katib
 - KDE
@@ -2811,6 +2828,7 @@
 - Mapping
 - Mappings
 - Maps
+- MapStruct
 - MariaDB
 - Markdown
 - Market Data
@@ -2860,6 +2878,7 @@
 - Memory Retrieval
 - Memory Safety
 - Memory Systems
+- memory_profiler
 - Memory-Mapped Files
 - MemoryError
 - Memorystore
@@ -2966,6 +2985,7 @@
 - Model Serving
 - Model Testing
 - Models
+- Modern Web
 - Modernization
 - ModSecurity
 - Modular Design
@@ -3032,7 +3052,7 @@
 - Multi-Stage
 - Multi-Stage Build
 - Multi-Stage Builds
-- Multi-Tenancy
+- Multi-tenancy
 - Multi-Tenant
 - Multi-threading
 - Multi-Zone
@@ -3067,6 +3087,7 @@
 - MySQL 8
 - MySQL Router
 - mysqlbinlog
+- N+1
 - N+1 Problem
 - Nagios
 - Namecheap
@@ -3344,6 +3365,7 @@
 - PackageManagement
 - PackageManager
 - Packages
+- Packaging
 - Packer
 - packet analysis
 - Packet Capture
@@ -3731,6 +3753,7 @@
 - Pydantic
 - pyenv
 - PyMongo
+- pyproject.toml
 - Pyroscope
 - PySpark
 - pytest
@@ -3764,6 +3787,7 @@
 - Query Frontend
 - Query Hints
 - Query Matching
+- Query Objects
 - Query Optimization
 - Query Parameters
 - Query Performance
@@ -3808,6 +3832,7 @@
 - Range Types
 - Range Vectors
 - Rankings
+- Ransack
 - RASP
 - Raspberry Pi
 - Rate
@@ -4101,6 +4126,7 @@
 - RPOP
 - RSA
 - RSC
+- RSpec
 - Rsyslog
 - RTO
 - rTorrent
@@ -4328,6 +4354,7 @@
 - Session Management
 - Session Persistence
 - Session Storage
+- Session Store
 - Session Timeout
 - Sessions
 - set
@@ -4600,6 +4627,7 @@
 - Stemming
 - Step Functions
 - Sticky Sessions
+- Stimulus
 - Stock Management
 - STOMP
 - STONITH
@@ -5005,6 +5033,7 @@
 - Tunneling
 - Tunnels
 - Tuples
+- Turbo
 - Turbopack
 - Turborepo
 - Turn-Based
@@ -5040,6 +5069,7 @@
 - TypeDoc
 - TypeError
 - TypeORM
+- Typer
 - Types
 - TypeScript
 - typing

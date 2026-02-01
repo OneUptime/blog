@@ -498,6 +498,736 @@
     "post": "2025-07-01-oneuptime-openapi-specification-open-standards"
   },
   {
+    "title": "How to Build Multi-Model Search with Ransack in Rails",
+    "description": "Learn how to build powerful multi-model search functionality in Ruby on Rails using Ransack. This guide covers basic search, advanced predicates, cross-model searching, and production best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Ransack",
+      "Search",
+      "ActiveRecord",
+      "Query"
+    ],
+    "post": "2025-07-02-rails-ransack-search"
+  },
+  {
+    "title": "How to Implement Multi-tenancy in Rails Applications",
+    "description": "Learn how to implement multi-tenancy in Ruby on Rails applications. This guide covers shared database, schema-based, and database-per-tenant approaches with practical examples and production best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Multi-tenancy",
+      "SaaS",
+      "Database",
+      "Architecture"
+    ],
+    "post": "2025-07-02-rails-multi-tenancy"
+  },
+  {
+    "title": "How to Configure Action Mailer for Email in Rails",
+    "description": "A comprehensive guide to configuring Action Mailer for email delivery in Ruby on Rails applications. Learn SMTP setup, SendGrid integration, background job processing, and production best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Action Mailer",
+      "Email",
+      "SMTP",
+      "SendGrid"
+    ],
+    "post": "2025-07-02-rails-action-mailer-email"
+  },
+  {
+    "title": "How to Handle File Uploads with Active Storage",
+    "description": "A comprehensive guide to handling file uploads in Ruby on Rails using Active Storage. Learn configuration, cloud storage integration, direct uploads, image processing, and production best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Active Storage",
+      "File Uploads",
+      "S3",
+      "Cloud Storage"
+    ],
+    "post": "2025-07-02-rails-active-storage-uploads"
+  },
+  {
+    "title": "How to Profile and Optimize Python Code",
+    "description": "Learn how to profile and optimize Python applications for better performance. This guide covers CPU profiling, memory analysis, and practical optimization techniques.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Profiling",
+      "Performance",
+      "Optimization",
+      "cProfile",
+      "memory_profiler"
+    ],
+    "post": "2025-07-02-python-profiling-optimization"
+  },
+  {
+    "title": "How to Use RabbitMQ with Pika in Python",
+    "description": "A comprehensive guide to building message-driven applications in Python using RabbitMQ and Pika. Learn exchanges, queues, routing patterns, and production best practices for reliable messaging.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "RabbitMQ",
+      "Pika",
+      "Messaging",
+      "AMQP",
+      "Event-Driven"
+    ],
+    "post": "2025-07-02-python-rabbitmq-pika"
+  },
+  {
+    "title": "How to Build Cache Decorators in Python",
+    "description": "Learn how to build effective cache decorators in Python for function memoization and performance optimization. This guide covers lru_cache, TTL caching, and distributed caching with Redis.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Caching",
+      "Decorators",
+      "Performance",
+      "Redis",
+      "functools"
+    ],
+    "post": "2025-07-02-python-cache-decorators"
+  },
+  {
+    "title": "How to Use Poetry for Dependency Management in Python",
+    "description": "A comprehensive guide to managing Python dependencies with Poetry. Learn project setup, dependency groups, virtual environments, and publishing packages to PyPI.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Poetry",
+      "Dependency Management",
+      "Packaging",
+      "pyproject.toml"
+    ],
+    "post": "2025-07-02-python-poetry-dependency-management"
+  },
+  {
+    "title": "How to Configure HikariCP Connection Pooling",
+    "description": "Learn how to configure HikariCP for optimal database connection pooling in Java applications. This guide covers pool sizing, timeout settings, and monitoring with Spring Boot.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "HikariCP",
+      "Connection Pooling",
+      "Database",
+      "Spring Boot",
+      "Performance"
+    ],
+    "post": "2025-07-02-java-hikaricp-connection-pooling"
+  },
+  {
+    "title": "How to Configure SSL/TLS in Spring Boot Applications",
+    "description": "Learn how to configure SSL/TLS in Spring Boot applications for secure HTTPS connections. This guide covers keystore setup, certificate management, and mutual TLS authentication.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "SSL",
+      "TLS",
+      "HTTPS",
+      "Security",
+      "Certificates"
+    ],
+    "post": "2025-07-02-spring-boot-ssl-tls-configuration"
+  },
+  {
+    "title": "How to Use RabbitMQ with Spring Boot",
+    "description": "A practical guide to integrating RabbitMQ with Spring Boot for message-driven architectures. Learn exchanges, queues, consumers, and error handling patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "RabbitMQ",
+      "Messaging",
+      "AMQP",
+      "Microservices",
+      "Event-Driven"
+    ],
+    "post": "2025-07-02-spring-boot-rabbitmq-messaging"
+  },
+  {
+    "title": "How to Implement API Versioning in Spring Boot",
+    "description": "A comprehensive guide to implementing API versioning strategies in Spring Boot. Learn URL path, header, and content negotiation approaches with practical examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "API",
+      "Versioning",
+      "REST",
+      "Web Services"
+    ],
+    "post": "2025-07-02-spring-boot-api-versioning"
+  },
+  {
+    "title": "How to Use MapStruct for Object Mapping",
+    "description": "A practical guide to using MapStruct for type-safe object mapping in Java. Learn how to map DTOs, handle nested objects, and integrate with Spring Boot applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "MapStruct",
+      "Object Mapping",
+      "Spring Boot",
+      "DTO",
+      "Performance"
+    ],
+    "post": "2025-07-02-java-mapstruct-object-mapping"
+  },
+  {
+    "title": "How to Build Event-Driven Architecture with Spring Events",
+    "description": "Learn how to build event-driven applications using Spring's ApplicationEvent system. This guide covers synchronous and asynchronous events, event listeners, and transactional events.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Event-Driven",
+      "Application Events",
+      "Microservices",
+      "Async"
+    ],
+    "post": "2025-07-02-spring-boot-event-driven-architecture"
+  },
+  {
+    "title": "How to Use LaunchDarkly with Spring Boot",
+    "description": "Learn how to implement feature flags in Spring Boot applications using LaunchDarkly. This guide covers SDK setup, flag evaluation, targeting rules, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "LaunchDarkly",
+      "Feature Flags",
+      "Feature Toggles",
+      "A/B Testing"
+    ],
+    "post": "2025-07-02-spring-boot-launchdarkly-feature-flags"
+  },
+  {
+    "title": "How to Use Flyway for Database Migrations in Spring Boot",
+    "description": "A comprehensive guide to managing database migrations with Flyway in Spring Boot applications. Learn versioned migrations, repeatable scripts, and rollback strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Flyway",
+      "Database",
+      "Migrations",
+      "SQL",
+      "PostgreSQL"
+    ],
+    "post": "2025-07-02-spring-boot-flyway-migrations"
+  },
+  {
+    "title": "How to Configure Spring Boot Actuator Custom Health Indicators",
+    "description": "Learn how to create custom health indicators in Spring Boot Actuator for monitoring external dependencies. This guide covers health aggregation, reactive indicators, and Kubernetes integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Actuator",
+      "Health Check",
+      "Monitoring",
+      "Kubernetes"
+    ],
+    "post": "2025-07-02-spring-boot-actuator-health-indicators"
+  },
+  {
+    "title": "How to Build Asynchronous APIs with Spring Boot",
+    "description": "A comprehensive guide to building asynchronous APIs in Spring Boot. Learn @Async, CompletableFuture, DeferredResult, and WebClient for non-blocking applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Async",
+      "CompletableFuture",
+      "WebFlux",
+      "Performance"
+    ],
+    "post": "2025-07-02-spring-boot-async-apis"
+  },
+  {
+    "title": "How to Implement Request/Response Logging in Spring Boot",
+    "description": "Learn how to implement comprehensive HTTP request and response logging in Spring Boot applications. This guide covers filters, interceptors, and structured logging with sensitive data masking.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Logging",
+      "HTTP",
+      "Debugging",
+      "Observability"
+    ],
+    "post": "2025-07-02-spring-boot-request-response-logging"
+  },
+  {
+    "title": "How to Build CLI Applications with Click and Typer",
+    "description": "Learn how to build professional command-line applications in Python using Click and Typer. This guide covers argument parsing, subcommands, progress bars, and rich output formatting.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "CLI",
+      "Click",
+      "Typer",
+      "Command Line",
+      "Development Tools"
+    ],
+    "post": "2025-07-02-python-cli-click-typer"
+  },
+  {
+    "title": "How to Build Web Scrapers with BeautifulSoup and Scrapy",
+    "description": "A practical guide to building web scrapers in Python. Learn BeautifulSoup for simple scraping and Scrapy for large-scale data extraction with rate limiting and error handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Web Scraping",
+      "BeautifulSoup",
+      "Scrapy",
+      "Data Extraction",
+      "Automation"
+    ],
+    "post": "2025-07-02-python-web-scraping-beautifulsoup-scrapy"
+  },
+  {
+    "title": "How to Implement Decorators for Cross-Cutting Concerns",
+    "description": "Learn how to build powerful Python decorators for logging, caching, rate limiting, and validation. This guide covers function decorators, class decorators, and decorator factories.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Decorators",
+      "Design Patterns",
+      "Logging",
+      "Caching",
+      "AOP"
+    ],
+    "post": "2025-07-02-python-decorators-cross-cutting"
+  },
+  {
+    "title": "How to Use Context Managers for Resource Management",
+    "description": "Learn how to build and use Python context managers for safe resource handling. This guide covers the with statement, contextlib utilities, and async context managers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Context Managers",
+      "Resource Management",
+      "with Statement",
+      "contextlib"
+    ],
+    "post": "2025-07-02-python-context-managers"
+  },
+  {
+    "title": "How to Implement Multithreading vs Multiprocessing in Python",
+    "description": "Learn when to use multithreading vs multiprocessing in Python. This guide covers the GIL, thread pools, process pools, and choosing the right approach for your workload.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Multithreading",
+      "Multiprocessing",
+      "Concurrency",
+      "GIL",
+      "Performance"
+    ],
+    "post": "2025-07-02-python-multithreading-multiprocessing"
+  },
+  {
+    "title": "How to Use Micrometer for Metrics in Spring Boot",
+    "description": "A comprehensive guide to implementing custom metrics in Spring Boot using Micrometer. Learn counters, gauges, timers, and distribution summaries with practical examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Micrometer",
+      "Metrics",
+      "Prometheus",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2025-07-02-spring-boot-micrometer-metrics"
+  },
+  {
+    "title": "How to Use Celery for Distributed Task Queues",
+    "description": "A practical guide to building distributed task queues with Celery. Learn task routing, result backends, rate limiting, and monitoring for production deployments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Celery",
+      "Task Queue",
+      "Redis",
+      "Distributed Systems",
+      "Background Jobs"
+    ],
+    "post": "2025-07-02-python-celery-distributed-tasks"
+  },
+  {
+    "title": "How to Implement Retry Decorators for Flaky API Calls in Python",
+    "description": "Learn how to implement robust retry decorators for handling flaky API calls in Python. This guide covers custom decorator implementations, exponential backoff strategies, jitter, and production-ready patterns for building resilient applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Retry",
+      "Decorators",
+      "API",
+      "Resilience",
+      "Error Handling"
+    ],
+    "post": "2025-07-02-python-retry-decorators"
+  },
+  {
+    "title": "How to Build Microservices Architecture in Python",
+    "description": "A comprehensive guide to building production-ready microservices architecture in Python. Learn service design, inter-service communication, API gateways, service discovery, and deployment patterns with FastAPI, Docker, and Kubernetes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Microservices",
+      "FastAPI",
+      "Architecture",
+      "Docker",
+      "Kubernetes"
+    ],
+    "post": "2025-07-02-python-microservices-architecture"
+  },
+  {
+    "title": "How to Handle Database Migrations with Alembic",
+    "description": "Learn how to handle database migrations in Python applications using Alembic. This guide covers migration generation, version control, rollbacks, and production deployment strategies for SQLAlchemy applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Alembic",
+      "Database",
+      "Migrations",
+      "SQLAlchemy",
+      "PostgreSQL"
+    ],
+    "post": "2025-07-02-python-alembic-migrations"
+  },
+  {
+    "title": "How to Build Serverless Functions with Python on AWS Lambda",
+    "description": "Learn how to build and deploy serverless functions with Python on AWS Lambda. This guide covers handler patterns, API Gateway integration, environment management, and testing strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "AWS Lambda",
+      "Serverless",
+      "Cloud",
+      "API Gateway",
+      "SAM"
+    ],
+    "post": "2025-07-02-python-aws-lambda-serverless"
+  },
+  {
+    "title": "How to Implement Authentication in Python APIs",
+    "description": "A comprehensive guide to implementing authentication in Python APIs. Learn JWT authentication, OAuth2 flows, API key management, and security best practices with FastAPI.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Authentication",
+      "JWT",
+      "OAuth2",
+      "FastAPI",
+      "Security"
+    ],
+    "post": "2025-07-02-python-api-authentication"
+  },
+  {
+    "title": "How to Implement Design Patterns in Python",
+    "description": "A practical guide to implementing classic design patterns in Python. Learn creational, structural, and behavioral patterns with idiomatic Python examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Design Patterns",
+      "OOP",
+      "Software Architecture",
+      "Factory",
+      "Singleton"
+    ],
+    "post": "2025-07-02-python-design-patterns"
+  },
+  {
+    "title": "How to Use Dataclasses for Clean Data Models",
+    "description": "Learn how to use Python dataclasses to create clean, maintainable data models. This guide covers dataclass basics, field customization, inheritance, immutability, and integration with validation libraries.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Dataclasses",
+      "Data Models",
+      "Type Hints",
+      "OOP",
+      "Clean Code"
+    ],
+    "post": "2025-07-02-python-dataclasses"
+  },
+  {
+    "title": "How to Use Pundit for Authorization in Rails",
+    "description": "Learn how to implement authorization in Rails applications using Pundit. This guide covers policy objects, scopes, testing, and best practices for secure access control.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Pundit",
+      "Authorization",
+      "Security",
+      "Policy Objects"
+    ],
+    "post": "2025-07-02-rails-pundit-authorization"
+  },
+  {
+    "title": "How to Implement Caching Strategies in Rails",
+    "description": "Learn how to implement effective caching strategies in Ruby on Rails to dramatically improve application performance. This guide covers page caching, action caching, fragment caching, Russian doll caching, and low-level caching with Redis.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Caching",
+      "Redis",
+      "Performance",
+      "Fragment Caching"
+    ],
+    "post": "2025-07-02-rails-caching-strategies"
+  },
+  {
+    "title": "How to Configure Background Jobs with Sidekiq",
+    "description": "Learn how to configure and optimize Sidekiq for background job processing in Ruby on Rails applications. This guide covers job creation, queue management, retry strategies, and production best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Sidekiq",
+      "Background Jobs",
+      "Redis",
+      "Async"
+    ],
+    "post": "2025-07-02-rails-sidekiq-background-jobs"
+  },
+  {
+    "title": "How to Write Tests with RSpec in Rails",
+    "description": "A comprehensive guide to writing tests with RSpec in Ruby on Rails applications. Learn how to set up RSpec, write unit tests, integration tests, and request specs with best practices for test organization and maintainability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "RSpec",
+      "Testing",
+      "TDD",
+      "Unit Tests"
+    ],
+    "post": "2025-07-02-rails-rspec-testing"
+  },
+  {
+    "title": "How to Deploy Rails Applications to Heroku",
+    "description": "A comprehensive guide to deploying Ruby on Rails applications to Heroku. Learn project setup, database configuration, environment management, CI/CD pipelines, and production best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Heroku",
+      "Deployment",
+      "Cloud",
+      "DevOps"
+    ],
+    "post": "2025-07-02-rails-heroku-deployment"
+  },
+  {
+    "title": "How to Use Redis for Caching in Rails",
+    "description": "A comprehensive guide to using Redis for caching in Ruby on Rails applications. Learn how to configure Redis as your cache store, implement various caching patterns, use Redis for session storage, and deploy production-ready caching solutions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Redis",
+      "Caching",
+      "Performance",
+      "Session Store"
+    ],
+    "post": "2025-07-02-rails-redis-caching"
+  },
+  {
+    "title": "How to Use Action Cable for WebSockets in Rails",
+    "description": "Learn how to implement real-time features in Ruby on Rails using Action Cable. This guide covers WebSocket connections, channels, broadcasting, authentication, and production deployment best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Action Cable",
+      "WebSockets",
+      "Real-time",
+      "Pub/Sub"
+    ],
+    "post": "2025-07-02-rails-action-cable-websockets"
+  },
+  {
+    "title": "How to Use Hotwire/Turbo for Modern Rails Apps",
+    "description": "Learn how to build modern, reactive Rails applications using Hotwire (Turbo + Stimulus). This guide covers Turbo Drive, Turbo Frames, Turbo Streams, and Stimulus controllers with practical examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Hotwire",
+      "Turbo",
+      "Stimulus",
+      "Modern Web"
+    ],
+    "post": "2025-07-02-rails-hotwire-turbo"
+  },
+  {
+    "title": "How to Handle N+1 Queries in Rails",
+    "description": "Learn how to identify, prevent, and fix N+1 query problems in Ruby on Rails applications. This guide covers eager loading strategies, query optimization techniques, and tools for detecting N+1 queries in development and production.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "N+1",
+      "Performance",
+      "ActiveRecord",
+      "Database"
+    ],
+    "post": "2025-07-02-rails-n-plus-one-queries"
+  },
+  {
+    "title": "How to Implement Pagination with Kaminari in Rails",
+    "description": "Learn how to implement efficient pagination in Ruby on Rails applications using Kaminari. This guide covers installation, configuration, custom scopes, AJAX pagination, API pagination, and performance optimization techniques.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Kaminari",
+      "Pagination",
+      "Performance",
+      "UI"
+    ],
+    "post": "2025-07-02-rails-kaminari-pagination"
+  },
+  {
+    "title": "How to Implement API Authentication with JWT in Rails",
+    "description": "Learn how to implement secure JWT authentication in Ruby on Rails API applications. This guide covers token generation, refresh token rotation, middleware integration, and production best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "JWT",
+      "Authentication",
+      "API",
+      "Security"
+    ],
+    "post": "2025-07-02-rails-jwt-authentication"
+  },
+  {
+    "title": "How to Use Concerns for Code Organization in Rails",
+    "description": "Learn how to use Rails Concerns to organize your code effectively. This guide covers extracting shared behavior, creating reusable modules, and best practices for maintaining clean, DRY Rails applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Concerns",
+      "Code Organization",
+      "DRY",
+      "Modules"
+    ],
+    "post": "2025-07-02-rails-concerns-organization"
+  },
+  {
+    "title": "How to Handle Internationalization (i18n) in Rails",
+    "description": "A comprehensive guide to implementing internationalization (i18n) in Ruby on Rails applications. Learn locale configuration, translation files, pluralization, date formatting, and best practices for building multilingual applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "i18n",
+      "Internationalization",
+      "Localization",
+      "Translation"
+    ],
+    "post": "2025-07-02-rails-internationalization-i18n"
+  },
+  {
+    "title": "How to Use Docker with Rails Applications",
+    "description": "A comprehensive guide to containerizing Ruby on Rails applications with Docker. Learn Dockerfile best practices, multi-stage builds, Docker Compose for development, production optimization, and deployment strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Docker",
+      "Containers",
+      "DevOps",
+      "Deployment"
+    ],
+    "post": "2025-07-02-rails-docker-containers"
+  },
+  {
+    "title": "How to Implement Query Objects Pattern in Rails",
+    "description": "Learn how to implement the Query Objects pattern in Ruby on Rails to keep your models clean, improve testability, and build maintainable database queries. This guide covers basic to advanced patterns with practical examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Query Objects",
+      "Design Patterns",
+      "ActiveRecord",
+      "Clean Code"
+    ],
+    "post": "2025-07-02-rails-query-objects"
+  },
+  {
+    "title": "How to Handle Transactions in Rails",
+    "description": "A comprehensive guide to handling database transactions in Ruby on Rails. Learn ACID properties, nested transactions, savepoints, locking strategies, and production best practices for data integrity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Transactions",
+      "Database",
+      "ActiveRecord",
+      "ACID"
+    ],
+    "post": "2025-07-02-rails-transactions"
+  },
+  {
+    "title": "How to Implement Webhooks in Rails Applications",
+    "description": "Learn how to implement robust webhooks in Ruby on Rails applications. This guide covers receiving webhooks, sending webhooks, signature verification, retry logic, and production best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Webhooks",
+      "API",
+      "Integration",
+      "Events"
+    ],
+    "post": "2025-07-02-rails-webhooks"
+  },
+  {
+    "title": "How to Use Eloquent ORM Effectively in Laravel",
+    "description": "A comprehensive guide to mastering Laravel's Eloquent ORM. Learn model relationships, query optimization, eager loading, accessors/mutators, and best practices for building performant database-driven applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Eloquent",
+      "ORM",
+      "Database",
+      "ActiveRecord"
+    ],
+    "post": "2025-07-02-laravel-eloquent-orm"
+  },
+  {
+    "title": "How to Use Stimulus Controllers in Rails",
+    "description": "Learn how to build interactive web applications with Stimulus controllers in Ruby on Rails. This guide covers controller basics, targets, actions, values, outlets, and best practices for modern Rails frontend development.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "Stimulus",
+      "JavaScript",
+      "Hotwire",
+      "Frontend"
+    ],
+    "post": "2025-07-02-rails-stimulus-controllers"
+  },
+  {
     "title": "Native apps had a good run, but PWA has caught up and is the future.",
     "description": "Why Progressive Web Apps are the future and why OneUptime chose a PWA-first approach. Here's why PWAs now rival traditional native app strategies for most SaaS platforms, and why we at OneUptime intentionally chose a single PWA-first codebase instead of writing separate iOS and Android apps.",
     "authorGitHubUsername": "devneelpatel",

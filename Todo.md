@@ -66,73 +66,73 @@ This file contains 2000 unique blog ideas across various topics that people freq
 ~~53. How to Use gRPC with Spring Boot~~ ✅
 ~~54. How to Configure Spring Batch Job Scheduling~~ ✅
 ~~55. How to Implement Distributed Tracing in Spring Boot~~ ✅
-56. How to Use Micrometer for Metrics in Spring Boot
-57. How to Configure SSL/TLS in Spring Boot Applications
-58. How to Use RabbitMQ with Spring Boot
+~~56. How to Use Micrometer for Metrics in Spring Boot~~ ✅
+~~57. How to Configure SSL/TLS in Spring Boot Applications~~ ✅
+~~58. How to Use RabbitMQ with Spring Boot~~ ✅
 59. How to Build Multi-Module Maven Projects
-60. How to Implement API Versioning in Spring Boot
-61. How to Use MapStruct for Object Mapping
-62. How to Configure HikariCP Connection Pooling
-63. How to Use Flyway for Database Migrations in Spring Boot
-64. How to Build Event-Driven Architecture with Spring Events
+~~60. How to Implement API Versioning in Spring Boot~~ ✅
+~~61. How to Use MapStruct for Object Mapping~~ ✅
+~~62. How to Configure HikariCP Connection Pooling~~ ✅
+~~63. How to Use Flyway for Database Migrations in Spring Boot~~ ✅
+~~64. How to Build Event-Driven Architecture with Spring Events~~ ✅
 65. How to Use Kafka Streams with Spring Boot
-66. How to Use LaunchDarkly with Spring Boot
-67. How to Configure Spring Boot Actuator Custom Health Indicators
-68. How to Build Asynchronous APIs with Spring Boot
-69. How to Implement Request/Response Logging in Spring Boot
+~~66. How to Use LaunchDarkly with Spring Boot~~ ✅
+~~67. How to Configure Spring Boot Actuator Custom Health Indicators~~ ✅
+~~68. How to Build Asynchronous APIs with Spring Boot~~ ✅
+~~69. How to Implement Request/Response Logging in Spring Boot~~ ✅
 
 ### Python
-70. How to Build CLI Applications with Click and Typer
-71. How to Use Poetry for Dependency Management in Python
-72. How to Implement Decorators for Cross-Cutting Concerns
-73. How to Use Context Managers for Resource Management
-74. How to Build Web Scrapers with BeautifulSoup and Scrapy
+~~70. How to Build CLI Applications with Click and Typer~~ ✅
+~~71. How to Use Poetry for Dependency Management in Python~~ ✅
+~~72. How to Implement Decorators for Cross-Cutting Concerns~~ ✅
+~~73. How to Use Context Managers for Resource Management~~ ✅
+~~74. How to Build Web Scrapers with BeautifulSoup and Scrapy~~ ✅
 75. How to Use SQLAlchemy ORM for Database Operations
-76. How to Implement Multithreading vs Multiprocessing in Python
-77. How to Use Celery for Distributed Task Queues
-78. How to Build Cache Decorators in Python
+~~76. How to Implement Multithreading vs Multiprocessing in Python~~ ✅
+~~77. How to Use Celery for Distributed Task Queues~~ ✅
+~~78. How to Build Cache Decorators in Python~~ ✅
 79. How to Use Apache Kafka with Python (confluent-kafka)
-80. How to Implement Retry Decorators for Flaky API Calls in Python
-81. How to Build Microservices Architecture in Python
-82. How to Use RabbitMQ with Pika in Python
-83. How to Handle Database Migrations with Alembic
-84. How to Implement Authentication in Python APIs
+~~80. How to Implement Retry Decorators for Flaky API Calls in Python~~ ✅
+~~81. How to Build Microservices Architecture in Python~~ ✅
+~~82. How to Use RabbitMQ with Pika in Python~~ ✅
+~~83. How to Handle Database Migrations with Alembic~~ ✅
+~~84. How to Implement Authentication in Python APIs~~ ✅
 85. How to Use AWS SDK (boto3) for Cloud Operations
-86. How to Build Serverless Functions with Python on AWS Lambda
-87. How to Profile and Optimize Python Code
-88. How to Implement Design Patterns in Python
+~~86. How to Build Serverless Functions with Python on AWS Lambda~~ ✅
+~~87. How to Profile and Optimize Python Code~~ ✅
+~~88. How to Implement Design Patterns in Python~~ ✅
 89. How to Use Protocol Classes for Type Safety
 90. How to Build Event-Driven Systems with Python
 91. How to Handle Large Data Processing with Pandas
-92. How to Use Dataclasses for Clean Data Models
+~~92. How to Use Dataclasses for Clean Data Models~~ ✅
 
 ### Ruby on Rails
-93. How to Use Pundit for Authorization in Rails
-94. How to Configure Background Jobs with Sidekiq
-95. How to Handle File Uploads with Active Storage
-96. How to Implement Caching Strategies in Rails
-97. How to Write Tests with RSpec in Rails
-98. How to Use Action Cable for WebSockets in Rails
-99. How to Deploy Rails Applications to Heroku
-100. How to Use Redis for Caching in Rails
-101. How to Implement API Authentication with JWT in Rails
-102. How to Handle N+1 Queries in Rails
-103. How to Use Hotwire/Turbo for Modern Rails Apps
-104. How to Implement Pagination with Kaminari in Rails
-105. How to Configure Action Mailer for Email in Rails
-106. How to Use Concerns for Code Organization in Rails
-107. How to Implement Multi-tenancy in Rails Applications
-108. How to Handle Internationalization (i18n) in Rails
-109. How to Use Docker with Rails Applications
+~~93. How to Use Pundit for Authorization in Rails~~ ✅
+~~94. How to Configure Background Jobs with Sidekiq~~ ✅
+~~95. How to Handle File Uploads with Active Storage~~ ✅
+~~96. How to Implement Caching Strategies in Rails~~ ✅
+~~97. How to Write Tests with RSpec in Rails~~ ✅
+~~98. How to Use Action Cable for WebSockets in Rails~~ ✅
+~~99. How to Deploy Rails Applications to Heroku~~ ✅
+~~100. How to Use Redis for Caching in Rails~~ ✅
+~~101. How to Implement API Authentication with JWT in Rails~~ ✅
+~~102. How to Handle N+1 Queries in Rails~~ ✅
+~~103. How to Use Hotwire/Turbo for Modern Rails Apps~~ ✅
+~~104. How to Implement Pagination with Kaminari in Rails~~ ✅
+~~105. How to Configure Action Mailer for Email in Rails~~ ✅
+~~106. How to Use Concerns for Code Organization in Rails~~ ✅
+~~107. How to Implement Multi-tenancy in Rails Applications~~ ✅
+~~108. How to Handle Internationalization (i18n) in Rails~~ ✅
+~~109. How to Use Docker with Rails Applications~~ ✅
 110. How to Build Microservices with Rails API Mode
-111. How to Implement Webhooks in Rails Applications
-112. How to Implement Query Objects Pattern in Rails
-113. How to Handle Transactions in Rails
-114. How to Build Multi-Model Search with Ransack in Rails
-115. How to Use Stimulus Controllers in Rails
+~~111. How to Implement Webhooks in Rails Applications~~ ✅
+~~112. How to Implement Query Objects Pattern in Rails~~ ✅
+~~113. How to Handle Transactions in Rails~~ ✅
+~~114. How to Build Multi-Model Search with Ransack in Rails~~ ✅
+~~115. How to Use Stimulus Controllers in Rails~~ ✅
 
 ### PHP/Laravel
-116. How to Use Eloquent ORM Effectively in Laravel
+~~116. How to Use Eloquent ORM Effectively in Laravel~~ ✅
 117. How to Implement Authentication with Laravel Breeze/Jetstream
 118. How to Use Laravel Queue for Background Jobs
 119. How to Handle File Uploads in Laravel
