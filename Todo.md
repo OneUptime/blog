@@ -7,11 +7,11 @@ This file contains 2000 unique blog ideas across various topics that people freq
 ## Languages & Frameworks
 
 ### Go (Golang)
-1. How to Set Up a Go Development Environment in 2026
-2. How to Implement Concurrency with Goroutines and Channels
-3. How to Build Real-time Applications with Go and SSE
-4. How to Use Go Workspaces for Monorepos
-5. How to Build Event-Driven Applications in Go
+~~1. How to Set Up a Go Development Environment in 2026~~ ✅
+~~2. How to Implement Concurrency with Goroutines and Channels~~ ✅
+~~3. How to Build Real-time Applications with Go and SSE~~ ✅
+~~4. How to Use Go Workspaces for Monorepos~~ ✅
+~~5. How to Build Event-Driven Applications in Go~~ ✅
 6. How to Trace Goroutine Execution with runtime/trace in Go
 7. How to Implement Request Context Propagation in Go Microservices
 8. How to Use Protocol Buffers with Go Microservices
