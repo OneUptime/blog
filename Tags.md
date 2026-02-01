@@ -348,6 +348,7 @@
 - AWS MSK
 - AWS Route53
 - AWS S3
+- AWS SDK
 - AWS Secrets Manager
 - AWS SQS
 - AWS WAF
@@ -463,6 +464,7 @@
 - BIND
 - Bind Mounts
 - BIND9
+- bindgen
 - Biometric
 - Biometric Authentication
 - Bisect
@@ -623,6 +625,7 @@
 - Case Sensitivity
 - Cassandra
 - Causality
+- cbindgen
 - CCR
 - CCS
 - CD
@@ -898,6 +901,7 @@
 - Conditional Resources
 - Conditionals
 - Config Connector
+- Config Server
 - config-rs
 - ConfigMaps
 - Configuration
@@ -949,6 +953,7 @@
 - Consumer Lag
 - Consumer Offset
 - Consumer Offsets
+- Consumer Patterns
 - Consumer Seek
 - Consumer Timeout
 - Consumer-Driven Contracts
@@ -1513,6 +1518,7 @@
 - DRBD
 - Drift Detection
 - Drivers
+- Drop
 - DROP DATABASE
 - Drop Logs
 - DRY
@@ -1612,6 +1618,7 @@
 - Emissary
 - Empty Values
 - Encoding
+- encoding/binary
 - Encrypted Backup
 - Encryption
 - End-to-End Testing
@@ -2036,6 +2043,7 @@
 - gobreaker
 - GoDaddy
 - Golang
+- golang-migrate
 - gomock
 - Google
 - Google Cloud
@@ -2059,6 +2067,7 @@
 - GPS Tracking
 - GPU
 - gqlgen
+- GraalVM
 - Grace Periods
 - Graceful Degradation
 - Graceful Shutdown
@@ -2114,6 +2123,7 @@
 - HashiCorp Boundary
 - HashiCorp Vault
 - HashMap
+- HashSet
 - HATEOAS
 - HCL
 - HDFS
@@ -2190,6 +2200,7 @@
 - HSET
 - HSM
 - HTML
+- HTML Parsing
 - html/template
 - htop
 - HTTP
@@ -2283,6 +2294,7 @@
 - ImportError
 - Imports
 - In-Memory
+- In-Memory Cache
 - Incident Analysis
 - Incident Communication
 - Incident Detection
@@ -2972,6 +2984,7 @@
 - Mongoose
 - mongorestore
 - Monitoring
+- Mono
 - Monorepo
 - Morgan
 - Mosquitto
@@ -3606,6 +3619,7 @@
 - Probabilistic
 - Probabilistic Data Structures
 - Probes
+- proc-macro
 - Process
 - Process Isolation
 - Process Management
@@ -3785,6 +3799,7 @@
 - Raft
 - RAG
 - RAID
+- RAII
 - Rails
 - Rancher
 - Rancher Desktop
@@ -3811,6 +3826,7 @@
 - Rclone
 - RDB
 - RDBMS
+- rdkafka
 - RDP
 - RDS
 - Re-Ranking
@@ -3914,6 +3930,7 @@
 - Relabeling
 - Relationships
 - Relay
+- Release
 - Release Automation
 - Release Management
 - Releases
@@ -4098,6 +4115,7 @@
 - Runtime Fields
 - Runtime Protection
 - Runtime Security
+- runtime/trace
 - RuntimeClass
 - Rust
 - Rust Development
@@ -4168,6 +4186,7 @@
 - Scopes
 - Scoring
 - SCRAM
+- scraper
 - Scrapy
 - Scratch
 - Screen Reader
@@ -5014,6 +5033,7 @@
 - Type Parameters
 - Type Resolution
 - Type Safety
+- Type State
 - Type Switch
 - Type System
 - Type-ahead
@@ -5128,6 +5148,7 @@
 - Variables
 - Vault
 - Vaultwarden
+- Vec
 - Vector
 - Vector Database
 - Vector Databases
@@ -5219,6 +5240,7 @@
 - WAL
 - WAL Archiving
 - WASM
+- wasm-bindgen
 - Watch
 - Watcher
 - Watchers
@@ -5359,6 +5381,7 @@
 - Zabbix
 - ZADD
 - Zalando
+- Zap
 - Zero Data Loss
 - Zero Downtime
 - Zero Touch
@@ -5368,6 +5391,7 @@
 - Zero-Cost Abstractions
 - Zero-Trust
 - Zeroconf
+- Zerolog
 - ZeroTrust
 - ZFS
 - Zigbee

@@ -97273,5 +97273,698 @@
       "Patterns"
     ],
     "post": "2026-02-01-go-event-driven-applications"
+  },
+  {
+    "title": "How to Trace Goroutine Execution with runtime/trace in Go",
+    "description": "A practical guide to using Go's runtime/trace package to analyze goroutine execution, identify bottlenecks, and debug concurrency issues.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Tracing",
+      "runtime/trace",
+      "Performance",
+      "Debugging",
+      "Profiling"
+    ],
+    "post": "2026-02-01-go-runtime-trace-goroutines"
+  },
+  {
+    "title": "How to Implement Request Context Propagation in Go Microservices",
+    "description": "A practical guide to propagating request context across Go microservices for tracing, cancellation, and request-scoped values.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Microservices",
+      "Context",
+      "Distributed Tracing",
+      "HTTP",
+      "gRPC"
+    ],
+    "post": "2026-02-01-go-context-propagation-microservices"
+  },
+  {
+    "title": "How to Use Protocol Buffers with Go Microservices",
+    "description": "A practical guide to using Protocol Buffers in Go for efficient data serialization and gRPC service definitions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Protocol Buffers",
+      "Protobuf",
+      "gRPC",
+      "Microservices",
+      "Serialization"
+    ],
+    "post": "2026-02-01-go-protocol-buffers-microservices"
+  },
+  {
+    "title": "How to Implement Message Queue Consumers in Go",
+    "description": "A practical guide to building reliable message queue consumers in Go with proper error handling, retries, and graceful shutdown.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Message Queue",
+      "RabbitMQ",
+      "NATS",
+      "Async",
+      "Consumer Patterns"
+    ],
+    "post": "2026-02-01-go-message-queue-consumers"
+  },
+  {
+    "title": "How to Build a Reverse Proxy Server in Go",
+    "description": "A practical guide to building a reverse proxy server in Go using the standard library with load balancing and request modification.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Reverse Proxy",
+      "HTTP",
+      "Load Balancing",
+      "Networking"
+    ],
+    "post": "2026-02-01-go-reverse-proxy-server"
+  },
+  {
+    "title": "How to Use Go with AWS SDK for Cloud Operations",
+    "description": "A practical guide to using the AWS SDK for Go v2 to interact with AWS services like S3, DynamoDB, and Lambda.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "AWS",
+      "AWS SDK",
+      "Cloud",
+      "S3",
+      "DynamoDB",
+      "Lambda"
+    ],
+    "post": "2026-02-01-go-aws-sdk-cloud-operations"
+  },
+  {
+    "title": "How to Implement Caching Strategies in Go Applications",
+    "description": "A practical guide to implementing caching in Go applications using in-memory caches, Redis, and cache invalidation strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Caching",
+      "Redis",
+      "In-Memory Cache",
+      "Performance"
+    ],
+    "post": "2026-02-01-go-caching-strategies"
+  },
+  {
+    "title": "How to Handle HTTP Client Timeouts Properly in Go",
+    "description": "A practical guide to configuring HTTP client timeouts in Go to prevent resource leaks and hanging requests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "HTTP",
+      "Timeouts",
+      "Networking",
+      "Best Practices"
+    ],
+    "post": "2026-02-01-go-http-client-timeouts"
+  },
+  {
+    "title": "How to Build High-Performance Network Services in Go",
+    "description": "A practical guide to building high-performance TCP and UDP network services in Go with connection pooling and efficient I/O.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Networking",
+      "TCP",
+      "Performance",
+      "Concurrency"
+    ],
+    "post": "2026-02-01-go-high-performance-network-services"
+  },
+  {
+    "title": "How to Use Google Wire for Compile-Time DI in Go",
+    "description": "A practical guide to using Google Wire for compile-time dependency injection in Go applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Dependency Injection",
+      "Wire",
+      "Architecture",
+      "Testing"
+    ],
+    "post": "2026-02-01-go-wire-dependency-injection"
+  },
+  {
+    "title": "How to Use Logging with Zap and Zerolog in Go",
+    "description": "A practical guide to structured logging in Go using Zap and Zerolog for high-performance application observability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Logging",
+      "Zap",
+      "Zerolog",
+      "Observability",
+      "Structured Logging"
+    ],
+    "post": "2026-02-01-go-logging-zap-zerolog"
+  },
+  {
+    "title": "How to Handle Database Migrations in Go Projects",
+    "description": "A practical guide to managing database schema migrations in Go projects using golang-migrate and goose.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Database",
+      "Migrations",
+      "PostgreSQL",
+      "MySQL",
+      "golang-migrate"
+    ],
+    "post": "2026-02-01-go-database-migrations"
+  },
+  {
+    "title": "How to Build WebSocket Servers with Gorilla WebSocket",
+    "description": "A practical guide to building WebSocket servers in Go using the Gorilla WebSocket library for real-time communication.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "WebSocket",
+      "Gorilla",
+      "Real-time",
+      "Networking"
+    ],
+    "post": "2026-02-01-go-websocket-gorilla"
+  },
+  {
+    "title": "How to Use Go Embed for Static File Bundling",
+    "description": "A practical guide to using Go's embed package to bundle static files and templates into your binary.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Embed",
+      "Static Files",
+      "Web Server",
+      "Deployment"
+    ],
+    "post": "2026-02-01-go-embed-static-files"
+  },
+  {
+    "title": "How to Build Custom Retry Middleware in Go",
+    "description": "A practical guide to building custom retry middleware in Go with exponential backoff and circuit breaker patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Middleware",
+      "Retry",
+      "Resilience",
+      "HTTP"
+    ],
+    "post": "2026-02-01-go-retry-middleware"
+  },
+  {
+    "title": "How to Handle Binary Protocol Parsing in Go",
+    "description": "A practical guide to parsing and encoding binary protocols in Go using encoding/binary and bytes packages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Binary",
+      "Parsing",
+      "Protocols",
+      "Networking",
+      "encoding/binary"
+    ],
+    "post": "2026-02-01-go-binary-protocol-parsing"
+  },
+  {
+    "title": "How to Use MongoDB with Go Driver",
+    "description": "A practical guide to using the official MongoDB Go driver for database operations with best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "MongoDB",
+      "Database",
+      "NoSQL",
+      "CRUD"
+    ],
+    "post": "2026-02-01-go-mongodb-driver"
+  },
+  {
+    "title": "How to Build Service Health Aggregation Systems in Go",
+    "description": "A practical guide to building a service health aggregation system in Go that monitors multiple services and dependencies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Health Checks",
+      "Monitoring",
+      "Microservices",
+      "Observability"
+    ],
+    "post": "2026-02-01-go-service-health-aggregation"
+  },
+  {
+    "title": "How to Build a Rate Limiter from Scratch in Go",
+    "description": "A practical guide to implementing rate limiters in Go using token bucket, sliding window, and fixed window algorithms.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Rate Limiting",
+      "API",
+      "Middleware",
+      "Token Bucket"
+    ],
+    "post": "2026-02-01-go-rate-limiter"
+  },
+  {
+    "title": "How to Build REST APIs with Actix-web in Rust",
+    "description": "A practical guide to building high-performance REST APIs in Rust using the Actix-web framework.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Actix-web",
+      "REST API",
+      "Web Development",
+      "Backend"
+    ],
+    "post": "2026-02-01-rust-actix-web-rest-api"
+  },
+  {
+    "title": "How to Use Tokio for Async Runtime in Rust",
+    "description": "A practical guide to using Tokio for asynchronous programming in Rust with tasks, channels, and I/O operations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Tokio",
+      "Async",
+      "Concurrency",
+      "Runtime"
+    ],
+    "post": "2026-02-01-rust-tokio-async-runtime"
+  },
+  {
+    "title": "How to Implement Error Handling with Result and Option Types",
+    "description": "A practical guide to error handling in Rust using Result and Option types with the ? operator and custom error types.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Error Handling",
+      "Result",
+      "Option",
+      "Best Practices"
+    ],
+    "post": "2026-02-01-rust-result-option-error-handling"
+  },
+  {
+    "title": "How to Build WebAssembly Modules with Rust",
+    "description": "A practical guide to building WebAssembly modules in Rust using wasm-bindgen and wasm-pack for web applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "WebAssembly",
+      "WASM",
+      "wasm-bindgen",
+      "Web Development"
+    ],
+    "post": "2026-02-01-rust-webassembly-wasm"
+  },
+  {
+    "title": "How to Implement Multithreading Safely in Rust",
+    "description": "A practical guide to safe multithreading in Rust using Arc, Mutex, RwLock, and channels for concurrent data access.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Multithreading",
+      "Concurrency",
+      "Arc",
+      "Mutex",
+      "Safety"
+    ],
+    "post": "2026-02-01-rust-safe-multithreading"
+  },
+  {
+    "title": "How to Build Microservices Architecture in Rust",
+    "description": "A practical guide to building microservices in Rust with service communication, configuration, and deployment patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Microservices",
+      "Architecture",
+      "Distributed Systems",
+      "gRPC"
+    ],
+    "post": "2026-02-01-rust-microservices-architecture"
+  },
+  {
+    "title": "How to Implement Custom Drop Traits for Resource Cleanup in Rust",
+    "description": "A practical guide to implementing the Drop trait in Rust for automatic resource cleanup and RAII patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Drop",
+      "Resource Management",
+      "RAII",
+      "Memory Safety"
+    ],
+    "post": "2026-02-01-rust-custom-drop-traits"
+  },
+  {
+    "title": "How to Implement Macros for Code Generation in Rust",
+    "description": "A practical guide to writing declarative and procedural macros in Rust for code generation and reducing boilerplate.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Macros",
+      "Metaprogramming",
+      "Code Generation",
+      "proc-macro"
+    ],
+    "post": "2026-02-01-rust-macros-code-generation"
+  },
+  {
+    "title": "How to Handle Configuration with Config-rs in Rust",
+    "description": "A practical guide to managing application configuration in Rust using config-rs with multiple sources and type safety.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Configuration",
+      "Config-rs",
+      "Environment Variables",
+      "TOML"
+    ],
+    "post": "2026-02-01-rust-config-rs-configuration"
+  },
+  {
+    "title": "How to Build Event-Driven Systems in Rust",
+    "description": "A practical guide to building event-driven systems in Rust using channels, async streams, and message brokers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Event-Driven",
+      "Architecture",
+      "Async",
+      "Message Passing"
+    ],
+    "post": "2026-02-01-rust-event-driven-systems"
+  },
+  {
+    "title": "How to Deploy Rust Applications to Production",
+    "description": "A practical guide to deploying Rust applications to production with optimized builds, Docker, and CI/CD pipelines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Deployment",
+      "Production",
+      "Docker",
+      "CI/CD",
+      "Release"
+    ],
+    "post": "2026-02-01-rust-deploy-production"
+  },
+  {
+    "title": "How to Use Rust for Systems Programming",
+    "description": "A practical guide to using Rust for systems programming with low-level memory control and OS interactions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Systems Programming",
+      "Low-Level",
+      "Memory",
+      "Performance"
+    ],
+    "post": "2026-02-01-rust-systems-programming"
+  },
+  {
+    "title": "How to Implement FFI (Foreign Function Interface) in Rust",
+    "description": "A practical guide to implementing FFI in Rust to call C libraries and expose Rust functions to C code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "FFI",
+      "C",
+      "Interoperability",
+      "bindgen",
+      "cbindgen"
+    ],
+    "post": "2026-02-01-rust-ffi-foreign-function-interface"
+  },
+  {
+    "title": "How to Build High-Performance Web Scrapers in Rust",
+    "description": "A practical guide to building high-performance web scrapers in Rust using reqwest and scraper crates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Web Scraping",
+      "reqwest",
+      "scraper",
+      "HTML Parsing",
+      "Async"
+    ],
+    "post": "2026-02-01-rust-web-scraper"
+  },
+  {
+    "title": "How to Use Rust with Docker for Containerization",
+    "description": "A practical guide to containerizing Rust applications with Docker using multi-stage builds and optimization techniques.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Docker",
+      "Containerization",
+      "DevOps",
+      "Deployment"
+    ],
+    "post": "2026-02-01-rust-docker-containerization"
+  },
+  {
+    "title": "How to Implement Caching Strategies in Rust",
+    "description": "A practical guide to implementing caching in Rust using in-memory caches, LRU algorithms, and Redis integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Caching",
+      "Performance",
+      "Redis",
+      "In-Memory"
+    ],
+    "post": "2026-02-01-rust-caching-strategies"
+  },
+  {
+    "title": "How to Build Real-time Applications with Rust",
+    "description": "A practical guide to building real-time applications in Rust using WebSockets and Server-Sent Events.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Real-time",
+      "WebSocket",
+      "Server-Sent Events",
+      "Async"
+    ],
+    "post": "2026-02-01-rust-realtime-applications"
+  },
+  {
+    "title": "How to Use Rust with Apache Kafka",
+    "description": "A practical guide to using Apache Kafka with Rust using the rdkafka crate for producing and consuming messages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Kafka",
+      "Message Queue",
+      "Streaming",
+      "rdkafka"
+    ],
+    "post": "2026-02-01-rust-apache-kafka"
+  },
+  {
+    "title": "How to Profile and Optimize Rust Code for Performance",
+    "description": "A practical guide to profiling Rust applications using perf, flamegraph, and criterion for performance optimization.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Profiling",
+      "Performance",
+      "Optimization",
+      "Benchmarking"
+    ],
+    "post": "2026-02-01-rust-profiling-optimization"
+  },
+  {
+    "title": "How to Use Collections (Vec, HashMap, HashSet) in Rust",
+    "description": "A practical guide to using Rust's standard collections with performance considerations and common patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Collections",
+      "Vec",
+      "HashMap",
+      "HashSet",
+      "Data Structures"
+    ],
+    "post": "2026-02-01-rust-collections"
+  },
+  {
+    "title": "How to Implement State Machines in Rust",
+    "description": "A practical guide to implementing type-safe state machines in Rust using enums and the typestate pattern.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "State Machines",
+      "Type State",
+      "Design Patterns",
+      "Enums"
+    ],
+    "post": "2026-02-01-rust-state-machines"
+  },
+  {
+    "title": "How to Build Message Queue Consumers in Rust",
+    "description": "A practical guide to building reliable message queue consumers in Rust with RabbitMQ and NATS.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Message Queue",
+      "RabbitMQ",
+      "NATS",
+      "Consumer",
+      "Async"
+    ],
+    "post": "2026-02-01-rust-message-queue-consumers"
+  },
+  {
+    "title": "How to Use Axum Web Framework for APIs",
+    "description": "A practical guide to building web APIs with Axum, the Tokio-native web framework built on Tower.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Axum",
+      "Web Framework",
+      "REST API",
+      "Tower",
+      "Tokio"
+    ],
+    "post": "2026-02-01-rust-axum-web-framework"
+  },
+  {
+    "title": "How to Build Reactive Applications with Spring WebFlux",
+    "description": "A practical guide to building reactive applications with Spring WebFlux using Mono and Flux for non-blocking I/O.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "WebFlux",
+      "Reactive",
+      "Mono",
+      "Flux"
+    ],
+    "post": "2026-02-01-spring-webflux-reactive"
+  },
+  {
+    "title": "How to Implement Microservices with Spring Cloud",
+    "description": "A practical guide to building microservices with Spring Cloud including service discovery, configuration, and load balancing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Spring Cloud",
+      "Microservices",
+      "Service Discovery",
+      "Config Server"
+    ],
+    "post": "2026-02-01-spring-cloud-microservices"
+  },
+  {
+    "title": "How to Use Resilience4j for Circuit Breakers in Spring Boot",
+    "description": "A practical guide to implementing circuit breakers, retries, and rate limiters with Resilience4j in Spring Boot.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Resilience4j",
+      "Circuit Breaker",
+      "Fault Tolerance",
+      "Retry"
+    ],
+    "post": "2026-02-01-spring-resilience4j-circuit-breaker"
+  },
+  {
+    "title": "How to Optimize Spring Boot Startup Time",
+    "description": "A practical guide to reducing Spring Boot startup time using lazy initialization, native images, and optimization techniques.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Performance",
+      "Startup",
+      "Optimization",
+      "GraalVM"
+    ],
+    "post": "2026-02-01-spring-boot-startup-optimization"
+  },
+  {
+    "title": "How to Implement Multi-tenancy in Spring Boot Applications",
+    "description": "A practical guide to implementing multi-tenancy in Spring Boot using schema-based and database-based approaches.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Multi-tenancy",
+      "SaaS",
+      "Database",
+      "Architecture"
+    ],
+    "post": "2026-02-01-spring-boot-multi-tenancy"
+  },
+  {
+    "title": "How to Use gRPC with Spring Boot",
+    "description": "A practical guide to implementing gRPC services and clients in Spring Boot with Protocol Buffers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "gRPC",
+      "Protocol Buffers",
+      "Microservices",
+      "RPC"
+    ],
+    "post": "2026-02-01-spring-boot-grpc"
+  },
+  {
+    "title": "How to Configure Spring Batch Job Scheduling",
+    "description": "A practical guide to configuring and scheduling Spring Batch jobs for reliable data processing and ETL workflows.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Spring Batch",
+      "Scheduling",
+      "Jobs",
+      "ETL"
+    ],
+    "post": "2026-02-01-spring-batch-job-scheduling"
+  },
+  {
+    "title": "How to Implement Distributed Tracing in Spring Boot",
+    "description": "A practical guide to implementing distributed tracing in Spring Boot using Micrometer Tracing and OpenTelemetry.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Distributed Tracing",
+      "Micrometer",
+      "OpenTelemetry",
+      "Observability"
+    ],
+    "post": "2026-02-01-spring-boot-distributed-tracing"
   }
 ]

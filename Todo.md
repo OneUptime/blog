@@ -12,60 +12,60 @@ This file contains 2000 unique blog ideas across various topics that people freq
 ~~3. How to Build Real-time Applications with Go and SSE~~ ✅
 ~~4. How to Use Go Workspaces for Monorepos~~ ✅
 ~~5. How to Build Event-Driven Applications in Go~~ ✅
-6. How to Trace Goroutine Execution with runtime/trace in Go
-7. How to Implement Request Context Propagation in Go Microservices
-8. How to Use Protocol Buffers with Go Microservices
-9. How to Implement Message Queue Consumers in Go
-10. How to Build a Reverse Proxy Server in Go
-11. How to Use Go with AWS SDK for Cloud Operations
-12. How to Implement Caching Strategies in Go Applications
-13. How to Handle HTTP Client Timeouts Properly in Go
-14. How to Build High-Performance Network Services in Go
-15. How to Use Google Wire for Compile-Time DI in Go
-16. How to Use Logging with Zap and Zerolog in Go
-17. How to Handle Database Migrations in Go Projects
-18. How to Build WebSocket Servers with Gorilla WebSocket
-19. How to Use Go Embed for Static File Bundling
-20. How to Build Custom Retry Middleware in Go
-21. How to Handle Binary Protocol Parsing in Go
-22. How to Use MongoDB with Go Driver
-23. How to Build Service Health Aggregation Systems in Go
-24. How to Build a Rate Limiter from Scratch in Go
+~~6. How to Trace Goroutine Execution with runtime/trace in Go~~ ✅
+~~7. How to Implement Request Context Propagation in Go Microservices~~ ✅
+~~8. How to Use Protocol Buffers with Go Microservices~~ ✅
+~~9. How to Implement Message Queue Consumers in Go~~ ✅
+~~10. How to Build a Reverse Proxy Server in Go~~ ✅
+~~11. How to Use Go with AWS SDK for Cloud Operations~~ ✅
+~~12. How to Implement Caching Strategies in Go Applications~~ ✅
+~~13. How to Handle HTTP Client Timeouts Properly in Go~~ ✅
+~~14. How to Build High-Performance Network Services in Go~~ ✅
+~~15. How to Use Google Wire for Compile-Time DI in Go~~ ✅
+~~16. How to Use Logging with Zap and Zerolog in Go~~ ✅
+~~17. How to Handle Database Migrations in Go Projects~~ ✅
+~~18. How to Build WebSocket Servers with Gorilla WebSocket~~ ✅
+~~19. How to Use Go Embed for Static File Bundling~~ ✅
+~~20. How to Build Custom Retry Middleware in Go~~ ✅
+~~21. How to Handle Binary Protocol Parsing in Go~~ ✅
+~~22. How to Use MongoDB with Go Driver~~ ✅
+~~23. How to Build Service Health Aggregation Systems in Go~~ ✅
+~~24. How to Build a Rate Limiter from Scratch in Go~~ ✅
 
 ### Rust
-25. How to Build REST APIs with Actix-web in Rust
-26. How to Use Tokio for Async Runtime in Rust
-27. How to Implement Error Handling with Result and Option Types
-28. How to Build WebAssembly Modules with Rust
-29. How to Implement Multithreading Safely in Rust
-30. How to Build Microservices Architecture in Rust
-31. How to Implement Custom Drop Traits for Resource Cleanup in Rust
-32. How to Implement Macros for Code Generation in Rust
-33. How to Handle Configuration with Config-rs in Rust
-34. How to Build Event-Driven Systems in Rust
-35. How to Deploy Rust Applications to Production
-36. How to Use Rust for Systems Programming
-37. How to Implement FFI (Foreign Function Interface) in Rust
-38. How to Build High-Performance Web Scrapers in Rust
-39. How to Use Rust with Docker for Containerization
-40. How to Implement Caching Strategies in Rust
-41. How to Build Real-time Applications with Rust
-42. How to Use Rust with Apache Kafka
-43. How to Profile and Optimize Rust Code for Performance
-44. How to Use Collections (Vec, HashMap, HashSet) in Rust
-45. How to Implement State Machines in Rust
-46. How to Build Message Queue Consumers in Rust
-47. How to Use Axum Web Framework for APIs
+~~25. How to Build REST APIs with Actix-web in Rust~~ ✅
+~~26. How to Use Tokio for Async Runtime in Rust~~ ✅
+~~27. How to Implement Error Handling with Result and Option Types~~ ✅
+~~28. How to Build WebAssembly Modules with Rust~~ ✅
+~~29. How to Implement Multithreading Safely in Rust~~ ✅
+~~30. How to Build Microservices Architecture in Rust~~ ✅
+~~31. How to Implement Custom Drop Traits for Resource Cleanup in Rust~~ ✅
+~~32. How to Implement Macros for Code Generation in Rust~~ ✅
+~~33. How to Handle Configuration with Config-rs in Rust~~ ✅
+~~34. How to Build Event-Driven Systems in Rust~~ ✅
+~~35. How to Deploy Rust Applications to Production~~ ✅
+~~36. How to Use Rust for Systems Programming~~ ✅
+~~37. How to Implement FFI (Foreign Function Interface) in Rust~~ ✅
+~~38. How to Build High-Performance Web Scrapers in Rust~~ ✅
+~~39. How to Use Rust with Docker for Containerization~~ ✅
+~~40. How to Implement Caching Strategies in Rust~~ ✅
+~~41. How to Build Real-time Applications with Rust~~ ✅
+~~42. How to Use Rust with Apache Kafka~~ ✅
+~~43. How to Profile and Optimize Rust Code for Performance~~ ✅
+~~44. How to Use Collections (Vec, HashMap, HashSet) in Rust~~ ✅
+~~45. How to Implement State Machines in Rust~~ ✅
+~~46. How to Build Message Queue Consumers in Rust~~ ✅
+~~47. How to Use Axum Web Framework for APIs~~ ✅
 
 ### Java/Spring Boot
-48. How to Build Reactive Applications with Spring WebFlux
-49. How to Implement Microservices with Spring Cloud
-50. How to Use Resilience4j for Circuit Breakers in Spring Boot
-51. How to Optimize Spring Boot Startup Time
-52. How to Implement Multi-tenancy in Spring Boot Applications
-53. How to Use gRPC with Spring Boot
-54. How to Configure Spring Batch Job Scheduling
-55. How to Implement Distributed Tracing in Spring Boot
+~~48. How to Build Reactive Applications with Spring WebFlux~~ ✅
+~~49. How to Implement Microservices with Spring Cloud~~ ✅
+~~50. How to Use Resilience4j for Circuit Breakers in Spring Boot~~ ✅
+~~51. How to Optimize Spring Boot Startup Time~~ ✅
+~~52. How to Implement Multi-tenancy in Spring Boot Applications~~ ✅
+~~53. How to Use gRPC with Spring Boot~~ ✅
+~~54. How to Configure Spring Batch Job Scheduling~~ ✅
+~~55. How to Implement Distributed Tracing in Spring Boot~~ ✅
 56. How to Use Micrometer for Metrics in Spring Boot
 57. How to Configure SSL/TLS in Spring Boot Applications
 58. How to Use RabbitMQ with Spring Boot
