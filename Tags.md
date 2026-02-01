@@ -574,6 +574,7 @@
 - Bull
 - Bull Board
 - BullMQ
+- Bun
 - Bundle Size
 - Bundler
 - Bundles
@@ -1336,6 +1337,7 @@
 - Delta
 - Delta Lake
 - Deluge
+- Deno
 - Denormalization
 - Dense Retrieval
 - Dense Vectors
@@ -1595,6 +1597,7 @@
 - ELK Alternative
 - ELK Stack
 - ELT
+- Elysia
 - Email
 - Email Alerts
 - Email Queue
@@ -1790,6 +1793,7 @@
 - Feeds
 - Feign
 - Fencing
+- Fetch
 - FFI
 - Fiber
 - FID
@@ -1899,8 +1903,10 @@
 - Fragment
 - Fragments
 - Frame Protocol
+- Framework
 - Framework Design
 - Fraud Detection
+- Fresh
 - Freshness
 - Front Controller
 - Front Door
@@ -3188,6 +3194,7 @@
 - NVMe
 - Nx
 - NYC
+- Oak
 - OAuth
 - OAuth 2.0
 - OAuth2
@@ -5236,6 +5243,7 @@
 - Web Security
 - Web Server
 - Web Services
+- Web Streams API
 - Web Testing
 - Web UI
 - Web Vitals
@@ -5341,6 +5349,7 @@
 - xUnit
 - XXE
 - YAML
+- Yarn
 - YARP
 - yield
 - Yjs

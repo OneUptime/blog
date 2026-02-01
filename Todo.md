@@ -210,58 +210,58 @@ This file contains 2000 unique blog ideas across various topics that people freq
 187. How to Handle Image Processing in Swift
 
 ### Deno
-188. How to Get Started with Deno Runtime
-189. How to Build REST APIs with Deno and Oak
-190. How to Use TypeScript Native Support in Deno
-191. How to Handle HTTP Requests in Deno
-192. How to Connect Deno to PostgreSQL
-193. How to Use Deno Deploy for Serverless
-194. How to Handle File Operations in Deno
-195. How to Implement JWT Authentication in Deno
-196. How to Use Fresh Framework with Deno
-197. How to Build WebSocket Servers in Deno
-198. How to Handle Environment Variables in Deno
-199. How to Write Tests with Deno Test Runner
-200. How to Use npm Packages with Deno
-201. How to Build CLI Applications with Deno
-202. How to Implement Middleware in Deno
-203. How to Use MongoDB with Deno
-204. How to Build Microservices with Deno
-205. How to Implement Caching in Deno Applications
-206. How to Use Redis with Deno
-207. How to Build GraphQL APIs with Deno
-208. How to Deploy Deno Applications to Production
-209. How to Handle Streams in Deno
-210. How to Use Deno KV for Built-in Storage
-211. How to Build Server-Sent Events in Deno
-212. How to Implement Rate Limiting in Deno
+~~188. How to Get Started with Deno Runtime~~ ✅
+~~189. How to Build REST APIs with Deno and Oak~~ ✅
+~~190. How to Use TypeScript Native Support in Deno~~ ✅
+~~191. How to Handle HTTP Requests in Deno~~ ✅
+~~192. How to Connect Deno to PostgreSQL~~ ✅
+~~193. How to Use Deno Deploy for Serverless~~ ✅
+~~194. How to Handle File Operations in Deno~~ ✅
+~~195. How to Implement JWT Authentication in Deno~~ ✅
+~~196. How to Use Fresh Framework with Deno~~ ✅
+~~197. How to Build WebSocket Servers in Deno~~ ✅
+~~198. How to Handle Environment Variables in Deno~~ ✅
+~~199. How to Write Tests with Deno Test Runner~~ ✅
+~~200. How to Use npm Packages with Deno~~ ✅
+~~201. How to Build CLI Applications with Deno~~ ✅
+~~202. How to Implement Middleware in Deno~~ ✅
+~~203. How to Use MongoDB with Deno~~ ✅
+~~204. How to Build Microservices with Deno~~ ✅
+~~205. How to Implement Caching in Deno Applications~~ ✅
+~~206. How to Use Redis with Deno~~ ✅
+~~207. How to Build GraphQL APIs with Deno~~ ✅
+~~208. How to Deploy Deno Applications to Production~~ ✅
+~~209. How to Handle Streams in Deno~~ ✅
+~~210. How to Use Deno KV for Built-in Storage~~ ✅
+~~211. How to Build Server-Sent Events in Deno~~ ✅
+~~212. How to Implement Rate Limiting in Deno~~ ✅
 
 ### Bun
-213. How to Get Started with Bun Runtime
-214. How to Build REST APIs with Bun
-215. How to Use TypeScript with Bun
-216. How to Run Node.js Apps with Bun
-217. How to Use Bun as a Package Manager
-218. How to Build WebSocket Servers with Bun
-219. How to Connect Bun to PostgreSQL
-220. How to Handle File Operations in Bun
-221. How to Write Tests with Bun Test Runner
-222. How to Use Elysia Framework with Bun
-223. How to Handle HTTP Requests in Bun
-224. How to Implement JWT Authentication with Bun
-225. How to Use Environment Variables in Bun
-226. How to Build CLI Applications with Bun
-227. How to Handle Async Operations in Bun
-228. How to Use SQLite with Bun's Native Support
-229. How to Build Microservices with Bun
-230. How to Implement Caching in Bun Applications
-231. How to Use Redis with Bun
-232. How to Build GraphQL APIs with Bun
-233. How to Deploy Bun Applications to Production
-234. How to Handle Streams in Bun
-235. How to Use MongoDB with Bun
-236. How to Build Real-time Applications with Bun
-237. How to Optimize Bun Performance
+~~213. How to Get Started with Bun Runtime~~ ✅
+~~214. How to Build REST APIs with Bun~~ ✅
+~~215. How to Use TypeScript with Bun~~ ✅
+~~216. How to Run Node.js Apps with Bun~~ ✅
+~~217. How to Use Bun as a Package Manager~~ ✅
+~~218. How to Build WebSocket Servers with Bun~~ ✅
+~~219. How to Connect Bun to PostgreSQL~~ ✅
+~~220. How to Handle File Operations in Bun~~ ✅
+~~221. How to Write Tests with Bun Test Runner~~ ✅
+~~222. How to Use Elysia Framework with Bun~~ ✅
+~~223. How to Handle HTTP Requests in Bun~~ ✅
+~~224. How to Implement JWT Authentication with Bun~~ ✅
+~~225. How to Use Environment Variables in Bun~~ ✅
+~~226. How to Build CLI Applications with Bun~~ ✅
+~~227. How to Handle Async Operations in Bun~~ ✅
+~~228. How to Use SQLite with Bun's Native Support~~ ✅
+~~229. How to Build Microservices with Bun~~ ✅
+~~230. How to Implement Caching in Bun Applications~~ ✅
+~~231. How to Use Redis with Bun~~ ✅
+~~232. How to Build GraphQL APIs with Bun~~ ✅
+~~233. How to Deploy Bun Applications to Production~~ ✅
+~~234. How to Handle Streams in Bun~~ ✅
+~~235. How to Use MongoDB with Bun~~ ✅
+~~236. How to Build Real-time Applications with Bun~~ ✅
+~~237. How to Optimize Bun Performance~~ ✅
 
 ### Elixir/Phoenix
 238. How to Get Started with Elixir Programming
