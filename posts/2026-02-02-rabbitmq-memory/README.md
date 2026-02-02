@@ -1,6 +1,6 @@
 # How to Handle RabbitMQ Memory Issues
 
-Author: [nicktackes](https://www.github.com/nicktackes)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Memory Management, Performance, Monitoring, Message Queues
 

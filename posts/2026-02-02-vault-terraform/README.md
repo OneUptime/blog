@@ -1,6 +1,6 @@
 # How to Use Vault with Terraform
 
-Author: [nicktackes](https://www.github.com/nicktackes)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HashiCorp Vault, Terraform, Secrets Management, Infrastructure as Code, Security
 

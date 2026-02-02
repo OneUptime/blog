@@ -1,6 +1,6 @@
 # How to Use Pulumi Stacks
 
-Author: [nicktackes](https://www.github.com/nicktackes)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, Infrastructure as Code, DevOps, Multi-Environment, State Management
 

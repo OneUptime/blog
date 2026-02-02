@@ -1,6 +1,6 @@
 # How to Handle Large Messages in Pub/Sub
 
-Author: [nicktackes](https://www.github.com/nicktackes)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Google Cloud, Pub/Sub, Large Messages, Cloud Storage, Messaging, Python
 

@@ -1,6 +1,6 @@
 # How to Handle Large Messages with SQS Extended Client
 
-Author: [nicktackes](https://www.github.com/nicktackes)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, S3, Large Messages, Java, Python, Node.js
 

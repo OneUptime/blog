@@ -105187,7 +105187,7 @@
   {
     "title": "How to Handle Large Messages in Pub/Sub",
     "description": "Learn how to handle messages larger than Pub/Sub's 10MB limit using Cloud Storage references, chunking, and compression strategies.",
-    "authorGitHubUsername": "nicktackes",
+    "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Google Cloud",
       "Pub/Sub",
@@ -105474,7 +105474,7 @@
   {
     "title": "How to Use Pulumi Stacks",
     "description": "Learn how to use Pulumi Stacks to manage multiple infrastructure environments with isolation and shared code.",
-    "authorGitHubUsername": "nicktackes",
+    "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Pulumi",
       "Infrastructure as Code",
@@ -105654,7 +105654,7 @@
   {
     "title": "How to Handle RabbitMQ Memory Issues",
     "description": "Learn how to diagnose, resolve, and prevent memory issues in RabbitMQ for optimal message broker performance.",
-    "authorGitHubUsername": "nicktackes",
+    "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "RabbitMQ",
       "Memory Management",
@@ -106325,7 +106325,7 @@
   {
     "title": "How to Handle Large Messages with SQS Extended Client",
     "description": "Learn how to handle messages larger than SQS's 256KB limit using the Extended Client Library with S3 storage.",
-    "authorGitHubUsername": "nicktackes",
+    "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "AWS",
       "SQS",
@@ -107257,7 +107257,7 @@
   {
     "title": "How to Use Vault with Terraform",
     "description": "Learn how to integrate HashiCorp Vault with Terraform for secure secrets management in infrastructure deployments.",
-    "authorGitHubUsername": "nicktackes",
+    "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "HashiCorp Vault",
       "Terraform",
