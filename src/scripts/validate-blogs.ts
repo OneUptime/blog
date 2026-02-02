@@ -16,12 +16,15 @@
  * 10. Checks for duplicate posts
  * 11. Validates tags are not empty and have no duplicates
  * 12. Validates minimum description length
+ * 13. AUTO-FIX: Automatically adds missing entries to Blogs.json from README.md
+ * 14. AUTO-FIX: Automatically generates missing social-media.png images
  *
  * Run with: npm run validate
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { execSync } from 'child_process';
 
 // Constants
 const POSTS_DIR = 'posts';
@@ -77,6 +80,10 @@ function logError(msg: string): void {
 
 function logSuccess(msg: string): void {
   console.log(`${colors.green}${colors.bold}OK:${colors.reset} ${msg}`);
+}
+
+function logInfo(msg: string): void {
+  console.log(`${colors.blue}${colors.bold}INFO:${colors.reset} ${msg}`);
 }
 
 function logHeader(msg: string): void {
@@ -307,37 +314,162 @@ function getPostDirectories(): string[] {
 }
 
 /**
- * Check for directories missing from Blogs.json
+ * Parse README.md and extract blog entry data
  */
-function checkMissingInJson(postsDir: string[], blogPosts: string[]): string[] {
+function parseReadmeForBlogEntry(dir: string): BlogEntry | null {
+  const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+  
+  if (!fs.existsSync(readmePath)) {
+    return null;
+  }
+  
+  const content = fs.readFileSync(readmePath, 'utf8');
+  const lines = content.split('\n');
+  
+  // Extract title (# Title)
+  let title = '';
+  if (lines[0] && lines[0].startsWith('# ')) {
+    title = lines[0].substring(2).trim();
+  }
+  
+  // Extract author
+  let authorGitHubUsername = '';
+  const authorLine = lines.find((l) => l.startsWith('Author:'));
+  if (authorLine) {
+    const authorMatch = authorLine.match(/\[([^\]]+)\]/);
+    if (authorMatch) {
+      authorGitHubUsername = authorMatch[1];
+    }
+  }
+  
+  // Extract tags
+  let tags: string[] = [];
+  const tagsLine = lines.find((l) => l.startsWith('Tags:'));
+  if (tagsLine) {
+    tags = tagsLine
+      .substring(5)
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+  }
+  
+  // Extract description
+  let description = '';
+  const descLine = lines.find((l) => l.startsWith('Description:'));
+  if (descLine) {
+    description = descLine.substring(12).trim();
+  }
+  
+  // Validate we have enough data
+  if (!title || !authorGitHubUsername || tags.length === 0 || !description) {
+    return null;
+  }
+  
+  return {
+    title,
+    description,
+    authorGitHubUsername,
+    tags,
+    post: dir,
+  };
+}
+
+/**
+ * Auto-add missing entries to Blogs.json from README.md
+ */
+function autoAddMissingEntries(missingDirs: string[], blogsJson: BlogEntry[]): { added: string[]; failed: string[] } {
+  const added: string[] = [];
+  const failed: string[] = [];
+  
+  for (const dir of missingDirs) {
+    const entry = parseReadmeForBlogEntry(dir);
+    if (entry) {
+      blogsJson.push(entry);
+      added.push(dir);
+    } else {
+      failed.push(dir);
+    }
+  }
+  
+  return { added, failed };
+}
+
+/**
+ * Generate missing social media images using the generate-social-image script
+ */
+function generateMissingSocialImages(): void {
+  logHeader('Generating missing social media images');
+  
+  try {
+    logInfo('Running social media image generator with --all flag...');
+    execSync('npx ts-node src/scripts/generate-social-image.ts --all', {
+      cwd: process.cwd(),
+      stdio: 'inherit',
+    });
+    logSuccess('Social media image generation completed');
+  } catch (error) {
+    const err = error as Error;
+    logError(`Failed to generate social media images: ${err.message}`);
+    hasErrors = true;
+  }
+}
+
+/**
+ * Check for directories missing from Blogs.json and auto-add them
+ */
+function checkMissingInJson(postsDir: string[], blogPosts: string[], blogsJson: BlogEntry[]): string[] {
   logHeader('Checking for directories missing from Blogs.json');
   const missingInJson = postsDir.filter((dir) => !blogPosts.includes(dir));
 
   if (missingInJson.length > 0) {
-    hasErrors = true;
-    logError(
-      `Found ${missingInJson.length} director${missingInJson.length === 1 ? 'y' : 'ies'} not listed in ${BLOGS_JSON}:\n`
-    );
-    missingInJson.forEach((dir) => {
-      console.log(`  - ${colors.red}${dir}${colors.reset}`);
-    });
-    console.log(`
+    logInfo(`Found ${missingInJson.length} director${missingInJson.length === 1 ? 'y' : 'ies'} not listed in ${BLOGS_JSON}`);
+    console.log('');
+    
+    // Attempt to auto-add entries from README.md
+    logInfo('Attempting to auto-add entries from README.md...\n');
+    const { added, failed } = autoAddMissingEntries(missingInJson, blogsJson);
+    
+    if (added.length > 0) {
+      logSuccess(`Auto-added ${added.length} entr${added.length === 1 ? 'y' : 'ies'} to ${BLOGS_JSON}:`);
+      added.forEach((dir) => {
+        console.log(`  - ${colors.green}${dir}${colors.reset}`);
+      });
+      console.log('');
+    }
+    
+    if (failed.length > 0) {
+      hasErrors = true;
+      logError(`Could not auto-add ${failed.length} entr${failed.length === 1 ? 'y' : 'ies'} (missing or incomplete README.md):`);
+      failed.forEach((dir) => {
+        console.log(`  - ${colors.red}${dir}${colors.reset}`);
+      });
+      console.log(`
 ${colors.bold}How to fix:${colors.reset}
-  Add an entry to ${BLOGS_JSON} for each missing directory. Example:
+  Ensure each blog has a properly formatted README.md with:
+  - Title (# Title on first line)
+  - Author: [username](https://www.github.com/username)
+  - Tags: Tag1, Tag2, Tag3
+  - Description: One liner description
+
+  Or manually add an entry to ${BLOGS_JSON}:
 
   {
     "title": "Your Blog Post Title",
     "description": "A one-liner description of the post",
     "authorGitHubUsername": "yourgithubusername",
     "tags": ["Tag1", "Tag2"],
-    "post": "${missingInJson[0] || 'YYYY-MM-DD-title-of-post'}"
+    "post": "${failed[0] || 'YYYY-MM-DD-title-of-post'}"
   }
 `);
+    }
+    
+    // Return only the failed ones as truly missing
+    return failed;
   } else {
     logSuccess('All directories are listed in Blogs.json');
   }
 
-  return missingInJson;
+  return [];
 }
 
 /**
@@ -691,23 +823,29 @@ function main(): void {
   checkRequiredFiles();
 
   // Read Blogs.json
-  const blogsJson = readBlogsJson();
+  let blogsJson = readBlogsJson();
   
   // Read Authors.json
   const authorsJson = readAuthorsJson();
-
-  // Sort Blogs.json by date (oldest first, newest last)
-  const sortedBlogs = sortBlogsByDate(blogsJson);
-  const blogPosts = sortedBlogs.map((b) => b.post);
-
-  // Generate Tags.md from Blogs.json
-  generateTagsMd(sortedBlogs);
 
   // Get all directories in posts/
   const postsDir = getPostDirectories();
 
   // Validate directory name date format
   validateDirectoryDateFormat(postsDir);
+
+  // Check for directories missing from Blogs.json and auto-add them
+  // This modifies blogsJson in place to add new entries
+  const blogPosts = blogsJson.map((b) => b.post);
+  const missingInJson = checkMissingInJson(postsDir, blogPosts, blogsJson);
+
+  // Sort Blogs.json by date (oldest first, newest last) and save
+  // This ensures newly added entries are properly sorted
+  const sortedBlogs = sortBlogsByDate(blogsJson);
+  blogsJson = sortedBlogs;
+
+  // Generate Tags.md from Blogs.json
+  generateTagsMd(sortedBlogs);
   
   // Check for duplicate posts
   checkDuplicatePosts(sortedBlogs);
@@ -718,16 +856,20 @@ function main(): void {
   // Validate Blogs.json entry fields
   validateBlogEntries(sortedBlogs);
 
-  // Run validations
-  const missingInJson = checkMissingInJson(postsDir, blogPosts);
-  const missingDirs = checkMissingDirs(postsDir, blogPosts);
+  // Check for Blogs.json entries missing directories
+  const missingDirs = checkMissingDirs(postsDir, sortedBlogs.map((b) => b.post));
+  
+  // Generate missing social media images before final validation
+  generateMissingSocialImages();
+
+  // Run final validation for format issues
   const formatIssues = validateAllPosts(postsDir, sortedBlogs);
 
   // Display format issues
   displayFormatIssues(formatIssues);
 
   // Display summary and exit
-  displaySummary(postsDir, blogPosts, missingInJson, missingDirs, formatIssues);
+  displaySummary(postsDir, sortedBlogs.map((b) => b.post), missingInJson, missingDirs, formatIssues);
 }
 
 // Run the script
