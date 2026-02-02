@@ -98822,5 +98822,1005 @@
       "Observability"
     ],
     "post": "2026-02-01-spring-boot-distributed-tracing"
+  },
+  {
+    "title": "How to Use Cypress with TypeScript",
+    "description": "Learn how to write type-safe end-to-end tests with Cypress and TypeScript, including custom commands, fixtures, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "Cypress",
+      "Testing",
+      "E2E",
+      "Automation"
+    ],
+    "post": "2026-02-02-cypress-typescript"
+  },
+  {
+    "title": "How to Configure Jest for TypeScript",
+    "description": "Learn how to configure Jest for TypeScript projects with proper transpilation, type checking, and optimal test performance settings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "Jest",
+      "Testing",
+      "Configuration",
+      "Unit Tests"
+    ],
+    "post": "2026-02-02-jest-typescript-configuration"
+  },
+  {
+    "title": "How to Use GraphQL with TypeScript",
+    "description": "Learn how to build type-safe GraphQL applications with TypeScript using code generation, typed resolvers, and GraphQL Code Generator.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "GraphQL",
+      "API",
+      "Type Safety",
+      "Code Generation"
+    ],
+    "post": "2026-02-02-graphql-typescript"
+  },
+  {
+    "title": "How to Use Playwright with TypeScript",
+    "description": "A practical guide to end-to-end testing with Playwright and TypeScript, covering setup, page objects, fixtures, and CI/CD integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "Playwright",
+      "Testing",
+      "E2E",
+      "Automation"
+    ],
+    "post": "2026-02-02-playwright-typescript"
+  },
+  {
+    "title": "How to Implement Logging with Morgan and Winston in Express",
+    "description": "Learn how to implement production-ready logging in Express using Morgan for HTTP requests and Winston for application logging with multiple transports.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Express",
+      "Logging",
+      "Morgan",
+      "Winston"
+    ],
+    "post": "2026-02-02-express-morgan-winston-logging"
+  },
+  {
+    "title": "How to Add Logging to Django Applications",
+    "description": "Learn how to configure Django's logging system for development and production, including formatters, handlers, log rotation, and structured logging.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Django",
+      "Logging",
+      "Observability",
+      "Best Practices"
+    ],
+    "post": "2026-02-02-django-logging"
+  },
+  {
+    "title": "How to Add Structured Logging to FastAPI",
+    "description": "Learn how to implement structured logging in FastAPI using structlog or python-json-logger for better observability and log aggregation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "FastAPI",
+      "Logging",
+      "Observability",
+      "JSON Logging"
+    ],
+    "post": "2026-02-02-fastapi-structured-logging"
+  },
+  {
+    "title": "How to Add Logging to NestJS Applications",
+    "description": "Learn how to implement logging in NestJS using the built-in logger, custom loggers, Winston integration, and request logging interceptors.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "NestJS",
+      "Logging",
+      "Winston",
+      "Observability"
+    ],
+    "post": "2026-02-02-nestjs-logging"
+  },
+  {
+    "title": "How to Implement Cache Invalidation in FastAPI",
+    "description": "Learn how to implement cache invalidation strategies in FastAPI using Redis, including TTL, event-based invalidation, and cache-aside patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "FastAPI",
+      "Caching",
+      "Redis",
+      "Performance"
+    ],
+    "post": "2026-02-02-fastapi-cache-invalidation"
+  },
+  {
+    "title": "How to Use Redis with WebSockets for Pub/Sub",
+    "description": "Learn how to scale WebSocket applications using Redis pub/sub for message broadcasting across multiple server instances.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Redis",
+      "WebSockets",
+      "Pub/Sub",
+      "Real-time",
+      "Scaling"
+    ],
+    "post": "2026-02-02-redis-websockets-pubsub"
+  },
+  {
+    "title": "How to Monitor PostgreSQL Performance",
+    "description": "Learn how to monitor PostgreSQL performance using built-in tools, pg_stat views, EXPLAIN ANALYZE, and external monitoring solutions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Database",
+      "Performance",
+      "Monitoring",
+      "DBA"
+    ],
+    "post": "2026-02-02-postgresql-performance-monitoring"
+  },
+  {
+    "title": "How to Set Up Kafka Security (SASL/SSL)",
+    "description": "A comprehensive guide to securing Apache Kafka with SASL authentication, SSL encryption, and ACLs for production environments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kafka",
+      "Security",
+      "SASL",
+      "SSL",
+      "Authentication"
+    ],
+    "post": "2026-02-02-kafka-security-sasl-ssl"
+  },
+  {
+    "title": "How to Handle Caching in REST APIs",
+    "description": "Learn REST API caching strategies including HTTP cache headers, ETags, Cache-Control, and server-side caching patterns for optimal performance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "REST API",
+      "Caching",
+      "HTTP",
+      "ETags",
+      "Performance"
+    ],
+    "post": "2026-02-02-rest-api-caching"
+  },
+  {
+    "title": "How to Use Redis with NestJS",
+    "description": "Learn how to integrate Redis with NestJS for caching, session storage, pub/sub messaging, and job queues with practical examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "NestJS",
+      "Redis",
+      "Caching",
+      "Performance"
+    ],
+    "post": "2026-02-02-nestjs-redis"
+  },
+  {
+    "title": "How to Implement Caching with Redis in Express",
+    "description": "Learn how to implement Redis caching in Express.js applications for improved performance, including cache strategies, TTL, and cache invalidation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Express",
+      "Redis",
+      "Caching",
+      "Performance"
+    ],
+    "post": "2026-02-02-express-redis-caching"
+  },
+  {
+    "title": "How to Implement Authorization in GraphQL",
+    "description": "Learn how to implement authorization in GraphQL APIs using resolver-level checks, directives, middleware, and field-level permissions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GraphQL",
+      "Authorization",
+      "Security",
+      "API",
+      "Access Control"
+    ],
+    "post": "2026-02-02-graphql-authorization"
+  },
+  {
+    "title": "How to Implement OAuth2 in Django",
+    "description": "Learn how to implement OAuth2 authentication in Django using django-allauth or python-social-auth for Google, GitHub, and other providers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Django",
+      "OAuth2",
+      "Authentication",
+      "Security"
+    ],
+    "post": "2026-02-02-django-oauth2"
+  },
+  {
+    "title": "How to Handle Authentication in REST APIs",
+    "description": "A comprehensive guide to REST API authentication methods including JWT, OAuth2, API keys, and session-based auth with best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "REST API",
+      "Authentication",
+      "JWT",
+      "OAuth",
+      "Security"
+    ],
+    "post": "2026-02-02-rest-api-authentication"
+  },
+  {
+    "title": "How to Implement OAuth2 in Express",
+    "description": "Learn how to implement OAuth2 authentication in Express using Passport.js for Google, GitHub, Facebook, and other OAuth providers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Express",
+      "OAuth2",
+      "Passport",
+      "Authentication"
+    ],
+    "post": "2026-02-02-express-oauth2"
+  },
+  {
+    "title": "How to Deploy FastAPI to Production",
+    "description": "A comprehensive guide to deploying FastAPI applications to production, covering Gunicorn, Docker, Nginx, SSL, and cloud platform deployments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "FastAPI",
+      "Deployment",
+      "Production",
+      "DevOps"
+    ],
+    "post": "2026-02-02-fastapi-production-deployment"
+  },
+  {
+    "title": "How to Set Up MongoDB with Docker",
+    "description": "Learn how to run MongoDB in Docker for development and production, including replica sets, authentication, data persistence, and docker-compose configurations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MongoDB",
+      "Docker",
+      "Database",
+      "DevOps",
+      "NoSQL"
+    ],
+    "post": "2026-02-02-mongodb-docker-setup"
+  },
+  {
+    "title": "How to Deploy Django to Production Servers",
+    "description": "Learn how to deploy Django applications to production servers with Gunicorn, Nginx, PostgreSQL, SSL, and security hardening best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Django",
+      "Deployment",
+      "Production",
+      "DevOps"
+    ],
+    "post": "2026-02-02-django-production-deployment"
+  },
+  {
+    "title": "How to Set Up PostgreSQL with Docker",
+    "description": "Learn how to run PostgreSQL in Docker for development and production, including data persistence, configuration, backups, and docker-compose setups.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Docker",
+      "Database",
+      "DevOps",
+      "Containers"
+    ],
+    "post": "2026-02-02-postgresql-docker-setup"
+  },
+  {
+    "title": "How to Use Docker with Laravel (Sail)",
+    "description": "Learn how to use Laravel Sail for Docker-based development, including setup, customization, running services, and production deployment patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Docker",
+      "Sail",
+      "DevOps"
+    ],
+    "post": "2026-02-02-laravel-docker-sail"
+  },
+  {
+    "title": "How to Implement WebSockets in NestJS",
+    "description": "Learn how to implement WebSockets in NestJS using gateways, including event handling, rooms, authentication, and scaling considerations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "NestJS",
+      "WebSockets",
+      "Real-time",
+      "Socket.io"
+    ],
+    "post": "2026-02-02-nestjs-websockets"
+  },
+  {
+    "title": "How to Use Guards for Authorization in NestJS",
+    "description": "Learn how to implement authorization in NestJS using guards, including JWT guards, role-based access control, and custom guard logic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "NestJS",
+      "Guards",
+      "Authorization",
+      "Security"
+    ],
+    "post": "2026-02-02-nestjs-guards-authorization"
+  },
+  {
+    "title": "How to Use TypeORM with NestJS",
+    "description": "A comprehensive guide to using TypeORM with NestJS for database operations, including entities, repositories, relations, and migrations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "NestJS",
+      "TypeORM",
+      "Database",
+      "ORM"
+    ],
+    "post": "2026-02-02-nestjs-typeorm"
+  },
+  {
+    "title": "How to Write Tests in NestJS",
+    "description": "A practical guide to testing NestJS applications with Jest, covering unit tests, integration tests, mocking, and e2e testing patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "NestJS",
+      "Testing",
+      "Jest",
+      "Unit Tests"
+    ],
+    "post": "2026-02-02-nestjs-testing"
+  },
+  {
+    "title": "How to Use Modules for Code Organization in NestJS",
+    "description": "Learn how to organize NestJS applications using modules for better code organization, encapsulation, and maintainability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "NestJS",
+      "Modules",
+      "Architecture",
+      "Best Practices"
+    ],
+    "post": "2026-02-02-nestjs-modules-organization"
+  },
+  {
+    "title": "How to Write Tests for Express with Jest",
+    "description": "Learn how to test Express.js applications with Jest and Supertest, covering unit tests, integration tests, mocking, and test organization.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Express",
+      "Jest",
+      "Testing",
+      "Supertest"
+    ],
+    "post": "2026-02-02-express-jest-testing"
+  },
+  {
+    "title": "How to Use MongoDB with Express and Mongoose",
+    "description": "A comprehensive guide to using MongoDB with Express.js and Mongoose, covering schemas, models, CRUD operations, relationships, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Express",
+      "MongoDB",
+      "Mongoose",
+      "Database"
+    ],
+    "post": "2026-02-02-express-mongodb-mongoose"
+  },
+  {
+    "title": "How to Structure Express.js Projects for Scale",
+    "description": "Learn how to organize Express.js applications for scalability with proper folder structure, separation of concerns, and modular architecture patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Express",
+      "Project Structure",
+      "Architecture",
+      "Best Practices"
+    ],
+    "post": "2026-02-02-express-project-structure"
+  },
+  {
+    "title": "How to Handle Error Handling Properly in Express",
+    "description": "Learn proper error handling in Express applications with custom error classes, centralized error handling, async error catching, and production-ready patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Express",
+      "Error Handling",
+      "API",
+      "Best Practices"
+    ],
+    "post": "2026-02-02-express-error-handling"
+  },
+  {
+    "title": "How to Handle Database with Flask-SQLAlchemy",
+    "description": "Learn how to use Flask-SQLAlchemy for database operations, including model definition, relationships, queries, and database migrations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Flask",
+      "SQLAlchemy",
+      "Database",
+      "ORM"
+    ],
+    "post": "2026-02-02-flask-sqlalchemy-database"
+  },
+  {
+    "title": "How to Use Middleware Effectively in Express",
+    "description": "Master Express middleware patterns including custom middleware, error handling, authentication, logging, and proper middleware ordering.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Express",
+      "Middleware",
+      "API",
+      "Best Practices"
+    ],
+    "post": "2026-02-02-express-middleware"
+  },
+  {
+    "title": "How to Organize Flask App Factory Pattern",
+    "description": "Learn how to structure Flask applications using the application factory pattern for better testing, configuration management, and modularity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Flask",
+      "Design Patterns",
+      "Project Structure",
+      "Best Practices"
+    ],
+    "post": "2026-02-02-flask-app-factory-pattern"
+  },
+  {
+    "title": "How to Write Tests for Flask Apps",
+    "description": "A practical guide to testing Flask applications with pytest, covering unit tests, integration tests, fixtures, and testing best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Flask",
+      "Testing",
+      "pytest",
+      "Unit Tests"
+    ],
+    "post": "2026-02-02-flask-testing"
+  },
+  {
+    "title": "How to Build Production Django Applications",
+    "description": "A comprehensive guide to building production-ready Django applications, covering project structure, security settings, database optimization, and deployment best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Django",
+      "Production",
+      "Web Development",
+      "Best Practices"
+    ],
+    "post": "2026-02-02-django-production-applications"
+  },
+  {
+    "title": "How to Use Celery with Django for Background Tasks",
+    "description": "A practical guide to integrating Celery with Django for background task processing, including task definition, scheduling, monitoring, and error handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Django",
+      "Celery",
+      "Background Tasks",
+      "Redis"
+    ],
+    "post": "2026-02-02-django-celery-background-tasks"
+  },
+  {
+    "title": "How to Add JWT Authentication to Flask",
+    "description": "Implement JWT authentication in Flask APIs using Flask-JWT-Extended, covering token generation, refresh tokens, and protected endpoints.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Flask",
+      "JWT",
+      "Authentication",
+      "API Security"
+    ],
+    "post": "2026-02-02-flask-jwt-authentication"
+  },
+  {
+    "title": "How to Implement Authentication in Flask",
+    "description": "A comprehensive guide to implementing user authentication in Flask using Flask-Login, password hashing, session management, and protected routes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Flask",
+      "Authentication",
+      "Flask-Login",
+      "Security"
+    ],
+    "post": "2026-02-02-flask-authentication"
+  },
+  {
+    "title": "How to Add Caching to Django Applications",
+    "description": "Learn how to implement caching in Django using the cache framework, Redis, view caching, template fragment caching, and cache invalidation strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Django",
+      "Caching",
+      "Redis",
+      "Performance"
+    ],
+    "post": "2026-02-02-django-caching"
+  },
+  {
+    "title": "How to Implement Class-Based Views in Django",
+    "description": "Master Django class-based views with ListView, DetailView, CreateView, UpdateView, and custom mixins for cleaner and more reusable code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Django",
+      "CBV",
+      "Views",
+      "Web Development"
+    ],
+    "post": "2026-02-02-django-class-based-views"
+  },
+  {
+    "title": "How to Build GraphQL APIs with Sangria in Scala",
+    "description": "Learn how to build type-safe GraphQL APIs in Scala using Sangria, covering schema definition, queries, mutations, and integration with Akka HTTP.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Scala",
+      "GraphQL",
+      "Sangria",
+      "API",
+      "Type Safety"
+    ],
+    "post": "2026-02-02-scala-graphql-sangria"
+  },
+  {
+    "title": "How to Use Apache Spark with Scala",
+    "description": "Learn how to process big data with Apache Spark and Scala, covering RDDs, DataFrames, transformations, actions, and performance optimization.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Scala",
+      "Apache Spark",
+      "Big Data",
+      "Data Processing",
+      "Distributed Computing"
+    ],
+    "post": "2026-02-02-scala-apache-spark"
+  },
+  {
+    "title": "How to Use Django Admin for Content Management",
+    "description": "Learn how to customize and leverage Django Admin for content management, including custom actions, filters, inline models, and admin site customization.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Django",
+      "Admin",
+      "CMS",
+      "Content Management"
+    ],
+    "post": "2026-02-02-django-admin-content-management"
+  },
+  {
+    "title": "How to Implement Pattern Matching in Scala",
+    "description": "Master Scala's powerful pattern matching with match expressions, case classes, extractors, guards, and real-world use cases for cleaner code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Scala",
+      "Pattern Matching",
+      "Functional Programming",
+      "Case Classes",
+      "Type Safety"
+    ],
+    "post": "2026-02-02-scala-pattern-matching"
+  },
+  {
+    "title": "How to Implement Background Tasks in FastAPI",
+    "description": "Learn how to implement background tasks in FastAPI using BackgroundTasks, Celery integration, and async patterns for non-blocking operations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "FastAPI",
+      "Background Tasks",
+      "Async",
+      "Performance"
+    ],
+    "post": "2026-02-02-fastapi-background-tasks"
+  },
+  {
+    "title": "How to Implement GraphQL with Absinthe in Elixir",
+    "description": "A practical guide to building GraphQL APIs in Elixir with Absinthe, covering schemas, resolvers, subscriptions, and integration with Phoenix.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "GraphQL",
+      "Absinthe",
+      "Phoenix",
+      "API"
+    ],
+    "post": "2026-02-02-elixir-graphql-absinthe"
+  },
+  {
+    "title": "How to Handle File Uploads with FastAPI",
+    "description": "A practical guide to handling file uploads in FastAPI, covering single and multiple files, validation, streaming, and cloud storage integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "FastAPI",
+      "File Upload",
+      "Async",
+      "Storage"
+    ],
+    "post": "2026-02-02-fastapi-file-uploads"
+  },
+  {
+    "title": "How to Get Started with Scala Programming",
+    "description": "A beginner-friendly introduction to Scala programming, covering installation, basic syntax, functional concepts, and why Scala is great for modern applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Scala",
+      "JVM",
+      "Functional Programming",
+      "Getting Started",
+      "Object Oriented"
+    ],
+    "post": "2026-02-02-scala-getting-started"
+  },
+  {
+    "title": "How to Implement WebSockets in FastAPI",
+    "description": "Learn how to implement WebSocket connections in FastAPI for real-time communication, including connection management, broadcasting, and authentication.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "FastAPI",
+      "WebSockets",
+      "Real-time",
+      "Async"
+    ],
+    "post": "2026-02-02-fastapi-websockets"
+  },
+  {
+    "title": "How to Get Started with Elixir Programming",
+    "description": "A beginner-friendly introduction to Elixir programming, covering installation, basic syntax, pattern matching, and the functional programming paradigm.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Functional Programming",
+      "Erlang",
+      "BEAM",
+      "Getting Started"
+    ],
+    "post": "2026-02-02-elixir-getting-started"
+  },
+  {
+    "title": "How to Build REST APIs with Phoenix",
+    "description": "A practical guide to building RESTful APIs with Phoenix Framework, covering JSON rendering, authentication, validation, and API versioning.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Phoenix",
+      "REST API",
+      "JSON",
+      "Web Development"
+    ],
+    "post": "2026-02-02-phoenix-rest-api"
+  },
+  {
+    "title": "How to Use Dependency Injection in FastAPI",
+    "description": "Master FastAPI's dependency injection system for cleaner code, better testing, and proper separation of concerns in your API applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "FastAPI",
+      "Dependency Injection",
+      "Design Patterns",
+      "Testing"
+    ],
+    "post": "2026-02-02-fastapi-dependency-injection"
+  },
+  {
+    "title": "How to Build Production-Ready APIs with FastAPI",
+    "description": "A comprehensive guide to building production-ready APIs with FastAPI, covering project structure, error handling, testing, security, and deployment patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "FastAPI",
+      "API",
+      "Production",
+      "Best Practices"
+    ],
+    "post": "2026-02-02-fastapi-production-ready-apis"
+  },
+  {
+    "title": "How to Build Web Applications with Phoenix Framework",
+    "description": "A comprehensive guide to building web applications with Phoenix Framework, covering project setup, routing, controllers, templates, and database integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Phoenix",
+      "Web Development",
+      "MVC",
+      "Real-time"
+    ],
+    "post": "2026-02-02-phoenix-web-applications"
+  },
+  {
+    "title": "How to Implement GenServers for State Management in Elixir",
+    "description": "Learn how to use GenServer for stateful processes in Elixir, covering callbacks, synchronous and asynchronous messages, and supervision patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "GenServer",
+      "OTP",
+      "Concurrency",
+      "State Management"
+    ],
+    "post": "2026-02-02-elixir-genserver-state"
+  },
+  {
+    "title": "How to Build iOS Apps with SwiftUI",
+    "description": "A comprehensive guide to building iOS applications with SwiftUI, covering views, state management, navigation, and modern app architecture patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Swift",
+      "SwiftUI",
+      "iOS",
+      "Apple",
+      "Mobile Development"
+    ],
+    "post": "2026-02-02-swiftui-ios-apps"
+  },
+  {
+    "title": "How to Use Pattern Matching in Elixir",
+    "description": "Master Elixir's powerful pattern matching capabilities for destructuring, function clauses, case expressions, and elegant control flow.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Pattern Matching",
+      "Functional Programming",
+      "Destructuring",
+      "BEAM"
+    ],
+    "post": "2026-02-02-elixir-pattern-matching"
+  },
+  {
+    "title": "How to Implement Dependency Injection with Koin in Kotlin",
+    "description": "A practical guide to implementing dependency injection in Kotlin applications using Koin, covering modules, scopes, testing, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kotlin",
+      "Koin",
+      "Dependency Injection",
+      "Android",
+      "Architecture"
+    ],
+    "post": "2026-02-02-kotlin-koin-dependency-injection"
+  },
+  {
+    "title": "How to Implement Pagination in Laravel",
+    "description": "A comprehensive guide to implementing pagination in Laravel, covering basic pagination, cursor pagination, API resources, and custom pagination views.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Pagination",
+      "Eloquent",
+      "API"
+    ],
+    "post": "2026-02-02-laravel-pagination"
+  },
+  {
+    "title": "How to Use Sealed Classes for Type-Safe State in Kotlin",
+    "description": "Learn how to leverage Kotlin sealed classes for type-safe state management, exhaustive when expressions, and clean UI state handling patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kotlin",
+      "Sealed Classes",
+      "State Management",
+      "Type Safety",
+      "Android"
+    ],
+    "post": "2026-02-02-kotlin-sealed-classes-state"
+  },
+  {
+    "title": "How to Implement Null Safety in Kotlin",
+    "description": "Master Kotlin's null safety features including nullable types, safe calls, Elvis operator, and smart casts to write safer and more reliable code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kotlin",
+      "Null Safety",
+      "Type System",
+      "Best Practices",
+      "Android"
+    ],
+    "post": "2026-02-02-kotlin-null-safety"
+  },
+  {
+    "title": "How to Implement MVVM Architecture in SwiftUI",
+    "description": "Learn how to structure SwiftUI applications using MVVM architecture with ObservableObject, @Published, and clean separation of concerns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Swift",
+      "SwiftUI",
+      "MVVM",
+      "Architecture",
+      "iOS"
+    ],
+    "post": "2026-02-02-swiftui-mvvm-architecture"
+  },
+  {
+    "title": "How to Use Async/Await in Swift Concurrency",
+    "description": "Master Swift's modern concurrency model with async/await, tasks, actors, and structured concurrency for cleaner and safer asynchronous code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Swift",
+      "Async Await",
+      "Concurrency",
+      "iOS",
+      "Modern Swift"
+    ],
+    "post": "2026-02-02-swift-async-await-concurrency"
+  },
+  {
+    "title": "How to Use Kotlin Coroutines for Async Programming",
+    "description": "A practical guide to Kotlin coroutines, covering suspend functions, coroutine scopes, dispatchers, structured concurrency, and error handling patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kotlin",
+      "Coroutines",
+      "Async",
+      "Concurrency",
+      "Android"
+    ],
+    "post": "2026-02-02-kotlin-coroutines-async"
+  },
+  {
+    "title": "How to Build Microservices with Rails API Mode",
+    "description": "A practical guide to building microservices with Rails API mode, covering project setup, JSON serialization, authentication, inter-service communication, and deployment patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Ruby",
+      "Rails",
+      "API",
+      "Microservices",
+      "Architecture"
+    ],
+    "post": "2026-02-02-rails-api-mode-microservices"
+  },
+  {
+    "title": "How to Handle N+1 Queries in Laravel",
+    "description": "Learn how to identify and fix N+1 query problems in Laravel using eager loading, query optimization techniques, and debugging tools.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Database",
+      "Performance",
+      "Eloquent"
+    ],
+    "post": "2026-02-02-laravel-n-plus-one-queries"
+  },
+  {
+    "title": "How to Configure Mail in Laravel",
+    "description": "Learn how to configure and send emails in Laravel using various mail drivers, Mailables, queued emails, and testing strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Email",
+      "SMTP",
+      "Notifications"
+    ],
+    "post": "2026-02-02-laravel-mail-configuration"
+  },
+  {
+    "title": "How to Build Event-Driven Systems with Python",
+    "description": "A practical guide to building event-driven systems in Python using asyncio, message queues, and event patterns for scalable and decoupled applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Event Driven",
+      "Architecture",
+      "Async",
+      "Messaging"
+    ],
+    "post": "2026-02-02-python-event-driven-systems"
+  },
+  {
+    "title": "How to Handle Large Data Processing with Pandas",
+    "description": "Learn efficient techniques for processing large datasets with Pandas, including chunking, memory optimization, dtype selection, and parallel processing strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Pandas",
+      "Data Processing",
+      "Performance",
+      "Big Data"
+    ],
+    "post": "2026-02-02-python-pandas-large-data"
+  },
+  {
+    "title": "How to Use Apache Kafka with Python (confluent-kafka)",
+    "description": "A complete guide to using Apache Kafka with Python using the confluent-kafka library, covering producers, consumers, error handling, and production configurations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Kafka",
+      "Event Driven",
+      "Messaging",
+      "confluent-kafka"
+    ],
+    "post": "2026-02-02-python-confluent-kafka"
+  },
+  {
+    "title": "How to Use Protocol Classes for Type Safety in Python",
+    "description": "Learn how to use Python's Protocol classes for structural subtyping, enabling duck typing with static type checking for more robust and maintainable code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Type Safety",
+      "Protocols",
+      "typing",
+      "Static Analysis"
+    ],
+    "post": "2026-02-02-python-protocol-classes-type-safety"
+  },
+  {
+    "title": "How to Use AWS SDK (boto3) for Cloud Operations",
+    "description": "Learn how to use boto3, the AWS SDK for Python, to manage cloud resources including S3, EC2, Lambda, and more with practical code examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "AWS",
+      "boto3",
+      "Cloud",
+      "DevOps"
+    ],
+    "post": "2026-02-02-python-boto3-aws-sdk"
+  },
+  {
+    "title": "How to Build Multi-Module Maven Projects",
+    "description": "Learn how to structure multi-module Maven projects with proper dependency management, build configuration, and best practices for large Java applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Maven",
+      "Build Tools",
+      "Project Structure"
+    ],
+    "post": "2026-02-02-multi-module-maven-projects"
+  },
+  {
+    "title": "How to Use Kafka Streams with Spring Boot",
+    "description": "A practical guide to building stream processing applications with Kafka Streams and Spring Boot, including configuration, topology design, and production best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Kafka",
+      "Stream Processing",
+      "Event Driven"
+    ],
+    "post": "2026-02-02-kafka-streams-spring-boot"
   }
 ]

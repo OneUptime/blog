@@ -15,6 +15,7 @@
 - A11y
 - ABAC
 - Aborted
+- Absinthe
 - Abstraction
 - Access Control
 - Access Errors
@@ -205,6 +206,7 @@
 - App Store
 - AppArmor
 - Append
+- Apple
 - Apple Silicon
 - Application
 - Application Design
@@ -265,6 +267,7 @@
 - Associated Types
 - Associations
 - Async
+- Async Await
 - Async Communication
 - Async Components
 - Async Context
@@ -513,6 +516,7 @@
 - borg
 - Borrow Checker
 - Borrowing
+- boto3
 - Bottom Sheet
 - Bounds Checking
 - Box
@@ -628,10 +632,12 @@
 - Cargo
 - Cascading Failures
 - Cascading Replication
+- Case Classes
 - Case Sensitivity
 - Cassandra
 - Causality
 - cbindgen
+- CBV
 - CCR
 - CCS
 - CD
@@ -807,6 +813,7 @@
 - Clustering
 - ClusterMesh
 - Clusters
+- CMS
 - CNI
 - CO-RE
 - CoAP
@@ -917,6 +924,7 @@
 - Conflicts
 - Confluent
 - Confluent Cloud
+- confluent-kafka
 - Conformed Dimensions
 - Conftest
 - Connect
@@ -985,6 +993,7 @@
 - containerd
 - Containerization
 - Containers
+- Content Management
 - Content Matching
 - Content Moderation
 - Content Negotiation
@@ -1659,6 +1668,7 @@
 - Episodic Memory
 - Erasure Coding
 - ErasureCoding
+- Erlang
 - errgroup
 - Error
 - Error Analysis
@@ -1691,6 +1701,7 @@
 - Evaluation
 - Event Bus
 - Event Correlation
+- Event Driven
 - Event Grid
 - Event Hub
 - Event Loop
@@ -1875,6 +1886,7 @@
 - Flamegraph
 - Flash Sales
 - Flask
+- Flask-Login
 - Flat Index
 - FlatList
 - Flatpak
@@ -2567,6 +2579,7 @@
 - Knowledge Graphs
 - Knowledge Management
 - Knowledge Sharing
+- Koin
 - Kong
 - Kotlin
 - KRaft
@@ -2985,6 +2998,7 @@
 - Model Serving
 - Model Testing
 - Models
+- Modern Swift
 - Modern Web
 - Modernization
 - ModSecurity
@@ -3235,6 +3249,7 @@
 - Oban
 - Obfuscation
 - Object Mapping
+- Object Oriented
 - Object Pool
 - Object Pooling
 - Object Safety
@@ -4154,6 +4169,7 @@
 - Saga Pattern
 - SageMaker
 - SAI
+- Sail
 - Sales
 - Salt
 - SaltStack
@@ -4166,6 +4182,7 @@
 - Sanctum
 - Sandboxed Processor
 - Sandboxing
+- Sangria
 - Sanitization
 - SAS Tokens
 - SASI
@@ -4230,6 +4247,7 @@
 - SDK Configuration
 - SDN
 - SDP
+- Sealed Classes
 - Sealed Secrets
 - Search
 - Search After
@@ -4696,6 +4714,7 @@
 - SummingMergeTree
 - Super Streams
 - Superset
+- Supertest
 - Supervision
 - Supply Chain
 - Supply Chain Security
@@ -4708,6 +4727,7 @@
 - Swarm
 - Swashbuckle
 - Swift
+- SwiftUI
 - Syft
 - Symfony
 - Sync
