@@ -1,5 +1,11 @@
 # How to Handle RabbitMQ Memory Issues
 
+Author: [nicktackes](https://www.github.com/nicktackes)
+
+Tags: RabbitMQ, Memory Management, Performance, Monitoring, Message Queues
+
+Description: Learn how to diagnose, resolve, and prevent memory issues in RabbitMQ for optimal message broker performance.
+
 RabbitMQ is a powerful message broker, but memory issues can severely impact its performance and reliability. When RabbitMQ runs low on memory, it triggers flow control mechanisms that block publishers, leading to application bottlenecks and potential message loss. Understanding how to diagnose, resolve, and prevent memory issues is essential for maintaining a healthy messaging infrastructure.
 
 ## Understanding RabbitMQ Memory Architecture

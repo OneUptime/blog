@@ -1,5 +1,11 @@
 # How to Back Up DynamoDB Tables
 
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
+
+Tags: AWS, DynamoDB, Backup, NoSQL, Disaster Recovery, Cloud
+
+Description: Learn multiple approaches to backing up DynamoDB tables from built-in AWS features to custom export solutions.
+
 Amazon DynamoDB is a fully managed NoSQL database that powers some of the most demanding applications at any scale. While DynamoDB handles much of the operational overhead, protecting your data through proper backup strategies remains your responsibility. A robust backup strategy ensures business continuity, protects against accidental deletions, and helps meet compliance requirements.
 
 In this guide, you will learn multiple approaches to backing up DynamoDB tables, from built-in AWS features to custom solutions for complex scenarios.

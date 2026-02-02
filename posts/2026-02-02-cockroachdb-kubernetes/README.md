@@ -1,5 +1,11 @@
 # How to Configure CockroachDB for Kubernetes
 
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
+
+Tags: CockroachDB, Kubernetes, Distributed Database, SQL, DevOps, StatefulSet
+
+Description: Learn how to deploy and configure CockroachDB on Kubernetes for production-ready distributed SQL workloads.
+
 CockroachDB is a distributed SQL database designed for cloud-native environments, making it an excellent choice for Kubernetes deployments. Its built-in replication, automatic failover, and horizontal scaling capabilities align perfectly with Kubernetes' orchestration features. In this guide, you'll learn how to deploy and configure CockroachDB on Kubernetes for production-ready workloads.
 
 ## Architecture Overview

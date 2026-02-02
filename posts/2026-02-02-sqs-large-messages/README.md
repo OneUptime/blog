@@ -1,5 +1,11 @@
 # How to Handle Large Messages with SQS Extended Client
 
+Author: [nicktackes](https://www.github.com/nicktackes)
+
+Tags: AWS, SQS, S3, Large Messages, Java, Python, Node.js
+
+Description: Learn how to handle messages larger than SQS's 256KB limit using the Extended Client Library with S3 storage.
+
 Amazon Simple Queue Service (SQS) has a message size limit of 256 KB, which can be restrictive when working with large payloads such as images, documents, or complex data structures. The SQS Extended Client Library solves this limitation by automatically storing large message payloads in Amazon S3 and passing only a reference through SQS. In this guide, you'll learn how to implement the SQS Extended Client for handling messages of any size.
 
 ## Architecture Overview

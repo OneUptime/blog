@@ -1,5 +1,11 @@
 # How to Use Vault with Terraform
 
+Author: [nicktackes](https://www.github.com/nicktackes)
+
+Tags: HashiCorp Vault, Terraform, Secrets Management, Infrastructure as Code, Security
+
+Description: Learn how to integrate HashiCorp Vault with Terraform for secure secrets management in infrastructure deployments.
+
 Managing secrets in infrastructure-as-code can be challenging. HashiCorp Vault provides a robust solution for secrets management, and when combined with Terraform, you can securely provision infrastructure while keeping sensitive data protected. In this guide, you will learn how to integrate Vault with Terraform for secure, automated infrastructure deployments.
 
 ## Understanding the Vault-Terraform Integration

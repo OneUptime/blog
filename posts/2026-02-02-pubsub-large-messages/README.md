@@ -1,5 +1,11 @@
 # How to Handle Large Messages in Pub/Sub
 
+Author: [nicktackes](https://www.github.com/nicktackes)
+
+Tags: Google Cloud, Pub/Sub, Large Messages, Cloud Storage, Messaging, Python
+
+Description: Learn how to handle messages larger than Pub/Sub's 10MB limit using Cloud Storage references, chunking, and compression strategies.
+
 Google Cloud Pub/Sub imposes a 10MB message size limit, which can be challenging when dealing with large payloads like images, documents, or extensive datasets. When your application needs to process messages exceeding these limits, you need strategies to work around the constraints while maintaining reliable message delivery and processing.
 
 ## Understanding Pub/Sub Message Limits

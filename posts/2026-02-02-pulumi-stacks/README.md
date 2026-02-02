@@ -1,5 +1,11 @@
 # How to Use Pulumi Stacks
 
+Author: [nicktackes](https://www.github.com/nicktackes)
+
+Tags: Pulumi, Infrastructure as Code, DevOps, Multi-Environment, State Management
+
+Description: Learn how to use Pulumi Stacks to manage multiple infrastructure environments with isolation and shared code.
+
 Pulumi Stacks provide a powerful way to manage multiple instances of your infrastructure. Whether you need separate environments for development, staging, and production, or want to deploy the same infrastructure across different regions, stacks make it straightforward to maintain isolation while sharing code.
 
 ## What Are Pulumi Stacks?

@@ -1,10 +1,10 @@
 # How to Implement Webhooks in Laravel
 
-[Author: nawazdhandala](https://github.com/nawazdhandala)
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-**Tags:** PHP, Laravel, Webhooks, API, Events, HTTP
+Tags: PHP, Laravel, Webhooks, API, Events, HTTP
 
-**Description:** Learn how to implement webhooks in Laravel for both sending and receiving real-time event notifications. This guide covers webhook endpoints, payload signing, retry logic, and security best practices.
+Description: Learn how to implement webhooks in Laravel for both sending and receiving real-time event notifications.
 
 ---
 

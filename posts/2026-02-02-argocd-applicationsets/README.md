@@ -1,5 +1,11 @@
 # How to Handle ArgoCD Application Sets
 
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
+
+Tags: ArgoCD, Kubernetes, GitOps, ApplicationSets, DevOps, Continuous Delivery
+
+Description: Learn how to use ArgoCD ApplicationSets to manage multiple applications from a single definition with generators and templates.
+
 ArgoCD Application Sets provide a powerful way to manage multiple applications from a single definition. Instead of creating individual Application resources for each environment or cluster, ApplicationSets let you template and generate applications dynamically. In this guide, you will learn how to handle ApplicationSets effectively, from basic configuration to advanced patterns for production deployments.
 
 ## Understanding ApplicationSets Architecture

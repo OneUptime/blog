@@ -1,5 +1,11 @@
 # How to Handle Docker Container Logs
 
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
+
+Tags: Docker, Logging, Containers, DevOps, Monitoring, Observability
+
+Description: Learn how to configure and manage Docker container logs using various logging drivers and best practices.
+
 Docker containers generate logs that are essential for debugging, monitoring, and understanding application behavior. Managing these logs effectively is crucial for maintaining healthy containerized applications in development and production environments.
 
 ## Understanding Docker Logging Architecture
