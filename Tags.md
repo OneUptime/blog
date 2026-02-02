@@ -4163,6 +4163,7 @@
 - Sampling
 - samply
 - SAN
+- Sanctum
 - Sandboxed Processor
 - Sandboxing
 - Sanitization
@@ -4922,6 +4923,7 @@
 - tmpfs
 - tmux
 - Toil
+- Token
 - Token Bucket
 - Token Caching
 - Token Errors

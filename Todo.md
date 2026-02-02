@@ -133,17 +133,17 @@ This file contains 2000 unique blog ideas across various topics that people freq
 
 ### PHP/Laravel
 ~~116. How to Use Eloquent ORM Effectively in Laravel~~ ✅
-117. How to Implement Authentication with Laravel Breeze/Jetstream
-118. How to Use Laravel Queue for Background Jobs
-119. How to Handle File Uploads in Laravel
-120. How to Implement Caching Strategies in Laravel
-121. How to Write Tests with PHPUnit in Laravel
-122. How to Use Laravel Broadcasting for Real-time Events
-123. How to Deploy Laravel Applications to Production
-124. How to Implement Repository Pattern in Laravel
+~~117. How to Implement Queue Workers in Laravel~~ ✅
+~~118. How to Use Laravel Policies for Authorization~~ ✅
+~~119. How to Build RESTful APIs with Laravel~~ ✅
+~~120. How to Implement Event Broadcasting in Laravel~~ ✅
+~~121. How to Implement Caching Strategies in Laravel~~ ✅
+~~122. How to Use Laravel Sanctum for API Authentication~~ ✅
+~~123. How to Deploy Laravel Applications with Envoy~~ ✅
+~~124. How to Use Laravel Telescope for Debugging~~ ✅
 125. How to Implement API Authentication with Sanctum
 126. How to Handle N+1 Queries in Laravel
-127. How to Use Livewire for Reactive Components
+~~127. How to Build Multi-Tenant Applications in Laravel~~ ✅
 128. How to Implement Pagination in Laravel
 129. How to Configure Mail in Laravel
 130. How to Implement Multi-tenancy in Laravel

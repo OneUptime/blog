@@ -498,6 +498,20 @@
     "post": "2025-07-01-oneuptime-openapi-specification-open-standards"
   },
   {
+    "title": "How to Implement Event Broadcasting in Laravel",
+    "description": "A comprehensive guide to implementing real-time event broadcasting in Laravel. Learn how to set up WebSocket connections, configure Pusher, create broadcastable events, and build interactive real-time applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Events",
+      "Broadcasting",
+      "WebSocket",
+      "Pusher"
+    ],
+    "post": "2025-07-02-laravel-event-broadcasting"
+  },
+  {
     "title": "How to Build Multi-Model Search with Ransack in Rails",
     "description": "Learn how to build powerful multi-model search functionality in Ruby on Rails using Ransack. This guide covers basic search, advanced predicates, cross-model searching, and production best practices.",
     "authorGitHubUsername": "nawazdhandala",
@@ -1214,6 +1228,20 @@
     "post": "2025-07-02-laravel-eloquent-orm"
   },
   {
+    "title": "How to Implement Queue Workers in Laravel",
+    "description": "A comprehensive guide to implementing queue workers in Laravel. Learn job creation, queue drivers, worker configuration, retry strategies, and production best practices for reliable background processing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Queue",
+      "Workers",
+      "Jobs",
+      "Redis"
+    ],
+    "post": "2025-07-02-laravel-queue-workers"
+  },
+  {
     "title": "How to Use Stimulus Controllers in Rails",
     "description": "Learn how to build interactive web applications with Stimulus controllers in Ruby on Rails. This guide covers controller basics, targets, actions, values, outlets, and best practices for modern Rails frontend development.",
     "authorGitHubUsername": "nawazdhandala",
@@ -1226,6 +1254,104 @@
       "Frontend"
     ],
     "post": "2025-07-02-rails-stimulus-controllers"
+  },
+  {
+    "title": "How to Use Laravel Policies for Authorization",
+    "description": "A comprehensive guide to implementing authorization in Laravel using Policies and Gates. Learn how to protect resources, define permissions, and build secure applications with clean, maintainable authorization logic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Authorization",
+      "Policies",
+      "Security",
+      "Gates"
+    ],
+    "post": "2025-07-02-laravel-policies-authorization"
+  },
+  {
+    "title": "How to Build RESTful APIs with Laravel",
+    "description": "A comprehensive guide to building production-ready RESTful APIs with Laravel. Learn resource controllers, API resources, authentication, validation, error handling, and best practices for creating scalable PHP APIs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "REST",
+      "API",
+      "JSON",
+      "HTTP"
+    ],
+    "post": "2025-07-02-laravel-restful-api"
+  },
+  {
+    "title": "How to Deploy Laravel Applications with Envoy",
+    "description": "A comprehensive guide to deploying Laravel applications using Laravel Envoy. Learn SSH-based deployments, zero-downtime strategies, and automation workflows for reliable production releases.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Envoy",
+      "Deployment",
+      "DevOps",
+      "SSH"
+    ],
+    "post": "2025-07-02-laravel-envoy-deployment"
+  },
+  {
+    "title": "How to Use Laravel Sanctum for API Authentication",
+    "description": "A comprehensive guide to implementing API authentication in Laravel using Sanctum. Learn token-based authentication, SPA authentication, mobile app tokens, and security best practices for building secure Laravel APIs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Sanctum",
+      "API",
+      "Authentication",
+      "Token"
+    ],
+    "post": "2025-07-02-laravel-sanctum-api-auth"
+  },
+  {
+    "title": "How to Use Laravel Telescope for Debugging",
+    "description": "A comprehensive guide to using Laravel Telescope for debugging and monitoring your Laravel applications. Learn how to install, configure, and use Telescope to inspect requests, exceptions, database queries, and more in development and production environments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Telescope",
+      "Debugging",
+      "Monitoring",
+      "Development"
+    ],
+    "post": "2025-07-02-laravel-telescope-debugging"
+  },
+  {
+    "title": "How to Build Multi-Tenant Applications in Laravel",
+    "description": "A comprehensive guide to building multi-tenant SaaS applications in Laravel with different isolation strategies, tenant identification, and data scoping.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Multi-Tenant",
+      "SaaS",
+      "Database",
+      "Architecture"
+    ],
+    "post": "2025-07-02-laravel-multi-tenant"
+  },
+  {
+    "title": "How to Implement Caching Strategies in Laravel",
+    "description": "Learn how to implement effective caching strategies in Laravel to dramatically improve application performance. This guide covers cache drivers, cache tags, model caching, query caching, and production best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Caching",
+      "Redis",
+      "Performance",
+      "Optimization"
+    ],
+    "post": "2025-07-02-laravel-caching-strategies"
   },
   {
     "title": "Native apps had a good run, but PWA has caught up and is the future.",
