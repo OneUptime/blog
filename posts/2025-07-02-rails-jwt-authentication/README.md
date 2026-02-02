@@ -1,4 +1,3 @@
-```markdown
 # How to Implement API Authentication with JWT in Rails
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
@@ -1353,5 +1352,3 @@ With these patterns in place, your Rails API will have production-ready authenti
 **Related Reading:**
 - [How to Use Pundit for Authorization in Rails](https://oneuptime.com/blog/post/2025-07-02-rails-pundit-authorization/view)
 - [How to Write Tests with RSpec in Rails](https://oneuptime.com/blog/post/2025-07-02-rails-rspec-testing/view)
-
-```

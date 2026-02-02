@@ -1,4 +1,3 @@
-````markdown
 # How to Use Eloquent ORM Effectively in Laravel
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
@@ -1596,5 +1595,3 @@ Master these concepts, and you'll build Laravel applications that are both perfo
 ---
 
 *Need to monitor your Laravel application in production? [OneUptime](https://oneuptime.com) provides comprehensive observability for PHP applications, including database query monitoring, exception tracking, and performance metrics.*
-
-````
