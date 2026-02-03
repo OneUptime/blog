@@ -90,6 +90,7 @@
 - AI Platform
 - AI Safety
 - AI/ML
+- aiofiles
 - aiohttp
 - AIOps
 - Air-Gapped
@@ -262,6 +263,7 @@
 - Arrays
 - Artifacts
 - Artillery
+- Artisan
 - as keyword
 - ASGI
 - ASK
@@ -495,6 +497,7 @@
 - Blackbox Exporter
 - Blackbox Monitoring
 - Blacklisting
+- Blade
 - Blameless Culture
 - Blazor
 - BLE
@@ -648,6 +651,7 @@
 - Cascading Replication
 - Case Classes
 - Case Sensitivity
+- Cashier
 - Cassandra
 - Cats
 - Cats Effect
@@ -1581,6 +1585,7 @@
 - DRBD
 - Drift Detection
 - Drivers
+- Drizzle ORM
 - Drop
 - DROP DATABASE
 - Drop Logs
@@ -1857,6 +1862,7 @@
 - FastAPI
 - FastCGI
 - FastCGI Cache
+- Fastify
 - Fastlane
 - Fault Injection
 - Fault Isolation
@@ -2016,6 +2022,7 @@
 - Full-Text Search
 - Function Calling
 - Function Overloading
+- Functional
 - Functional Programming
 - Functions
 - functools
@@ -2123,6 +2130,7 @@
 - go install
 - Go Modules
 - Go Templates
+- Go-Kit
 - go:embed
 - go.mod
 - GoAccess
@@ -2320,6 +2328,7 @@
 - HTTPRoute
 - HTTPS
 - httptest
+- httpx
 - Hub Filters
 - Hubble
 - Hugging Face
@@ -3168,6 +3177,7 @@
 - Multiplatform
 - Multiplayer
 - Multiple Accounts
+- Multiple Data Sources
 - Multiple Monitors
 - Multiprocessing
 - MultiSite
@@ -3546,6 +3556,7 @@
 - Pattern Matching
 - Pattern Parser
 - Patterns
+- Payments
 - PBAC
 - PCI DSS
 - PDB
@@ -4406,6 +4417,7 @@
 - Security Testing
 - securityContext
 - Seedbox
+- Seeding
 - Seek
 - Segmentation
 - Select
@@ -4820,6 +4832,7 @@
 - String Manipulation
 - String Types
 - Strings
+- Stripe
 - Struct
 - Struct Tags
 - Structs

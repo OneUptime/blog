@@ -6,7 +6,7 @@ This document contains blog post ideas for consideration. Topics span across lan
 
 ## Go
 
-1. How to Build a REST API with Go and Gin Framework
+1. ~~How to Build a REST API with Go and Gin Framework~~ ✓
 2. How to Implement Graceful Shutdown in Go Applications
 3. How to Use Go Channels for Concurrent Programming
 4. How to Write Unit Tests in Go with the Testing Package
@@ -24,7 +24,7 @@ This document contains blog post ideas for consideration. Topics span across lan
 16. How to Handle JSON in Go with encoding/json
 17. How to Implement Rate Limiting in Go
 18. How to Use Go Templates for HTML Generation
-19. How to Build Microservices with Go-Kit
+19. ~~How to Build Microservices with Go-Kit~~ ✓
 20. How to Use Goroutines Without Memory Leaks
 21. How to Implement Circuit Breaker Pattern in Go
 22. How to Use Viper for Configuration Management in Go
@@ -39,13 +39,13 @@ This document contains blog post ideas for consideration. Topics span across lan
 28. How to Use Cargo for Rust Package Management
 29. How to Build REST APIs with Actix-Web in Rust
 30. How to Implement Async Programming in Rust with Tokio
-31. How to Use Rust Lifetimes Correctly
-32. How to Build CLI Applications with Clap in Rust
+31. ~~How to Use Rust Lifetimes Correctly~~ ✓
+32. ~~How to Build CLI Applications with Clap in Rust~~ ✓
 33. How to Use Serde for JSON Serialization in Rust
 34. How to Implement Traits in Rust
 35. How to Use Rust Macros Effectively
 36. How to Build WebSocket Servers with Rust
-37. How to Use Diesel ORM in Rust
+37. ~~How to Use Diesel ORM in Rust~~ ✓
 38. How to Implement Memory-Safe Concurrency in Rust
 39. How to Build gRPC Services in Rust with Tonic
 40. How to Profile Rust Applications for Performance
@@ -57,9 +57,9 @@ This document contains blog post ideas for consideration. Topics span across lan
 
 ## Java/Spring Boot
 
-46. How to Set Up a Spring Boot Project from Scratch
+46. ~~How to Set Up a Spring Boot Project from Scratch~~ ✓
 47. How to Implement Dependency Injection in Spring Boot
-48. How to Configure Multiple Data Sources in Spring Boot
+48. ~~How to Configure Multiple Data Sources in Spring Boot~~ ✓
 49. How to Build REST Controllers in Spring Boot
 50. How to Use Spring Security for Authentication
 51. How to Implement OAuth2 with Spring Security
@@ -106,9 +106,9 @@ This document contains blog post ideas for consideration. Topics span across lan
 89. How to Build Event-Driven Systems with EventEmitter
 90. How to Use PM2 for Node.js Process Management
 91. How to Implement GraphQL Subscriptions
-92. How to Use Fastify for High-Performance APIs
+92. ~~How to Use Fastify for High-Performance APIs~~ ✓
 93. How to Build Microservices with Node.js
-94. How to Use Drizzle ORM with Node.js
+94. ~~How to Use Drizzle ORM with Node.js~~ ✓
 95. How to Implement API Versioning in Express
 
 ## .NET/C#
@@ -140,12 +140,12 @@ This document contains blog post ideas for consideration. Topics span across lan
 117. How to Use Django REST Framework
 118. How to Implement Background Tasks with huey
 119. How to Use SQLAlchemy for Database Operations
-120. How to Build CLI Applications with argparse
+120. ~~How to Build CLI Applications with argparse~~ ✓
 121. How to Use Type Hints Effectively in Python
 122. How to Implement Dependency Injection in Python
 123. How to Use Pydantic for Data Validation
-124. How to Build GraphQL APIs with Strawberry
-125. How to Use httpx for Async HTTP Requests
+124. ~~How to Build GraphQL APIs with Strawberry~~ ✓
+125. ~~How to Use httpx for Async HTTP Requests~~ ✓
 126. How to Implement Custom Middleware in FastAPI
 127. How to Use Python Virtual Environments Effectively
 128. How to Build Event-Driven Systems with Python
@@ -153,26 +153,26 @@ This document contains blog post ideas for consideration. Topics span across lan
 130. How to Implement the Repository Pattern in Python
 131. How to Use Python Logging Module Effectively
 132. How to Build WebSocket Clients in Python
-133. How to Use aiofiles for Async File Operations
+133. ~~How to Use aiofiles for Async File Operations~~ ✓
 134. How to Implement Custom Validators in Pydantic
 135. How to Use Uvicorn for Production Deployments
 
 ## PHP/Laravel (Additional Topics)
 
 136. How to Implement Middleware in Laravel
-137. How to Use Laravel Blade Templates
+137. ~~How to Use Laravel Blade Templates~~ ✓
 138. How to Build APIs with Laravel Resources
-139. How to Configure Database Seeding in Laravel
+139. ~~How to Configure Database Seeding in Laravel~~ ✓
 140. How to Use Laravel Events and Listeners
 141. How to Implement Repository Pattern in Laravel
 142. How to Use Laravel Horizon for Queue Monitoring
-143. How to Build Custom Artisan Commands
-144. How to Use Laravel Cashier for Subscriptions
+143. ~~How to Build Custom Artisan Commands~~ ✓
+144. ~~How to Use Laravel Cashier for Subscriptions~~ ✓
 145. How to Implement Rate Limiting in Laravel
-146. How to Use Laravel Passport for OAuth
+146. ~~How to Use Laravel Passport for OAuth~~ ✓
 147. How to Configure Laravel Logging
-148. How to Use Laravel Collections Effectively
-149. How to Implement Soft Deletes in Laravel
+148. ~~How to Use Laravel Collections Effectively~~ ✓
+149. ~~How to Implement Soft Deletes in Laravel~~ ✓
 150. How to Build Multi-Language Applications in Laravel
 
 ## Elixir/Phoenix
@@ -181,11 +181,11 @@ This document contains blog post ideas for consideration. Topics span across lan
 152. How to Use Ecto for Database Operations in Elixir
 153. How to Implement GenServer in Elixir
 154. How to Build Real-Time Features with Phoenix Channels
-155. How to Use Supervisors in Elixir
+155. ~~How to Use Supervisors in Elixir~~ ✓
 156. How to Implement Background Jobs with Oban
 157. How to Use Pattern Matching Effectively in Elixir
 158. How to Build Distributed Systems with Elixir
-159. How to Use Elixir Processes for Concurrency
+159. ~~How to Use Elixir Processes for Concurrency~~ ✓
 160. How to Implement Authentication in Phoenix
 
 ## Scala

@@ -107384,5 +107384,300 @@
       "Software Architecture"
     ],
     "post": "2026-02-03-cli-is-the-new-mcp"
+  },
+  {
+    "title": "How to Build a REST API with Go and Gin Framework",
+    "description": "Learn how to build a production-ready REST API with Go and the Gin framework. This guide covers routing, middleware, request validation, error handling, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Gin",
+      "REST API",
+      "Web Development",
+      "Backend"
+    ],
+    "post": "2026-02-03-go-gin-rest-api"
+  },
+  {
+    "title": "How to Use Fastify for High-Performance APIs",
+    "description": "Learn how to build high-performance APIs with Fastify in Node.js. This guide covers routing, validation, plugins, hooks, and performance optimization techniques.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Fastify",
+      "REST API",
+      "Performance",
+      "TypeScript",
+      "Backend"
+    ],
+    "post": "2026-02-03-nodejs-fastify-high-performance-apis"
+  },
+  {
+    "title": "How to Use Drizzle ORM with Node.js",
+    "description": "Learn how to use Drizzle ORM for type-safe database operations in Node.js. This guide covers schema definition, queries, migrations, and best practices for production use.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Drizzle ORM",
+      "TypeScript",
+      "PostgreSQL",
+      "Database",
+      "Backend"
+    ],
+    "post": "2026-02-03-nodejs-drizzle-orm"
+  },
+  {
+    "title": "How to Use Rust Lifetimes Correctly",
+    "description": "Master Rust lifetimes to write safe, efficient code. This guide explains lifetime annotations, common patterns, and how to resolve lifetime errors in real-world scenarios.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Lifetimes",
+      "Memory Safety",
+      "Borrowing",
+      "Systems Programming"
+    ],
+    "post": "2026-02-03-rust-lifetimes"
+  },
+  {
+    "title": "How to Build Microservices with Go-Kit",
+    "description": "Learn how to build production-ready microservices with Go-Kit. This guide covers service architecture, transports, middleware, and observability patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Go-Kit",
+      "Microservices",
+      "Backend",
+      "Architecture",
+      "gRPC"
+    ],
+    "post": "2026-02-03-go-kit-microservices"
+  },
+  {
+    "title": "How to Set Up a Spring Boot Project from Scratch",
+    "description": "Learn how to set up a Spring Boot project from scratch. This guide covers project initialization, configuration, dependency management, and creating your first REST endpoint.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Maven",
+      "Gradle",
+      "Backend",
+      "REST API"
+    ],
+    "post": "2026-02-03-spring-boot-project-setup"
+  },
+  {
+    "title": "How to Build CLI Applications with Clap in Rust",
+    "description": "Learn how to build powerful command-line applications in Rust using Clap. This guide covers argument parsing, subcommands, validation, and creating user-friendly CLIs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Clap",
+      "CLI",
+      "Command Line",
+      "Tools"
+    ],
+    "post": "2026-02-03-rust-clap-cli-applications"
+  },
+  {
+    "title": "How to Use Diesel ORM in Rust",
+    "description": "Learn how to use Diesel ORM for type-safe database operations in Rust. This guide covers schema definition, migrations, queries, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Diesel",
+      "ORM",
+      "PostgreSQL",
+      "Database",
+      "Backend"
+    ],
+    "post": "2026-02-03-rust-diesel-orm"
+  },
+  {
+    "title": "How to Build CLI Applications with argparse",
+    "description": "Learn how to build robust command-line applications in Python using argparse. This guide covers arguments, options, subcommands, and creating user-friendly CLIs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "argparse",
+      "CLI",
+      "Command Line",
+      "Tools"
+    ],
+    "post": "2026-02-03-python-argparse-cli"
+  },
+  {
+    "title": "How to Build GraphQL APIs with Strawberry",
+    "description": "Learn how to build type-safe GraphQL APIs in Python using Strawberry. This guide covers schemas, queries, mutations, subscriptions, and FastAPI integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Strawberry",
+      "GraphQL",
+      "API",
+      "FastAPI",
+      "Backend"
+    ],
+    "post": "2026-02-03-python-strawberry-graphql"
+  },
+  {
+    "title": "How to Use httpx for Async HTTP Requests",
+    "description": "Learn how to make async HTTP requests in Python using httpx. This guide covers sync and async clients, streaming, timeouts, retries, and advanced patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "httpx",
+      "HTTP",
+      "Async",
+      "API",
+      "Requests"
+    ],
+    "post": "2026-02-03-python-httpx-async-requests"
+  },
+  {
+    "title": "How to Use aiofiles for Async File Operations",
+    "description": "Learn how to perform async file operations in Python using aiofiles. This guide covers reading, writing, and managing files asynchronously for better performance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "aiofiles",
+      "Async",
+      "File I/O",
+      "asyncio"
+    ],
+    "post": "2026-02-03-python-aiofiles-async-files"
+  },
+  {
+    "title": "How to Use Laravel Blade Templates",
+    "description": "Learn how to use Laravel Blade for dynamic templating. This guide covers directives, layouts, components, and best practices for building maintainable views.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Blade",
+      "Templates",
+      "Frontend"
+    ],
+    "post": "2026-02-03-laravel-blade-templates"
+  },
+  {
+    "title": "How to Configure Database Seeding in Laravel",
+    "description": "Learn how to use Laravel database seeders for development and testing. This guide covers factories, seeders, and strategies for populating databases with test data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Database",
+      "Seeding",
+      "Testing"
+    ],
+    "post": "2026-02-03-laravel-database-seeding"
+  },
+  {
+    "title": "How to Build Custom Artisan Commands",
+    "description": "Learn how to build custom Artisan commands in Laravel. This guide covers command creation, arguments, options, output formatting, and scheduling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Artisan",
+      "CLI",
+      "Commands"
+    ],
+    "post": "2026-02-03-laravel-custom-artisan-commands"
+  },
+  {
+    "title": "How to Use Laravel Cashier for Subscriptions",
+    "description": "Learn how to implement subscription billing in Laravel with Cashier. This guide covers Stripe integration, subscription management, and webhook handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Cashier",
+      "Stripe",
+      "Subscriptions",
+      "Payments"
+    ],
+    "post": "2026-02-03-laravel-cashier-subscriptions"
+  },
+  {
+    "title": "How to Use Laravel Passport for OAuth",
+    "description": "Learn how to implement OAuth2 authentication in Laravel with Passport. This guide covers token management, scopes, and securing API endpoints.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Passport",
+      "OAuth",
+      "Authentication",
+      "API"
+    ],
+    "post": "2026-02-03-laravel-passport-oauth"
+  },
+  {
+    "title": "How to Use Laravel Collections Effectively",
+    "description": "Master Laravel Collections for elegant data manipulation. This guide covers essential methods, chaining, lazy collections, and real-world patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Collections",
+      "Data Processing",
+      "Functional"
+    ],
+    "post": "2026-02-03-laravel-collections"
+  },
+  {
+    "title": "How to Implement Soft Deletes in Laravel",
+    "description": "Learn how to implement soft deletes in Laravel for data recovery and audit trails. This guide covers the SoftDeletes trait, querying, restoring, and cascade handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Eloquent",
+      "Database",
+      "Soft Deletes"
+    ],
+    "post": "2026-02-03-laravel-soft-deletes"
+  },
+  {
+    "title": "How to Use Supervisors in Elixir",
+    "description": "Learn how to use Supervisors in Elixir for building fault-tolerant applications. This guide covers supervision trees, strategies, and recovery patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Supervisors",
+      "OTP",
+      "Fault Tolerance",
+      "Concurrency"
+    ],
+    "post": "2026-02-03-elixir-supervisors"
+  },
+  {
+    "title": "How to Use Elixir Processes for Concurrency",
+    "description": "Learn how to leverage Elixir processes for concurrent programming. This guide covers spawning processes, message passing, and building concurrent systems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Processes",
+      "Concurrency",
+      "OTP",
+      "BEAM"
+    ],
+    "post": "2026-02-03-elixir-processes-concurrency"
+  },
+  {
+    "title": "How to Configure Multiple Data Sources in Spring Boot",
+    "description": "Learn how to configure multiple data sources in Spring Boot. This guide covers separate entity managers, transaction management, and repository configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Database",
+      "JPA",
+      "Multiple Data Sources"
+    ],
+    "post": "2026-02-03-spring-boot-multiple-data-sources"
   }
 ]
