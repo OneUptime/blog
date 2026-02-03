@@ -51,6 +51,7 @@
 - ActiveStorage
 - ActiveSupport
 - ActivitySource
+- Actix
 - Actix Web
 - Actix-web
 - Actors
@@ -97,6 +98,7 @@
 - Airbyte
 - Airflow
 - Akka
+- Akka HTTP
 - AKS
 - Alarms
 - ALB
@@ -220,9 +222,11 @@
 - Application Design
 - Application Development
 - Application Events
+- Application Factory
 - Application Gateway
 - Application Logs
 - Application Metrics
+- Application Monitoring
 - Application Performance
 - Application Performance Monitoring
 - Application Security
@@ -1525,6 +1529,7 @@
 - Distribution Keys
 - Distroless
 - Django
+- Django Ninja
 - Django REST Framework
 - Django-Q
 - Django-RQ
@@ -1899,6 +1904,7 @@
 - File Access
 - File Descriptors
 - File Download
+- File Downloads
 - File Formats
 - File Handling
 - File I/O
@@ -1923,6 +1929,7 @@
 - Filebeat
 - FileHandling
 - Filenames
+- FileResponse
 - Files
 - Filesystem
 - Filesystem Scanning
@@ -1953,6 +1960,7 @@
 - Flask
 - Flask-Login
 - Flask-Migrate
+- Flask-RESTful
 - Flask-WTF
 - Flat Index
 - FlatList
@@ -2027,6 +2035,7 @@
 - Functions
 - functools
 - Funnel Analysis
+- Futures
 - Fuzzing
 - Fuzzy Search
 - Galaxy
@@ -2221,6 +2230,7 @@
 - HashiCorp Vault
 - HashMap
 - HashSet
+- Hasura
 - HATEOAS
 - HCL
 - HDFS
@@ -2331,6 +2341,7 @@
 - httpx
 - Hub Filters
 - Hubble
+- Huey
 - Hugging Face
 - Hybrid
 - Hybrid Cloud
@@ -2889,6 +2900,7 @@
 - Low Power
 - Low-Latency
 - Low-Level
+- Low-Level Programming
 - LowLatency
 - LPUSH
 - LRU
@@ -3117,6 +3129,7 @@
 - mongorestore
 - Monitoring
 - Mono
+- Monolog
 - Monorepo
 - Morgan
 - Mosquitto
@@ -3578,6 +3591,7 @@
 - Performance Schema
 - Performance Testing
 - Performance Tuning
+- Periodic Tasks
 - Permission Denied
 - Permissions
 - Persistence
@@ -4646,6 +4660,7 @@
 - Software Supply Chain
 - Software Testing
 - SOLID
+- SOLID Principles
 - Solr
 - SonarQube
 - Sonarr
@@ -4821,6 +4836,7 @@
 - Streaming Comparison
 - Streaming Replication
 - Streaming SSR
+- StreamingResponse
 - Streams
 - Stress Testing
 - Strict Mode

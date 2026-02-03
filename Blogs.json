@@ -107679,5 +107679,1097 @@
       "Multiple Data Sources"
     ],
     "post": "2026-02-03-spring-boot-multiple-data-sources"
+  },
+  {
+    "title": "How to Use Go Channels for Concurrent Programming",
+    "description": "A practical guide to Go channels covering buffered vs unbuffered channels, channel operations, select statements, and common patterns like fan-in, fan-out, and pipelines.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Concurrency",
+      "Channels",
+      "Backend",
+      "DevOps"
+    ],
+    "post": "2026-02-03-go-channels-concurrency"
+  },
+  {
+    "title": "How to Write Unit Tests in Go with the Testing Package",
+    "description": "A hands-on guide to writing effective unit tests in Go using the built-in testing package, covering test functions, table-driven tests, subtests, helpers, benchmarks, and coverage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Testing",
+      "Unit Tests",
+      "TDD",
+      "Backend",
+      "Software Quality"
+    ],
+    "post": "2026-02-03-go-unit-tests"
+  },
+  {
+    "title": "How to Handle Errors Effectively in Go",
+    "description": "A practical guide to Go's error handling patterns - from the error interface to custom errors, wrapping, sentinel errors, and production-ready techniques.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Error Handling",
+      "Best Practices",
+      "Software Development",
+      "Backend"
+    ],
+    "post": "2026-02-03-go-error-handling"
+  },
+  {
+    "title": "How to Build a CLI Application with Cobra in Go",
+    "description": "A practical guide to building production-ready command-line applications in Go using Cobra, covering commands, flags, arguments, and Viper configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Cobra",
+      "CLI",
+      "DevOps",
+      "Tools",
+      "Development"
+    ],
+    "post": "2026-02-03-go-cobra-cli"
+  },
+  {
+    "title": "How to Use Go Interfaces for Dependency Injection",
+    "description": "Go interfaces enable clean dependency injection through implicit implementation - no decorators, no frameworks, just simple contracts that make your code testable and flexible.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Dependency Injection",
+      "Testing",
+      "Software Architecture"
+    ],
+    "post": "2026-02-03-go-interfaces-di"
+  },
+  {
+    "title": "How to Use Go Templates for HTML Generation",
+    "description": "A practical guide to generating dynamic HTML with Go's template packages, covering syntax, actions, pipelines, custom functions, and security best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Templates",
+      "HTML",
+      "Web Development",
+      "Backend",
+      "text/template",
+      "html/template"
+    ],
+    "post": "2026-02-03-go-templates-html"
+  },
+  {
+    "title": "How to Use Goroutines Without Memory Leaks",
+    "description": "A practical guide to writing leak-free goroutines using context cancellation, WaitGroups, and proven patterns for production Go applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Golang",
+      "Concurrency",
+      "Performance",
+      "Memory",
+      "DevOps",
+      "Reliability"
+    ],
+    "post": "2026-02-03-go-goroutines-memory-leaks"
+  },
+  {
+    "title": "How to Handle Errors with Result and Option in Rust",
+    "description": "A practical guide to Rust's error handling primitives - Result and Option - covering pattern matching, combinators, the ? operator, and building robust error handling strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Error Handling",
+      "Programming",
+      "Software Development",
+      "Backend"
+    ],
+    "post": "2026-02-03-rust-result-option"
+  },
+  {
+    "title": "How to Use Rust Macros Effectively",
+    "description": "A practical guide to mastering Rust macros - from declarative macro_rules! to procedural macros and derive macros - with real-world patterns and debugging techniques.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Macros",
+      "Metaprogramming",
+      "Programming",
+      "Systems Programming"
+    ],
+    "post": "2026-02-03-rust-macros"
+  },
+  {
+    "title": "How to Implement Memory-Safe Concurrency in Rust",
+    "description": "A practical guide to writing concurrent Rust code that is guaranteed free of data races at compile time, covering ownership, threads, synchronization primitives, and common patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Concurrency",
+      "Memory Safety",
+      "Performance",
+      "Systems Programming"
+    ],
+    "post": "2026-02-03-rust-memory-safe-concurrency"
+  },
+  {
+    "title": "How to Profile Rust Applications for Performance",
+    "description": "A hands-on guide to profiling Rust applications using perf, flamegraph, criterion benchmarks, and memory profilers to find and fix performance bottlenecks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Performance",
+      "Profiling",
+      "Optimization",
+      "DevOps",
+      "Observability"
+    ],
+    "post": "2026-02-03-rust-profiling"
+  },
+  {
+    "title": "How to Use Rust Futures and Streams",
+    "description": "A hands-on guide to mastering Rust's async programming model with Futures, Streams, and the Tokio runtime for building high-performance concurrent applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Async",
+      "Futures",
+      "Streams",
+      "Tokio",
+      "Concurrency",
+      "Performance"
+    ],
+    "post": "2026-02-03-rust-futures-streams"
+  },
+  {
+    "title": "How to Build Serverless Functions in Rust",
+    "description": "A practical guide to building, deploying, and optimizing serverless functions in Rust for AWS Lambda with cargo-lambda.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Serverless",
+      "AWS Lambda",
+      "Performance",
+      "DevOps"
+    ],
+    "post": "2026-02-03-rust-serverless-functions"
+  },
+  {
+    "title": "How to Use Rust for Systems Programming",
+    "description": "A practical guide to using Rust for systems programming - covering memory layout, raw pointers, unsafe blocks, FFI with C, and inline assembly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Systems Programming",
+      "Memory Safety",
+      "FFI",
+      "Unsafe Rust",
+      "Low-Level Programming"
+    ],
+    "post": "2026-02-03-rust-systems-programming"
+  },
+  {
+    "title": "How to Use Spring Security for Authentication",
+    "description": "A hands-on guide to implementing authentication in Spring Boot applications using Spring Security, covering filter chains, user details, password encoding, and method-level security.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Spring",
+      "Java",
+      "Security",
+      "Authentication",
+      "Backend",
+      "DevOps"
+    ],
+    "post": "2026-02-03-spring-security-authentication"
+  },
+  {
+    "title": "How to Implement OAuth2 with Spring Security",
+    "description": "A practical guide to implementing OAuth2 authentication in Spring Boot applications, covering client configuration, resource server setup, JWT validation, and social login with Google and GitHub.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Spring Security",
+      "OAuth2",
+      "Java",
+      "Authentication",
+      "JWT",
+      "Social Login",
+      "Security"
+    ],
+    "post": "2026-02-03-spring-security-oauth2"
+  },
+  {
+    "title": "How to Use Spring Boot Test for Integration Testing",
+    "description": "A practical guide to writing integration tests in Spring Boot using @SpringBootTest, MockMvc, test slices, and Testcontainers for reliable, production-like test environments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Spring Boot",
+      "Java",
+      "Testing",
+      "Integration Testing",
+      "DevOps"
+    ],
+    "post": "2026-02-03-spring-boot-testing"
+  },
+  {
+    "title": "How to Structure Large Node.js Applications",
+    "description": "A practical guide to organizing Node.js codebases that scale - covering layered architecture, dependency injection, module organization, and monorepo strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Architecture",
+      "Software Development",
+      "Backend",
+      "TypeScript"
+    ],
+    "post": "2026-02-03-nodejs-large-app-structure"
+  },
+  {
+    "title": "How to Use Node.js Streams Effectively",
+    "description": "Master Node.js streams for efficient memory usage and data processing - covering stream types, piping, backpressure, custom streams, and real-world file processing patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NodeJS",
+      "Performance",
+      "Backend",
+      "DevOps"
+    ],
+    "post": "2026-02-03-nodejs-streams"
+  },
+  {
+    "title": "How to Configure ESLint and Prettier for TypeScript",
+    "description": "A complete guide to setting up ESLint and Prettier for TypeScript projects with VS Code integration, pre-commit hooks, and production-ready configurations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "ESLint",
+      "Prettier",
+      "Code Quality",
+      "Developer Tools",
+      "VS Code",
+      "DevOps"
+    ],
+    "post": "2026-02-03-eslint-prettier-typescript"
+  },
+  {
+    "title": "How to Implement Background Tasks with Huey",
+    "description": "Learn how to implement background tasks in Python with Huey - a lightweight task queue that handles scheduling, retries, and periodic tasks with minimal configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Huey",
+      "Background Tasks",
+      "Task Queue",
+      "Redis",
+      "Scheduling",
+      "Periodic Tasks",
+      "Async"
+    ],
+    "post": "2026-02-03-python-huey-background-tasks"
+  },
+  {
+    "title": "How to Implement Dependency Injection in Python",
+    "description": "Learn how to implement dependency injection in Python using manual techniques, the dependency-injector library, protocols, and FastAPI's Depends system for cleaner, more testable code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Dependency Injection",
+      "Design Patterns",
+      "Testing",
+      "FastAPI",
+      "Clean Architecture",
+      "SOLID Principles"
+    ],
+    "post": "2026-02-03-python-dependency-injection"
+  },
+  {
+    "title": "How to Implement Custom Middleware in FastAPI",
+    "description": "Learn how to build custom middleware in FastAPI for request timing, logging, error handling, and request/response modification with practical examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "FastAPI",
+      "Middleware",
+      "API Development",
+      "Backend",
+      "Performance",
+      "Logging"
+    ],
+    "post": "2026-02-03-fastapi-custom-middleware"
+  },
+  {
+    "title": "How to Implement the Repository Pattern in Python",
+    "description": "Learn how to implement the repository pattern in Python to decouple your domain logic from data access, enable easy testing with in-memory implementations, and integrate with the unit of work pattern.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Repository Pattern",
+      "Design Patterns",
+      "SQLAlchemy",
+      "Unit Testing",
+      "Clean Architecture",
+      "Domain-Driven Design"
+    ],
+    "post": "2026-02-03-python-repository-pattern"
+  },
+  {
+    "title": "How to Build WebSocket Clients in Python",
+    "description": "Learn how to build robust WebSocket clients in Python using the websockets library, covering connections, message handling, reconnection logic, and real-world patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "WebSocket",
+      "Async",
+      "Real-time",
+      "Networking",
+      "websockets"
+    ],
+    "post": "2026-02-03-python-websocket-clients"
+  },
+  {
+    "title": "How to Use Uvicorn for Production Deployments",
+    "description": "Learn how to configure and deploy Uvicorn in production environments with worker management, SSL/TLS, logging, performance tuning, Docker containers, and systemd services.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Uvicorn",
+      "ASGI",
+      "FastAPI",
+      "Gunicorn",
+      "Production",
+      "Deployment",
+      "Docker",
+      "Systemd",
+      "SSL",
+      "Performance"
+    ],
+    "post": "2026-02-03-python-uvicorn-production"
+  },
+  {
+    "title": "How to Implement Middleware in Laravel",
+    "description": "Learn how to create and use middleware in Laravel. This guide covers request/response middleware, route middleware, groups, and authentication guards.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "Middleware",
+      "Security",
+      "HTTP"
+    ],
+    "post": "2026-02-03-laravel-middleware"
+  },
+  {
+    "title": "How to Build APIs with Laravel Resources",
+    "description": "Learn how to build clean APIs with Laravel Resources. This guide covers resource classes, collections, conditional attributes, and response customization.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PHP",
+      "Laravel",
+      "API",
+      "Resources",
+      "REST"
+    ],
+    "post": "2026-02-03-laravel-api-resources"
+  },
+  {
+    "title": "How to Implement Repository Pattern in Laravel",
+    "description": "A practical guide to implementing the repository pattern in Laravel for cleaner, testable, and maintainable code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "PHP",
+      "Design Patterns",
+      "Clean Architecture",
+      "Testing",
+      "Backend Development"
+    ],
+    "post": "2026-02-03-laravel-repository-pattern"
+  },
+  {
+    "title": "How to Implement Rate Limiting in Laravel",
+    "description": "A practical guide to implementing rate limiting in Laravel using the RateLimiter facade, throttle middleware, and custom rate limit strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "PHP",
+      "Rate Limiting",
+      "API Security",
+      "Middleware",
+      "Redis",
+      "Performance"
+    ],
+    "post": "2026-02-03-laravel-rate-limiting"
+  },
+  {
+    "title": "How to Configure Laravel Logging",
+    "description": "A complete guide to configuring Laravel logging - covering channels, log levels, custom channels, stack channels, daily logs, contextual logging, Monolog handlers, and integration with external services.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "PHP",
+      "Logging",
+      "Monolog",
+      "Observability",
+      "Application Monitoring",
+      "Debugging"
+    ],
+    "post": "2026-02-03-laravel-logging"
+  },
+  {
+    "title": "How to Build Multi-Language Applications in Laravel",
+    "description": "A practical guide to building multi-language Laravel applications using language files, translation helpers, middleware, and Blade directives.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Laravel",
+      "PHP",
+      "Localization",
+      "i18n",
+      "Web Development",
+      "Backend"
+    ],
+    "post": "2026-02-03-laravel-multi-language"
+  },
+  {
+    "title": "How to Build Real-Time Features with Phoenix Channels",
+    "description": "A complete guide to building real-time features using Phoenix Channels - from basic setup to presence tracking and building a production-ready chat application.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Phoenix",
+      "WebSockets",
+      "Real-Time",
+      "Backend",
+      "Distributed Systems"
+    ],
+    "post": "2026-02-03-elixir-phoenix-channels"
+  },
+  {
+    "title": "How to Build Distributed Systems with Elixir",
+    "description": "A practical guide to building fault-tolerant distributed systems in Elixir using Erlang distribution, process groups, libcluster, and strategies for handling network partitions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Erlang",
+      "Distributed Systems",
+      "OTP",
+      "Clustering",
+      "DevOps"
+    ],
+    "post": "2026-02-03-elixir-distributed-systems"
+  },
+  {
+    "title": "How to Build REST APIs with Play Framework",
+    "description": "A practical guide to building REST APIs with Play Framework, covering controllers, routing, JSON handling, validation, dependency injection, async actions, and error handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Scala",
+      "Play Framework",
+      "REST API",
+      "JSON",
+      "Dependency Injection",
+      "Async",
+      "Web Development"
+    ],
+    "post": "2026-02-03-scala-play-rest-apis"
+  },
+  {
+    "title": "How to Build Microservices with Scala",
+    "description": "A hands-on guide to building production-ready microservices in Scala using Akka HTTP, with patterns for resilience, service discovery, and containerization.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Scala",
+      "Microservices",
+      "Akka HTTP",
+      "Docker",
+      "Service Discovery",
+      "Circuit Breaker",
+      "Distributed Systems"
+    ],
+    "post": "2026-02-03-scala-microservices"
+  },
+  {
+    "title": "How to Implement Spring Boot with Kotlin",
+    "description": "A practical guide to building Spring Boot applications with Kotlin, covering data classes, null safety, extension functions, coroutines, and testing with MockK.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kotlin",
+      "Spring Boot",
+      "Backend",
+      "Java",
+      "Microservices",
+      "WebFlux",
+      "Coroutines"
+    ],
+    "post": "2026-02-03-kotlin-spring-boot"
+  },
+  {
+    "title": "How to Use Swift Concurrency with async/await",
+    "description": "Master Swift's modern concurrency model with async/await, actors, task groups, and structured concurrency for writing safe, readable asynchronous code.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Swift",
+      "iOS",
+      "Concurrency",
+      "async/await",
+      "Actors"
+    ],
+    "post": "2026-02-03-swift-async-await"
+  },
+  {
+    "title": "How to Use Deno with TypeScript",
+    "description": "A practical guide to building TypeScript applications with Deno - covering setup, permissions, HTTP servers, file operations, testing, and configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Deno",
+      "TypeScript",
+      "JavaScript",
+      "Backend",
+      "DevOps"
+    ],
+    "post": "2026-02-03-deno-typescript"
+  },
+  {
+    "title": "How to Migrate from Node.js to Deno",
+    "description": "A practical guide to migrating your Node.js applications to Deno, covering compatibility modes, module conversion, npm package usage, and incremental adoption strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Deno",
+      "NodeJS",
+      "JavaScript",
+      "TypeScript",
+      "Migration",
+      "Backend"
+    ],
+    "post": "2026-02-03-nodejs-to-deno-migration"
+  },
+  {
+    "title": "How to Use Bun's SQLite Driver",
+    "description": "A practical guide to using Bun's built-in SQLite driver for fast, synchronous database operations in your JavaScript and TypeScript applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Bun",
+      "SQLite",
+      "Database",
+      "JavaScript",
+      "TypeScript",
+      "Performance"
+    ],
+    "post": "2026-02-03-bun-sqlite"
+  },
+  {
+    "title": "How to Implement File Downloads in FastAPI",
+    "description": "A practical guide to serving file downloads in FastAPI - from simple static files to streaming large datasets and generating files on the fly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "FastAPI",
+      "File Downloads",
+      "FileResponse",
+      "StreamingResponse",
+      "API Development",
+      "Performance"
+    ],
+    "post": "2026-02-03-fastapi-file-downloads"
+  },
+  {
+    "title": "How to Use FastAPI Query Parameters Effectively",
+    "description": "Learn how to handle query parameters in FastAPI - from basic required and optional parameters to advanced patterns like validation, enums, lists, and reusable pagination dependencies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "FastAPI",
+      "Query Parameters",
+      "API Design",
+      "Validation",
+      "Pydantic",
+      "REST API"
+    ],
+    "post": "2026-02-03-fastapi-query-parameters"
+  },
+  {
+    "title": "How to Build REST APIs with Django Ninja",
+    "description": "Learn how to build fast, type-safe REST APIs with Django Ninja using Pydantic schemas, automatic documentation, authentication, and modular routers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Django",
+      "Django Ninja",
+      "REST API",
+      "Pydantic",
+      "Web Development",
+      "Backend"
+    ],
+    "post": "2026-02-03-django-ninja-rest-apis"
+  },
+  {
+    "title": "How to Use Django Signals",
+    "description": "A practical guide to Django signals for decoupling application components, with examples covering built-in signals, custom signals, and common patterns like audit logging.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Django",
+      "Python",
+      "Backend",
+      "Web Development",
+      "Software Architecture"
+    ],
+    "post": "2026-02-03-django-signals"
+  },
+  {
+    "title": "How to Build Custom Django Management Commands",
+    "description": "Learn how to create custom Django management commands to automate tasks, handle arguments and options, style output, report progress, and write testable CLI tools for your projects.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Django",
+      "Python",
+      "Backend",
+      "DevOps",
+      "CLI",
+      "Automation"
+    ],
+    "post": "2026-02-03-django-management-commands"
+  },
+  {
+    "title": "How to Implement Flask-Login for Authentication",
+    "description": "Learn how to implement user authentication in Flask applications using Flask-Login, covering everything from basic setup to remember me functionality and route protection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Flask",
+      "Authentication",
+      "Flask-Login",
+      "Security",
+      "Web Development",
+      "Sessions"
+    ],
+    "post": "2026-02-03-flask-login-authentication"
+  },
+  {
+    "title": "How to Build APIs with Flask-RESTful",
+    "description": "Learn how to build clean, maintainable REST APIs with Flask-RESTful using resource classes, request parsing, output formatting, blueprints, and proper error handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Flask",
+      "Flask-RESTful",
+      "REST API",
+      "Web Development",
+      "Backend"
+    ],
+    "post": "2026-02-03-flask-restful-apis"
+  },
+  {
+    "title": "How to Implement Flask Extensions",
+    "description": "Learn how to build Flask extensions from scratch, covering the init_app pattern, application factory compatibility, configuration management, and packaging for distribution.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Flask",
+      "Extensions",
+      "Web Development",
+      "Application Factory",
+      "Configuration",
+      "Packaging"
+    ],
+    "post": "2026-02-03-flask-extensions"
+  },
+  {
+    "title": "How to Use Express Router Effectively",
+    "description": "Master Express Router for organized, maintainable APIs. This guide covers route modules, middleware, parameters, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Express",
+      "Router",
+      "REST API",
+      "Backend"
+    ],
+    "post": "2026-02-03-express-router"
+  },
+  {
+    "title": "How to Build REST APIs with Express and TypeScript",
+    "description": "A practical guide to building type-safe REST APIs with Express and TypeScript, covering project structure, validation with Zod, controllers, services, and error handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "TypeScript",
+      "Express",
+      "REST API",
+      "Node.js",
+      "Backend Development",
+      "Zod",
+      "Validation"
+    ],
+    "post": "2026-02-03-express-typescript-rest-apis"
+  },
+  {
+    "title": "How to Use NestJS Interceptors",
+    "description": "Master NestJS interceptors to transform responses, log requests, implement caching, handle timeouts, and apply cross-cutting concerns across your application.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NestJS",
+      "TypeScript",
+      "NodeJS",
+      "Backend",
+      "API",
+      "Middleware",
+      "RxJS"
+    ],
+    "post": "2026-02-03-nestjs-interceptors"
+  },
+  {
+    "title": "How to Use Gin Binding for Request Validation",
+    "description": "Master request validation in Gin using binding tags, validators, and custom error handling to build robust Go APIs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Gin",
+      "API",
+      "Validation",
+      "Web Development"
+    ],
+    "post": "2026-02-03-gin-binding-validation"
+  },
+  {
+    "title": "How to Implement File Uploads with Gin",
+    "description": "Learn how to handle single and multiple file uploads in Gin with validation, streaming, and cloud storage integration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Gin",
+      "File Uploads",
+      "API",
+      "Storage",
+      "AWS S3",
+      "Security"
+    ],
+    "post": "2026-02-03-gin-file-uploads"
+  },
+  {
+    "title": "How to Implement Middleware in Actix",
+    "description": "Learn how to implement custom middleware in Actix-web using the Transform and Service traits, with practical examples for logging, authentication, and request modification.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Actix",
+      "Middleware",
+      "Web Development",
+      "API Security",
+      "Backend"
+    ],
+    "post": "2026-02-03-actix-middleware"
+  },
+  {
+    "title": "How to Use Actix with SQLx for Database Access",
+    "description": "A practical guide to building type-safe database-driven web applications with Actix Web and SQLx in Rust.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Actix",
+      "SQLx",
+      "Database",
+      "PostgreSQL",
+      "Backend",
+      "Web Development"
+    ],
+    "post": "2026-02-03-actix-sqlx-database"
+  },
+  {
+    "title": "How to Build WebSocket Servers with Actix",
+    "description": "Learn how to build high-performance WebSocket servers in Rust using Actix-web and the actor model for real-time applications like chat, notifications, and live updates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Actix",
+      "WebSocket",
+      "Real-time",
+      "Actors",
+      "Performance"
+    ],
+    "post": "2026-02-03-actix-websockets"
+  },
+  {
+    "title": "How to Configure Actix for Production",
+    "description": "A practical guide to configuring Actix Web for production deployments with worker tuning, TLS, graceful shutdown, health checks, logging, and Docker best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Actix",
+      "Web Development",
+      "DevOps",
+      "Performance",
+      "Docker"
+    ],
+    "post": "2026-02-03-actix-production-config"
+  },
+  {
+    "title": "How to Implement GraphQL Mutations",
+    "description": "A hands-on guide to implementing GraphQL mutations - from basic CRUD operations to advanced patterns like validation, error handling, optimistic updates, and batch mutations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GraphQL",
+      "API",
+      "Mutations",
+      "TypeScript",
+      "NodeJS",
+      "Backend",
+      "Web Development"
+    ],
+    "post": "2026-02-03-graphql-mutations"
+  },
+  {
+    "title": "How to Use GraphQL Fragments",
+    "description": "A hands-on guide to GraphQL fragments - from basic syntax to advanced patterns for building maintainable, reusable queries in real applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GraphQL",
+      "Fragments",
+      "API",
+      "Frontend",
+      "TypeScript",
+      "React",
+      "Code Organization"
+    ],
+    "post": "2026-02-03-graphql-fragments"
+  },
+  {
+    "title": "How to Build GraphQL APIs with Hasura",
+    "description": "A practical guide to building production-ready GraphQL APIs with Hasura - from database setup and auto-generated CRUD to custom business logic, permissions, and real-time subscriptions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GraphQL",
+      "Hasura",
+      "API Development",
+      "PostgreSQL",
+      "Backend",
+      "DevOps"
+    ],
+    "post": "2026-02-03-graphql-hasura"
+  },
+  {
+    "title": "How to Use GraphQL Code Generator",
+    "description": "A practical guide to setting up GraphQL Code Generator for type-safe queries, mutations, and React hooks in your TypeScript projects.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GraphQL",
+      "TypeScript",
+      "Code Generation",
+      "React",
+      "Apollo",
+      "Frontend",
+      "Developer Tools"
+    ],
+    "post": "2026-02-03-graphql-code-generator"
+  },
+  {
+    "title": "How to Secure GraphQL APIs",
+    "description": "A practical guide to hardening GraphQL APIs against common attack vectors - from authentication and authorization to query depth limiting, complexity analysis, and beyond.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GraphQL",
+      "Security",
+      "API",
+      "Authentication",
+      "Authorization",
+      "Rate Limiting"
+    ],
+    "post": "2026-02-03-graphql-security"
+  },
+  {
+    "title": "How to Design gRPC Service Contracts",
+    "description": "A practical guide to designing robust gRPC service contracts using Protocol Buffers, covering message design, RPC patterns, error handling, and API evolution strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Protocol Buffers",
+      "API Design",
+      "Microservices",
+      "Backend",
+      "Distributed Systems"
+    ],
+    "post": "2026-02-03-grpc-service-contracts"
+  },
+  {
+    "title": "How to Build REST APIs with Django Ninja",
+    "description": "Learn how to build fast REST APIs with Django Ninja. This guide covers routing, schemas, authentication, and automatic documentation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Django",
+      "Django Ninja",
+      "REST API",
+      "Backend"
+    ],
+    "post": "2026-02-03-django-ninja-rest-api"
+  },
+  {
+    "title": "How to Implement API Versioning in Express",
+    "description": "Learn how to implement API versioning in Express applications. This guide covers URL, header, and query parameter versioning strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Express",
+      "API Versioning",
+      "REST",
+      "Backend"
+    ],
+    "post": "2026-02-03-express-api-versioning"
+  },
+  {
+    "title": "How to Build REST APIs with Express and TypeScript",
+    "description": "Learn how to build type-safe REST APIs with Express and TypeScript. This guide covers project setup, typed routes, middleware, and validation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Express",
+      "TypeScript",
+      "REST API",
+      "Backend"
+    ],
+    "post": "2026-02-03-express-typescript-rest-api"
+  },
+  {
+    "title": "How to Use Go Channels for Concurrent Programming",
+    "description": "Master Go channels for safe concurrent programming. This guide covers buffered and unbuffered channels, select statements, patterns, and avoiding common pitfalls.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Channels",
+      "Concurrency",
+      "Goroutines",
+      "Parallel Programming"
+    ],
+    "post": "2026-02-03-go-channels-concurrent-programming"
+  },
+  {
+    "title": "How to Use Go Interfaces for Dependency Injection",
+    "description": "Learn how to use Go interfaces for clean dependency injection. This guide covers interface design, constructor injection, and testable architecture patterns.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Interfaces",
+      "Dependency Injection",
+      "Testing",
+      "Architecture"
+    ],
+    "post": "2026-02-03-go-interfaces-dependency-injection"
+  },
+  {
+    "title": "How to Write Unit Tests in Go with the Testing Package",
+    "description": "Learn how to write effective unit tests in Go using the built-in testing package. This guide covers test functions, table-driven tests, mocking, and best practices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Testing",
+      "Unit Tests",
+      "TDD",
+      "Quality Assurance"
+    ],
+    "post": "2026-02-03-go-unit-tests-testing-package"
+  },
+  {
+    "title": "How to Build Event-Driven Systems with EventEmitter",
+    "description": "Learn how to build event-driven systems in Node.js with EventEmitter. This guide covers event patterns, custom emitters, error handling, and real-world applications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "EventEmitter",
+      "Events",
+      "Architecture",
+      "Decoupling"
+    ],
+    "post": "2026-02-03-nodejs-eventemitter"
+  },
+  {
+    "title": "How to Build Real-Time Features with Phoenix Channels",
+    "description": "Learn how to build real-time features with Phoenix Channels. This guide covers channel setup, presence tracking, broadcasting, and scaling considerations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Elixir",
+      "Phoenix",
+      "Channels",
+      "WebSockets",
+      "Real-Time"
+    ],
+    "post": "2026-02-03-phoenix-channels-realtime"
+  },
+  {
+    "title": "How to Handle Errors with Result and Option in Rust",
+    "description": "Master Rust error handling with Result and Option types. This guide covers pattern matching, the ? operator, combinators, and building robust error handling strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Rust",
+      "Error Handling",
+      "Result",
+      "Option",
+      "Safety"
+    ],
+    "post": "2026-02-03-rust-result-option-errors"
+  },
+  {
+    "title": "How to Build REST APIs with Play Framework",
+    "description": "Learn how to build REST APIs with Scala and Play Framework. This guide covers routing, controllers, JSON handling, and dependency injection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Scala",
+      "Play Framework",
+      "REST API",
+      "Backend",
+      "Akka"
+    ],
+    "post": "2026-02-03-scala-play-framework-rest-api"
+  },
+  {
+    "title": "How to Use Spring Boot DevTools for Development",
+    "description": "Learn how to use Spring Boot DevTools for faster development. This guide covers automatic restarts, live reload, and remote debugging.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "DevTools",
+      "Development",
+      "Productivity"
+    ],
+    "post": "2026-02-03-spring-boot-devtools"
+  },
+  {
+    "title": "How to Implement Retry Logic in Spring Boot",
+    "description": "Learn how to implement retry logic in Spring Boot with Spring Retry. This guide covers annotations, templates, and backoff strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Retry",
+      "Resilience",
+      "Fault Tolerance"
+    ],
+    "post": "2026-02-03-spring-boot-retry"
+  },
+  {
+    "title": "How to Use Spring Boot Validation",
+    "description": "Learn how to implement validation in Spring Boot applications. This guide covers Bean Validation, custom validators, and error handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Validation",
+      "Bean Validation",
+      "REST API"
+    ],
+    "post": "2026-02-03-spring-boot-validation"
+  },
+  {
+    "title": "How to Implement Caching with Spring Cache",
+    "description": "Learn how to implement caching in Spring Boot with Spring Cache. This guide covers annotations, cache providers, and eviction strategies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Spring Boot",
+      "Caching",
+      "Redis",
+      "Performance"
+    ],
+    "post": "2026-02-03-spring-cache"
   }
 ]
