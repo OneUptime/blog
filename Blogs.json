@@ -107367,5 +107367,22 @@
       "Networking"
     ],
     "post": "2026-02-02-websocket-server-scratch"
+  },
+  {
+    "title": "Why CLI is the New MCP for AI Agents",
+    "description": "A deep dive into why Command Line Interfaces are emerging as the superior integration pattern for AI agents compared to the Model Context Protocol, with practical examples and architectural insights.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI Agents",
+      "CLI",
+      "MCP",
+      "Model Context Protocol",
+      "Automation",
+      "Developer Tools",
+      "LLM",
+      "DevOps",
+      "Software Architecture"
+    ],
+    "post": "2026-02-03-cli-is-the-new-mcp"
   }
 ]
