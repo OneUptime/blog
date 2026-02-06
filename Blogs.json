@@ -108823,5 +108823,18 @@
       "Tools"
     ],
     "post": "2026-02-06-best-open-source-monitoring-tools-2026"
+  },
+  {
+    "title": "Better Uptime vs OneUptime: Which Monitoring Platform Is Right for You?",
+    "description": "Comparing Better Uptime and OneUptime - features, pricing, and key differences between these modern monitoring platforms.",
+    "authorGitHubUsername": "mallersjamie",
+    "tags": [
+      "Better Uptime",
+      "Monitoring",
+      "Comparison",
+      "Open Source",
+      "Status Pages"
+    ],
+    "post": "2026-02-06-better-uptime-vs-oneuptime-comparison"
   }
 ]
