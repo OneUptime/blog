@@ -4,240 +4,223 @@ Author: [mallersjamie](https://www.github.com/mallersjamie)
 
 Tags: Status Pages, Tutorial, Free Tools, Incident Communication, Getting Started
 
-Description: Step-by-step guide to creating a free status page for your website or API. Includes setup, customization, and best practices.
+Description: Step-by-step guide to creating a free status page for your website or API using OneUptime. Based on the actual product interface.
 
-Your users deserve to know when something's wrong. A status page is the simplest way to communicate incidents, maintenance, and system health — and you can set one up for free in under 10 minutes.
-
-This guide walks you through creating a professional status page using OneUptime's free tier. No credit card required, no trial that expires.
+Your users deserve to know when something's wrong. A status page is the simplest way to communicate incidents, maintenance, and system health. Here's how to set one up for free with OneUptime.
 
 ## What You'll Build
 
 By the end of this guide, you'll have:
 
-- ✅ A public status page (yourstatus.oneuptime.com or your custom domain)
-- ✅ Components for each of your services
-- ✅ Automatic uptime monitoring
-- ✅ Incident communication system
-- ✅ Subscriber notifications
-
-Let's get started.
+- ✅ A public status page with your branding
+- ✅ Resources (monitors) displayed with real-time status
+- ✅ Groups to organize your services
+- ✅ Subscriber notifications via email, SMS, Slack, or MS Teams
+- ✅ Custom domain support (optional)
 
 ## Step 1: Create Your OneUptime Account
 
 1. Go to [oneuptime.com](https://oneuptime.com)
-2. Click "Start Free Trial" (no credit card needed)
+2. Click "Start Free Trial"
 3. Enter your email and create a password
 4. Verify your email
 
-You're in. The free tier includes everything you need for a basic status page.
+No credit card required. The free tier includes status pages.
 
-## Step 2: Create Your First Project
+## Step 2: Create a New Status Page
 
-After signing in:
+Once logged in to your dashboard:
 
-1. Click "Create Project"
-2. Name it something recognizable (e.g., "Acme Corp Production")
-3. Select your timezone
-4. Click "Create"
+1. Navigate to **Status Pages** in the left sidebar
+2. Click **Create Status Page**
+3. Fill in the basic details:
+   - **Name**: Your status page name (e.g., "Acme Corp Status")
+   - **Description**: A brief description of what this status page covers
+4. Click **Create**
 
-Projects organize your monitoring, status pages, and incidents. You can have multiple projects for different products or environments.
+Your status page is now live at a OneUptime subdomain.
 
-## Step 3: Add Your Components
+## Step 3: Add Resources (Monitors)
 
-Components represent the services you want to show on your status page. Common examples:
+Resources are the services you want to display on your status page. They're linked to monitors that track their actual status.
 
-- **Website** — Your main site
-- **API** — Backend services
-- **Dashboard** — User-facing app
-- **Database** — If relevant to users
-- **Authentication** — Login systems
+1. Go to your status page → **Resources** (in the sidebar)
+2. Click **Add Resource**
+3. Select a monitor from your existing monitors, or create a new one
+4. Configure display settings:
+   - **Display Name**: What users see (e.g., "API", "Website", "Dashboard")
+   - **Description**: Optional description for users
+   - **Show Current Status**: Toggle to show real-time status
+   - **Show Uptime History**: Toggle to show historical uptime chart
+   - **Uptime Precision**: Choose decimal precision (e.g., 99.9% vs 99.95%)
+5. Click **Save**
 
-To add components:
+Repeat for each service you want to display.
 
-1. Go to **Status Page** → **Components**
-2. Click "Add Component"
-3. Enter a name (e.g., "API")
-4. Add a description (e.g., "REST API for mobile and web apps")
-5. Click "Save"
+**Tip**: You can also add Monitor Groups instead of individual monitors. Click "Add a Monitor Group instead" to display grouped services.
 
-Repeat for each service. Start with 3-5 key components — you can add more later.
+## Step 4: Create Groups
 
-### Component Groups
+Groups organize your resources into logical sections on the status page.
 
-For complex systems, group related components:
+1. Go to **Groups** in the sidebar
+2. Click **Add Group**
+3. Enter a group name (e.g., "Core Services", "Integrations", "Regional")
+4. Set the display order
+5. Click **Save**
 
-- **Core Services:** Website, API, Database
-- **Integrations:** Slack, Email, Webhooks
-- **Regional:** US East, EU West, Asia Pacific
+Then, when adding resources, assign them to groups.
 
-Groups help users quickly understand what's affected during incidents.
+## Step 5: Configure Subscriber Notifications
 
-## Step 4: Set Up Monitors
+Let users subscribe to status updates. OneUptime supports multiple notification channels:
 
-Monitors automatically check your services and update component status. When a monitor fails, the component goes red automatically.
+### Email Subscribers
+1. Go to **Email Subscribers** in the sidebar
+2. View and manage email subscribers
+3. Users can self-subscribe from your public status page
 
-To create a monitor:
+### SMS Subscribers
+1. Go to **SMS Subscribers**
+2. Add phone numbers for SMS notifications
+3. Note: SMS may incur costs depending on your plan
 
-1. Go to **Monitoring** → **Monitors**
-2. Click "Add Monitor"
-3. Select monitor type:
-   - **HTTP** — Check websites and APIs
-   - **Ping** — Check server availability
-   - **TCP** — Check database connections
-   - **SSL** — Check certificate expiry
-4. Enter the URL or endpoint
-5. Set check interval (1-5 minutes recommended)
-6. Link to your status page component
-7. Click "Create"
+### Slack Subscribers
+1. Go to **Slack Subscribers**
+2. Connect your Slack workspace
+3. Choose channels to receive notifications
 
-Now your status page updates automatically based on real monitoring data — no manual updates needed.
+### Microsoft Teams Subscribers
+1. Go to **MS Teams Subscribers**
+2. Configure Teams webhook for notifications
 
-## Step 5: Customize Your Status Page
+### Subscriber Settings
+1. Go to **Subscriber Settings**
+2. Configure what notifications subscribers receive:
+   - Incident created/updated/resolved
+   - Scheduled maintenance notifications
+   - Announcement notifications
 
-Make it match your brand:
+## Step 6: Customize Branding
 
-1. Go to **Status Page** → **Branding**
+Make the status page match your brand.
+
+### Essential Branding
+1. Go to **Essential Branding**
 2. Upload your logo
-3. Set brand colors
-4. Add a favicon
-5. Write a custom header message
+3. Set your favicon
+4. Configure brand colors
 
-### Custom Domain (Optional)
+### Header & Footer
+1. Go to **Header** to customize the page header
+2. Go to **Footer** to add footer links and content
 
-Instead of `yourcompany.oneuptime.com`, use your own domain:
+### Custom Domains
+1. Go to **Custom Domains**
+2. Add your domain (e.g., `status.yourcompany.com`)
+3. Create a CNAME record pointing to OneUptime
+4. Verify the domain
 
-1. Go to **Status Page** → **Custom Domain**
-2. Enter your domain (e.g., `status.yourcompany.com`)
-3. Add the CNAME record to your DNS:
-   ```
-   status.yourcompany.com → cname.oneuptime.com
-   ```
-4. Wait for DNS propagation (usually 5-30 minutes)
-5. Click "Verify"
+### HTML, CSS & JavaScript
+1. Go to **HTML, CSS & JavaScript** for advanced customization
+2. Add custom CSS to override default styles
+3. Add custom JavaScript for additional functionality
 
-Now your status page lives at your own domain.
+### Overview Page
+1. Go to **Overview Page** to customize the main status display
+2. Configure what information appears on the landing page
 
-## Step 6: Enable Subscriber Notifications
+## Step 7: Authentication (Optional)
 
-Let users subscribe to updates:
+For private status pages that require login:
 
-1. Go to **Status Page** → **Subscribers**
-2. Enable "Allow Subscriptions"
-3. Choose notification methods:
-   - ✅ Email (always enable this)
-   - ✅ SMS (optional, may incur costs)
-   - ✅ Webhook (for integrations)
-   - ✅ RSS (for tech-savvy users)
+### Private Users
+1. Go to **Private Users**
+2. Add users who can access the status page
+3. Users will need to log in to view status
 
-Users can now subscribe directly from your status page and receive automatic updates when incidents occur.
+### SSO (Single Sign-On)
+1. Go to **SSO**
+2. Configure SAML or OAuth for enterprise authentication
+3. Users can log in with their corporate credentials
 
-## Step 7: Create Your First Incident (Test)
+### SCIM
+1. Go to **SCIM**
+2. Set up automatic user provisioning from your identity provider
 
-Let's test the system with a mock incident:
+### Authentication Settings
+1. Go to **Authentication Settings**
+2. Configure login requirements and session policies
 
-1. Go to **Incidents** → **Create Incident**
-2. Set a title: "Test Incident - Ignore"
-3. Select affected components
-4. Set state: "Investigating"
-5. Write a public message: "This is a test incident."
-6. Click "Create"
+## Step 8: Advanced Features
 
-Check your status page — you'll see the incident displayed. Subscribers will receive notifications (if you have any yet).
+### Embedded Status
+1. Go to **Embedded Status**
+2. Get an embeddable badge or widget for your website
+3. Show real-time status directly on your main site
 
-Now resolve it:
+### Reports
+1. Go to **Reports**
+2. Generate uptime reports for stakeholders
+3. Export historical data
 
-1. Click on the incident
-2. Add an update: "Issue identified and resolved."
-3. Change state to "Resolved"
-4. Click "Update"
-
-Your status page now shows everything operational again, with an incident history.
+### Announcements
+1. Go to **Announcements** (in Basic section)
+2. Create announcements for upcoming features or known issues
+3. Announcements appear prominently on the status page
 
 ## Best Practices
 
-### Do:
+### Writing Good Incident Updates
 
-- ✅ **Be transparent** — Users appreciate honesty over silence
-- ✅ **Update frequently** — Every 30 minutes during incidents
-- ✅ **Use clear language** — Avoid jargon, explain impact
-- ✅ **Post maintenance windows** — Warn users in advance
-- ✅ **Include ETAs** — Even if approximate
+**Do:**
+- Be transparent about what's happening
+- Update frequently (every 30 minutes during active incidents)
+- Explain the impact in user terms
+- Provide ETAs when possible
 
-### Don't:
+**Don't:**
+- Use technical jargon users won't understand
+- Go silent during incidents
+- Hide or downplay issues
 
-- ❌ **Hide incidents** — Users notice anyway; hiding erodes trust
-- ❌ **Use technical jargon** — "Database failover" means nothing to most users
-- ❌ **Go silent** — No update is worse than a bad update
-- ❌ **Blame third parties** — Take ownership, even for vendor issues
-
-### Example Incident Updates
+### Example Incident Communication
 
 **Bad:**
-> "Investigating elevated error rates on db-replica-3."
+> "Elevated p99 latency on db-cluster-3."
 
 **Good:**
-> "Some users may experience slow loading times. Our team is investigating and will provide an update in 30 minutes."
+> "Some users may experience slow loading times. Our team is investigating and will provide an update within 30 minutes."
 
-**Bad:**
-> "Issue resolved."
+**Resolution update:**
+> "The slowdown has been resolved. The cause was increased traffic during a marketing campaign. We've scaled our infrastructure to handle similar loads in the future. We apologize for any inconvenience."
 
-**Good:**
-> "The loading issue has been fixed. The cause was a temporary database slowdown during high traffic. We've added capacity to prevent this in the future. Sorry for the disruption."
+## Status Page Public API
 
-## Advanced Features
+OneUptime provides a public API to programmatically fetch status page data:
 
-Once you're comfortable with basics, explore:
+```bash
+# Get overall status
+curl -X POST https://oneuptime.com/status-page-api/overview/:statusPageId
 
-### Scheduled Maintenance
+# Get uptime data
+curl -X POST https://oneuptime.com/status-page-api/uptime/:statusPageId
 
-1. Go to **Status Page** → **Scheduled Maintenance**
-2. Create maintenance window
-3. Set start/end times
-4. Select affected components
-5. Write a description
+# Get incidents
+curl -X POST https://oneuptime.com/status-page-api/incidents/:statusPageId
 
-Users will see upcoming maintenance on the status page and receive advance notifications.
+# Get scheduled maintenance
+curl -X POST https://oneuptime.com/status-page-api/scheduled-maintenance/:statusPageId
 
-### Incident Templates
+# Get announcements
+curl -X POST https://oneuptime.com/status-page-api/announcements/:statusPageId
+```
 
-For common incidents, create templates:
-
-1. Go to **Incidents** → **Templates**
-2. Create templates for:
-   - API degradation
-   - Planned maintenance
-   - Third-party outage
-   - Security incident
-
-Templates speed up communication during stressful incidents.
-
-### Metrics Display
-
-Show uptime percentages and response times:
-
-1. Go to **Status Page** → **Settings**
-2. Enable "Show Metrics"
-3. Select which metrics to display
-
-This builds trust by showing real performance data.
-
-## Comparison: Free Options
-
-| Feature | OneUptime Free | Atlassian Statuspage Free | UptimeRobot |
-|---------|---------------|---------------------------|-------------|
-| Status Page | ✅ | ✅ (limited) | ✅ |
-| Custom Domain | ✅ | ❌ | ❌ |
-| Monitors | 5 | 0 | 50 |
-| Incidents | Unlimited | Limited | Basic |
-| Subscribers | ✅ | Limited | ✅ |
-| API Access | ✅ | ❌ | ✅ |
-| Self-Hosted | ✅ | ❌ | ❌ |
-
-OneUptime's free tier is genuinely useful for small projects. For larger needs, paid plans start at usage-based pricing with no per-seat costs.
+This lets you integrate status data into your own applications or dashboards.
 
 ## Self-Hosting (Advanced)
 
-Want complete control? OneUptime is open source:
+OneUptime is open source. For complete control, self-host:
 
 ```bash
 git clone https://github.com/OneUptime/oneuptime
@@ -251,21 +234,20 @@ Self-hosting gives you:
 - Custom modifications
 - Air-gapped deployments
 
-See the [self-hosting guide](https://github.com/OneUptime/oneuptime) for details.
-
 ## Conclusion
 
-A status page is one of the easiest wins for user trust. In 10 minutes, you've built:
+You now have a professional status page that:
+- Shows real-time status of your services
+- Notifies subscribers automatically during incidents
+- Matches your brand
+- Builds trust with your users
 
-- A professional status page
-- Automatic uptime monitoring
-- Incident communication system
-- Subscriber notifications
-
-Your users will thank you the next time something goes wrong — because they'll know what's happening and when it'll be fixed.
+The whole setup takes about 10 minutes. Your users will thank you the next time something goes wrong — because they'll know what's happening.
 
 ---
 
-**Ready to start?** [Create your free status page](https://oneuptime.com) in minutes.
+**Ready to start?** [Create your free status page](https://oneuptime.com)
 
-**Need more power?** Check out [OneUptime's full platform](https://oneuptime.com/pricing) for monitoring, on-call, logs, and more.
+**Video tutorial:** [Watch on YouTube](https://youtu.be/F6BNipy5VCk)
+
+**Need more?** OneUptime also includes monitoring, on-call scheduling, logs, and traces — all in one platform.
