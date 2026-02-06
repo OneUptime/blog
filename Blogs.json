@@ -108836,5 +108836,18 @@
       "Status Pages"
     ],
     "post": "2026-02-06-better-uptime-vs-oneuptime-comparison"
+  },
+  {
+    "title": "Datadog vs OneUptime: Why Teams Are Switching to Open Source Observability",
+    "description": "A comprehensive comparison of Datadog vs OneUptime covering features, pricing, and why open-source observability is disrupting the $25B monitoring market.",
+    "authorGitHubUsername": "mallersjamie",
+    "tags": [
+      "Datadog",
+      "Observability",
+      "Comparison",
+      "Open Source",
+      "APM"
+    ],
+    "post": "2026-02-06-datadog-vs-oneuptime-comparison"
   }
 ]
