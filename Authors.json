@@ -14,5 +14,9 @@
   "nawazdhandala": {
     "authorName": "Nawaz Dhandala",
     "authorBio": "Nawaz is building OneUptime with a passion for engineering reliable systems and improving observability."
+  },
+  "mallersjamie": {
+    "authorName": "Jamie Mallers",
+    "authorBio": "GTM and growth at OneUptime. Writing about observability, DevOps, and building reliable software."
   }
 }
