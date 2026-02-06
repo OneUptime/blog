@@ -108771,5 +108771,18 @@
       "Performance"
     ],
     "post": "2026-02-03-spring-cache"
+  },
+  {
+    "title": "StatusPage.io vs OneUptime: Which Status Page Solution Is Right for You?",
+    "description": "Comparing Atlassian StatusPage.io with OneUptime - features, pricing, and why open-source status pages are gaining ground in 2026.",
+    "authorGitHubUsername": "mallersjamie",
+    "tags": [
+      "Status Pages",
+      "StatusPage.io",
+      "Comparison",
+      "Open Source",
+      "Incident Management"
+    ],
+    "post": "2026-02-06-statuspage-vs-oneuptime-comparison"
   }
 ]
