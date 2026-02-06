@@ -108812,8 +108812,47 @@
     "post": "2026-02-06-pagerduty-vs-oneuptime-comparison"
   },
   {
+    "title": "Best Open Source Monitoring Tools in 2026: The Complete Guide",
+    "description": "A comprehensive guide to the best open source monitoring and observability tools in 2026, covering infrastructure, APM, logs, and incident management.",
+    "authorGitHubUsername": "mallersjamie",
+    "tags": [
+      "Open Source",
+      "Monitoring",
+      "Observability",
+      "DevOps",
+      "Tools"
+    ],
+    "post": "2026-02-06-best-open-source-monitoring-tools-2026"
+  },
+  {
+    "title": "Better Uptime vs OneUptime: Which Monitoring Platform Is Right for You?",
+    "description": "Comparing Better Uptime and OneUptime - features, pricing, and key differences between these modern monitoring platforms.",
+    "authorGitHubUsername": "mallersjamie",
+    "tags": [
+      "Better Uptime",
+      "Monitoring",
+      "Comparison",
+      "Open Source",
+      "Status Pages"
+    ],
+    "post": "2026-02-06-better-uptime-vs-oneuptime-comparison"
+  },
+  {
+    "title": "Datadog vs OneUptime: Why Teams Are Switching to Open Source Observability",
+    "description": "A comprehensive comparison of Datadog vs OneUptime covering features, pricing, and why open-source observability is disrupting the $25B monitoring market.",
+    "authorGitHubUsername": "mallersjamie",
+    "tags": [
+      "Datadog",
+      "Observability",
+      "Comparison",
+      "Open Source",
+      "APM"
+    ],
+    "post": "2026-02-06-datadog-vs-oneuptime-comparison"
+  },
+  {
     "title": "How to Set Up a Free Status Page in 10 Minutes",
-    "description": "Step-by-step guide to creating a free status page for your website or API. Includes setup, customization, and best practices.",
+    "description": "Step-by-step guide to creating a free status page for your website or API using OneUptime. Based on the actual product interface.",
     "authorGitHubUsername": "mallersjamie",
     "tags": [
       "Status Pages",
