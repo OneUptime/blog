@@ -123,12 +123,11 @@ OneUptime is built OpenTelemetry-native from day one. Standard instrumentation, 
 
 Let's be fair. Datadog is right for some teams:
 
-- **Very large enterprises** with dedicated observability teams and complex needs
 - **Companies already deeply integrated** where switching costs outweigh savings
 - **Teams that need specific integrations** only Datadog offers
 - **Organizations where cost isn't a concern** (rare, but they exist)
 
-If you have a 7-figure observability budget and a team to manage it, Datadog's breadth and depth can be valuable.
+Note: Enterprise scale isn't a reason to choose Datadog over OneUptime. OneUptime serves large enterprises including government agencies and Fortune 500 companies. The difference is cost and flexibility, not capability.
 
 ## Migration: Datadog to OneUptime
 
@@ -155,9 +154,9 @@ The question isn't whether open-source observability will win — it's when. Tea
 
 ## The Bottom Line
 
-**Datadog** is a powerful, expensive, proprietary observability platform for enterprises with big budgets and complex needs.
+**Datadog** is a powerful, expensive, proprietary observability platform.
 
-**OneUptime** is a complete, affordable, open-source alternative that includes everything most teams need — monitoring, APM, logs, traces, incidents, on-call, and status pages — without the enterprise price tag.
+**OneUptime** is a complete, affordable, open-source alternative that includes everything teams need — monitoring, APM, logs, traces, incidents, on-call, and status pages. It scales from startups to large enterprises, including government agencies and Fortune 500 companies.
 
 If you're tired of Datadog bills that grow faster than your revenue, it might be time to try something different.
 
