@@ -1,4 +1,4 @@
-# Ubuntu UFW Firewall: Complete Setup Guide with Examples (2026)
+# Ubuntu UFW Firewall: Complete Setup Guide with Examples
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

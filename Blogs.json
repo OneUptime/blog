@@ -13628,7 +13628,7 @@
     "post": "2026-01-07-ubuntu-ansible-automation"
   },
   {
-    "title": "Ubuntu AppArmor Security: Create Custom Profiles (2026 Guide)",
+    "title": "Ubuntu AppArmor Security: Create Custom Profiles",
     "description": "Learn to create and manage AppArmor profiles on Ubuntu. Confine applications, debug denials, and harden your system with mandatory access control.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -14147,7 +14147,7 @@
     "post": "2026-01-07-ubuntu-time-synchronization-ntp-chrony"
   },
   {
-    "title": "Ubuntu UFW Firewall: Complete Setup Guide with Examples (2026)",
+    "title": "Ubuntu UFW Firewall: Complete Setup Guide with Examples",
     "description": "Step-by-step guide to configure UFW firewall on Ubuntu. Learn rules, logging, application profiles, port forwarding, and production-ready configurations.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -20730,7 +20730,7 @@
     "post": "2026-01-15-setup-seedbox-ubuntu"
   },
   {
-    "title": "Set Up SOCKS5 Proxy Server on Ubuntu with Dante (2026)",
+    "title": "Set Up SOCKS5 Proxy Server on Ubuntu with Dante",
     "description": "Build a SOCKS5 proxy server on Ubuntu using Dante. Covers installation, authentication, firewall rules, and client configuration for secure browsing.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -48299,7 +48299,7 @@
     "post": "2026-01-24-nextjs-revalidatepath-not-working"
   },
   {
-    "title": "Next.js Route Handlers: Build REST APIs with App Router (2026)",
+    "title": "Next.js Route Handlers: Build REST APIs with App Router",
     "description": "Build REST APIs in Next.js 14+ with Route Handlers. Complete guide to GET, POST, middleware, authentication, and App Router best practices.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [

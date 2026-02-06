@@ -1,4 +1,4 @@
-# Ubuntu AppArmor Security: Create Custom Profiles (2026 Guide)
+# Ubuntu AppArmor Security: Create Custom Profiles
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

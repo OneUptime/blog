@@ -1,4 +1,4 @@
-# Set Up SOCKS5 Proxy Server on Ubuntu with Dante (2026)
+# Set Up SOCKS5 Proxy Server on Ubuntu with Dante
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

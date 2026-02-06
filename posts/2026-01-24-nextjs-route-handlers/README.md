@@ -1,4 +1,4 @@
-# Next.js Route Handlers: Build REST APIs with App Router (2026)
+# Next.js Route Handlers: Build REST APIs with App Router
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
