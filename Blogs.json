@@ -108799,6 +108799,32 @@
     "post": "2026-02-06-statuspage-vs-oneuptime-comparison"
   },
   {
+    "title": "PagerDuty vs OneUptime: Open Source On-Call Management That Won't Break the Bank",
+    "description": "Comparing PagerDuty with OneUptime for on-call scheduling, incident management, and alerting - features, pricing, and why teams are switching.",
+    "authorGitHubUsername": "mallersjamie",
+    "tags": [
+      "PagerDuty",
+      "On-Call",
+      "Incident Management",
+      "Comparison",
+      "Open Source"
+    ],
+    "post": "2026-02-06-pagerduty-vs-oneuptime-comparison"
+  },
+  {
+    "title": "Best Open Source Monitoring Tools in 2026: The Complete Guide",
+    "description": "A comprehensive guide to the best open source monitoring and observability tools in 2026, covering infrastructure, APM, logs, and incident management.",
+    "authorGitHubUsername": "mallersjamie",
+    "tags": [
+      "Open Source",
+      "Monitoring",
+      "Observability",
+      "DevOps",
+      "Tools"
+    ],
+    "post": "2026-02-06-best-open-source-monitoring-tools-2026"
+  },
+  {
     "title": "Better Uptime vs OneUptime: Which Monitoring Platform Is Right for You?",
     "description": "Comparing Better Uptime and OneUptime - features, pricing, and key differences between these modern monitoring platforms.",
     "authorGitHubUsername": "mallersjamie",
