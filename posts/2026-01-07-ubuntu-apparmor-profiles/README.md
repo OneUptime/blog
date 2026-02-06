@@ -1,10 +1,10 @@
-# How to Set Up AppArmor Profiles on Ubuntu
+# Ubuntu AppArmor Security: Create Custom Profiles (2026 Guide)
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Linux, AppArmor, Security, Containers
 
-Description: Configure AppArmor profiles on Ubuntu to confine applications and enhance system security with mandatory access control.
+Description: Learn to create and manage AppArmor profiles on Ubuntu. Confine applications, debug denials, and harden your system with mandatory access control.
 
 ---
 

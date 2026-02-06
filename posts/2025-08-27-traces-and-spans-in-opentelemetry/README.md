@@ -1,10 +1,10 @@
-# What are Traces and Spans in OpenTelemetry: A Practical Guide
+# OpenTelemetry Traces & Spans Explained (Node.js/TypeScript Examples)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Tracing, Traces, Observability, TypeScript, NodeJS
 
-Description: A comprehensive, practical guide to understanding traces and spans in OpenTelemetry- how they work, how they relate, and how to instrument real Node.js / TypeScript applications effectively for deep insight and faster debugging.
+Description: Understand OpenTelemetry traces and spans with real code examples. Instrument Node.js/TypeScript apps for distributed tracing and faster debugging.
 
 ---
 

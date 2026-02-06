@@ -1,10 +1,10 @@
-# How to Configure UFW (Uncomplicated Firewall) on Ubuntu
+# Ubuntu UFW Firewall: Complete Setup Guide with Examples (2026)
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Linux, Security, Firewall, Networking
 
-Description: Configure UFW firewall on Ubuntu with rules for services, logging, application profiles, and advanced configurations for production servers.
+Description: Step-by-step guide to configure UFW firewall on Ubuntu. Learn rules, logging, application profiles, port forwarding, and production-ready configurations.
 
 ---
 
