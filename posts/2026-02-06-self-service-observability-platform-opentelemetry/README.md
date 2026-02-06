@@ -1,371 +1,333 @@
-# How to Build a Self-Service Observability Platform with OpenTelemetry
+# How to Build a Self-Service Observability Platform Using OpenTelemetry and Internal Developer Portals
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Platform Engineering, Self-Service, Observability, Developer Experience
+Tags: OpenTelemetry, Developer Platform, Self-Service, Observability
 
-Description: Learn how to build a self-service observability platform using OpenTelemetry that lets development teams onboard independently without waiting on a central platform team.
+Description: Build an internal self-service observability platform where developer teams can onboard, configure, and manage their own telemetry using OpenTelemetry.
 
----
+Centralized observability teams do not scale. When a single platform team handles every instrumentation request, dashboard creation, and alert configuration for dozens of engineering teams, the bottleneck grows until developers either wait weeks for observability or skip it entirely.
 
-In organizations with dozens or hundreds of development teams, observability cannot be a bottleneck. If every team needs to file a ticket and wait for the platform team to configure tracing, set up dashboards, and enable alerting, your observability program will never keep up with the pace of development. The solution is to build a self-service platform where teams can onboard their services, configure their instrumentation, and create their dashboards without requiring central team involvement.
-
-OpenTelemetry is the ideal foundation for this because it standardizes how telemetry is collected, processed, and exported. Teams do not need to understand the underlying backend or the collector infrastructure. They just need to follow a set of conventions and use the tools you provide. This post walks through the design and implementation of a self-service observability platform built on OpenTelemetry.
+A self-service model flips this. The platform team provides the infrastructure, standards, and tooling. Developer teams use those tools to instrument their services, create dashboards, and configure alerts on their own schedule. OpenTelemetry is the natural foundation because its vendor-neutral APIs and collector architecture decouple the "how to collect telemetry" from the "where to send it."
 
 ## Platform Architecture
 
-A self-service observability platform has several layers:
-
 ```mermaid
-graph TD
-    A[Developer Self-Service Portal] --> B[Configuration Generator]
-    B --> C[GitOps Repository]
-    C --> D[Collector Configuration Pipeline]
-    D --> E[OpenTelemetry Collectors]
+flowchart TD
+    subgraph "Developer Self-Service"
+        A[Service Catalog Entry] --> B[Select OTel Template]
+        B --> C[Auto-Configure Collector]
+        C --> D[Deploy Sidecar/Agent]
+    end
 
-    F[Team Service] -->|OTLP| E
-    E --> G[Observability Backend]
-    G --> H[Dashboards and Alerts]
+    subgraph "Platform Layer"
+        E[OTel Collector Fleet]
+        F[Template Library]
+        G[Configuration API]
+        H[Quota Manager]
+    end
 
-    A --> I[SDK Configuration Templates]
-    I --> F
+    subgraph "Backend"
+        I[Metrics Store]
+        J[Trace Store]
+        K[Log Store]
+    end
+
+    D --> E
+    F --> B
+    G --> C
+    H --> E
+    E --> I
+    E --> J
+    E --> K
 ```
 
-The platform team builds and maintains the infrastructure. Development teams interact with a self-service portal or CLI tool that generates the correct configuration for their services.
+## The Service Catalog as Entry Point
 
-## Onboarding Workflow
+The developer portal (Backstage, Cortex, or a custom internal portal) serves as the entry point. When a team registers a service, they get observability as part of the onboarding flow.
 
-The onboarding process should be as simple as possible. A new team should be able to go from zero to full observability in under an hour. Here is the workflow:
-
-1. Team registers their service in the platform catalog
-2. Platform generates SDK configuration and collector pipeline
-3. Team adds the SDK to their service using the provided template
-4. Telemetry starts flowing automatically
-
-### Service Registration
-
-Create a simple registration format that teams fill out:
+Here is a Backstage catalog entry that includes observability configuration.
 
 ```yaml
-# service-catalog/order-service.yaml
-# Teams fill out this template to register their service.
-# The platform uses it to generate all necessary configuration.
-service:
-  name: order-service
-  team: payments
-  owner: alice@company.com
-  language: python
-  framework: fastapi
-
-  # What telemetry signals does the service produce?
-  signals:
-    traces: true
-    metrics: true
-    logs: true
-
-  # Environment-specific configuration
-  environments:
-    staging:
-      sampling_rate: 1.0
-    production:
-      sampling_rate: 0.1
-
-  # Custom attributes the team wants to add
-  custom_attributes:
-    - name: order.type
-      type: string
-    - name: order.value_usd
-      type: float
-
-  # Alerts the team wants
-  alerts:
-    - name: high-error-rate
-      condition: "error_rate > 5%"
-      duration: 5m
-      notify: payments-oncall
+# catalog-info.yaml - Service registration with observability config
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: payment-service
+  description: Handles payment processing
+  annotations:
+    # Link to the OTel configuration for this service
+    observability/otel-config: "configs/payment-service/otel-config.yaml"
+    observability/tier: "tier-1"  # Determines sampling rates, retention
+    observability/team: "payments-team"
+spec:
+  type: service
+  lifecycle: production
+  owner: payments-team
+  system: checkout
 ```
 
-### Configuration Generator
+## Configuration API for Developer Teams
 
-Build a CLI tool or web service that reads the registration and produces all necessary artifacts:
+The platform exposes an API that developers use to configure their observability settings. The API validates inputs, enforces quotas, and generates the actual OpenTelemetry Collector configuration.
 
 ```python
-# platform/config_generator.py
-# Reads a service registration and generates SDK config,
-# collector pipeline, and dashboard templates.
-import yaml
-import os
+# config_api.py - Self-service observability configuration API
+from dataclasses import dataclass
+from typing import List
 
-def generate_configs(service_file):
-    with open(service_file) as f:
-        service = yaml.safe_load(f)
+@dataclass
+class ObservabilityConfig:
+    service_name: str
+    team: str
+    tier: str  # tier-1, tier-2, tier-3
+    metrics_enabled: bool = True
+    traces_enabled: bool = True
+    logs_enabled: bool = True
+    custom_metrics: List[str] = None
+    # Sampling rate derived from tier
+    trace_sampling_rate: float = None
 
-    name = service['service']['name']
-    team = service['service']['team']
-    language = service['service']['language']
+    def __post_init__(self):
+        # Tier determines default sampling rates and retention
+        tier_sampling = {
+            "tier-1": 1.0,    # 100% sampling for critical services
+            "tier-2": 0.1,    # 10% sampling for standard services
+            "tier-3": 0.01,   # 1% sampling for batch/background jobs
+        }
+        if self.trace_sampling_rate is None:
+            self.trace_sampling_rate = tier_sampling.get(self.tier, 0.1)
 
-    # Generate SDK environment variables
-    sdk_config = generate_sdk_config(service)
+class ObservabilityConfigService:
+    def __init__(self, quota_manager, config_store, collector_deployer):
+        self.quota_manager = quota_manager
+        self.config_store = config_store
+        self.deployer = collector_deployer
 
-    # Generate collector pipeline addition
-    collector_config = generate_collector_pipeline(service)
+    def onboard_service(self, config: ObservabilityConfig) -> dict:
+        """Onboard a service to the observability platform."""
+        # Check quota - prevent runaway metric cardinality
+        quota_ok = self.quota_manager.check_quota(config.team, config)
+        if not quota_ok:
+            raise QuotaExceededError(
+                f"Team {config.team} has reached the metric series limit. "
+                f"Contact platform-team to increase your quota."
+            )
 
-    # Generate dashboard template
-    dashboard = generate_dashboard(service)
+        # Generate the collector config
+        collector_config = self._generate_collector_config(config)
 
-    return {
-        'sdk_config': sdk_config,
-        'collector_config': collector_config,
-        'dashboard': dashboard,
-    }
+        # Store and deploy
+        self.config_store.save(config.service_name, collector_config)
+        self.deployer.deploy_sidecar(config.service_name, collector_config)
 
-def generate_sdk_config(service):
-    """Generate environment variables for the service's OTel SDK."""
-    name = service['service']['name']
-    team = service['service']['team']
+        return {
+            "status": "onboarded",
+            "service": config.service_name,
+            "collector_endpoint": f"http://localhost:4317",
+            "dashboard_url": f"https://dashboards.internal/service/{config.service_name}",
+        }
 
-    return {
-        'OTEL_SERVICE_NAME': name,
-        'OTEL_EXPORTER_OTLP_ENDPOINT': 'http://otel-agent:4318',
-        'OTEL_EXPORTER_OTLP_PROTOCOL': 'http/protobuf',
-        'OTEL_RESOURCE_ATTRIBUTES': f'service.team={team},service.namespace=production',
-    }
-
-def generate_collector_pipeline(service):
-    """Generate the collector pipeline configuration for this service."""
-    name = service['service']['name']
-    sampling = service['service']['environments']['production']['sampling_rate']
-
-    return {
-        'processors': {
-            f'filter/{name}': {
-                'traces': {
-                    'span': [
-                        f'resource.attributes["service.name"] == "{name}"'
-                    ]
+    def _generate_collector_config(self, config: ObservabilityConfig) -> dict:
+        """Generate an OTel Collector config from the service config."""
+        return {
+            "receivers": {
+                "otlp": {
+                    "protocols": {
+                        "grpc": {"endpoint": "0.0.0.0:4317"},
+                        "http": {"endpoint": "0.0.0.0:4318"},
+                    }
                 }
+            },
+            "processors": self._build_processors(config),
+            "exporters": self._build_exporters(config),
+            "service": {
+                "pipelines": self._build_pipelines(config),
             }
         }
-    }
 ```
 
-## SDK Configuration Templates
+## Generated Collector Configuration
 
-Provide ready-to-use templates for each supported language. Teams copy the template and fill in their service name:
-
-### Python Template
-
-```python
-# templates/python/otel_setup.py
-# Copy this file into your service and call init_telemetry() at startup.
-# No modifications needed if you set OTEL_SERVICE_NAME as an env var.
-from opentelemetry import trace, metrics
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from opentelemetry.sdk.resources import Resource
-
-def init_telemetry():
-    """Initialize OpenTelemetry with platform-standard configuration.
-
-    All settings are read from environment variables:
-    - OTEL_SERVICE_NAME: your service name
-    - OTEL_EXPORTER_OTLP_ENDPOINT: collector endpoint (provided by platform)
-    - OTEL_RESOURCE_ATTRIBUTES: additional resource attributes
-    """
-    resource = Resource.create()  # reads from env vars
-
-    # Traces
-    trace_provider = TracerProvider(resource=resource)
-    trace_provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter())
-    )
-    trace.set_tracer_provider(trace_provider)
-
-    # Metrics
-    metric_reader = PeriodicExportingMetricReader(
-        OTLPMetricExporter(),
-        export_interval_millis=30000,
-    )
-    metric_provider = MeterProvider(
-        resource=resource,
-        metric_readers=[metric_reader],
-    )
-    metrics.set_meter_provider(metric_provider)
-
-    return trace_provider, metric_provider
-```
-
-### Node.js Template
-
-```javascript
-// templates/nodejs/tracing.js
-// Require this file before your application: node --require ./tracing.js app.js
-// Configuration is handled through environment variables set by the platform.
-const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
-const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-
-const sdk = new NodeSDK({
-  traceExporter: new OTLPTraceExporter(),
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter(),
-    exportIntervalMillis: 30000,
-  }),
-  instrumentations: [getNodeAutoInstrumentations()],
-});
-
-sdk.start();
-process.on('SIGTERM', () => sdk.shutdown().then(() => process.exit(0)));
-```
-
-## Collector Pipeline Management
-
-When a new service onboards, the platform automatically generates and deploys the collector configuration. Use a GitOps approach where collector configurations are stored in a repository and deployed through a CI/CD pipeline:
+The platform generates collector configs tailored to each service's tier and needs. Here is what a generated config looks like for a tier-1 service.
 
 ```yaml
-# collector-configs/team-payments.yaml
-# Auto-generated collector pipeline for the payments team.
-# Do not edit manually. Changes are managed through the service catalog.
+# Generated: payment-service collector config
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
 processors:
-  attributes/payments:
-    actions:
+  # Add service identity and team ownership
+  resource:
+    attributes:
+      - key: service.name
+        value: payment-service
+        action: upsert
       - key: team
-        value: payments
+        value: payments-team
+        action: upsert
+      - key: tier
+        value: tier-1
         action: upsert
 
-  filter/payments-high-volume:
-    traces:
-      span:
-        # Drop health check spans to reduce volume
-        - 'name == "GET /health"'
-        - 'name == "GET /ready"'
+  # Tier-1: no sampling, keep everything
+  batch:
+    send_batch_size: 512
+    timeout: 5s
+
+  # Enforce metric cardinality limits
+  filter/cardinality:
+    metrics:
+      include:
+        match_type: regexp
+        metric_names:
+          - "http\\..*"
+          - "rpc\\..*"
+          - "db\\..*"
+          - "payment\\..*"  # Custom metrics for this service
+
+  # Memory limiter to protect the collector
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+exporters:
+  otlp/platform:
+    endpoint: "otel-gateway.platform.svc.cluster.local:4317"
+    headers:
+      x-team: payments-team
+      x-service: payment-service
 
 service:
   pipelines:
-    traces/payments:
+    traces:
       receivers: [otlp]
-      processors: [attributes/payments, filter/payments-high-volume, batch]
-      exporters: [otlphttp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/platform]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, filter/cardinality, batch]
+      exporters: [otlp/platform]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/platform]
 ```
 
-## Dashboard and Alert Templates
+## Quota Management
 
-Generate default dashboards for every onboarded service. Teams start with a working dashboard and customize it from there:
+Without quotas, a single misconfigured service can generate millions of metric series and overwhelm your backend. The quota manager enforces limits per team.
 
-```json
-{
-  "title": "order-service Overview",
-  "description": "Auto-generated dashboard for order-service (team: payments)",
-  "panels": [
-    {
-      "title": "Request Rate",
-      "type": "timeseries",
-      "query": "rate(http_server_request_duration_seconds_count{service_name='order-service'}[5m])"
-    },
-    {
-      "title": "Error Rate",
-      "type": "timeseries",
-      "query": "rate(http_server_request_duration_seconds_count{service_name='order-service',http_response_status_code=~'5..'}[5m])"
-    },
-    {
-      "title": "P99 Latency",
-      "type": "timeseries",
-      "query": "histogram_quantile(0.99, rate(http_server_request_duration_seconds_bucket{service_name='order-service'}[5m]))"
-    },
-    {
-      "title": "Active Spans",
-      "type": "stat",
-      "query": "sum(otelcol_receiver_accepted_spans{service_name='order-service'})"
+```python
+# quota_manager.py - Enforce telemetry quotas per team
+class QuotaManager:
+    # Default quotas by tier
+    TIER_QUOTAS = {
+        "tier-1": {"max_metric_series": 50000, "max_span_rate_per_sec": 10000},
+        "tier-2": {"max_metric_series": 10000, "max_span_rate_per_sec": 1000},
+        "tier-3": {"max_metric_series": 2000, "max_span_rate_per_sec": 100},
     }
-  ]
-}
+
+    def __init__(self, usage_store):
+        self.usage_store = usage_store
+
+    def check_quota(self, team: str, config: ObservabilityConfig) -> bool:
+        """Check if the team has remaining quota for this service."""
+        current_usage = self.usage_store.get_team_usage(team)
+        tier_quota = self.TIER_QUOTAS.get(config.tier, self.TIER_QUOTAS["tier-3"])
+
+        estimated_new_series = self._estimate_series(config)
+        total_after = current_usage.get("metric_series", 0) + estimated_new_series
+
+        return total_after <= tier_quota["max_metric_series"]
+
+    def _estimate_series(self, config: ObservabilityConfig) -> int:
+        """Estimate metric series based on config."""
+        # Base series from standard instrumentation
+        base_series = 200
+        # Additional series for each custom metric
+        custom_series = len(config.custom_metrics or []) * 50
+        return base_series + custom_series
 ```
 
-## Platform CLI
+## Developer Self-Service CLI
 
-Give teams a CLI tool that wraps the entire onboarding process:
+Give developers a CLI to interact with the platform.
 
 ```bash
-# Teams use the platform CLI to onboard their services.
-# The CLI generates configs, creates the PR, and provides setup instructions.
+# Onboard a new service
+otel-platform onboard \
+  --service payment-service \
+  --team payments-team \
+  --tier tier-1
 
-# Register a new service
-$ otel-platform register \
-    --name order-service \
-    --team payments \
-    --language python \
-    --framework fastapi
+# Check current quota usage
+otel-platform quota --team payments-team
 
-# Output:
-# Service registered successfully.
-#
-# Next steps:
-# 1. Add to your requirements.txt:
-#    opentelemetry-sdk==1.25.0
-#    opentelemetry-exporter-otlp-proto-http==1.25.0
-#    opentelemetry-instrumentation-fastapi==0.46b0
-#
-# 2. Copy the setup file:
-#    cp ~/.otel-platform/templates/python/otel_setup.py your_service/
-#
-# 3. Add to your Dockerfile:
-#    ENV OTEL_SERVICE_NAME=order-service
-#
-# 4. Your dashboard is available at:
-#    https://observability.company.com/d/order-service
+# Update sampling rate
+otel-platform config update \
+  --service payment-service \
+  --trace-sampling-rate 0.5
 
-# Check instrumentation health
-$ otel-platform check --name order-service
-
-# Output:
-# order-service health check:
-#   Traces: receiving (142 spans/min)
-#   Metrics: receiving (28 metrics)
-#   Logs: not configured
-#   Sampling rate: 10%
-#   Last seen: 3 seconds ago
+# View collector health for your service
+otel-platform status --service payment-service
 ```
 
-## Governance and Guardrails
+## Gateway Collector for Centralized Control
 
-Self-service does not mean no rules. Implement guardrails that prevent teams from misconfiguring their instrumentation:
+The platform runs a gateway collector that receives telemetry from all service-level sidecars. This gateway enforces global policies, routes data, and provides a single point for cross-cutting concerns.
 
 ```yaml
-# platform/guardrails.yaml
-# Rules enforced by the platform on all service configurations.
-rules:
-  # Every service must have a service.name
-  - name: require-service-name
-    check: resource_attributes_contain("service.name")
-    severity: error
+# gateway-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
 
-  # Every service must have a team owner
-  - name: require-team
-    check: resource_attributes_contain("service.team")
-    severity: error
+processors:
+  # Rate limiting per team based on headers
+  batch:
+    send_batch_size: 2048
+    timeout: 10s
 
-  # Sampling rate must be between 0.01 and 1.0
-  - name: valid-sampling-rate
-    check: sampling_rate >= 0.01 and sampling_rate <= 1.0
-    severity: error
+  # Add platform-level metadata
+  resource:
+    attributes:
+      - key: platform.region
+        value: "us-east-1"
+        action: upsert
 
-  # Custom attributes must use the organization prefix
-  - name: custom-attribute-prefix
-    check: custom_attributes_start_with("mycompany.")
-    severity: warning
+exporters:
+  otlp/metrics:
+    endpoint: "metrics-backend:4317"
+  otlp/traces:
+    endpoint: "traces-backend:4317"
+  otlp/logs:
+    endpoint: "logs-backend:4317"
 
-  # Maximum of 50 custom attributes per service
-  - name: attribute-limit
-    check: custom_attribute_count <= 50
-    severity: error
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp/metrics]
+    traces:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp/traces]
+    logs:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp/logs]
 ```
 
-## Conclusion
+## What Makes This Work
 
-A self-service observability platform removes the central team from the critical path of instrumentation. Teams can onboard their services in minutes using templates, CLIs, and automated configuration generation. The platform team focuses on building and maintaining the infrastructure, not on configuring individual services. OpenTelemetry's standardized APIs and environment variable conventions make this possible because the same templates and tools work across all supported languages. The result is faster adoption, more consistent instrumentation, and a platform team that scales with the organization rather than becoming a bottleneck.
+The self-service model succeeds when three things are true: onboarding is fast (under 30 minutes for a new service), defaults are good (standard instrumentation works without customization), and guardrails prevent misuse (quotas and cardinality limits protect the platform). OpenTelemetry provides the standardized APIs that make "good defaults" possible, while the collector architecture gives the platform team control without requiring changes to application code.
