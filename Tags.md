@@ -3634,6 +3634,7 @@
 - Pin
 - Pinecone
 - Ping-Pong
+- Pingdom
 - Pinia
 - pip
 - PIPE Mode
@@ -4801,6 +4802,7 @@
 - status codes
 - Status Dashboard
 - Status Page
+- Status Pages
 - Steady State Hypothesis
 - Steam
 - Stemming
