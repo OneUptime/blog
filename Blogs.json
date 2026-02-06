@@ -108797,5 +108797,18 @@
       "Incident Management"
     ],
     "post": "2026-02-06-statuspage-vs-oneuptime-comparison"
+  },
+  {
+    "title": "PagerDuty vs OneUptime: Open Source On-Call Management That Won't Break the Bank",
+    "description": "Comparing PagerDuty with OneUptime for on-call scheduling, incident management, and alerting - features, pricing, and why teams are switching.",
+    "authorGitHubUsername": "mallersjamie",
+    "tags": [
+      "PagerDuty",
+      "On-Call",
+      "Incident Management",
+      "Comparison",
+      "Open Source"
+    ],
+    "post": "2026-02-06-pagerduty-vs-oneuptime-comparison"
   }
 ]
