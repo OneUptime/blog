@@ -1,10 +1,10 @@
-# How to Limit Docker Container CPU and Memory Usage
+# Docker CPU & Memory Limits: Prevent Container Resource Exhaustion
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Containers, DevOps, Performance, Resource Management
 
-Description: Learn how to set CPU and memory limits on Docker containers to prevent resource exhaustion, ensure fair resource allocation, and maintain system stability in production environments.
+Description: Set Docker container CPU and memory limits to prevent crashes. Learn --memory, --cpus flags, soft limits, and production best practices.
 
 ---
 

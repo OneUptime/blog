@@ -1466,8 +1466,8 @@
     "post": "2025-08-26-what-are-metrics-in-opentelemetry"
   },
   {
-    "title": "What are Traces and Spans in OpenTelemetry: A Practical Guide",
-    "description": "A comprehensive, practical guide to understanding traces and spans in OpenTelemetry- how they work, how they relate, and how to instrument real Node.js / TypeScript applications effectively for deep insight and faster debugging.",
+    "title": "OpenTelemetry Traces & Spans Explained (Node.js/TypeScript Examples)",
+    "description": "Understand OpenTelemetry traces and spans with real code examples. Instrument Node.js/TypeScript apps for distributed tracing and faster debugging.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "OpenTelemetry",
@@ -9269,8 +9269,8 @@
     "post": "2026-01-06-docker-disk-usage-cleanup"
   },
   {
-    "title": "How to Debug Docker DNS and Container Name Resolution Issues",
-    "description": "Master Docker's embedded DNS, configure custom resolvers, use --dns flags effectively, and troubleshoot name resolution issues with nslookup and dig.",
+    "title": "Fix Docker DNS Issues: Container Name Resolution Troubleshooting",
+    "description": "Solve Docker DNS problems fast. Debug container name resolution, configure custom DNS servers, fix network issues with nslookup and dig.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Docker",
@@ -13628,8 +13628,8 @@
     "post": "2026-01-07-ubuntu-ansible-automation"
   },
   {
-    "title": "How to Set Up AppArmor Profiles on Ubuntu",
-    "description": "Configure AppArmor profiles on Ubuntu to confine applications and enhance system security with mandatory access control.",
+    "title": "Ubuntu AppArmor Security: Create Custom Profiles",
+    "description": "Learn to create and manage AppArmor profiles on Ubuntu. Confine applications, debug denials, and harden your system with mandatory access control.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Ubuntu",
@@ -14147,8 +14147,8 @@
     "post": "2026-01-07-ubuntu-time-synchronization-ntp-chrony"
   },
   {
-    "title": "How to Configure UFW (Uncomplicated Firewall) on Ubuntu",
-    "description": "Configure UFW firewall on Ubuntu with rules for services, logging, application profiles, and advanced configurations for production servers.",
+    "title": "Ubuntu UFW Firewall: Complete Setup Guide with Examples",
+    "description": "Step-by-step guide to configure UFW firewall on Ubuntu. Learn rules, logging, application profiles, port forwarding, and production-ready configurations.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Ubuntu",
@@ -20730,8 +20730,8 @@
     "post": "2026-01-15-setup-seedbox-ubuntu"
   },
   {
-    "title": "How to Set Up a SOCKS5 Proxy Server on Ubuntu",
-    "description": "Complete guide to setting up a SOCKS5 proxy server on Ubuntu using Dante for secure network traffic forwarding.",
+    "title": "Set Up SOCKS5 Proxy Server on Ubuntu with Dante",
+    "description": "Build a SOCKS5 proxy server on Ubuntu using Dante. Covers installation, authentication, firewall rules, and client configuration for secure browsing.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Ubuntu",
@@ -21977,8 +21977,8 @@
     "post": "2026-01-16-docker-layer-caching-cicd"
   },
   {
-    "title": "How to Limit Docker Container CPU and Memory Usage",
-    "description": "Learn how to set CPU and memory limits on Docker containers to prevent resource exhaustion, ensure fair resource allocation, and maintain system stability in production environments.",
+    "title": "Docker CPU & Memory Limits: Prevent Container Resource Exhaustion",
+    "description": "Set Docker container CPU and memory limits to prevent crashes. Learn --memory, --cpus flags, soft limits, and production best practices.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Docker",
@@ -22003,8 +22003,8 @@
     "post": "2026-01-16-docker-logging-drivers"
   },
   {
-    "title": "How to Run Docker on Mac M1/M2/M3 with Best Performance",
-    "description": "Learn how to run Docker on Apple Silicon Macs (M1/M2/M3) with optimal performance, handle ARM64 vs AMD64 compatibility, and troubleshoot common issues.",
+    "title": "Docker on Apple Silicon M1/M2/M3/M4: Performance & Compatibility Guide",
+    "description": "Run Docker on Apple Silicon Macs with optimal performance. Fix ARM64 vs AMD64 issues, Rosetta emulation, and common M1/M2/M3/M4 problems.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Docker",
@@ -22316,8 +22316,8 @@
     "post": "2026-01-16-docker-redis-development-production"
   },
   {
-    "title": "How to Reduce Docker Image Size (Alpine, Distroless, Scratch)",
-    "description": "Learn how to dramatically reduce Docker image sizes using Alpine, Distroless, and scratch base images, along with multi-stage builds and optimization techniques.",
+    "title": "Shrink Docker Images by 90%: Alpine, Distroless & Multi-Stage Builds",
+    "description": "Cut Docker images from 1GB to 10MB. Complete guide to Alpine, Distroless, scratch bases, multi-stage builds, and layer optimization techniques.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Docker",
@@ -22342,8 +22342,8 @@
     "post": "2026-01-16-docker-registry-mirroring"
   },
   {
-    "title": "How to Set Up Docker Restart Policies (always, unless-stopped, on-failure)",
-    "description": "Learn how to configure Docker restart policies to automatically recover containers after failures, system reboots, or crashes, ensuring high availability for your applications.",
+    "title": "Docker Restart Policies: Auto-Recover Containers After Crashes",
+    "description": "Configure Docker restart policies (always, unless-stopped, on-failure) for automatic container recovery. Essential for production high availability.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Docker",
@@ -48299,8 +48299,8 @@
     "post": "2026-01-24-nextjs-revalidatepath-not-working"
   },
   {
-    "title": "How to Handle Route Handlers in Next.js",
-    "description": "A comprehensive guide to creating and managing Route Handlers in Next.js App Router, covering HTTP methods, request handling, authentication, and best practices.",
+    "title": "Next.js Route Handlers: Build REST APIs with App Router",
+    "description": "Build REST APIs in Next.js 14+ with Route Handlers. Complete guide to GET, POST, middleware, authentication, and App Router best practices.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
       "Next.js",
@@ -108862,5 +108862,19 @@
       "Getting Started"
     ],
     "post": "2026-02-06-how-to-set-up-free-status-page"
+  },
+  {
+    "title": "10 Best Datadog Alternatives in 2026 (Open Source and Paid)",
+    "description": "Looking for Datadog alternatives? Compare the top 10 options including open source tools, cost analysis, and feature comparisons to find the right fit for your team.",
+    "authorGitHubUsername": "mallersjamie",
+    "tags": [
+      "Datadog",
+      "Alternatives",
+      "Observability",
+      "Monitoring",
+      "Open Source",
+      "Comparison"
+    ],
+    "post": "2026-02-06-best-datadog-alternatives"
   }
 ]

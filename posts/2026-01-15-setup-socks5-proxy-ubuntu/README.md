@@ -1,10 +1,10 @@
-# How to Set Up a SOCKS5 Proxy Server on Ubuntu
+# Set Up SOCKS5 Proxy Server on Ubuntu with Dante
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ubuntu, SOCKS5, Proxy, Networking, Security, Tutorial
 
-Description: Complete guide to setting up a SOCKS5 proxy server on Ubuntu using Dante for secure network traffic forwarding.
+Description: Build a SOCKS5 proxy server on Ubuntu using Dante. Covers installation, authentication, firewall rules, and client configuration for secure browsing.
 
 ---
 
