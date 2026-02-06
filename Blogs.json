@@ -108849,5 +108849,18 @@
       "APM"
     ],
     "post": "2026-02-06-datadog-vs-oneuptime-comparison"
+  },
+  {
+    "title": "How to Set Up a Free Status Page in 10 Minutes",
+    "description": "Step-by-step guide to creating a free status page for your website or API using OneUptime. Based on the actual product interface.",
+    "authorGitHubUsername": "mallersjamie",
+    "tags": [
+      "Status Pages",
+      "Tutorial",
+      "Free Tools",
+      "Incident Communication",
+      "Getting Started"
+    ],
+    "post": "2026-02-06-how-to-set-up-free-status-page"
   }
 ]
