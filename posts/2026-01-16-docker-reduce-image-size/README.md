@@ -1,10 +1,10 @@
-# How to Reduce Docker Image Size (Alpine, Distroless, Scratch)
+# Shrink Docker Images by 90%: Alpine, Distroless & Multi-Stage Builds
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Performance, Optimization, Alpine, Distroless
 
-Description: Learn how to dramatically reduce Docker image sizes using Alpine, Distroless, and scratch base images, along with multi-stage builds and optimization techniques.
+Description: Cut Docker images from 1GB to 10MB. Complete guide to Alpine, Distroless, scratch bases, multi-stage builds, and layer optimization techniques.
 
 ---
 
