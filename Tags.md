@@ -565,6 +565,7 @@
 - Azure Archive
 - Azure Blob
 - Azure CLI
+- Azure CNI
 - Azure Container Apps
 - Azure Container Instances
 - Azure Container Registry
@@ -1691,6 +1692,7 @@
 - Custom Library
 - Custom Metrics
 - Custom Models
+- Custom Operator
 - Custom Partitioner
 - Custom Processor
 - Custom Processors
@@ -1698,6 +1700,7 @@
 - Custom Propagators
 - Custom Providers
 - Custom Receiver
+- Custom Resource
 - Custom Resources
 - Custom Response
 - Custom Rules
@@ -2019,6 +2022,7 @@
 - Descriptors
 - Deserialization
 - Design
+- Design Pattern
 - Design Patterns
 - Desktop
 - Desktop Applications
@@ -3139,6 +3143,7 @@
 - Hardening
 - Hardware
 - Hardware Access
+- Hardware Optimization
 - Hash
 - Hash Slots
 - Hash Tags
@@ -3795,12 +3800,14 @@
 - Kubeconform
 - Kubecost
 - kubectl
+- kubectl Provider
 - KubeEdge
 - KubeFed
 - Kubeflow
 - Kubelet
 - Kubernetes
 - Kubernetes Monitoring
+- Kubernetes Operator
 - Kubernetes Security
 - Kubernetes Webhook
 - Kubescape
@@ -4209,6 +4216,7 @@
 - MediatR
 - Medical Devices
 - Medical Imaging
+- Medusa
 - Medusa.js
 - Meilisearch
 - Memberlist
@@ -5104,6 +5112,7 @@
 - Persistent Queue
 - Persistent Queues
 - Persistent Storage
+- Persistent Volume
 - Persistent Volumes
 - PersistentVolume
 - PersistentVolumeClaim
@@ -5472,6 +5481,7 @@
 - Proxy Protocol
 - proxy_pass
 - proxy_redirect
+- ProxySQL
 - Prune
 - Pruning
 - ps
@@ -5693,6 +5703,7 @@
 - Real-Time Updates
 - Real-User Monitoring
 - Reanimated
+- Reaper
 - ReBAC
 - RebalanceInProgressException
 - Rebalancing
@@ -5797,6 +5808,7 @@
 - Remote Access
 - Remote Administration
 - Remote API
+- Remote Backend
 - Remote Builds
 - Remote Configuration
 - Remote Debugging
@@ -6734,6 +6746,7 @@
 - Status Management
 - Status Page
 - Status Pages
+- Status Subresource
 - StatusPage.io
 - Steady State Hypothesis
 - Steam
