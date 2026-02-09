@@ -18,6 +18,7 @@
  * 12. Validates minimum description length
  * 13. AUTO-FIX: Automatically adds missing entries to Blogs.json from README.md
  * 14. AUTO-FIX: Automatically generates missing social-media.png images
+ * 15. AUTO-FIX: Fixes header spacing (ensures blank lines between metadata lines)
  *
  * Run with: npm run validate
  */
@@ -618,6 +619,21 @@ function validateReadme(dir: string, blogEntry: BlogEntry | undefined): FormatIs
     }
   }
 
+  // Check header spacing (blank lines between metadata lines)
+  const separatorIndex = lines.findIndex((l) => l.trim() === '---');
+  if (separatorIndex !== -1) {
+    for (let i = 0; i < separatorIndex; i++) {
+      if (lines[i].trim() !== '' && i + 1 < separatorIndex && lines[i + 1]?.trim() !== '') {
+        issues.push({
+          type: 'error',
+          message: 'Header lines must be separated by blank lines (title, Author, Tags, Description, ---)',
+          fix: 'Add a blank line after each header metadata line',
+        });
+        break;
+      }
+    }
+  }
+
   return issues;
 }
 
@@ -816,6 +832,92 @@ function displaySummary(
 }
 
 /**
+ * Fix header spacing in a single README.md file
+ * Ensures blank lines exist between title, author, tags, description, and ---
+ */
+function fixHeaderSpacing(dir: string): boolean {
+  const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+
+  if (!fs.existsSync(readmePath)) {
+    return false;
+  }
+
+  const content = fs.readFileSync(readmePath, 'utf8');
+  const lines = content.split('\n');
+
+  // Find the --- separator line
+  let separatorLineIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() === '---') {
+      separatorLineIndex = i;
+      break;
+    }
+  }
+
+  if (separatorLineIndex === -1) {
+    return false;
+  }
+
+  // Extract header metadata lines (non-empty lines before ---)
+  const headerMetaLines: string[] = [];
+  for (let i = 0; i < separatorLineIndex; i++) {
+    if (lines[i].trim() !== '') {
+      headerMetaLines.push(lines[i]);
+    }
+  }
+
+  // Build expected header: each metadata line followed by a blank line, then ---
+  const expectedHeaderLines: string[] = [];
+  for (const line of headerMetaLines) {
+    expectedHeaderLines.push(line);
+    expectedHeaderLines.push('');
+  }
+  expectedHeaderLines.push('---');
+
+  // Compare actual header with expected
+  const actualHeaderLines = lines.slice(0, separatorLineIndex + 1);
+
+  if (
+    actualHeaderLines.length === expectedHeaderLines.length &&
+    actualHeaderLines.every((line, i) => line === expectedHeaderLines[i])
+  ) {
+    return false; // Already correct
+  }
+
+  // Fix: rebuild the file with proper header spacing
+  const bodyLines = lines.slice(separatorLineIndex + 1);
+  const newContent = expectedHeaderLines.join('\n') + '\n' + bodyLines.join('\n');
+
+  fs.writeFileSync(readmePath, newContent, 'utf8');
+  return true;
+}
+
+/**
+ * Fix header spacing in all README.md files
+ */
+function fixAllHeaderSpacing(postsDir: string[]): void {
+  logHeader('Checking header spacing in README.md files');
+
+  const fixed: string[] = [];
+
+  for (const dir of postsDir) {
+    if (fixHeaderSpacing(dir)) {
+      fixed.push(dir);
+    }
+  }
+
+  if (fixed.length > 0) {
+    logSuccess(`Fixed header spacing in ${fixed.length} README.md file${fixed.length === 1 ? '' : 's'}:`);
+    fixed.forEach((dir) => {
+      console.log(`  - ${colors.green}${dir}${colors.reset}`);
+    });
+    console.log('');
+  } else {
+    logSuccess('All README.md files have correct header spacing');
+  }
+}
+
+/**
  * Main function
  */
 function main(): void {
@@ -859,6 +961,9 @@ function main(): void {
   // Check for Blogs.json entries missing directories
   const missingDirs = checkMissingDirs(postsDir, sortedBlogs.map((b) => b.post));
   
+  // Fix header spacing in README.md files
+  fixAllHeaderSpacing(postsDir);
+
   // Generate missing social media images before final validation
   generateMissingSocialImages();
 
