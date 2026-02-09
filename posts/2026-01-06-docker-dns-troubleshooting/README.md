@@ -1,10 +1,10 @@
-# Fix Docker DNS Issues: Container Name Resolution Troubleshooting
+# Troubleshooting Docker DNS: Why Container Names Don't Resolve
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Networking, DevOps, Troubleshooting, DNS
 
-Description: Solve Docker DNS problems fast. Debug container name resolution, configure custom DNS servers, fix network issues with nslookup and dig.
+Description: Debug Docker container name resolution issues. Explains how Docker's embedded DNS works, why the default bridge network doesn't resolve names, and how to fix common DNS problems.
 
 "Connection refused" and "Name or service not known" are the most common Docker networking errors. They usually stem from DNS misconfiguration. Understanding how Docker's embedded DNS works and knowing the right debugging tools saves hours of frustration.
 
