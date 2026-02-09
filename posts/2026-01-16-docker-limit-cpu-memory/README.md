@@ -202,6 +202,8 @@ CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT   MEM %     NET I/O        
 a1b2c3d4e5f6   my-app    45.32%    234.5MiB / 512MiB   45.80%    1.23MB / 456kB   12.3MB / 0B
 ```
 
+While `docker stats` is useful for quick checks, production environments benefit from continuous monitoring. Tools like [OneUptime](https://oneuptime.com/product/metrics) can collect container metrics over time, helping you identify memory leaks, CPU throttling patterns, and set up alerts before containers hit their limits and get OOM-killed.
+
 ## Recommended Limits by Workload Type
 
 | Workload Type | Memory | CPU | Notes |

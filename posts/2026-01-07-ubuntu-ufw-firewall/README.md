@@ -518,6 +518,8 @@ sudo grep "BLOCK" /var/log/ufw.log
 sudo grep "SRC=192.168.1.100" /var/log/ufw.log
 ```
 
+For production servers, consider forwarding firewall logs to a centralized monitoring platform. [OneUptime's log management](https://oneuptime.com/product/logs) can aggregate logs from multiple servers, making it easier to spot attack patterns, correlate blocked IPs across your infrastructure, and set up alerts for suspicious activity.
+
 ### Disabling Logging
 
 Turn off logging if not needed:
