@@ -1,10 +1,10 @@
-# P50 vs P95 vs P99 Latency: What These Percentiles Actually Mean (And How to Use Them)
+# P50 vs P95 vs P99 Latency Explained: What Each Percentile Tells You
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Observability, Performance, Metrics, Latency, SLOs, Site Reliability Engineering, SRE, Reliability
 
-Description: A practical guide to understanding P50, P95, and P99 latency percentiles- why averages lie, what each percentile tells you about user experience, how to set SLOs around them, and how to collect them correctly with histograms.
+Description: Learn what P50, P95, and P99 latency percentiles mean, why averages lie about performance, and how to use percentiles for SLOs. Includes code examples and practical debugging tips.
 
 If you're new to SLOs and reliability metrics, you may also want to read: 
 - What are Error Budgets? (https://oneuptime.com/blog/post/2025-09-03-what-are-error-budgets/view)
