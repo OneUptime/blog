@@ -1,10 +1,10 @@
-# Shrink Docker Images by 90%: Alpine, Distroless & Multi-Stage Builds
+# Reduce Docker Image Size by 90% (2026 Guide)
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Performance, Optimization, Alpine, Distroless
 
-Description: Cut Docker images from 1GB to 10MB. Complete guide to Alpine, Distroless, scratch bases, multi-stage builds, and layer optimization techniques.
+Description: Slash Docker images from 1GB to 10MB using Alpine, Distroless, and multi-stage builds. Deploy faster and save bandwidth with proven techniques.
 
 ---
 

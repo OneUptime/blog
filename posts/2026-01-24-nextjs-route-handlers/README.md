@@ -1,10 +1,10 @@
-# Next.js Route Handlers: Build REST APIs with App Router
+# Next.js Route Handlers: Complete API Guide (2026)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Next.js, Route Handlers, API Routes, App Router, Backend, REST API
 
-Description: Build REST APIs in Next.js 14+ with Route Handlers. Complete guide to GET, POST, middleware, authentication, and App Router best practices.
+Description: Build production REST APIs with Next.js 14+ Route Handlers. Master GET, POST, authentication, middleware, and error handling with real examples.
 
 ---
 

@@ -1,10 +1,10 @@
-# Ubuntu AppArmor Security: Create Custom Profiles
+# AppArmor Profiles in 2026: Secure Ubuntu in 5 Steps
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Linux, AppArmor, Security, Containers
 
-Description: Learn to create and manage AppArmor profiles on Ubuntu. Confine applications, debug denials, and harden your system with mandatory access control.
+Description: Create bulletproof AppArmor profiles on Ubuntu. Lock down applications, prevent breaches, and harden your system with this step-by-step guide.
 
 ---
 

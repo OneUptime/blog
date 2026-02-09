@@ -1,10 +1,10 @@
-# Ubuntu UFW Firewall: Complete Setup Guide with Examples
+# Ubuntu UFW Firewall: 7 Essential Rules for 2026
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Linux, Security, Firewall, Networking
 
-Description: Step-by-step guide to configure UFW firewall on Ubuntu. Learn rules, logging, application profiles, port forwarding, and production-ready configurations.
+Description: Master UFW firewall on Ubuntu with 7 battle-tested rules. Block attackers, allow SSH safely, and secure your server in under 10 minutes.
 
 ---
 
