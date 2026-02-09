@@ -1,10 +1,10 @@
-# Docker on Apple Silicon M1/M2/M3/M4: Performance & Compatibility Guide
+# Running Docker on Apple Silicon: ARM64 Images, Rosetta, and Performance Settings
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Mac, Apple Silicon, M1, Performance
 
-Description: Run Docker on Apple Silicon Macs with optimal performance. Fix ARM64 vs AMD64 issues, Rosetta emulation, and common M1/M2/M3/M4 problems.
+Description: Configure Docker Desktop for M1/M2/M3/M4 Macs. Covers multi-architecture images, Rosetta emulation for AMD64, VirtioFS volumes, and fixing common ARM64 compatibility issues.
 
 ---
 
