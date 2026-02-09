@@ -1,10 +1,10 @@
-# Docker Restart Policies: Auto-Recover Containers After Crashes
+# Understanding Docker Restart Policies: always, unless-stopped, and on-failure
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Containers, DevOps, Reliability, High Availability
 
-Description: Configure Docker restart policies (always, unless-stopped, on-failure) for automatic container recovery. Essential for production high availability.
+Description: Configure automatic container restarts with Docker restart policies. Explains the differences between always, unless-stopped, and on-failure with recommendations for each use case.
 
 ---
 

@@ -1,10 +1,10 @@
-# Ubuntu AppArmor Security: Create Custom Profiles
+# Creating and Managing AppArmor Profiles on Ubuntu
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Linux, AppArmor, Security, Containers
 
-Description: Learn to create and manage AppArmor profiles on Ubuntu. Confine applications, debug denials, and harden your system with mandatory access control.
+Description: Write custom AppArmor profiles to confine applications on Ubuntu. Covers enforce vs complain modes, profile syntax, debugging denials, and Docker container integration.
 
 ---
 
