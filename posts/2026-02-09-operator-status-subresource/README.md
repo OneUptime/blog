@@ -1,7 +1,11 @@
 # Implementing and Using the Status Subresource in Kubernetes Custom Resources
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Kubernetes Operator, Status Subresource, Custom Resource, API, Go
+
 Description: A detailed guide to implementing the status subresource pattern in Kubernetes custom resources, covering API design, controller updates, RBAC configuration, and best practices for status reporting.
+
 ---
 
 In Kubernetes, every well-designed resource separates its specification (what the user wants) from its status (what the system observes). This separation is not just a convention. It is enforced at the API level through the status subresource. When you enable the status subresource on a Custom Resource Definition (CRD), Kubernetes provides a dedicated API endpoint for updating the status independently from the spec. This guide explains why the status subresource matters, how to implement it in your custom resources, and the patterns that make status reporting reliable and informative.

@@ -1,7 +1,11 @@
 # Using K8ssandra Reaper for Cassandra Anti-Entropy Repair on Kubernetes
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Cassandra, K8ssandra, Reaper, Kubernetes, Database
+
 Description: Learn how to deploy and configure K8ssandra Reaper for automated anti-entropy repair of Apache Cassandra clusters running on Kubernetes
+
 ---
 
 Apache Cassandra relies on an eventual consistency model, which means data replicas across nodes can temporarily diverge. Over time, without periodic maintenance, these inconsistencies accumulate and can lead to stale reads, data loss during node failures, and unpredictable query results. Anti-entropy repair is the mechanism Cassandra provides to reconcile these differences, and Reaper is the most widely adopted tool for automating this critical maintenance task. When running Cassandra on Kubernetes through K8ssandra, Reaper comes integrated and ready to manage repairs at scale.

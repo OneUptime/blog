@@ -1,7 +1,11 @@
 # Using Terraform Modules to Deploy GKE Clusters with Workload Identity Enabled
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Terraform, GKE, Workload Identity, Google Cloud, Kubernetes
+
 Description: A comprehensive guide to deploying Google Kubernetes Engine clusters with Workload Identity using Terraform modules, covering IAM binding, service account mapping, and security best practices for GCP workloads.
+
 ---
 
 Google Kubernetes Engine (GKE) Workload Identity is the recommended way for pods to authenticate to Google Cloud services. Instead of mounting service account key files (JSON credentials) into pods, Workload Identity maps a Kubernetes service account to a Google Cloud IAM service account. This eliminates the need for long-lived credentials, reduces the blast radius of compromised pods, and integrates natively with Google Cloud's IAM and audit logging. This guide walks through deploying a GKE cluster with Workload Identity fully configured using Terraform modules.

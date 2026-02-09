@@ -1,7 +1,11 @@
 # Understanding and Implementing the Reconciliation Loop Pattern in Kubernetes Operators
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Kubernetes Operator, Reconciliation, Controller, Go, Design Pattern
+
 Description: A deep dive into the reconciliation loop pattern in Kubernetes operators, covering the theory, implementation details, error handling, and best practices for building reliable controllers.
+
 ---
 
 The reconciliation loop is the heartbeat of every Kubernetes operator. It is the pattern that makes the entire Kubernetes ecosystem work, from the built-in Deployment controller to your custom operators. Understanding this pattern deeply is essential for building operators that are reliable, efficient, and correct. This guide explains what the reconciliation loop is, how it works under the hood, and how to implement it properly with real Go code examples.

@@ -1,7 +1,11 @@
 # Using TimescaleDB Continuous Aggregates for Real-Time Analytics on Kubernetes
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: TimescaleDB, Continuous Aggregates, Kubernetes, Time Series, Analytics
+
 Description: Learn how to use TimescaleDB continuous aggregates to build real-time analytics dashboards and precomputed rollups on Kubernetes-hosted time-series data.
+
 ---
 
 Time-series data grows relentlessly. Metrics from Kubernetes clusters, application logs, IoT sensor readings, and financial transactions all share the same challenge: queries that aggregate over large time ranges become painfully slow as data accumulates. TimescaleDB continuous aggregates solve this by automatically maintaining precomputed materialized views that update incrementally as new data arrives. In this post, we will explore how to deploy TimescaleDB on Kubernetes and build continuous aggregates for real-time analytics.

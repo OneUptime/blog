@@ -1,7 +1,11 @@
 # Using Vitess for MySQL Horizontal Sharding on Kubernetes
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Vitess, MySQL, Sharding, Kubernetes, Database
+
 Description: Learn how to deploy and operate Vitess on Kubernetes for horizontal MySQL sharding with automated resharding, connection pooling, and query routing.
+
 ---
 
 As MySQL databases grow beyond the capacity of a single server, horizontal sharding becomes necessary. But implementing sharding at the application level is complex, error-prone, and creates tight coupling between your business logic and data distribution. Vitess, originally developed at YouTube and now a CNCF graduated project, solves this by providing a transparent sharding layer for MySQL that handles query routing, connection pooling, and online resharding. In this post, we will deploy Vitess on Kubernetes and configure horizontal sharding for a production workload.

@@ -1,7 +1,11 @@
 # Using Medusa for Apache Cassandra Backups on Kubernetes
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Cassandra, Medusa, Backup, Kubernetes, Database
+
 Description: A comprehensive guide to setting up and managing Apache Cassandra backups using Medusa on Kubernetes clusters with object storage backends
+
 ---
 
 Backing up Apache Cassandra in a Kubernetes environment presents unique challenges. Unlike traditional virtual machine deployments where you might rely on filesystem snapshots or cron-based scripts, Kubernetes demands a more cloud-native approach. Medusa for Apache Cassandra is an open-source backup and restore tool specifically designed for this purpose, and it integrates seamlessly with K8ssandra to provide robust backup capabilities for Cassandra clusters running on Kubernetes.

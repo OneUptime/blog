@@ -1,7 +1,11 @@
 # Provisioning Managed Database Services Using Crossplane on Kubernetes
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Crossplane, Database, Cloud, Kubernetes, Infrastructure as Code
+
 Description: How to use Crossplane to provision and manage cloud database services like RDS, Cloud SQL, and Azure Database directly from Kubernetes
+
 ---
 
 Managing cloud infrastructure has traditionally required separate tooling from application deployment. Development teams submit tickets or use cloud consoles to provision databases, then manually configure connection strings in their Kubernetes workloads. Crossplane changes this paradigm by extending the Kubernetes API to provision and manage cloud resources, including managed database services, using the same declarative approach you use for pods and deployments. This guide demonstrates how to provision databases across AWS, GCP, and Azure using Crossplane, creating a self-service platform for development teams.

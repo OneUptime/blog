@@ -1,7 +1,11 @@
 # Using Terraform Modules to Deploy EKS Clusters with Custom VPC Configurations
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Terraform, EKS, VPC, AWS, Kubernetes
+
 Description: A complete guide to deploying Amazon EKS clusters with custom VPC configurations using Terraform modules, covering subnet design, security groups, IAM roles, and production-ready networking patterns.
+
 ---
 
 Amazon Elastic Kubernetes Service (EKS) requires a well-designed VPC to function correctly. The default VPC in your AWS account is not suitable for production Kubernetes workloads. It lacks private subnets, NAT gateways, and the subnet tagging that EKS needs for load balancer integration. This guide walks through deploying EKS with a custom VPC using Terraform modules, covering every layer from network design to cluster configuration.

@@ -1,7 +1,11 @@
 # Using RBAC Markers in Kubernetes Operator Development for Fine-Grained Access Control
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Kubernetes Operator, RBAC, Markers, Security, Go
+
 Description: Learn how to use RBAC markers in Kubernetes operator development to generate precise ClusterRole and Role manifests for fine-grained access control using controller-gen and kubebuilder.
+
 ---
 
 When you build a Kubernetes operator, your controller needs permissions to read, create, update, and delete resources in the cluster. Kubernetes uses Role-Based Access Control (RBAC) to manage these permissions. Rather than manually writing RBAC manifests, the Kubebuilder and Operator SDK frameworks use special Go code comments called RBAC markers to automatically generate the required ClusterRole and Role YAML files. This guide explains how RBAC markers work, how to use them correctly, and how to avoid the common pitfalls that lead to either overly permissive or insufficient permissions.

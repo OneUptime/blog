@@ -1,7 +1,11 @@
 # Deploying ProxySQL for MySQL Connection Pooling on Kubernetes
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: ProxySQL, MySQL, Connection Pooling, Kubernetes, Database
+
 Description: A practical guide to deploying ProxySQL on Kubernetes for MySQL connection pooling, covering configuration, query routing, health checks, and production tuning for high-performance database access.
+
 ---
 
 MySQL connection management becomes a bottleneck in microservices architectures. Each application pod opens its own connections to the database, and with dozens or hundreds of pods, the total connection count can overwhelm MySQL. ProxySQL sits between your applications and MySQL, providing connection pooling, query routing, read/write splitting, and query caching. Deploying ProxySQL on Kubernetes brings these benefits while leveraging the platform's native service discovery, health checking, and scaling capabilities. This guide walks through a production-grade ProxySQL deployment on Kubernetes.

@@ -1,7 +1,11 @@
 # Using the Crossplane Terraform Provider to Leverage Existing Terraform Modules
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Crossplane, Terraform, Provider, Kubernetes, Infrastructure as Code
+
 Description: How to use the Crossplane Terraform provider to run existing Terraform modules and HCL configurations from within Kubernetes
+
 ---
 
 Many organizations have years of investment in Terraform modules that encode hard-won infrastructure knowledge. Migrating entirely to Crossplane native providers is often impractical, especially when custom Terraform providers exist for niche services with no Crossplane equivalent. The Crossplane Terraform provider bridges this gap by allowing you to run Terraform configurations directly from Kubernetes, managed as Crossplane resources. This means you can incorporate existing Terraform modules into your Crossplane compositions, get Kubernetes-native reconciliation for Terraform-managed resources, and gradually migrate to native providers at your own pace.

@@ -1,7 +1,11 @@
 # Implementing Hot-Warm-Cold Architecture for Elasticsearch on Kubernetes
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Elasticsearch, Hot-Warm-Cold, Kubernetes, Data Lifecycle, Search
+
 Description: A complete guide to deploying Elasticsearch with hot-warm-cold data tiers on Kubernetes for cost-effective data lifecycle management
+
 ---
 
 Elasticsearch clusters that handle time-series data like logs, metrics, and traces face a fundamental tension between performance and cost. Recent data needs fast NVMe storage and powerful CPUs for real-time queries, while historical data is rarely accessed but must be retained for compliance or troubleshooting. The hot-warm-cold architecture addresses this by tiering data across different node types with varying hardware profiles. On Kubernetes, this architecture maps naturally to node pools with different instance types and storage classes, giving you fine-grained control over both performance and cost.

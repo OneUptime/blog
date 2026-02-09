@@ -1,7 +1,11 @@
 # Managing Resources Across Multiple Cloud Providers with Crossplane
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Crossplane, Multi-Cloud, Kubernetes, Infrastructure as Code, Cloud
+
 Description: A practical guide to using Crossplane for managing infrastructure across AWS, GCP, and Azure from a single Kubernetes control plane
+
 ---
 
 Organizations increasingly operate across multiple cloud providers, whether by strategic choice, through acquisitions, or to leverage best-of-breed services from each platform. Managing infrastructure across AWS, GCP, and Azure traditionally requires separate tooling, different configuration languages, and distinct operational workflows for each provider. Crossplane unifies this by turning your Kubernetes cluster into a control plane that can orchestrate resources across any combination of cloud providers using a consistent, declarative API.

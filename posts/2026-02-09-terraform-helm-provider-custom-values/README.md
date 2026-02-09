@@ -1,7 +1,11 @@
 # Using the Terraform Helm Provider to Deploy Charts with Custom Values
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Terraform, Helm, Provider, Kubernetes, Configuration
+
 Description: Learn how to use the Terraform Helm provider to deploy Helm charts with custom values files, overrides, and dynamic configuration for Kubernetes workloads.
+
 ---
 
 Managing Kubernetes deployments through Helm charts is already a powerful approach, but combining it with Terraform takes your infrastructure automation to the next level. The Terraform Helm provider allows you to treat Helm releases as declarative infrastructure resources, complete with state tracking, dependency management, and plan-based workflows. In this post, we will explore how to configure the Helm provider, deploy charts with custom values files, and handle advanced override scenarios.

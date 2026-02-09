@@ -1,7 +1,11 @@
 # Configuring Multi-Datacenter Replication for Cassandra on Kubernetes
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Cassandra, Replication, Multi-Datacenter, Kubernetes, Database
+
 Description: A detailed guide to setting up and managing multi-datacenter replication for Apache Cassandra clusters across Kubernetes environments
+
 ---
 
 Running Apache Cassandra across multiple datacenters is one of its strongest capabilities. Unlike many distributed databases that bolt on multi-region support as an afterthought, Cassandra was designed from the ground up to operate across geographically distributed datacenters. When combined with Kubernetes, multi-datacenter Cassandra deployments gain the benefits of declarative configuration, automated scaling, and self-healing infrastructure. This guide walks through the architecture, configuration, and operational practices for running Cassandra with multi-datacenter replication on Kubernetes.

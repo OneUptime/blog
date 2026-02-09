@@ -1,7 +1,11 @@
 # Upgrading Crossplane Providers Safely in Production Environments
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Crossplane, Provider, Upgrades, Kubernetes, Infrastructure as Code
+
 Description: Strategies and best practices for upgrading Crossplane providers in production without disrupting managed cloud infrastructure resources
+
 ---
 
 Crossplane providers are the bridge between your Kubernetes cluster and cloud APIs. They contain the CRDs, controllers, and reconciliation logic that translate Kubernetes resources into real cloud infrastructure. Upgrading these providers is necessary to get bug fixes, new resource types, and support for the latest cloud API features. However, a botched provider upgrade can disrupt reconciliation of your managed resources, cause drift in cloud infrastructure, or even trigger unintended resource deletion. This guide covers the strategies and practices for upgrading providers safely in production environments.

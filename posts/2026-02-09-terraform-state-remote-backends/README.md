@@ -1,7 +1,11 @@
 # Configuring Remote Backends for Terraform State Management in Kubernetes Projects
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Terraform, State, Remote Backend, Kubernetes, Infrastructure as Code
+
 Description: Learn how to configure remote backends for Terraform state storage, locking, and collaboration when managing Kubernetes infrastructure at scale.
+
 ---
 
 Terraform state is the bridge between your configuration files and the real infrastructure they represent. When working on Kubernetes projects, especially in a team setting, storing state locally on your laptop is a recipe for disaster. Remote backends solve this by storing state in a shared, durable location with built-in locking to prevent concurrent modifications. In this post, we will explore the most popular remote backend options for Kubernetes projects and walk through their configuration.

@@ -1,7 +1,11 @@
 # Building Custom Kubernetes Operators with the Operator SDK Framework
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Operator SDK, Kubernetes, Custom Operator, Go, Automation
+
 Description: A step-by-step guide to building custom Kubernetes operators using the Operator SDK framework, covering project scaffolding, API definition, controller logic, testing, and deployment.
+
 ---
 
 Kubernetes operators extend the platform by encoding operational knowledge into software. Instead of manually managing complex stateful applications, an operator watches for custom resources and automatically performs the tasks a human operator would: provisioning, scaling, upgrading, backing up, and recovering. The Operator SDK, maintained by the Operator Framework project, provides the tools and scaffolding to build operators in Go, Ansible, or Helm. This guide focuses on the Go-based approach, walking through every stage from project initialization to production deployment.

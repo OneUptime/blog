@@ -1,7 +1,11 @@
 # Using Terraform Data Sources to Query Existing Kubernetes Resources
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Terraform, Data Sources, Kubernetes, Infrastructure as Code, Query
+
 Description: Learn how to use Terraform data sources to query and reference existing Kubernetes resources, enabling cross-team collaboration, dynamic configuration, and integration with externally managed infrastructure.
+
 ---
 
 Terraform data sources allow you to read information from existing infrastructure without managing it. In Kubernetes environments, this is invaluable when you need to reference resources created by other teams, external tools, or manual processes. Instead of duplicating resource definitions or hardcoding values, data sources let your Terraform configuration dynamically query the cluster and use real values. This guide covers the Kubernetes and Helm provider data sources, practical use cases, and patterns for integrating data sources into your infrastructure code.

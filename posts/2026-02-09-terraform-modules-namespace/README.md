@@ -1,7 +1,11 @@
 # Creating Reusable Terraform Modules for Kubernetes Namespace Provisioning
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Terraform, Modules, Namespace, Kubernetes, Infrastructure as Code
+
 Description: Learn how to build reusable Terraform modules that provision Kubernetes namespaces with resource quotas, network policies, RBAC, and default settings.
+
 ---
 
 Namespaces are the foundation of multi-tenancy in Kubernetes. Every team, application, and environment gets its own namespace, and each one needs consistent configuration: resource quotas, limit ranges, network policies, RBAC bindings, and labels. Doing this by hand for dozens or hundreds of namespaces is tedious and error-prone. Terraform modules solve this problem by encapsulating all of the namespace provisioning logic into a reusable, version-controlled package. In this post, we will build a production-ready Terraform module for Kubernetes namespace provisioning.

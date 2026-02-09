@@ -619,18 +619,17 @@ function validateReadme(dir: string, blogEntry: BlogEntry | undefined): FormatIs
     }
   }
 
-  // Check header spacing (blank lines between metadata lines)
-  const separatorIndex = lines.findIndex((l) => l.trim() === '---');
-  if (separatorIndex !== -1) {
-    for (let i = 0; i < separatorIndex; i++) {
-      if (lines[i].trim() !== '' && i + 1 < separatorIndex && lines[i + 1]?.trim() !== '') {
-        issues.push({
-          type: 'error',
-          message: 'Header lines must be separated by blank lines (title, Author, Tags, Description, ---)',
-          fix: 'Add a blank line after each header metadata line',
-        });
-        break;
-      }
+  // Check header spacing: each metadata line (title, Author, Tags, Description) must be followed by a blank line
+  const metaPrefixes = ['# ', 'Author:', 'Tags:', 'Description:'];
+  for (const prefix of metaPrefixes) {
+    const metaLineIndex = lines.findIndex((l) => l.startsWith(prefix));
+    if (metaLineIndex !== -1 && metaLineIndex + 1 < lines.length && lines[metaLineIndex + 1]?.trim() !== '') {
+      issues.push({
+        type: 'error',
+        message: `Header line "${prefix.replace(':', '')}" must be followed by a blank line`,
+        fix: 'Add a blank line after each header metadata line (title, Author, Tags, Description)',
+      });
+      break;
     }
   }
 
@@ -833,7 +832,8 @@ function displaySummary(
 
 /**
  * Fix header spacing in a single README.md file
- * Ensures blank lines exist between title, author, tags, description, and ---
+ * Ensures blank lines exist between title, Author:, Tags:, Description:, and ---
+ * Only touches the 4 known metadata lines and the --- separator, nothing else.
  */
 function fixHeaderSpacing(dir: string): boolean {
   const readmePath = path.join(POSTS_DIR, dir, 'README.md');
@@ -845,48 +845,70 @@ function fixHeaderSpacing(dir: string): boolean {
   const content = fs.readFileSync(readmePath, 'utf8');
   const lines = content.split('\n');
 
-  // Find the --- separator line
-  let separatorLineIndex = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() === '---') {
-      separatorLineIndex = i;
+  // Find the 4 metadata lines and the --- separator by their prefixes
+  let titleIndex = -1;
+  let authorIndex = -1;
+  let tagsIndex = -1;
+  let descIndex = -1;
+  let separatorIndex = -1;
+
+  for (let i = 0; i < lines.length && i < 20; i++) {
+    if (titleIndex === -1 && lines[i].startsWith('# ')) {
+      titleIndex = i;
+    } else if (authorIndex === -1 && lines[i].startsWith('Author:')) {
+      authorIndex = i;
+    } else if (tagsIndex === -1 && lines[i].startsWith('Tags:')) {
+      tagsIndex = i;
+    } else if (descIndex === -1 && lines[i].startsWith('Description:')) {
+      descIndex = i;
+    } else if (descIndex !== -1 && separatorIndex === -1 && lines[i].trim() === '---') {
+      separatorIndex = i;
       break;
     }
   }
 
-  if (separatorLineIndex === -1) {
+  // All 4 metadata lines and separator must be found
+  if (titleIndex === -1 || authorIndex === -1 || tagsIndex === -1 || descIndex === -1 || separatorIndex === -1) {
     return false;
   }
 
-  // Extract header metadata lines (non-empty lines before ---)
-  const headerMetaLines: string[] = [];
-  for (let i = 0; i < separatorLineIndex; i++) {
-    if (lines[i].trim() !== '') {
-      headerMetaLines.push(lines[i]);
+  // Check if each metadata line is followed by a blank line
+  const metaIndices = [titleIndex, authorIndex, tagsIndex, descIndex];
+  let needsFix = false;
+
+  for (const idx of metaIndices) {
+    if (idx + 1 < lines.length && lines[idx + 1]?.trim() !== '') {
+      needsFix = true;
+      break;
     }
   }
 
-  // Build expected header: each metadata line followed by a blank line, then ---
-  const expectedHeaderLines: string[] = [];
-  for (const line of headerMetaLines) {
-    expectedHeaderLines.push(line);
-    expectedHeaderLines.push('');
-  }
-  expectedHeaderLines.push('---');
-
-  // Compare actual header with expected
-  const actualHeaderLines = lines.slice(0, separatorLineIndex + 1);
-
-  if (
-    actualHeaderLines.length === expectedHeaderLines.length &&
-    actualHeaderLines.every((line, i) => line === expectedHeaderLines[i])
-  ) {
-    return false; // Already correct
+  if (!needsFix) {
+    return false;
   }
 
-  // Fix: rebuild the file with proper header spacing
-  const bodyLines = lines.slice(separatorLineIndex + 1);
-  const newContent = expectedHeaderLines.join('\n') + '\n' + bodyLines.join('\n');
+  // Rebuild: insert blank lines after each metadata line where missing
+  // Work backwards to avoid index shifting
+  const fixedLines = [...lines];
+  const insertPositions: number[] = [];
+
+  for (let j = metaIndices.length - 1; j >= 0; j--) {
+    const idx = metaIndices[j];
+    if (idx + 1 < fixedLines.length && fixedLines[idx + 1]?.trim() !== '') {
+      insertPositions.push(idx + 1);
+    }
+  }
+
+  // Sort insert positions in descending order and insert blank lines
+  insertPositions.sort((a, b) => b - a);
+  for (const pos of insertPositions) {
+    fixedLines.splice(pos, 0, '');
+  }
+
+  const newContent = fixedLines.join('\n');
+  if (newContent === content) {
+    return false;
+  }
 
   fs.writeFileSync(readmePath, newContent, 'utf8');
   return true;

@@ -1,7 +1,11 @@
 # Using Velero with Volume Snapshots for Kubernetes Persistent Volume Backup and Restore
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Velero, Volume Snapshots, Kubernetes, Backup, Persistent Volume
+
 Description: Learn how to configure Velero with CSI volume snapshots to back up and restore Kubernetes persistent volumes for disaster recovery and migration.
+
 ---
 
 Persistent data is the Achilles heel of Kubernetes disaster recovery. While stateless workloads can be redeployed from manifests, databases, message queues, and file stores hold irreplaceable data in PersistentVolumes. Velero is the de facto standard for Kubernetes backup and restore, and when combined with CSI volume snapshots, it provides crash-consistent backups of your persistent data without application downtime. In this post, we will set up Velero with volume snapshot support, configure backup schedules, and walk through restore procedures.

@@ -1,7 +1,11 @@
 # Deploying and Operating TimescaleDB for Time-Series Workloads on Kubernetes
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: TimescaleDB, Kubernetes, Time Series, Database, PostgreSQL
+
 Description: Learn how to deploy, configure, and operate TimescaleDB on Kubernetes for production time-series workloads with high availability and performance tuning.
+
 ---
 
 TimescaleDB extends PostgreSQL with specialized capabilities for time-series data, including automatic partitioning, compression, and continuous aggregates. Running it on Kubernetes brings the benefits of container orchestration to your time-series database: automated failover, rolling upgrades, and declarative configuration. But databases are stateful workloads, and getting them right on Kubernetes requires careful attention to storage, networking, and operational procedures. This post covers everything you need to deploy and operate TimescaleDB in production on Kubernetes.

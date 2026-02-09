@@ -1,7 +1,11 @@
 # Using the Terraform kubectl Provider to Manage CRDs and Raw Kubernetes Manifests
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Terraform, kubectl Provider, CRD, Kubernetes, Infrastructure as Code
+
 Description: Learn how to use the Terraform kubectl provider to apply Custom Resource Definitions and raw Kubernetes manifests directly from Terraform configurations.
+
 ---
 
 The official Terraform Kubernetes provider covers a wide range of built-in resource types, but it falls short when you need to manage Custom Resource Definitions or arbitrary Kubernetes manifests. The `kubectl` provider by Gavin Barron fills this gap by allowing you to apply raw YAML manifests directly from Terraform, making it possible to manage CRDs, custom resources, and any Kubernetes object that the native provider does not support. This post walks through setting up the kubectl provider, managing CRDs, and handling real-world scenarios.

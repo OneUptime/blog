@@ -1,7 +1,11 @@
 # Using Elasticsearch Index Lifecycle Management for Kubernetes Log Data
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Elasticsearch, ILM, Kubernetes, Logging, Index Management
+
 Description: How to configure Elasticsearch Index Lifecycle Management policies to efficiently manage Kubernetes log data from ingestion through deletion
+
 ---
 
 Kubernetes clusters generate enormous volumes of log data. Every pod, every container, every system component produces logs that need to be collected, indexed, searched, and eventually cleaned up. Without proper lifecycle management, Elasticsearch clusters storing these logs grow unbounded, consuming expensive storage and degrading query performance. Index Lifecycle Management (ILM) is Elasticsearch's built-in mechanism for automating the entire lifecycle of indices, from creation through rollover, optimization, and deletion. This guide covers how to design and implement ILM policies specifically tailored for Kubernetes log data.

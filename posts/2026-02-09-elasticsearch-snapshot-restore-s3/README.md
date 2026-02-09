@@ -1,7 +1,11 @@
 # Setting Up Elasticsearch Snapshot and Restore with S3-Compatible Storage on Kubernetes
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Elasticsearch, Snapshot, S3, Kubernetes, Backup
+
 Description: A comprehensive guide to configuring Elasticsearch snapshot and restore workflows using S3-compatible object storage on Kubernetes clusters for reliable backup and disaster recovery.
+
 ---
 
 Elasticsearch is one of the most widely deployed search and analytics engines in production environments. When running Elasticsearch on Kubernetes, implementing a robust backup and restore strategy is not optional. Losing an index due to node failure, accidental deletion, or cluster corruption without a backup can be catastrophic. This guide walks through setting up Elasticsearch snapshot and restore using S3-compatible storage on Kubernetes, covering everything from plugin installation to automated snapshot lifecycle management.

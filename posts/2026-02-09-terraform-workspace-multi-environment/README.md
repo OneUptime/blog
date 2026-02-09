@@ -1,7 +1,11 @@
 # Using Terraform Workspaces to Manage Multiple Kubernetes Environments
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Terraform, Workspaces, Multi-Environment, Kubernetes, Infrastructure as Code
+
 Description: Learn how to use Terraform workspaces to manage development, staging, and production Kubernetes environments with shared configurations and environment-specific overrides.
+
 ---
 
 Running multiple Kubernetes environments, such as development, staging, and production, is standard practice for any serious engineering team. But managing these environments with Terraform raises an important question: do you duplicate your configuration for each environment, or do you share a single configuration and parameterize the differences? Terraform workspaces provide a built-in mechanism for the latter approach, giving each environment its own state while sharing the same codebase. In this post, we will explore how to use workspaces effectively for multi-environment Kubernetes management.

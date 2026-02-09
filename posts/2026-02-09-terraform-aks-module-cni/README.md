@@ -1,7 +1,11 @@
 # Using Terraform Modules to Deploy AKS Clusters with Azure CNI Networking
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Terraform, AKS, Azure CNI, Kubernetes, Networking
+
 Description: A complete guide to deploying Azure Kubernetes Service clusters with Azure CNI networking using Terraform modules, covering VNet integration, IP planning, network policies, and production configurations.
+
 ---
 
 Azure Kubernetes Service (AKS) supports two primary networking models: kubenet and Azure CNI. While kubenet is simpler, Azure CNI assigns real Azure VNet IP addresses to every pod, enabling direct communication between pods and other Azure resources without NAT. This is essential for workloads that need to interact with Azure services through private endpoints, VNet peering, or network security groups at the pod level. This guide demonstrates how to deploy AKS with Azure CNI using Terraform modules, covering network planning, cluster configuration, and production hardening.

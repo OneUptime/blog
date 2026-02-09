@@ -1,7 +1,11 @@
 # The Crossplane Package Manager for Distributing and Installing Configurations
+
 Author: [nawazdhandala](https://github.com/nawazdhandala)
+
 Tags: Crossplane, Package Manager, Kubernetes, Infrastructure as Code, Configuration
+
 Description: Understanding the Crossplane package manager system for building, distributing, and installing reusable infrastructure configurations and providers
+
 ---
 
 As organizations adopt Crossplane for infrastructure management, the need to share and distribute configurations across teams and clusters grows rapidly. Writing Compositions and Composite Resource Definitions from scratch for every cluster is time-consuming and error-prone. The Crossplane package manager solves this by providing a system for bundling, versioning, distributing, and installing reusable infrastructure configurations. Built on OCI container registry standards, it lets you treat infrastructure definitions like container images, pushing them to registries and pulling them into any Crossplane-enabled cluster.
