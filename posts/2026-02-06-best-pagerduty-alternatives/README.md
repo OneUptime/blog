@@ -20,7 +20,7 @@ Before diving into alternatives, let's understand why teams consider switching:
 - **Vendor consolidation**: Organizations want fewer tools to manage
 - **Open-source preferences**: Some teams prefer self-hosted or open-source solutions
 
-## 1. OneUptime (Best Overall Alternative)
+## 1. OneUptime 
 
 **Pricing**: Free tier available, paid plans from $20/monitor/month
 
