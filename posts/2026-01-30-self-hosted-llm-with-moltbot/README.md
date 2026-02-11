@@ -305,6 +305,8 @@ flowchart LR
 
 ## Performance Optimization Tips
 
+Running LLMs in production requires monitoring to ensure they're performing well. If you're self-hosting at scale, consider setting up observability for your inference servers—tools like [OneUptime](https://oneuptime.com/product/metrics) can track GPU utilization, inference latency, and alert you when models are underperforming or containers crash.
+
 ### 1. Use Appropriate Quantization
 
 Ollama uses Q4_K_M by default, which offers a good balance. For better quality with more VRAM:

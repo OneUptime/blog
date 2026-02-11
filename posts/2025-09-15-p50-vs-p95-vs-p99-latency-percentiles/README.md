@@ -220,7 +220,7 @@ More on SLOs & budgets: https://oneuptime.com/blog/post/2023-06-12-sli-sla-slo/v
 
 ## Tooling Tips
 
-- Use one platform (e.g. OneUptime) so traces, metrics, logs, and SLO burn are correlated.
+- Use one platform so traces, metrics, logs, and SLO burn are correlated. [OneUptime's APM and distributed tracing](https://oneuptime.com/product/apm) can help you track P50/P95/P99 percentiles across your services and correlate slow traces with infrastructure metrics.
 - Store latency as a histogram, not a counter of rolled-up percentiles.
 - Tag latency metrics with stable dimensions only (method, route template, status_code, region). Avoid user-specific labels.
 - Track request volume alongside percentiles- P99 with 20 requests means little.
