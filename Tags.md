@@ -1358,6 +1358,7 @@
 - Collector Pipeline
 - Collector Pipelines
 - Collector Processors
+- Columnar Storage
 - Combinations
 - Combine
 - comfyui
@@ -3467,6 +3468,7 @@
 - Higher-Order Functions
 - Highlight.io
 - HikariCP
+- Hilt
 - Hints
 - HIPAA
 - Histogram
@@ -5365,6 +5367,7 @@
 - ParallelCluster
 - Parallelism
 - Parallelization
+- Parameter Expansion
 - Parameter Store
 - Parameters
 - Parametric Functions
@@ -7129,6 +7132,7 @@
 - Standard Library
 - Standardization
 - Standards
+- Star Schema
 - Stargz
 - Starlette
 - Start Time
@@ -7999,6 +8003,7 @@
 - Vector
 - Vector Database
 - Vector Databases
+- Vector Embeddings
 - Vector Matching
 - Vector Search
 - Vector Selectors
