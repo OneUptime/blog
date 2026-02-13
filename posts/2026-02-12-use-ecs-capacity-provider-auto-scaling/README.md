@@ -295,7 +295,7 @@ aws ecs describe-container-instances \
   --query 'containerInstances[0].{RunningTasks:runningTasksCount,PendingTasks:pendingTasksCount}'
 ```
 
-For more on ECS cluster scaling with EC2, see our guide on [setting up ECS cluster auto scaling with EC2](https://oneuptime.com/blog/post/set-up-ecs-cluster-auto-scaling-with-ec2/view).
+For more on ECS cluster scaling with EC2, see our guide on [setting up ECS cluster auto scaling with EC2](https://oneuptime.com/blog/post/2026-02-12-set-up-ecs-cluster-auto-scaling-with-ec2/view).
 
 ## Wrapping Up
 

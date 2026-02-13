@@ -243,9 +243,9 @@ s3://my-data-bucket/events/year=2025/month=01/day=15/data.parquet
 s3://my-data-bucket/events/year=2025/month=01/day=16/data.parquet
 ```
 
-With partitions, a query filtering on `WHERE year='2025' AND month='01'` only scans that month's data, not the entire dataset. We cover this in detail in our guide on [optimizing Athena with partitioning](https://oneuptime.com/blog/post/optimize-athena-query-performance-with-partitioning/view).
+With partitions, a query filtering on `WHERE year='2025' AND month='01'` only scans that month's data, not the entire dataset. We cover this in detail in our guide on [optimizing Athena with partitioning](https://oneuptime.com/blog/post/2026-02-12-optimize-athena-query-performance-with-partitioning/view).
 
-**Use columnar formats.** Parquet and ORC are dramatically more efficient than CSV or JSON because Athena only reads the columns your query references. Learn more in our post on [optimizing Athena queries with column formats](https://oneuptime.com/blog/post/optimize-athena-queries-with-column-formats-parquet-orc/view).
+**Use columnar formats.** Parquet and ORC are dramatically more efficient than CSV or JSON because Athena only reads the columns your query references. Learn more in our post on [optimizing Athena queries with column formats](https://oneuptime.com/blog/post/2026-02-12-optimize-athena-queries-with-column-formats-parquet-orc/view).
 
 **Compress your data.** Athena supports gzip, Snappy, LZO, and ZSTD compression. Smaller files mean less data scanned, which means faster queries and lower costs.
 
@@ -261,7 +261,7 @@ The key to controlling costs is reducing the amount of data scanned:
 4. Select only the columns you need (avoid `SELECT *`)
 5. Set workgroup scan limits
 
-For a deeper dive into keeping Athena costs down, check out our guide on [reducing Athena query costs](https://oneuptime.com/blog/post/reduce-athena-query-costs/view).
+For a deeper dive into keeping Athena costs down, check out our guide on [reducing Athena query costs](https://oneuptime.com/blog/post/2026-02-12-reduce-athena-query-costs/view).
 
 ## Monitoring
 
@@ -278,4 +278,4 @@ Athena is one of those AWS services that does one thing and does it well. Point 
 
 For best results, invest time in organizing your data properly - partitioning, columnar formats, and compression. These optimizations can reduce your query costs by 90% or more compared to scanning unoptimized CSV files.
 
-Ready to write some queries? Head over to our guide on [writing SQL queries in Amazon Athena](https://oneuptime.com/blog/post/write-sql-queries-in-amazon-athena/view) for syntax tips and practical examples.
+Ready to write some queries? Head over to our guide on [writing SQL queries in Amazon Athena](https://oneuptime.com/blog/post/2026-02-12-write-sql-queries-in-amazon-athena/view) for syntax tips and practical examples.

@@ -229,7 +229,7 @@ People often ask which to use. Here's the difference:
 
 Use latency routing when performance is your priority. Use geolocation routing when you need to serve different content by region (regulatory requirements, localized content, data sovereignty).
 
-For more on geolocation routing, see https://oneuptime.com/blog/post/route-53-geolocation-routing-policy/view.
+For more on geolocation routing, see https://oneuptime.com/blog/post/2026-02-12-route-53-geolocation-routing-policy/view.
 
 ## Testing Latency-Based Routing
 
@@ -250,6 +250,6 @@ You can also use global testing services to verify routing from different locati
 
 - Route 53 routes based on the DNS resolver's location, not the end user's. If a user in Tokyo uses a DNS resolver in the US, they'll get the US endpoint. EDNS Client Subnet (ECS) support in Route 53 mitigates this for most major public resolvers.
 - Latency data is based on AWS's measurements and may not perfectly reflect your users' actual experience.
-- There's no way to set a bias or preference toward a specific region with latency routing. For that, use geoproximity routing with Traffic Flow. See https://oneuptime.com/blog/post/route-53-geoproximity-routing-traffic-flow/view.
+- There's no way to set a bias or preference toward a specific region with latency routing. For that, use geoproximity routing with Traffic Flow. See https://oneuptime.com/blog/post/2026-02-12-route-53-geoproximity-routing-traffic-flow/view.
 
 Latency-based routing is one of the easiest wins for global applications. If your app runs in multiple AWS regions, set it up. The performance improvement for distant users is substantial, and the automatic failover with health checks gives you resilience for free.

@@ -21,7 +21,7 @@ Before you can SSH into an EC2 instance, you need:
 - The instance's public IP address or public DNS name
 - A security group that allows inbound SSH (port 22) from your IP
 
-If you haven't launched an instance yet, check out our guide on [launching your first EC2 instance](https://oneuptime.com/blog/post/launch-first-ec2-instance-from-aws-console/view).
+If you haven't launched an instance yet, check out our guide on [launching your first EC2 instance](https://oneuptime.com/blog/post/2026-02-12-launch-first-ec2-instance-from-aws-console/view).
 
 ## Finding Your Instance's Connection Details
 
@@ -140,7 +140,7 @@ Then in PuTTY:
 3. Browse to your .ppk file
 4. Go back to Session and click "Open"
 
-For creating key pairs, see our detailed guide on [EC2 key pairs for SSH access](https://oneuptime.com/blog/post/create-and-use-ec2-key-pairs-for-ssh-access/view).
+For creating key pairs, see our detailed guide on [EC2 key pairs for SSH access](https://oneuptime.com/blog/post/2026-02-12-create-and-use-ec2-key-pairs-for-ssh-access/view).
 
 ## Using EC2 Instance Connect (Browser-Based)
 
@@ -198,7 +198,7 @@ This is the most common error. It means SSH can't authenticate you. Check:
 
 The connection isn't reaching the instance at all. Check:
 
-1. **Security group** - Does it allow inbound TCP port 22 from your IP? Your IP may have changed since you set it up. See our guide on [setting up security groups](https://oneuptime.com/blog/post/set-up-security-groups-for-ec2-instances/view).
+1. **Security group** - Does it allow inbound TCP port 22 from your IP? Your IP may have changed since you set it up. See our guide on [setting up security groups](https://oneuptime.com/blog/post/2026-02-12-set-up-security-groups-for-ec2-instances/view).
 2. **No public IP** - The instance needs a public IP or Elastic IP to be reachable from the internet.
 3. **Wrong IP address** - If you stopped and restarted the instance, the public IP changed (unless you're using an Elastic IP).
 4. **Network ACL** - Less common, but check the subnet's network ACL to make sure it allows SSH traffic.

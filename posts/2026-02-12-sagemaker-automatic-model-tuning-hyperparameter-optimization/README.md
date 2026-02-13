@@ -343,7 +343,7 @@ xgb_estimator_spot = sagemaker.estimator.Estimator(
 )
 ```
 
-For more on reducing training costs, see our guide on [using spot instances with SageMaker](https://oneuptime.com/blog/post/reduce-sagemaker-training-costs-spot-instances/view).
+For more on reducing training costs, see our guide on [using spot instances with SageMaker](https://oneuptime.com/blog/post/2026-02-12-reduce-sagemaker-training-costs-spot-instances/view).
 
 ## Deploying the Best Model
 
@@ -364,4 +364,4 @@ print(f"Deployed best model to: {predictor.endpoint_name}")
 
 ## Wrapping Up
 
-Automatic Model Tuning takes the guesswork out of hyperparameter selection. Instead of manually trying combinations or running expensive grid searches, Bayesian optimization finds good configurations with fewer training jobs. Combined with [SageMaker Experiments](https://oneuptime.com/blog/post/sagemaker-experiments-tracking/view) for tracking what you've tried and [Debugger](https://oneuptime.com/blog/post/sagemaker-debugger-training-insights/view) for understanding why certain configurations work better, you've got a systematic approach to model optimization.
+Automatic Model Tuning takes the guesswork out of hyperparameter selection. Instead of manually trying combinations or running expensive grid searches, Bayesian optimization finds good configurations with fewer training jobs. Combined with [SageMaker Experiments](https://oneuptime.com/blog/post/2026-02-12-sagemaker-experiments-tracking/view) for tracking what you've tried and [Debugger](https://oneuptime.com/blog/post/2026-02-12-sagemaker-debugger-training-insights/view) for understanding why certain configurations work better, you've got a systematic approach to model optimization.

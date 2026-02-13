@@ -320,4 +320,4 @@ for await (const page of paginator) {
 - **Store function names in environment variables** for portability across environments.
 - **Reuse the Lambda client instance.** Create it once at module level.
 
-For the Python equivalent of these patterns, see [invoking Lambda with Boto3](https://oneuptime.com/blog/post/invoke-lambda-functions-boto3/view). And for testing Lambda invocations locally, check out the guide on [LocalStack](https://oneuptime.com/blog/post/localstack-test-aws-services-locally/view).
+For the Python equivalent of these patterns, see [invoking Lambda with Boto3](https://oneuptime.com/blog/post/2026-02-12-invoke-lambda-functions-boto3/view). And for testing Lambda invocations locally, check out the guide on [LocalStack](https://oneuptime.com/blog/post/2026-02-12-localstack-test-aws-services-locally/view).

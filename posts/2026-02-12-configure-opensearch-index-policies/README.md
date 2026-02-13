@@ -302,6 +302,6 @@ A few lessons learned from running ISM policies at scale:
 - **Test policies on non-production first.** A bad policy can trigger mass deletions or overwhelm your cluster with simultaneous force merges.
 - **Monitor shard count.** Each state transition can affect shard counts, and OpenSearch has limits on total shards per node. Keep an eye on `_cat/shards` regularly.
 
-For monitoring your OpenSearch cluster health alongside your ISM policies, check out how to set up [comprehensive monitoring](https://oneuptime.com/blog/post/set-up-opensearch-ingestion-pipelines/view) that covers both infrastructure and application layers.
+For monitoring your OpenSearch cluster health alongside your ISM policies, check out how to set up [comprehensive monitoring](https://oneuptime.com/blog/post/2026-02-12-set-up-opensearch-ingestion-pipelines/view) that covers both infrastructure and application layers.
 
 ISM policies are one of those "set it and forget it" features - but only if you set them up correctly. Take the time to model your data lifecycle, test your policies, and monitor the transitions. Your cluster will run leaner and your storage costs will stay predictable.

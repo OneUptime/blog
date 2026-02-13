@@ -295,4 +295,4 @@ Here are things that'll keep your DynamoDB queries fast and cheap:
 - **Watch for hot partitions.** If one partition key gets way more traffic than others, you'll hit throughput limits.
 - **Use `Limit` when you only need a few results.** It stops the query early, saving read capacity.
 
-For handling the errors that queries can throw, especially throttling exceptions, see the guide on [handling Boto3 errors](https://oneuptime.com/blog/post/boto3-errors-and-exceptions/view). If you're building a larger application with DynamoDB queries, make sure to monitor your table metrics to catch performance issues early.
+For handling the errors that queries can throw, especially throttling exceptions, see the guide on [handling Boto3 errors](https://oneuptime.com/blog/post/2026-02-12-boto3-errors-and-exceptions/view). If you're building a larger application with DynamoDB queries, make sure to monitor your table metrics to catch performance issues early.

@@ -354,7 +354,7 @@ LogGroup:
     RetentionInDays: 30
 ```
 
-For custom metrics beyond what CloudWatch provides, see our guide on [creating custom CloudWatch metrics from Lambda](https://oneuptime.com/blog/post/create-custom-cloudwatch-metrics-from-lambda/view). For enhanced monitoring with Lambda-specific insights, check out [using Lambda Insights for enhanced monitoring](https://oneuptime.com/blog/post/use-lambda-insights-for-enhanced-monitoring/view).
+For custom metrics beyond what CloudWatch provides, see our guide on [creating custom CloudWatch metrics from Lambda](https://oneuptime.com/blog/post/2026-02-12-create-custom-cloudwatch-metrics-from-lambda/view). For enhanced monitoring with Lambda-specific insights, check out [using Lambda Insights for enhanced monitoring](https://oneuptime.com/blog/post/2026-02-12-use-lambda-insights-for-enhanced-monitoring/view).
 
 ## Wrapping Up
 

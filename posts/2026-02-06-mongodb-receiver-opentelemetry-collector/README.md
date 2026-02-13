@@ -832,7 +832,7 @@ service:
       exporters: [otlp]
 ```
 
-OneUptime provides MongoDB-specific dashboards with replication topology visualization, shard distribution metrics, and intelligent alerting for NoSQL workloads. For monitoring other databases, see our guides on [PostgreSQL receiver](https://oneuptime.com/blog/post/postgresql-receiver-opentelemetry-collector/view) and [MySQL receiver](https://oneuptime.com/blog/post/mysql-receiver-opentelemetry-collector/view).
+OneUptime provides MongoDB-specific dashboards with replication topology visualization, shard distribution metrics, and intelligent alerting for NoSQL workloads. For monitoring other databases, see our guides on [PostgreSQL receiver](https://oneuptime.com/blog/post/2026-02-06-postgresql-receiver-opentelemetry-collector/view) and [MySQL receiver](https://oneuptime.com/blog/post/2026-02-06-mysql-receiver-opentelemetry-collector/view).
 
 ## Conclusion
 
@@ -840,4 +840,4 @@ The MongoDB receiver provides comprehensive monitoring for MongoDB deployments t
 
 Start with basic configuration for standalone instances, then expand to monitor replica sets and sharded clusters as your architecture grows. Use the collected metrics to optimize queries, tune resource allocation, and maintain healthy MongoDB operations at scale.
 
-For monitoring MongoDB in containerized environments, combine this receiver with the [Docker Stats receiver](https://oneuptime.com/blog/post/docker-stats-receiver-opentelemetry-collector/view). To monitor cache layers alongside MongoDB, explore our guide on the [Redis receiver](https://oneuptime.com/blog/post/redis-receiver-opentelemetry-collector/view).
+For monitoring MongoDB in containerized environments, combine this receiver with the [Docker Stats receiver](https://oneuptime.com/blog/post/2026-02-06-docker-stats-receiver-opentelemetry-collector/view). To monitor cache layers alongside MongoDB, explore our guide on the [Redis receiver](https://oneuptime.com/blog/post/2026-02-06-redis-receiver-opentelemetry-collector/view).

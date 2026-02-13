@@ -355,7 +355,7 @@ Add AMP as a data source in Managed Grafana:
 4. Enable SigV4 authentication
 5. Set the region to match your workspace
 
-Now you can build PromQL dashboards in Grafana using your AMP data. For more on setting up Grafana, see our [Amazon Managed Grafana guide](https://oneuptime.com/blog/post/amazon-managed-grafana-cloudwatch/view).
+Now you can build PromQL dashboards in Grafana using your AMP data. For more on setting up Grafana, see our [Amazon Managed Grafana guide](https://oneuptime.com/blog/post/2026-02-12-amazon-managed-grafana-cloudwatch/view).
 
 ## Cost Considerations
 

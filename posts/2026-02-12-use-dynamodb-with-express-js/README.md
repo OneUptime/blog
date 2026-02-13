@@ -427,4 +427,4 @@ curl -X PATCH http://localhost:3000/api/users/USER_ID_HERE \
 
 This gives you a clean, well-structured Express.js API backed by DynamoDB. The Document Client handles all the type marshalling, the model layer keeps your DynamoDB logic isolated, and the error middleware translates AWS exceptions into proper HTTP responses.
 
-For monitoring your DynamoDB usage, check out [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/monitor-dynamodb-with-cloudwatch-alarms/view).
+For monitoring your DynamoDB usage, check out [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-monitor-dynamodb-with-cloudwatch-alarms/view).

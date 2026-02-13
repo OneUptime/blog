@@ -279,4 +279,4 @@ aws ce get-cost-and-usage \
     }'
 ```
 
-AWS Data Exchange streamlines the process of incorporating external data into your analytics. For organizing this data alongside your internal datasets, look at [Amazon DataZone for data governance](https://oneuptime.com/blog/post/amazon-datazone-data-governance/view) and [partitioning data in S3 for Athena queries](https://oneuptime.com/blog/post/partition-data-s3-efficient-athena-queries/view).
+AWS Data Exchange streamlines the process of incorporating external data into your analytics. For organizing this data alongside your internal datasets, look at [Amazon DataZone for data governance](https://oneuptime.com/blog/post/2026-02-12-amazon-datazone-data-governance/view) and [partitioning data in S3 for Athena queries](https://oneuptime.com/blog/post/2026-02-12-partition-data-s3-efficient-athena-queries/view).

@@ -455,4 +455,4 @@ kubectl delete pods -l purpose=debugging
 
 Manual cleanup prevents debugging pod accumulation.
 
-kubectl run --rm -it transforms debugging from a multi-step process into a single command. Create temporary pods for network testing, service verification, and cluster exploration without worrying about cleanup. Choose the right debug image, target the correct namespace, and let automatic deletion handle the rest. For more debugging techniques, see https://oneuptime.com/blog/post/kubectl-exec-troubleshoot-containers/view.
+kubectl run --rm -it transforms debugging from a multi-step process into a single command. Create temporary pods for network testing, service verification, and cluster exploration without worrying about cleanup. Choose the right debug image, target the correct namespace, and let automatic deletion handle the rest. For more debugging techniques, see https://oneuptime.com/blog/post/2026-01-22-kubectl-exec-troubleshoot-containers/view.

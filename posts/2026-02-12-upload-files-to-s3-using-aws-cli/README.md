@@ -126,7 +126,7 @@ aws s3 sync ./project/ s3://my-bucket/project/ \
     --exclude "*.tmp"
 ```
 
-We have a dedicated guide on [syncing local directories with S3](https://oneuptime.com/blog/post/sync-local-directory-with-s3-bucket/view) that covers sync in much more depth.
+We have a dedicated guide on [syncing local directories with S3](https://oneuptime.com/blog/post/2026-02-12-sync-local-directory-with-s3-bucket/view) that covers sync in much more depth.
 
 ## Performance Optimization
 
@@ -241,7 +241,7 @@ aws s3 cp large-dataset.tar.gz s3://my-bucket/data/ \
 # See our guide on multipart uploads for more control
 ```
 
-For files over a few gigabytes, check out our guide on [multipart uploads](https://oneuptime.com/blog/post/upload-large-files-to-s3-multipart-upload/view) for more control over the process.
+For files over a few gigabytes, check out our guide on [multipart uploads](https://oneuptime.com/blog/post/2026-02-12-upload-large-files-to-s3-multipart-upload/view) for more control over the process.
 
 ## Scripting Uploads
 
@@ -292,7 +292,7 @@ A few things that commonly go wrong:
 
 **"Access Denied"** - Check your IAM permissions. You need `s3:PutObject` at minimum. Also check bucket policies and ACLs.
 
-**Slow uploads** - Increase concurrent requests and adjust multipart settings as shown above. If you're uploading to a distant region, consider [S3 Transfer Acceleration](https://oneuptime.com/blog/post/enable-s3-transfer-acceleration-faster-uploads/view).
+**Slow uploads** - Increase concurrent requests and adjust multipart settings as shown above. If you're uploading to a distant region, consider [S3 Transfer Acceleration](https://oneuptime.com/blog/post/2026-02-12-enable-s3-transfer-acceleration-faster-uploads/view).
 
 **"Connection reset"** - Usually a network issue. The CLI will retry automatically, but you can increase retries with `aws configure set default.retry_mode adaptive`.
 

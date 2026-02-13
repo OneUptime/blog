@@ -260,7 +260,7 @@ alias knodes='kubectl get nodes -o custom-columns=NAME:.metadata.name,STATUS:.st
 alias kdeploy='kubectl get deployments -o custom-columns=NAME:.metadata.name,REPLICAS:.spec.replicas,AVAILABLE:.status.availableReplicas,IMAGE:.spec.template.spec.containers[0].image'
 ```
 
-These aliases turn complex commands into simple shortcuts. Learn more about kubectl aliases at https://oneuptime.com/blog/post/kubectl-aliases-shell-functions/view.
+These aliases turn complex commands into simple shortcuts. Learn more about kubectl aliases at https://oneuptime.com/blog/post/2026-02-09-kubectl-aliases-shell-functions/view.
 
 ## Custom Columns vs JSONPath
 
@@ -274,6 +274,6 @@ kubectl get pods -o custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[0]
 kubectl get pods -o jsonpath='{.items[*].metadata.name}{" "}{.items[*].spec.containers[0].image}'
 ```
 
-Use custom columns for human-readable output and JSONPath for script processing. See https://oneuptime.com/blog/post/kubectl-jsonpath-expressions-nested-fields/view for detailed JSONPath usage.
+Use custom columns for human-readable output and JSONPath for script processing. See https://oneuptime.com/blog/post/2026-02-09-kubectl-jsonpath-expressions-nested-fields/view for detailed JSONPath usage.
 
 Custom columns transform kubectl output into exactly the format you need. Define your own views, save common definitions, and create readable reports without external tools. Master this feature and you'll spend less time parsing kubectl output and more time understanding your cluster state.

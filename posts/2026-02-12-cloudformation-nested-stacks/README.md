@@ -264,7 +264,7 @@ Both let stacks share data. The difference is in how they're managed:
 | Coupling | Tight - parent controls everything | Loose - stacks are independent |
 | Use case | Single application deployment | Shared infrastructure |
 
-Use nested stacks when everything should deploy together (your app's complete infrastructure). Use [cross-stack exports](https://oneuptime.com/blog/post/cloudformation-outputs-export-values/view) when stacks have independent lifecycles (shared VPC used by multiple teams).
+Use nested stacks when everything should deploy together (your app's complete infrastructure). Use [cross-stack exports](https://oneuptime.com/blog/post/2026-02-12-cloudformation-outputs-export-values/view) when stacks have independent lifecycles (shared VPC used by multiple teams).
 
 ## Error Handling
 
@@ -297,4 +297,4 @@ The nested stack's ARN appears in the parent's events. Copy it and query the nes
 
 **Test child stacks independently.** Each child template should be deployable on its own for testing. If a child stack can only work inside a parent, it's too tightly coupled.
 
-Nested stacks are essential for managing CloudFormation at scale. They pair naturally with [parameters](https://oneuptime.com/blog/post/cloudformation-parameters-reusable-templates/view) for flexibility and [change sets](https://oneuptime.com/blog/post/cloudformation-change-sets-safe-updates/view) for safe updates.
+Nested stacks are essential for managing CloudFormation at scale. They pair naturally with [parameters](https://oneuptime.com/blog/post/2026-02-12-cloudformation-parameters-reusable-templates/view) for flexibility and [change sets](https://oneuptime.com/blog/post/2026-02-12-cloudformation-change-sets-safe-updates/view) for safe updates.

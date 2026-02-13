@@ -675,7 +675,7 @@ Test these patterns with various inputs to ensure they're truly reusable.
 
 The OTTL Playground is an essential tool for developing, testing, and validating OpenTelemetry Collector transformations. By testing transformations with realistic data before deployment, you can catch errors early, iterate quickly, and ensure your telemetry pipeline processes data correctly.
 
-Whether you're implementing [attribute modifications](https://oneuptime.com/blog/post/rename-modify-attributes-ottl-opentelemetry-collector/view), [JSON parsing](https://oneuptime.com/blog/post/parse-json-logs-ottl-opentelemetry-collector/view), [conditional logic](https://oneuptime.com/blog/post/conditional-logic-ottl-opentelemetry-collector/view), or [log body transformations](https://oneuptime.com/blog/post/transform-log-bodies-ottl-opentelemetry-collector/view), the playground provides a safe, fast environment for testing and validation.
+Whether you're implementing [attribute modifications](https://oneuptime.com/blog/post/2026-02-06-rename-modify-attributes-ottl-opentelemetry-collector/view), [JSON parsing](https://oneuptime.com/blog/post/2026-02-06-parse-json-logs-ottl-opentelemetry-collector/view), [conditional logic](https://oneuptime.com/blog/post/2026-02-06-conditional-logic-ottl-opentelemetry-collector/view), or [log body transformations](https://oneuptime.com/blog/post/2026-02-06-transform-log-bodies-ottl-opentelemetry-collector/view), the playground provides a safe, fast environment for testing and validation.
 
 Make the OTTL Playground a standard part of your development workflow to build reliable, well-tested telemetry pipelines that handle production data correctly from day one.
 

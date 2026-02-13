@@ -310,4 +310,4 @@ await checkCredentials();
 - **Enable MFA for sensitive operations** when using profiles that support it.
 - **Test your credential chain** early in development. Don't wait until deployment to discover issues.
 
-For more on setting up SDK clients with these credentials, see the guide on [setting up AWS SDK v3 clients](https://oneuptime.com/blog/post/aws-sdk-v3-clients-nodejs/view). And if you're testing locally without real AWS credentials, [LocalStack](https://oneuptime.com/blog/post/localstack-test-aws-services-locally/view) is an excellent option.
+For more on setting up SDK clients with these credentials, see the guide on [setting up AWS SDK v3 clients](https://oneuptime.com/blog/post/2026-02-12-aws-sdk-v3-clients-nodejs/view). And if you're testing locally without real AWS credentials, [LocalStack](https://oneuptime.com/blog/post/2026-02-12-localstack-test-aws-services-locally/view) is an excellent option.

@@ -208,7 +208,7 @@ Batch will automatically select an instance type with at least 4 GPUs, like a p3
 
 ## Mixing Spot and On-Demand
 
-For cost savings, you can create a Spot compute environment alongside your On-Demand one and use both in a single queue. For a deep dive into Spot with Batch, see our guide on [using AWS Batch with Spot Instances](https://oneuptime.com/blog/post/use-aws-batch-with-spot-instances-for-cost-savings/view).
+For cost savings, you can create a Spot compute environment alongside your On-Demand one and use both in a single queue. For a deep dive into Spot with Batch, see our guide on [using AWS Batch with Spot Instances](https://oneuptime.com/blog/post/2026-02-12-use-aws-batch-with-spot-instances-for-cost-savings/view).
 
 ```bash
 # Create a Spot GPU compute environment
@@ -234,7 +234,7 @@ aws batch create-compute-environment \
 
 ## Monitoring GPU Utilization
 
-You should track GPU utilization to make sure your jobs are actually using the GPUs effectively. Install the CloudWatch agent in your container or use the NVIDIA DCGM exporter. For more on monitoring Batch jobs, check out [monitoring AWS Batch with CloudWatch](https://oneuptime.com/blog/post/monitor-aws-batch-jobs-with-cloudwatch/view).
+You should track GPU utilization to make sure your jobs are actually using the GPUs effectively. Install the CloudWatch agent in your container or use the NVIDIA DCGM exporter. For more on monitoring Batch jobs, check out [monitoring AWS Batch with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-aws-batch-jobs-with-cloudwatch/view).
 
 ```python
 # Simple GPU utilization check inside your training script

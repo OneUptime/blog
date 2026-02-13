@@ -291,7 +291,7 @@ If memory usage is consistently above 75%, you should scale up before enabling b
 - **S3 exports**: Keep monthly exports for long-term archival and cross-region DR
 - **Snapshot window**: Schedule during your lowest-traffic period to minimize the performance impact of the fork
 
-For comprehensive monitoring of your ElastiCache setup including backup health, check out the guide on [monitoring ElastiCache with CloudWatch](https://oneuptime.com/blog/post/monitor-elasticache-with-cloudwatch/view).
+For comprehensive monitoring of your ElastiCache setup including backup health, check out the guide on [monitoring ElastiCache with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-elasticache-with-cloudwatch/view).
 
 ## Wrapping Up
 

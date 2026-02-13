@@ -227,7 +227,7 @@ For ALBs, it checks if the ALB has at least one healthy target in its target gro
 }
 ```
 
-When combined with failover routing, EvaluateTargetHealth enables automatic failover without a separate Route 53 health check - the ALB's built-in health checks drive the DNS routing decision. See https://oneuptime.com/blog/post/route-53-failover-routing-policy/view for details.
+When combined with failover routing, EvaluateTargetHealth enables automatic failover without a separate Route 53 health check - the ALB's built-in health checks drive the DNS routing decision. See https://oneuptime.com/blog/post/2026-02-12-route-53-failover-routing-policy/view for details.
 
 ## Decision Framework
 

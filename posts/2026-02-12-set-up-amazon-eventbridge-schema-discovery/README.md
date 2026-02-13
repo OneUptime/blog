@@ -205,7 +205,7 @@ If schemas are not appearing after enabling discovery, check the following:
 - Confirm your IAM role has the `schemas:*` permissions needed
 - Wait at least 5-10 minutes after sending events before checking for schemas
 
-If you are working with monitoring event-driven architectures, you might also want to check out how to [set up observability for your microservices](https://oneuptime.com/blog/post/set-up-amazon-eventbridge-schema-discovery/view) to keep track of event flow health.
+If you are working with monitoring event-driven architectures, you might also want to check out how to [set up observability for your microservices](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-eventbridge-schema-discovery/view) to keep track of event flow health.
 
 ## Wrapping Up
 

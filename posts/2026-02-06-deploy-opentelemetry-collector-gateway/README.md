@@ -741,8 +741,8 @@ Gateway collectors handle:
 
 For more OpenTelemetry Collector deployment patterns:
 
-- [How to Deploy the OpenTelemetry Collector as a DaemonSet in Kubernetes](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-daemonset-kubernetes/view)
-- [How to Route Telemetry to Multiple Backends with the Routing Connector](https://oneuptime.com/blog/post/route-telemetry-multiple-backends-routing-connector/view)
-- [How to Build Fan-Out Pipelines in the OpenTelemetry Collector](https://oneuptime.com/blog/post/fan-out-pipelines-opentelemetry-collector/view)
+- [How to Deploy the OpenTelemetry Collector as a DaemonSet in Kubernetes](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-daemonset-kubernetes/view)
+- [How to Route Telemetry to Multiple Backends with the Routing Connector](https://oneuptime.com/blog/post/2026-02-06-route-telemetry-multiple-backends-routing-connector/view)
+- [How to Build Fan-Out Pipelines in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-fan-out-pipelines-opentelemetry-collector/view)
 
 Gateway deployment is essential for building scalable, maintainable observability architectures. By centralizing heavy processing and routing logic, gateways reduce the complexity of agent collectors and provide a flexible abstraction layer between your applications and observability backends.

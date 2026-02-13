@@ -407,7 +407,7 @@ To control costs:
 - Don't stream namespaces with very high cardinality unless necessary
 - Consider whether you really need real-time export or if periodic API polling would suffice for some metrics
 
-For broader CloudWatch cost management strategies, check out [reducing CloudWatch costs](https://oneuptime.com/blog/post/reduce-cloudwatch-costs/view).
+For broader CloudWatch cost management strategies, check out [reducing CloudWatch costs](https://oneuptime.com/blog/post/2026-02-12-reduce-cloudwatch-costs/view).
 
 ## When to Use Metric Streams vs. API Polling
 

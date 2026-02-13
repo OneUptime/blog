@@ -206,9 +206,9 @@ Sending bulk email is only useful if it actually reaches inboxes. Here are the t
 
 **Include an unsubscribe link.** It's not just best practice - it's legally required in most jurisdictions. Make it easy to find and make it work immediately.
 
-**Monitor your metrics.** Keep your bounce rate below 5% and your complaint rate below 0.1%. If either goes above those thresholds, SES may pause your sending. For monitoring these metrics, check out [monitoring SES with CloudWatch](https://oneuptime.com/blog/post/monitor-ses-sending-with-cloudwatch/view).
+**Monitor your metrics.** Keep your bounce rate below 5% and your complaint rate below 0.1%. If either goes above those thresholds, SES may pause your sending. For monitoring these metrics, check out [monitoring SES with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-ses-sending-with-cloudwatch/view).
 
-**Handle bounces and complaints programmatically.** Set up SNS notifications so you automatically remove bad addresses. See our guide on [handling SES bounces and complaints](https://oneuptime.com/blog/post/handle-ses-bounces-and-complaints-with-sns/view) for the details.
+**Handle bounces and complaints programmatically.** Set up SNS notifications so you automatically remove bad addresses. See our guide on [handling SES bounces and complaints](https://oneuptime.com/blog/post/2026-02-12-handle-ses-bounces-and-complaints-with-sns/view) for the details.
 
 ## Costs at Scale
 

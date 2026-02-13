@@ -113,7 +113,7 @@ def handler(event, context):
         # Process the order...
 ```
 
-For more on processing SQS messages efficiently, see our guide on [processing SQS messages in batch with Lambda](https://oneuptime.com/blog/post/process-sqs-messages-batch-lambda/view).
+For more on processing SQS messages efficiently, see our guide on [processing SQS messages in batch with Lambda](https://oneuptime.com/blog/post/2026-02-12-process-sqs-messages-batch-lambda/view).
 
 ## When to Use SNS
 
@@ -185,7 +185,7 @@ This EventBridge rule routes high-value orders to a specific Lambda function.
 
 The filtering is much more expressive than SNS. You can match on nested fields, numeric comparisons, prefixes, and more.
 
-For a deeper look at combining these services, check out our post on [event-driven architecture with SQS, SNS, and EventBridge](https://oneuptime.com/blog/post/event-driven-architecture-sqs-sns-eventbridge/view).
+For a deeper look at combining these services, check out our post on [event-driven architecture with SQS, SNS, and EventBridge](https://oneuptime.com/blog/post/2026-02-12-event-driven-architecture-sqs-sns-eventbridge/view).
 
 ## When to Use Amazon MQ
 
@@ -199,7 +199,7 @@ Amazon MQ exists for one primary reason: protocol compatibility. If your applica
 
 If you're building something new from scratch on AWS, the native services (SQS, SNS, EventBridge) are usually the better choice. They scale more easily, cost less at scale, and integrate more deeply with other AWS services.
 
-For migration guidance, see [migrating from self-managed RabbitMQ to Amazon MQ](https://oneuptime.com/blog/post/migrate-rabbitmq-to-amazon-mq/view).
+For migration guidance, see [migrating from self-managed RabbitMQ to Amazon MQ](https://oneuptime.com/blog/post/2026-02-12-migrate-rabbitmq-to-amazon-mq/view).
 
 ## Pricing Comparison
 

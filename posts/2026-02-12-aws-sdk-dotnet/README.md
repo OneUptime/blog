@@ -354,4 +354,4 @@ Console.WriteLine($"Total: {total} objects");
 - **Use the Object Persistence Model** for DynamoDB when you have well-defined data models.
 - **Handle errors specifically.** Use pattern matching on error codes rather than catching generic exceptions.
 
-For testing your .NET AWS code locally, check out the guide on [LocalStack](https://oneuptime.com/blog/post/localstack-test-aws-services-locally/view). And for mocking AWS calls in unit tests, the [mocking guide](https://oneuptime.com/blog/post/mock-aws-sdk-calls-unit-tests/view) covers patterns that work across SDKs.
+For testing your .NET AWS code locally, check out the guide on [LocalStack](https://oneuptime.com/blog/post/2026-02-12-localstack-test-aws-services-locally/view). And for mocking AWS calls in unit tests, the [mocking guide](https://oneuptime.com/blog/post/2026-02-12-mock-aws-sdk-calls-unit-tests/view) covers patterns that work across SDKs.

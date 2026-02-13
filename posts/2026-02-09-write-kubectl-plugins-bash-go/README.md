@@ -536,4 +536,4 @@ time kubectl go-plugin  # ~50ms
 
 Choose Bash for simple wrappers, Go for complex logic and data processing.
 
-Plugins extend kubectl without waiting for upstream feature additions. Write custom commands that match your workflow, automate repetitive tasks, and share tools across your team. Start with simple Bash scripts and graduate to Go when you need more power. For plugin discovery and installation, see https://oneuptime.com/blog/post/kubectl-plugins-krew-package-manager/view.
+Plugins extend kubectl without waiting for upstream feature additions. Write custom commands that match your workflow, automate repetitive tasks, and share tools across your team. Start with simple Bash scripts and graduate to Go when you need more power. For plugin discovery and installation, see https://oneuptime.com/blog/post/2026-02-09-kubectl-plugins-krew-package-manager/view.

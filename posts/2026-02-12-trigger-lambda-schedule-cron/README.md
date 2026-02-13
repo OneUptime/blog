@@ -312,7 +312,7 @@ exports.handler = async (event) => {
 };
 ```
 
-For more on the SQS processing pattern, see [triggering Lambda from SQS queues](https://oneuptime.com/blog/post/trigger-lambda-sqs-queues/view).
+For more on the SQS processing pattern, see [triggering Lambda from SQS queues](https://oneuptime.com/blog/post/2026-02-12-trigger-lambda-sqs-queues/view).
 
 ## Monitoring Scheduled Functions
 
@@ -322,7 +322,7 @@ Scheduled functions are easy to forget about until they stop working. Set up mon
 2. Create an alarm on `Errors`. Scheduled functions should have a near-zero error rate.
 3. Monitor `Duration` to catch performance degradation before it becomes a timeout.
 
-For more detailed monitoring approaches, see our guide on [debugging Lambda with CloudWatch Logs](https://oneuptime.com/blog/post/debug-lambda-functions-cloudwatch-logs/view).
+For more detailed monitoring approaches, see our guide on [debugging Lambda with CloudWatch Logs](https://oneuptime.com/blog/post/2026-02-12-debug-lambda-functions-cloudwatch-logs/view).
 
 ## Timezone Considerations
 

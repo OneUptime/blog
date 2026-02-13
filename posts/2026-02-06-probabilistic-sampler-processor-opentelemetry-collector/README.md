@@ -594,4 +594,4 @@ This makes it ideal for high-throughput scenarios where tail sampling would be t
 
 Probabilistic sampling provides a simple, efficient way to reduce trace volume while maintaining trace completeness. It works deterministically based on trace IDs, ensuring consistent sampling decisions across distributed systems without memory overhead or latency.
 
-For more advanced sampling strategies, see our guide on [tail sampling](https://oneuptime.com/blog/post/tail-sampling-processor-opentelemetry-collector/view). To understand the traces being sampled, check out [traces and spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view).
+For more advanced sampling strategies, see our guide on [tail sampling](https://oneuptime.com/blog/post/2026-02-06-tail-sampling-processor-opentelemetry-collector/view). To understand the traces being sampled, check out [traces and spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view).

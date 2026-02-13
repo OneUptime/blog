@@ -440,7 +440,7 @@ aws synthetics delete-canary --name api-health-check
 
 **Keep canaries independent**: Each canary should be able to run independently without depending on the output of another canary.
 
-For more on monitoring with Synthetics, see our guide on [monitoring website availability with CloudWatch Synthetics](https://oneuptime.com/blog/post/monitor-website-availability-with-cloudwatch-synthetics/view).
+For more on monitoring with Synthetics, see our guide on [monitoring website availability with CloudWatch Synthetics](https://oneuptime.com/blog/post/2026-02-12-monitor-website-availability-with-cloudwatch-synthetics/view).
 
 ## Wrapping Up
 

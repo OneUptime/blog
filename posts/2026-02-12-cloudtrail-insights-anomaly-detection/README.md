@@ -224,7 +224,7 @@ Top contributors:
 
 Insights isn't free. You're charged per 100,000 events analyzed, currently at $0.35 per 100,000 management events. For most accounts, this works out to a few dollars a month. But if you've got a very high volume of management events, do the math first.
 
-You can check how many management events you generate by looking at your CloudTrail event history or [querying your logs with Athena](https://oneuptime.com/blog/post/query-cloudtrail-logs-athena/view).
+You can check how many management events you generate by looking at your CloudTrail event history or [querying your logs with Athena](https://oneuptime.com/blog/post/2026-02-12-query-cloudtrail-logs-athena/view).
 
 ## Limitations to Know About
 
@@ -240,8 +240,8 @@ Insights has some real limitations:
 
 Insights works best as one layer in a broader detection strategy. Combine it with:
 
-- [CloudWatch alarms for specific CloudTrail events](https://oneuptime.com/blog/post/alerts-specific-cloudtrail-events/view) to catch known-bad patterns
-- [GuardDuty](https://oneuptime.com/blog/post/enable-guardduty-threat-detection/view) for threat detection based on CloudTrail, VPC Flow Logs, and DNS logs
-- [Security Hub](https://oneuptime.com/blog/post/enable-aws-security-hub/view) to centralize all findings in one place
+- [CloudWatch alarms for specific CloudTrail events](https://oneuptime.com/blog/post/2026-02-12-alerts-specific-cloudtrail-events/view) to catch known-bad patterns
+- [GuardDuty](https://oneuptime.com/blog/post/2026-02-12-enable-guardduty-threat-detection/view) for threat detection based on CloudTrail, VPC Flow Logs, and DNS logs
+- [Security Hub](https://oneuptime.com/blog/post/2026-02-12-enable-aws-security-hub/view) to centralize all findings in one place
 
 No single tool catches everything. But Insights fills a useful gap by detecting the unknown-unknowns - the anomalies you didn't know to write rules for.

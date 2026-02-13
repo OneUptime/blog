@@ -240,6 +240,6 @@ aws emr add-tags \
   --tags Key=Environment,Value=Production Key=Team,Value=DataEngineering Key=CostCenter,Value=Analytics
 ```
 
-Set up a budget alert so you don't get surprised at the end of the month. And if you're monitoring your infrastructure with OneUptime, you can set up alerts that correlate Spot interruptions with job performance - check out our guide on [setting up EMR clusters](https://oneuptime.com/blog/post/set-up-amazon-emr-clusters/view) for more details on monitoring.
+Set up a budget alert so you don't get surprised at the end of the month. And if you're monitoring your infrastructure with OneUptime, you can set up alerts that correlate Spot interruptions with job performance - check out our guide on [setting up EMR clusters](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-emr-clusters/view) for more details on monitoring.
 
 Spot Instances are one of the easiest ways to cut your EMR bill in half. The key is treating them as expendable compute - put them in task groups, diversify your instance types, and make sure your Spark configuration can handle interruptions gracefully. Do that, and you'll wonder why you were ever paying full price.

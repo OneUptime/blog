@@ -275,7 +275,7 @@ Check certificate expiration dates in the Azure AD SAML configuration screen and
 
 **"User is not assigned to a role"** - User assignment is required but the user isn't assigned to the enterprise app. Either assign them or disable the assignment requirement.
 
-For Okta-based SAML federation, see [Cognito SAML federation with Okta](https://oneuptime.com/blog/post/cognito-saml-federation-okta/view).
+For Okta-based SAML federation, see [Cognito SAML federation with Okta](https://oneuptime.com/blog/post/2026-02-12-cognito-saml-federation-okta/view).
 
 ## Summary
 

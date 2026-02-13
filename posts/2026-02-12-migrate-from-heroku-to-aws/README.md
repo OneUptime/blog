@@ -148,7 +148,7 @@ pg_restore --verbose --clean --no-acl --no-owner \
   heroku_backup.dump
 ```
 
-For zero-downtime migration, use AWS DMS for continuous replication. See our [DMS migration guide](https://oneuptime.com/blog/post/migrate-databases-to-aws-with-dms/view).
+For zero-downtime migration, use AWS DMS for continuous replication. See our [DMS migration guide](https://oneuptime.com/blog/post/2026-02-12-migrate-databases-to-aws-with-dms/view).
 
 ## Step 3: Migrate Redis
 
@@ -369,7 +369,7 @@ Update DNS to point from Heroku to AWS:
 
 ## Monitoring After Migration
 
-Heroku's built-in metrics dashboard gets replaced by CloudWatch. For a more comprehensive monitoring solution that covers application performance, uptime, and incident management, check out [OneUptime](https://oneuptime.com/blog/post/migrate-from-on-premises-to-aws-step-by-step/view).
+Heroku's built-in metrics dashboard gets replaced by CloudWatch. For a more comprehensive monitoring solution that covers application performance, uptime, and incident management, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-12-migrate-from-on-premises-to-aws-step-by-step/view).
 
 ## Wrapping Up
 

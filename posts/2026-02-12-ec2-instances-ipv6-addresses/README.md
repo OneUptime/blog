@@ -248,7 +248,7 @@ resource "aws_instance" "ipv6_instance" {
 }
 ```
 
-For more Terraform patterns with EC2, check out our guide on [creating EC2 instances with Terraform](https://oneuptime.com/blog/post/create-ec2-instance-terraform/view).
+For more Terraform patterns with EC2, check out our guide on [creating EC2 instances with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-ec2-instance-terraform/view).
 
 ## IPv6-Only Instances
 

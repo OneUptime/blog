@@ -316,4 +316,4 @@ Total items to review:      {total_items}
     return report
 ```
 
-Regular cleanup keeps your IAM environment lean, auditable, and secure. Pair it with [credential reports](https://oneuptime.com/blog/post/audit-iam-users-roles-credential-reports/view) and [access key rotation](https://oneuptime.com/blog/post/rotate-iam-access-keys-safely/view) for a complete IAM hygiene program.
+Regular cleanup keeps your IAM environment lean, auditable, and secure. Pair it with [credential reports](https://oneuptime.com/blog/post/2026-02-12-audit-iam-users-roles-credential-reports/view) and [access key rotation](https://oneuptime.com/blog/post/2026-02-12-rotate-iam-access-keys-safely/view) for a complete IAM hygiene program.

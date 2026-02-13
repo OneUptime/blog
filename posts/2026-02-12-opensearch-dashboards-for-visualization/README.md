@@ -384,6 +384,6 @@ curl -XPOST "https://vpc-other-domain.us-east-1.es.amazonaws.com/_dashboards/api
   -F file=@dashboard-export.ndjson
 ```
 
-For more on getting data into OpenSearch for visualization, check out our guide on [indexing data into Amazon OpenSearch](https://oneuptime.com/blog/post/index-data-into-amazon-opensearch/view). And for setting up the streaming pipeline that feeds your dashboards, see [Kinesis Firehose delivery to OpenSearch](https://oneuptime.com/blog/post/kinesis-firehose-data-delivery-to-opensearch/view).
+For more on getting data into OpenSearch for visualization, check out our guide on [indexing data into Amazon OpenSearch](https://oneuptime.com/blog/post/2026-02-12-index-data-into-amazon-opensearch/view). And for setting up the streaming pipeline that feeds your dashboards, see [Kinesis Firehose delivery to OpenSearch](https://oneuptime.com/blog/post/2026-02-12-kinesis-firehose-data-delivery-to-opensearch/view).
 
 OpenSearch Dashboards is powerful once you invest time in building the right visualizations. Start with a few key metrics, iterate based on what your team actually looks at, and resist the urge to put everything on a single dashboard. Focused dashboards that answer specific questions are far more useful than cluttered ones that try to show everything.

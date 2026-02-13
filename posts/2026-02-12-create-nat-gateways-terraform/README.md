@@ -346,7 +346,7 @@ resource "aws_cloudwatch_log_group" "flow_log" {
 }
 ```
 
-For more on setting up CloudWatch monitoring, check out our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/create-cloudwatch-alarms-terraform/view).
+For more on setting up CloudWatch monitoring, check out our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-terraform/view).
 
 ## Outputs
 

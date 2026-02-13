@@ -285,7 +285,7 @@ resource "aws_cognito_user_pool" "main" {
 
 ## Next Steps
 
-Once your User Pool is created, you'll need to set up several additional pieces. For the sign-up and sign-in flow configuration, see [configuring Cognito User Pool sign-up and sign-in](https://oneuptime.com/blog/post/configure-cognito-user-pool-sign-up-sign-in/view). You'll also want to [configure password policies](https://oneuptime.com/blog/post/configure-cognito-password-policies/view) and [set up email and phone verification](https://oneuptime.com/blog/post/email-phone-verification-cognito/view).
+Once your User Pool is created, you'll need to set up several additional pieces. For the sign-up and sign-in flow configuration, see [configuring Cognito User Pool sign-up and sign-in](https://oneuptime.com/blog/post/2026-02-12-configure-cognito-user-pool-sign-up-sign-in/view). You'll also want to [configure password policies](https://oneuptime.com/blog/post/2026-02-12-configure-cognito-password-policies/view) and [set up email and phone verification](https://oneuptime.com/blog/post/2026-02-12-email-phone-verification-cognito/view).
 
 ## Summary
 

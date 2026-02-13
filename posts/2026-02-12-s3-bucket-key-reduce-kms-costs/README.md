@@ -238,7 +238,7 @@ You can track your actual KMS costs before and after enabling Bucket Keys using 
 
 2. **CloudTrail logging changes** - With Bucket Keys, CloudTrail KMS events show the bucket ARN as the resource instead of the object ARN. This changes how you audit KMS usage.
 
-3. **Cross-account considerations** - Bucket Keys work fine with cross-account access, but the KMS key policy must allow the bucket's account. For more on cross-account setups, see our guide on [cross-account S3 bucket access](https://oneuptime.com/blog/post/cross-account-s3-bucket-access/view).
+3. **Cross-account considerations** - Bucket Keys work fine with cross-account access, but the KMS key policy must allow the bucket's account. For more on cross-account setups, see our guide on [cross-account S3 bucket access](https://oneuptime.com/blog/post/2026-02-12-cross-account-s3-bucket-access/view).
 
 4. **Replication** - Bucket Key settings are not replicated. You need to configure Bucket Keys separately on both source and destination buckets.
 

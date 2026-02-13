@@ -160,7 +160,7 @@ aws iam attach-group-policy \
   --policy-arn arn:aws:iam::123456789012:policy/DeveloperAccess
 ```
 
-This is much better than giving developers full access to everything. They can only manage EC2 instances tagged as "development" and S3 buckets with the "dev-" prefix. For more on writing precise policies, see our guide on [creating custom IAM policies from scratch](https://oneuptime.com/blog/post/create-custom-iam-policies-from-scratch/view).
+This is much better than giving developers full access to everything. They can only manage EC2 instances tagged as "development" and S3 buckets with the "dev-" prefix. For more on writing precise policies, see our guide on [creating custom IAM policies from scratch](https://oneuptime.com/blog/post/2026-02-12-create-custom-iam-policies-from-scratch/view).
 
 ## Managing Groups with Terraform
 

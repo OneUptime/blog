@@ -36,7 +36,7 @@ Look at the pattern:
 
 ## Step 2: Check Enhanced Monitoring
 
-If you have [Enhanced Monitoring](https://oneuptime.com/blog/post/enable-rds-enhanced-monitoring/view) enabled, it gives you a much more detailed view of what's consuming CPU:
+If you have [Enhanced Monitoring](https://oneuptime.com/blog/post/2026-02-12-enable-rds-enhanced-monitoring/view) enabled, it gives you a much more detailed view of what's consuming CPU:
 
 ```bash
 # Check the process list from Enhanced Monitoring logs
@@ -58,7 +58,7 @@ Also check the process list. Is it the database engine consuming CPU, or somethi
 
 ## Step 3: Identify the Problematic Queries
 
-This is where [Performance Insights](https://oneuptime.com/blog/post/monitor-rds-with-performance-insights/view) shines. Open it and look at the Top SQL tab during the high CPU period.
+This is where [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view) shines. Open it and look at the Top SQL tab during the high CPU period.
 
 If you don't have Performance Insights, you can query the database directly.
 
@@ -256,6 +256,6 @@ Scaling up buys you time but doesn't fix the underlying problem. Always follow u
 
 ## Step 5: Prevent Future Issues
 
-Set up [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view) at a lower threshold (70%) to catch CPU trends before they become critical. Enable Performance Insights if you haven't already - it makes future troubleshooting dramatically faster. And consider adding slow query logging so you can proactively identify queries that need optimization before they cause problems.
+Set up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view) at a lower threshold (70%) to catch CPU trends before they become critical. Enable Performance Insights if you haven't already - it makes future troubleshooting dramatically faster. And consider adding slow query logging so you can proactively identify queries that need optimization before they cause problems.
 
 High CPU is almost always a symptom, not the disease. The disease is usually an unoptimized query or a missing index. Fix the root cause and the CPU issue goes away on its own.

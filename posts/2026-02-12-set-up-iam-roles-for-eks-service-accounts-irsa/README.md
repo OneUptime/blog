@@ -37,7 +37,7 @@ sequenceDiagram
 
 You'll need:
 
-- An EKS cluster (see our [cluster creation guide](https://oneuptime.com/blog/post/create-eks-cluster-with-eksctl/view))
+- An EKS cluster (see our [cluster creation guide](https://oneuptime.com/blog/post/2026-02-12-create-eks-cluster-with-eksctl/view))
 - AWS CLI v2 and kubectl configured
 - eksctl installed (makes IRSA setup much simpler)
 

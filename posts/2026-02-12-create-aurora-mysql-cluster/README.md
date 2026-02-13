@@ -278,7 +278,7 @@ A typical Aurora failover completes in 15-30 seconds.
 
 ## Setting Up Monitoring
 
-Set up [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view) for your Aurora cluster. Aurora has additional metrics beyond standard RDS:
+Set up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view) for your Aurora cluster. Aurora has additional metrics beyond standard RDS:
 
 ```bash
 # Alert on Aurora-specific metrics
@@ -309,4 +309,4 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:db-alerts
 ```
 
-For a deeper understanding of how Aurora handles storage and replication under the hood, check out our post on [Aurora architecture and storage](https://oneuptime.com/blog/post/understand-aurora-architecture-and-storage/view). And if you need to add more read capacity later, see our guide on [setting up Aurora read replicas](https://oneuptime.com/blog/post/set-up-aurora-read-replicas/view).
+For a deeper understanding of how Aurora handles storage and replication under the hood, check out our post on [Aurora architecture and storage](https://oneuptime.com/blog/post/2026-02-12-understand-aurora-architecture-and-storage/view). And if you need to add more read capacity later, see our guide on [setting up Aurora read replicas](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-read-replicas/view).

@@ -287,7 +287,7 @@ Set up alarms for:
 - `ActiveControllerCount` != 1
 - `OfflinePartitionsCount` > 0
 
-For security configuration, check out our guide on [configuring MSK cluster security](https://oneuptime.com/blog/post/configure-msk-cluster-security/view). For a comparison with Kinesis, see [Kinesis vs Kafka comparison](https://oneuptime.com/blog/post/compare-kinesis-vs-kafka-msk/view).
+For security configuration, check out our guide on [configuring MSK cluster security](https://oneuptime.com/blog/post/2026-02-12-configure-msk-cluster-security/view). For a comparison with Kinesis, see [Kinesis vs Kafka comparison](https://oneuptime.com/blog/post/2026-02-12-compare-kinesis-vs-kafka-msk/view).
 
 ## Scaling
 

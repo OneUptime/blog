@@ -370,7 +370,7 @@ exports.handler = async (event) => {
 };
 ```
 
-For distributed tracing beyond logs, check out our guide on [enabling X-Ray tracing for Lambda](https://oneuptime.com/blog/post/enable-xray-tracing-lambda-functions/view).
+For distributed tracing beyond logs, check out our guide on [enabling X-Ray tracing for Lambda](https://oneuptime.com/blog/post/2026-02-12-enable-xray-tracing-lambda-functions/view).
 
 ## Using Powertools for AWS Lambda
 

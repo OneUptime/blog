@@ -254,6 +254,6 @@ aws ec2 associate-vpc-cidr-block \
   --amazon-provided-ipv6-cidr-block
 ```
 
-Remember to update your security groups and NACLs as you enable IPv6 on each subnet, or IPv6 traffic will be blocked by the default deny rules. For security group details, see https://oneuptime.com/blog/post/security-groups-stateful-filtering/view.
+Remember to update your security groups and NACLs as you enable IPv6 on each subnet, or IPv6 traffic will be blocked by the default deny rules. For security group details, see https://oneuptime.com/blog/post/2026-02-12-security-groups-stateful-filtering/view.
 
 IPv6 is the future of networking, and AWS makes it straightforward to adopt. Start with new VPCs as dual-stack, and migrate existing ones incrementally. The cost savings from reducing IPv4 address usage alone make it worth the effort.

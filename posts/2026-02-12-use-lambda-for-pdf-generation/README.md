@@ -335,7 +335,7 @@ const definition = {
 };
 ```
 
-For more on Step Functions orchestration, see our guide on [chaining Lambda functions with Step Functions](https://oneuptime.com/blog/post/chain-lambda-functions-with-step-functions/view).
+For more on Step Functions orchestration, see our guide on [chaining Lambda functions with Step Functions](https://oneuptime.com/blog/post/2026-02-12-chain-lambda-functions-with-step-functions/view).
 
 ## Python Alternative
 

@@ -276,6 +276,6 @@ The lifecycle rule approach handles this automatically with `AbortIncompleteMult
 3. **Consider enabling MFA Delete** for critical buckets to prevent accidental mass deletions
 4. **Use bucket policies** to prevent unauthorized deletions
 
-If you're trying to delete the bucket itself after emptying it, check out our guide on [emptying and deleting an S3 bucket](https://oneuptime.com/blog/post/empty-and-delete-s3-bucket/view).
+If you're trying to delete the bucket itself after emptying it, check out our guide on [emptying and deleting an S3 bucket](https://oneuptime.com/blog/post/2026-02-12-empty-and-delete-s3-bucket/view).
 
-For monitoring bucket operations and catching accidental deletions early, set up alerts with [OneUptime](https://oneuptime.com) or use the S3 event notifications we covered in our [EventBridge integration guide](https://oneuptime.com/blog/post/s3-bucket-notifications-eventbridge/view).
+For monitoring bucket operations and catching accidental deletions early, set up alerts with [OneUptime](https://oneuptime.com) or use the S3 event notifications we covered in our [EventBridge integration guide](https://oneuptime.com/blog/post/2026-02-12-s3-bucket-notifications-eventbridge/view).

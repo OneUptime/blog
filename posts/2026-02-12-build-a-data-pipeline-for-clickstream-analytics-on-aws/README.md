@@ -431,7 +431,7 @@ For a site with 10 million page views per day:
 
 Total: roughly $100-200/month for 10 million events/day. Compare that to $500-2000/month for equivalent commercial analytics tools.
 
-For monitoring the pipeline itself, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/build-a-metrics-collection-system-on-aws/view).
+For monitoring the pipeline itself, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-metrics-collection-system-on-aws/view).
 
 ## Wrapping Up
 

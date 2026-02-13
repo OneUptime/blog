@@ -265,7 +265,7 @@ aws cloudformation delete-change-set \
   --change-set-name validation-check
 ```
 
-This catches issues that no linter can - like resource name conflicts, permission errors, and service limit violations. For more on change sets, see our [change sets guide](https://oneuptime.com/blog/post/cloudformation-change-sets-safe-updates/view).
+This catches issues that no linter can - like resource name conflicts, permission errors, and service limit violations. For more on change sets, see our [change sets guide](https://oneuptime.com/blog/post/2026-02-12-cloudformation-change-sets-safe-updates/view).
 
 ## CI/CD Pipeline Integration
 

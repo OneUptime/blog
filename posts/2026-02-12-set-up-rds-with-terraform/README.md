@@ -398,4 +398,4 @@ allocated_storage  = 200
 database_name      = "myapp_production"
 ```
 
-For a deeper look at monitoring the RDS instance you just created, check out our guides on [Performance Insights](https://oneuptime.com/blog/post/monitor-rds-with-performance-insights/view) and [Enhanced Monitoring](https://oneuptime.com/blog/post/enable-rds-enhanced-monitoring/view). And if you prefer CloudFormation over Terraform, we've got a guide for [setting up RDS with CloudFormation](https://oneuptime.com/blog/post/set-up-rds-with-cloudformation/view) too.
+For a deeper look at monitoring the RDS instance you just created, check out our guides on [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view) and [Enhanced Monitoring](https://oneuptime.com/blog/post/2026-02-12-enable-rds-enhanced-monitoring/view). And if you prefer CloudFormation over Terraform, we've got a guide for [setting up RDS with CloudFormation](https://oneuptime.com/blog/post/2026-02-12-set-up-rds-with-cloudformation/view) too.

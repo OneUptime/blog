@@ -293,7 +293,7 @@ A few things I've learned from running Shield Advanced in production:
 4. **Keep emergency contacts updated.** Stale contacts mean missed notifications.
 5. **Review attack summaries monthly.** Even mitigated attacks tell you about threat patterns.
 
-For complementary protection at the application layer, consider pairing Shield Advanced with WAF rules. Check out our guide on [WAF Web ACL logging](https://oneuptime.com/blog/post/waf-web-acl-logging-security-analysis/view) for more on analyzing WAF-level security events.
+For complementary protection at the application layer, consider pairing Shield Advanced with WAF rules. Check out our guide on [WAF Web ACL logging](https://oneuptime.com/blog/post/2026-02-12-waf-web-acl-logging-security-analysis/view) for more on analyzing WAF-level security events.
 
 ## Wrapping Up
 

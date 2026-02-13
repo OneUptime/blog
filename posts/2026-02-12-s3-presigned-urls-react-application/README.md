@@ -388,4 +388,4 @@ const command = new PutObjectCommand({
 
 For monitoring your upload pipeline - tracking success rates, upload latency, and error rates - integrate with [OneUptime](https://oneuptime.com) to get visibility into the end-to-end flow.
 
-For the backend streaming patterns that complement this frontend approach, see our guide on [streaming large files from S3 in Node.js](https://oneuptime.com/blog/post/stream-large-files-s3-nodejs/view).
+For the backend streaming patterns that complement this frontend approach, see our guide on [streaming large files from S3 in Node.js](https://oneuptime.com/blog/post/2026-02-12-stream-large-files-s3-nodejs/view).

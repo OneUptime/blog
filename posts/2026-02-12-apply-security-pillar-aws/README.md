@@ -70,7 +70,7 @@ resource "aws_ssoadmin_permission_set" "developer" {
 }
 ```
 
-**Apply least privilege everywhere.** For a deep dive on this topic, see our post on [implementing the principle of least privilege on AWS](https://oneuptime.com/blog/post/implement-principle-least-privilege-aws/view). The short version: start with no permissions and add only what's needed. Use IAM Access Analyzer to identify unused permissions.
+**Apply least privilege everywhere.** For a deep dive on this topic, see our post on [implementing the principle of least privilege on AWS](https://oneuptime.com/blog/post/2026-02-12-implement-principle-least-privilege-aws/view). The short version: start with no permissions and add only what's needed. Use IAM Access Analyzer to identify unused permissions.
 
 **Enforce MFA.** Require MFA for all human access, especially console access and sensitive API calls:
 

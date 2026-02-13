@@ -321,4 +321,4 @@ print(f"IPv6: {ipv6_count} ({ipv6_count/total*100:.1f}%)")
 
 **WAF rules not matching IPv6**: If you use AWS WAF with your distribution, make sure your IP set rules include IPv6 CIDRs where appropriate.
 
-Dual-stack is a straightforward configuration that's worth enabling on every CloudFront distribution. There's no downside - IPv4 users are unaffected, and IPv6 users get a better experience. For more CloudFront optimization, see our guide on [Origin Shield](https://oneuptime.com/blog/post/cloudfront-origin-shield-cache-optimization/view).
+Dual-stack is a straightforward configuration that's worth enabling on every CloudFront distribution. There's no downside - IPv4 users are unaffected, and IPv6 users get a better experience. For more CloudFront optimization, see our guide on [Origin Shield](https://oneuptime.com/blog/post/2026-02-12-cloudfront-origin-shield-cache-optimization/view).

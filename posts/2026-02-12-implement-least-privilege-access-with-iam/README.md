@@ -161,7 +161,7 @@ Conditions add another dimension of restriction:
 }
 ```
 
-This policy allows instance management only in development environments and requires MFA for destructive actions. For more on conditions, see our guides on [IP-based access](https://oneuptime.com/blog/post/write-iam-policy-conditions-for-ip-based-access/view), [MFA requirements](https://oneuptime.com/blog/post/write-iam-policy-conditions-for-mfa-requirements/view), and [tag-based access control](https://oneuptime.com/blog/post/write-iam-policy-conditions-for-tag-based-access-control/view).
+This policy allows instance management only in development environments and requires MFA for destructive actions. For more on conditions, see our guides on [IP-based access](https://oneuptime.com/blog/post/2026-02-12-write-iam-policy-conditions-for-ip-based-access/view), [MFA requirements](https://oneuptime.com/blog/post/2026-02-12-write-iam-policy-conditions-for-mfa-requirements/view), and [tag-based access control](https://oneuptime.com/blog/post/2026-02-12-write-iam-policy-conditions-for-tag-based-access-control/view).
 
 ## Strategy 5: Separate Roles for Different Tasks
 
@@ -236,7 +236,7 @@ Even if your IAM policies are broader than ideal, permission boundaries cap the 
 }
 ```
 
-Attach this as a boundary and no matter what policies users create for their roles, those roles can never access services outside this list. For details, see our guide on [setting up IAM permission boundaries](https://oneuptime.com/blog/post/set-up-iam-permission-boundaries/view).
+Attach this as a boundary and no matter what policies users create for their roles, those roles can never access services outside this list. For details, see our guide on [setting up IAM permission boundaries](https://oneuptime.com/blog/post/2026-02-12-set-up-iam-permission-boundaries/view).
 
 ## Monitoring and Continuous Improvement
 

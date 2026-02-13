@@ -96,7 +96,7 @@ Solutions:
 3. Fix the memory leak in your application
 4. Set appropriate JVM heap sizes if running Java
 
-For a deep dive on OOM issues, see our guide on [troubleshooting ECS out-of-memory errors](https://oneuptime.com/blog/post/troubleshoot-ecs-out-of-memory-errors/view).
+For a deep dive on OOM issues, see our guide on [troubleshooting ECS out-of-memory errors](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-ecs-out-of-memory-errors/view).
 
 ## Image Pull Failures
 
@@ -207,7 +207,7 @@ Common issues:
 - **Wrong health check endpoint** - The endpoint doesn't exist or returns an error
 - **Port mismatch** - The health check is hitting the wrong port
 
-For more details, see our post on [troubleshooting ECS container health check failures](https://oneuptime.com/blog/post/troubleshoot-ecs-container-health-check-failures/view).
+For more details, see our post on [troubleshooting ECS container health check failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-ecs-container-health-check-failures/view).
 
 ## IAM Permission Failures
 
@@ -261,4 +261,4 @@ When you hit a task failure, work through this checklist:
 
 ECS task failures are frustrating, but they're rarely mysterious once you know where to look. The stopped reason tells you the category, the exit code tells you the type, and the logs tell you the specifics.
 
-Build the habit of checking these systematically instead of guessing. And set up proper monitoring so you catch failures early - our guide on [monitoring ECS tasks with CloudWatch metrics](https://oneuptime.com/blog/post/monitor-ecs-tasks-cloudwatch-metrics/view) will help you get that in place.
+Build the habit of checking these systematically instead of guessing. And set up proper monitoring so you catch failures early - our guide on [monitoring ECS tasks with CloudWatch metrics](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-tasks-cloudwatch-metrics/view) will help you get that in place.

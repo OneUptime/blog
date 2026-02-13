@@ -289,4 +289,4 @@ After working with Q across several deployments, here's what makes the biggest d
 - **Regularly review the Q feedback.** The QuickSight console shows which questions Q answered poorly. Use this to improve your topic configuration.
 - **Don't overload a single topic.** If you have sales data and support data, create separate Q topics. Mixing unrelated data confuses both Q and your users.
 
-QuickSight Q isn't going to replace a data analyst, but it handles the "quick question" use cases that usually end up as ad-hoc SQL requests or Slack messages to the analytics team. When it works well, it genuinely saves time. For the broader QuickSight setup, see our [QuickSight setup guide](https://oneuptime.com/blog/post/set-up-amazon-quicksight-for-business-intelligence/view).
+QuickSight Q isn't going to replace a data analyst, but it handles the "quick question" use cases that usually end up as ad-hoc SQL requests or Slack messages to the analytics team. When it works well, it genuinely saves time. For the broader QuickSight setup, see our [QuickSight setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-quicksight-for-business-intelligence/view).

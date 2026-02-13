@@ -476,4 +476,4 @@ kubectl taint nodes gpu-1 hardware=gpu:NoSchedule
 
 This ensures pods schedule on specific GPU models.
 
-Taints transform uniform node pools into specialized infrastructure. Mark nodes for GPUs, databases, or critical workloads, then use tolerations to grant access selectively. This optimizes resource utilization, reduces costs, and ensures workloads run on appropriate hardware. For more scheduling control, see https://oneuptime.com/blog/post/kubectl-describe-debugging/view for debugging node assignment issues.
+Taints transform uniform node pools into specialized infrastructure. Mark nodes for GPUs, databases, or critical workloads, then use tolerations to grant access selectively. This optimizes resource utilization, reduces costs, and ensures workloads run on appropriate hardware. For more scheduling control, see https://oneuptime.com/blog/post/2026-01-25-kubectl-describe-debugging/view for debugging node assignment issues.

@@ -797,7 +797,7 @@ Key metrics to monitor:
 
 ## Integration with Other Connectors
 
-The Routing Connector works well with other connectors. Combine it with the Failover Connector at https://oneuptime.com/blog/post/failover-connector-opentelemetry-collector/view for resilient multi-tenant routing, or use it alongside the Count Connector at https://oneuptime.com/blog/post/count-connector-opentelemetry-collector/view to track routing patterns.
+The Routing Connector works well with other connectors. Combine it with the Failover Connector at https://oneuptime.com/blog/post/2026-02-06-failover-connector-opentelemetry-collector/view for resilient multi-tenant routing, or use it alongside the Count Connector at https://oneuptime.com/blog/post/2026-02-06-count-connector-opentelemetry-collector/view to track routing patterns.
 
 ## Best Practices
 

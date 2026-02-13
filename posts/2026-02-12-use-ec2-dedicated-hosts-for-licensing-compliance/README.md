@@ -233,7 +233,7 @@ aws ec2 modify-hosts \
 
 With host recovery enabled, if the underlying hardware fails, AWS automatically migrates your instances to a new Dedicated Host. The instance retains its ID, IP address, and EBS volumes. This is important for licensing because the host ID changes, which you'll need to document for audit purposes.
 
-For a broader look at EC2 availability strategies, check out [setting up multi-AZ deployments](https://oneuptime.com/blog/post/set-up-multi-az-ec2-deployments-for-high-availability/view).
+For a broader look at EC2 availability strategies, check out [setting up multi-AZ deployments](https://oneuptime.com/blog/post/2026-02-12-set-up-multi-az-ec2-deployments-for-high-availability/view).
 
 ## Audit-Ready Documentation
 

@@ -533,7 +533,7 @@ service:
       exporters: [otlp/metrics]
 ```
 
-Learn more about generating RED metrics at https://oneuptime.com/blog/post/span-metrics-connector-red-metrics/view.
+Learn more about generating RED metrics at https://oneuptime.com/blog/post/2026-02-06-span-metrics-connector-red-metrics/view.
 
 ## Production Configuration
 
@@ -704,7 +704,7 @@ High unmatched spans may indicate:
 
 ## Integration with Other Connectors
 
-The Service Graph Connector works well with other OpenTelemetry connectors. Use it alongside the Routing Connector at https://oneuptime.com/blog/post/routing-connector-opentelemetry-collector/view for multi-tenant service graphs, or combine it with the Count Connector at https://oneuptime.com/blog/post/count-connector-opentelemetry-collector/view to track service interaction volumes.
+The Service Graph Connector works well with other OpenTelemetry connectors. Use it alongside the Routing Connector at https://oneuptime.com/blog/post/2026-02-06-routing-connector-opentelemetry-collector/view for multi-tenant service graphs, or combine it with the Count Connector at https://oneuptime.com/blog/post/2026-02-06-count-connector-opentelemetry-collector/view to track service interaction volumes.
 
 ## Best Practices
 

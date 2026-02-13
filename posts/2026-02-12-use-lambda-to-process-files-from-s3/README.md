@@ -289,7 +289,7 @@ aws lambda put-function-event-invoke-config \
   }'
 ```
 
-For more on Lambda error handling, see our guide on [handling errors in Lambda functions gracefully](https://oneuptime.com/blog/post/handle-errors-in-lambda-functions-gracefully/view).
+For more on Lambda error handling, see our guide on [handling errors in Lambda functions gracefully](https://oneuptime.com/blog/post/2026-02-12-handle-errors-in-lambda-functions-gracefully/view).
 
 ## Processing Different File Types
 

@@ -311,4 +311,4 @@ Resources:
 
 The key principle is simple: every resource should only accept traffic from the resource directly in front of it in the request path. Security group referencing makes this easy - you reference the upstream security group instead of IP addresses, and the rules stay correct even as instances scale up and down.
 
-For an additional layer of protection at the subnet level, combine security groups with [Network ACLs](https://oneuptime.com/blog/post/network-acls-subnet-level-security/view). And to understand how security group referencing works in depth, check out our post on [layered security with security group referencing](https://oneuptime.com/blog/post/security-group-referencing-layered-security/view).
+For an additional layer of protection at the subnet level, combine security groups with [Network ACLs](https://oneuptime.com/blog/post/2026-02-12-network-acls-subnet-level-security/view). And to understand how security group referencing works in depth, check out our post on [layered security with security group referencing](https://oneuptime.com/blog/post/2026-02-12-security-group-referencing-layered-security/view).

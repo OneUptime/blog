@@ -311,7 +311,7 @@ For a service running 2 Fargate tasks with 0.25 vCPU and 512 MB memory:
 - Per month (2 tasks, 24/7): roughly $17-18
 - Plus ALB: roughly $16/month base + data processing charges
 
-That's a production-ready API with load balancing, health checks, and auto-restart for under $35/month. Compare that with running and managing EC2 instances yourself. For a detailed comparison, see our post on [choosing between Fargate and EC2](https://oneuptime.com/blog/post/choose-ecs-fargate-ec2/view).
+That's a production-ready API with load balancing, health checks, and auto-restart for under $35/month. Compare that with running and managing EC2 instances yourself. For a detailed comparison, see our post on [choosing between Fargate and EC2](https://oneuptime.com/blog/post/2026-02-12-choose-ecs-fargate-ec2/view).
 
 ## Wrapping Up
 

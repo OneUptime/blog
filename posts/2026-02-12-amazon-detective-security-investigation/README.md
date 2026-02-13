@@ -319,7 +319,7 @@ aws detective update-datasource-packages \
 2. **Start from GuardDuty findings.** Detective works best when you begin with a specific finding and expand from there.
 3. **Use the console for visual investigation.** The API is useful for automation, but the console's graph visualization is where Detective really shines.
 4. **Document your investigations.** Tag investigations with outcomes for future reference.
-5. **Combine with other security services.** Use Detective alongside Security Hub for centralized findings and [Inspector for vulnerability context](https://oneuptime.com/blog/post/amazon-inspector-ec2-vulnerability-scanning/view).
+5. **Combine with other security services.** Use Detective alongside Security Hub for centralized findings and [Inspector for vulnerability context](https://oneuptime.com/blog/post/2026-02-12-amazon-inspector-ec2-vulnerability-scanning/view).
 
 ## Wrapping Up
 

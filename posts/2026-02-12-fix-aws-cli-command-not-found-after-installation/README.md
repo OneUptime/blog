@@ -223,4 +223,4 @@ aws --version
 6. Check for v1/v2 conflicts
 7. If all else fails, do a clean reinstall
 
-The "command not found" error is almost always a PATH issue. Once you know where the binary is and make sure your PATH includes that location, you're good to go. For getting started with configuration after installation, see our guide on [fixing CLI profile issues](https://oneuptime.com/blog/post/fix-aws-cli-profile-configuration-issues/view).
+The "command not found" error is almost always a PATH issue. Once you know where the binary is and make sure your PATH includes that location, you're good to go. For getting started with configuration after installation, see our guide on [fixing CLI profile issues](https://oneuptime.com/blog/post/2026-02-12-fix-aws-cli-profile-configuration-issues/view).

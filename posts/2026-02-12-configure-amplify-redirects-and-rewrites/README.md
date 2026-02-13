@@ -319,7 +319,7 @@ curl -I https://your-app.amplifyapp.com/some-spa-route
 
 **Maximum rules**: Amplify supports up to 200 redirect and rewrite rules. If you need more, consider handling redirects in your application code or using CloudFront functions.
 
-For related Amplify configurations, check out our guide on [setting up custom headers and cache control](https://oneuptime.com/blog/post/set-up-amplify-custom-headers-and-cache-control/view).
+For related Amplify configurations, check out our guide on [setting up custom headers and cache control](https://oneuptime.com/blog/post/2026-02-12-set-up-amplify-custom-headers-and-cache-control/view).
 
 ## Wrapping Up
 

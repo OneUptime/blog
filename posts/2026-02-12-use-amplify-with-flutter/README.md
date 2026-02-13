@@ -569,4 +569,4 @@ platform :ios, '13.0'
 
 ## Wrapping Up
 
-Amplify for Flutter gives you a production-ready cloud backend with native Dart APIs. The plugin system is modular, so you only include what you need. For iOS-specific integration, check out our guide on [Amplify with Swift](https://oneuptime.com/blog/post/use-amplify-with-swift-ios/view). For Android Kotlin projects, see [Amplify with Android Kotlin](https://oneuptime.com/blog/post/use-amplify-with-android-kotlin/view).
+Amplify for Flutter gives you a production-ready cloud backend with native Dart APIs. The plugin system is modular, so you only include what you need. For iOS-specific integration, check out our guide on [Amplify with Swift](https://oneuptime.com/blog/post/2026-02-12-use-amplify-with-swift-ios/view). For Android Kotlin projects, see [Amplify with Android Kotlin](https://oneuptime.com/blog/post/2026-02-12-use-amplify-with-android-kotlin/view).

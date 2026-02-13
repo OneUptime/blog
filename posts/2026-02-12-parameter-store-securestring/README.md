@@ -358,4 +358,4 @@ The task execution role needs:
 4. **Never log decrypted values** - Be careful not to accidentally log secrets in your application.
 5. **Version your secrets** - Parameter Store versions automatically. Use `get-parameter-history` to see who changed what.
 
-For monitoring access patterns and detecting unusual secret retrieval, [OneUptime](https://oneuptime.com) can help you build dashboards and alerts around your security events. Also check our guide on [Parameter Store hierarchies](https://oneuptime.com/blog/post/parameter-store-hierarchies-paths/view) for organizing your secrets at scale.
+For monitoring access patterns and detecting unusual secret retrieval, [OneUptime](https://oneuptime.com) can help you build dashboards and alerts around your security events. Also check our guide on [Parameter Store hierarchies](https://oneuptime.com/blog/post/2026-02-12-parameter-store-hierarchies-paths/view) for organizing your secrets at scale.

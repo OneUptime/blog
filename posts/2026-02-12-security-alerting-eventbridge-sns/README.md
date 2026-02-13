@@ -323,7 +323,7 @@ One common problem is getting too many alerts. If your EventBridge rules are too
 
 **Suppress known false positives**. If a specific automation role triggers frequent "unauthorized" events as part of normal operations, exclude it with a pattern that uses the `anything-but` matcher.
 
-For more sophisticated monitoring, you can combine this alerting pipeline with [AWS Config auto remediation](https://oneuptime.com/blog/post/aws-config-auto-remediation/view) to not just detect issues but fix them automatically.
+For more sophisticated monitoring, you can combine this alerting pipeline with [AWS Config auto remediation](https://oneuptime.com/blog/post/2026-02-12-aws-config-auto-remediation/view) to not just detect issues but fix them automatically.
 
 ## Wrapping Up
 

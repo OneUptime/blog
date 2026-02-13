@@ -297,7 +297,7 @@ If you have read replicas alongside Multi-AZ, here's what happens during failove
 - There may be a brief interruption in replication
 - Replica lag might spike temporarily after failover
 
-Read replicas are NOT promoted during failover. They're a separate feature for read scaling, not high availability. For more on read replicas, check out [creating RDS read replicas](https://oneuptime.com/blog/post/create-rds-read-replicas-read-scaling/view).
+Read replicas are NOT promoted during failover. They're a separate feature for read scaling, not high availability. For more on read replicas, check out [creating RDS read replicas](https://oneuptime.com/blog/post/2026-02-12-create-rds-read-replicas-read-scaling/view).
 
 ## Setting Up Alerting
 

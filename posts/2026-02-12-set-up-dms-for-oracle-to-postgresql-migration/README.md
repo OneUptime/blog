@@ -375,4 +375,4 @@ Migrating from Oracle to PostgreSQL is a multi-step process that involves schema
 
 Plan for at least one full test migration before the production cutover. Use the SCT assessment report to estimate the manual conversion effort, and budget time for thorough testing of application queries and stored procedures.
 
-For more on database migrations, see our guides on [DMS for MySQL to Aurora migration](https://oneuptime.com/blog/post/set-up-dms-for-mysql-to-aurora-migration/view) and [DMS for SQL Server to RDS migration](https://oneuptime.com/blog/post/set-up-dms-for-sql-server-to-rds-migration/view).
+For more on database migrations, see our guides on [DMS for MySQL to Aurora migration](https://oneuptime.com/blog/post/2026-02-12-set-up-dms-for-mysql-to-aurora-migration/view) and [DMS for SQL Server to RDS migration](https://oneuptime.com/blog/post/2026-02-12-set-up-dms-for-sql-server-to-rds-migration/view).

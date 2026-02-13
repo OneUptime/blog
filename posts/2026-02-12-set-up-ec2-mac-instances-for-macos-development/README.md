@@ -271,7 +271,7 @@ mkdir -p /Volumes/BuildStorage
 
 Since Mac instances are bare-metal, some CloudWatch metrics work differently. The default metrics (CPU, network, disk) are available, but for memory monitoring you'll need the CloudWatch agent.
 
-For a full monitoring setup, check out [installing and configuring the CloudWatch agent on EC2](https://oneuptime.com/blog/post/install-and-configure-the-cloudwatch-agent-on-ec2/view).
+For a full monitoring setup, check out [installing and configuring the CloudWatch agent on EC2](https://oneuptime.com/blog/post/2026-02-12-install-and-configure-the-cloudwatch-agent-on-ec2/view).
 
 ## Common Issues
 

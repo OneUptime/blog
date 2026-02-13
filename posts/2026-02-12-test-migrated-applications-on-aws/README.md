@@ -241,7 +241,7 @@ SELECT MD5(STRING_AGG(
 FROM orders;
 ```
 
-For a deeper dive into data validation techniques, see our post on [validating data integrity after AWS migration](https://oneuptime.com/blog/post/validate-data-integrity-after-aws-migration/view).
+For a deeper dive into data validation techniques, see our post on [validating data integrity after AWS migration](https://oneuptime.com/blog/post/2026-02-12-validate-data-integrity-after-aws-migration/view).
 
 ## Phase 5: Integration Testing
 

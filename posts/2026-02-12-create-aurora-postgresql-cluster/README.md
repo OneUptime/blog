@@ -322,4 +322,4 @@ aws rds describe-events \
 
 During failover, the cluster endpoint automatically redirects to the new writer. Your application just needs to handle brief connection errors and retry.
 
-For more on Aurora internals, see our guide on [understanding Aurora architecture and storage](https://oneuptime.com/blog/post/understand-aurora-architecture-and-storage/view). And for scaling reads, check out [setting up Aurora read replicas](https://oneuptime.com/blog/post/set-up-aurora-read-replicas/view).
+For more on Aurora internals, see our guide on [understanding Aurora architecture and storage](https://oneuptime.com/blog/post/2026-02-12-understand-aurora-architecture-and-storage/view). And for scaling reads, check out [setting up Aurora read replicas](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-read-replicas/view).

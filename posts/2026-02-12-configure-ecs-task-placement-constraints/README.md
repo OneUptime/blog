@@ -276,7 +276,7 @@ aws ecs create-service \
   ]'
 ```
 
-For a detailed guide on strategies, see [configuring ECS task placement strategies](https://oneuptime.com/blog/post/configure-ecs-task-placement-strategies/view).
+For a detailed guide on strategies, see [configuring ECS task placement strategies](https://oneuptime.com/blog/post/2026-02-12-configure-ecs-task-placement-strategies/view).
 
 ## Cluster Query Language Reference
 

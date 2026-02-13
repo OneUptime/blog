@@ -337,4 +337,4 @@ Resources:
 
 Fargate task retirements are a normal part of running containers on managed infrastructure. They're not a problem to solve, but they are something you should be aware of. Setting up notifications lets you correlate application issues with infrastructure events, maintain audit trails, and track retirement patterns over time.
 
-The setup is straightforward: an EventBridge rule matching task retirement events, routed to SNS or Lambda. Once it's in place, you'll never be surprised by a task restart again. For broader monitoring, see our guide on [monitoring ECS tasks with CloudWatch metrics](https://oneuptime.com/blog/post/monitor-ecs-tasks-cloudwatch-metrics/view).
+The setup is straightforward: an EventBridge rule matching task retirement events, routed to SNS or Lambda. Once it's in place, you'll never be surprised by a task restart again. For broader monitoring, see our guide on [monitoring ECS tasks with CloudWatch metrics](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-tasks-cloudwatch-metrics/view).

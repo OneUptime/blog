@@ -37,7 +37,7 @@ You'll need:
 3. An ECS cluster with Fargate capacity
 4. Platform version 1.4.0 or later (this is the default now)
 
-If you don't have an EFS file system yet, see our guide on [creating an Amazon EFS file system](https://oneuptime.com/blog/post/amazon-efs-file-system/view).
+If you don't have an EFS file system yet, see our guide on [creating an Amazon EFS file system](https://oneuptime.com/blog/post/2026-02-12-amazon-efs-file-system/view).
 
 ## Configuring the Task Definition
 
@@ -141,7 +141,7 @@ Then reference the access point in your task definition:
 }
 ```
 
-For more on access points, check out our post on [EFS access points for application-specific access](https://oneuptime.com/blog/post/efs-access-points-application-specific-access/view).
+For more on access points, check out our post on [EFS access points for application-specific access](https://oneuptime.com/blog/post/2026-02-12-efs-access-points-application-specific-access/view).
 
 ## IAM Permissions
 

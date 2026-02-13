@@ -243,7 +243,7 @@ aws cloudfront create-distribution \
   --distribution-config file://cloudfront-config.json
 ```
 
-Then update your Route 53 records to point to CloudFront instead of S3 directly. For more details on CloudFront setup, check out our guide on [creating CloudFront distributions](https://oneuptime.com/blog/post/cloudfront-distributions-web-applications/view).
+Then update your Route 53 records to point to CloudFront instead of S3 directly. For more details on CloudFront setup, check out our guide on [creating CloudFront distributions](https://oneuptime.com/blog/post/2026-02-12-cloudfront-distributions-web-applications/view).
 
 ## Common Pitfalls
 

@@ -190,7 +190,7 @@ resource "aws_kms_alias" "secrets" {
 }
 ```
 
-For using these keys with S3, see our post on [creating S3 buckets with Terraform](https://oneuptime.com/blog/post/create-s3-buckets-with-terraform/view). For Secrets Manager, check out [creating Secrets Manager secrets with Terraform](https://oneuptime.com/blog/post/create-secrets-manager-secrets-with-terraform/view).
+For using these keys with S3, see our post on [creating S3 buckets with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-s3-buckets-with-terraform/view). For Secrets Manager, check out [creating Secrets Manager secrets with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-secrets-manager-secrets-with-terraform/view).
 
 ## Cross-Account Access
 

@@ -500,7 +500,7 @@ Resources:
 
 **Combine with AWS Config.** CloudTrail shows API calls, AWS Config tracks resource state changes. Together they give you a complete audit trail.
 
-For setting up alerts from these monitoring signals, see our guides on [SNS notifications from CloudWatch Alarms](https://oneuptime.com/blog/post/sns-notifications-cloudwatch-alarms/view) and [integrating alarms with Slack](https://oneuptime.com/blog/post/cloudwatch-alarms-slack/view).
+For setting up alerts from these monitoring signals, see our guides on [SNS notifications from CloudWatch Alarms](https://oneuptime.com/blog/post/2026-02-12-sns-notifications-cloudwatch-alarms/view) and [integrating alarms with Slack](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-slack/view).
 
 ## Wrapping Up
 

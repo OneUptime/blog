@@ -855,6 +855,6 @@ groups:
 Troubleshooting receiver issues requires a systematic approach: start with basic connectivity checks, verify configuration correctness, test with synthetic data, and monitor key metrics. Most issues fall into a few categories: network connectivity, configuration errors, authentication problems, or resource exhaustion. Use the diagnostic tools and scripts provided to quickly identify and resolve problems before they impact production observability.
 
 For more troubleshooting guides, see related posts:
-- https://oneuptime.com/blog/post/troubleshoot-collector-not-exporting-data/view
-- https://oneuptime.com/blog/post/troubleshoot-configuration-yaml-errors-collector/view
-- https://oneuptime.com/blog/post/right-size-cpu-memory-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-not-exporting-data/view
+- https://oneuptime.com/blog/post/2026-02-06-troubleshoot-configuration-yaml-errors-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-right-size-cpu-memory-opentelemetry-collector/view

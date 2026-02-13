@@ -613,7 +613,7 @@ Create custom visualizations using telemetry from the collector.
 The Azure Monitor exporter provides first-class integration between OpenTelemetry and Azure's monitoring ecosystem. By following the configuration patterns and best practices in this guide, you can build a robust observability solution that leverages the full power of Application Insights.
 
 For more information on OpenTelemetry exporters, check out these related articles:
-- https://oneuptime.com/blog/post/aws-s3-exporter-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/azure-data-explorer-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-aws-s3-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-azure-data-explorer-exporter-opentelemetry-collector/view
 
 For detailed information about the Azure Monitor exporter configuration options, refer to the official OpenTelemetry Collector documentation.

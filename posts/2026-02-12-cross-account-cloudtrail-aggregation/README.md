@@ -345,4 +345,4 @@ For a more robust monitoring setup, consider integrating your aggregated CloudTr
 
 Cross-account CloudTrail aggregation is a foundational piece of any multi-account security strategy. The organization trail approach is simpler and self-maintaining, so use it if you can. Whichever path you choose, make sure you enable log file validation, encrypt with KMS, and set up proper lifecycle policies. And don't forget to actually query and alert on those logs - collecting them without looking at them is just expensive storage.
 
-For related security setup, check out our guide on [AWS Config multi-account data aggregation](https://oneuptime.com/blog/post/aws-config-multi-account-multi-region-data-aggregation/view) to complement your CloudTrail setup with configuration compliance monitoring.
+For related security setup, check out our guide on [AWS Config multi-account data aggregation](https://oneuptime.com/blog/post/2026-02-12-aws-config-multi-account-multi-region-data-aggregation/view) to complement your CloudTrail setup with configuration compliance monitoring.

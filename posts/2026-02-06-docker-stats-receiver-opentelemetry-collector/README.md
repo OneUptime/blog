@@ -524,7 +524,7 @@ service:
       exporters: [otlp]
 ```
 
-OneUptime will automatically create dashboards and alerts for your Docker container metrics. For more information on monitoring databases alongside containers, see our guides on [PostgreSQL receiver](https://oneuptime.com/blog/post/postgresql-receiver-opentelemetry-collector/view) and [Redis receiver](https://oneuptime.com/blog/post/redis-receiver-opentelemetry-collector/view).
+OneUptime will automatically create dashboards and alerts for your Docker container metrics. For more information on monitoring databases alongside containers, see our guides on [PostgreSQL receiver](https://oneuptime.com/blog/post/2026-02-06-postgresql-receiver-opentelemetry-collector/view) and [Redis receiver](https://oneuptime.com/blog/post/2026-02-06-redis-receiver-opentelemetry-collector/view).
 
 ## Conclusion
 
@@ -532,4 +532,4 @@ The Docker Stats receiver provides comprehensive container monitoring capabiliti
 
 Start with basic configuration to understand your container workloads, then add filtering, resource detection, and custom attributes as your monitoring needs evolve. Use the collected metrics to optimize resource allocation, detect anomalies, and ensure efficient container operations.
 
-For monitoring containerized databases, explore our guides on the [MySQL receiver](https://oneuptime.com/blog/post/mysql-receiver-opentelemetry-collector/view) and [MongoDB receiver](https://oneuptime.com/blog/post/mongodb-receiver-opentelemetry-collector/view).
+For monitoring containerized databases, explore our guides on the [MySQL receiver](https://oneuptime.com/blog/post/2026-02-06-mysql-receiver-opentelemetry-collector/view) and [MongoDB receiver](https://oneuptime.com/blog/post/2026-02-06-mongodb-receiver-opentelemetry-collector/view).

@@ -305,7 +305,7 @@ option_settings:
     Period: 5
 ```
 
-This configuration adds 2 instances when the queue grows beyond 100 messages and removes 1 when it drops below 10. For more on auto scaling configuration, see our guide on [configuring Elastic Beanstalk auto scaling](https://oneuptime.com/blog/post/configure-elastic-beanstalk-auto-scaling/view).
+This configuration adds 2 instances when the queue grows beyond 100 messages and removes 1 when it drops below 10. For more on auto scaling configuration, see our guide on [configuring Elastic Beanstalk auto scaling](https://oneuptime.com/blog/post/2026-02-12-configure-elastic-beanstalk-auto-scaling/view).
 
 ## Monitoring Workers
 

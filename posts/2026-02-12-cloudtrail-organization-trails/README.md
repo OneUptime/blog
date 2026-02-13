@@ -245,8 +245,8 @@ You can also sign into a member account and run `aws cloudtrail describe-trails`
 
 ## What to Do Next
 
-Once your organization trail is running, you'll want to actually do something useful with all that data. Consider setting up [Athena queries against your CloudTrail logs](https://oneuptime.com/blog/post/query-cloudtrail-logs-athena/view) for ad-hoc investigations, or [integrate CloudTrail with CloudWatch Logs](https://oneuptime.com/blog/post/integrate-cloudtrail-cloudwatch-logs/view) for real-time alerting.
+Once your organization trail is running, you'll want to actually do something useful with all that data. Consider setting up [Athena queries against your CloudTrail logs](https://oneuptime.com/blog/post/2026-02-12-query-cloudtrail-logs-athena/view) for ad-hoc investigations, or [integrate CloudTrail with CloudWatch Logs](https://oneuptime.com/blog/post/2026-02-12-integrate-cloudtrail-cloudwatch-logs/view) for real-time alerting.
 
-For a complete security monitoring setup, you'll also want to pair this with [GuardDuty for threat detection](https://oneuptime.com/blog/post/enable-guardduty-threat-detection/view) and [AWS Security Hub](https://oneuptime.com/blog/post/enable-aws-security-hub/view) to centralize findings from across your environment.
+For a complete security monitoring setup, you'll also want to pair this with [GuardDuty for threat detection](https://oneuptime.com/blog/post/2026-02-12-enable-guardduty-threat-detection/view) and [AWS Security Hub](https://oneuptime.com/blog/post/2026-02-12-enable-aws-security-hub/view) to centralize findings from across your environment.
 
 Organization trails are the foundation of AWS security monitoring. Get this right and you've got a reliable, tamper-resistant audit log covering your entire cloud footprint.

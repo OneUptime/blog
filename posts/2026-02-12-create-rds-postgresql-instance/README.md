@@ -71,7 +71,7 @@ Source: sg-your-app-security-group
 Under "Additional configuration," there are a few PostgreSQL-specific things to configure:
 
 - **Initial database name**: Set this to your application's database name. Unlike MySQL, if you leave this blank, RDS won't create a database and you'll connect to the default `postgres` database.
-- **DB parameter group**: The default parameter group works for most cases. Key parameters you might want to tune later include `shared_buffers`, `work_mem`, and `max_connections`. See our guide on [configuring RDS parameter groups](https://oneuptime.com/blog/post/configure-rds-parameter-groups/view) for details.
+- **DB parameter group**: The default parameter group works for most cases. Key parameters you might want to tune later include `shared_buffers`, `work_mem`, and `max_connections`. See our guide on [configuring RDS parameter groups](https://oneuptime.com/blog/post/2026-02-12-configure-rds-parameter-groups/view) for details.
 - **Log exports**: Enable `postgresql` log export to CloudWatch. The PostgreSQL log captures slow queries, errors, and connection events.
 
 ## Creating via the AWS CLI

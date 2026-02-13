@@ -224,7 +224,7 @@ aws efs create-file-system \
   --tags "Key=Name,Value=elastic-storage"
 ```
 
-For more on throughput modes, see our post on [configuring EFS throughput modes](https://oneuptime.com/blog/post/efs-throughput-modes-bursting-provisioned/view).
+For more on throughput modes, see our post on [configuring EFS throughput modes](https://oneuptime.com/blog/post/2026-02-12-efs-throughput-modes-bursting-provisioned/view).
 
 ## Decision Framework
 
@@ -250,7 +250,7 @@ graph TD
 4. **Consider Elastic throughput** if your I/O pattern is spiky rather than sustained.
 5. **Test before migrating**. Create a Max I/O file system, copy a subset of data, and benchmark before committing to a full migration.
 
-For comprehensive EFS monitoring with CloudWatch, check out our guide on [monitoring EFS with CloudWatch](https://oneuptime.com/blog/post/monitor-efs-cloudwatch/view).
+For comprehensive EFS monitoring with CloudWatch, check out our guide on [monitoring EFS with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-efs-cloudwatch/view).
 
 ## Wrapping Up
 

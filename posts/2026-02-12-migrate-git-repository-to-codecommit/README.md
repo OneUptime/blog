@@ -273,4 +273,4 @@ git fetch origin
 
 Send your team a message with the new clone URL and authentication setup instructions. If you're using the credential helper method, everyone needs to have the AWS CLI configured with appropriate credentials.
 
-For setting up CI/CD after your migration, check out our guide on [creating CodeBuild projects](https://oneuptime.com/blog/post/create-aws-codebuild-projects/view) that integrates directly with CodeCommit.
+For setting up CI/CD after your migration, check out our guide on [creating CodeBuild projects](https://oneuptime.com/blog/post/2026-02-12-create-aws-codebuild-projects/view) that integrates directly with CodeCommit.

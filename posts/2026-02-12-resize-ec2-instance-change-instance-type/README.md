@@ -107,7 +107,7 @@ The stop-modify-start cycle typically takes 2-5 minutes, but plan for up to 10 m
 
 ### Use an Elastic IP
 
-Without an Elastic IP, the instance gets a new public IP after restart. DNS records, firewall rules, and anything else that references the IP will break. Assign an [Elastic IP](https://oneuptime.com/blog/post/assign-elastic-ip-address-to-ec2-instance/view) before resizing.
+Without an Elastic IP, the instance gets a new public IP after restart. DNS records, firewall rules, and anything else that references the IP will break. Assign an [Elastic IP](https://oneuptime.com/blog/post/2026-02-12-assign-elastic-ip-address-to-ec2-instance/view) before resizing.
 
 ### Notify Dependent Services
 
@@ -227,7 +227,7 @@ The recommendations include:
 - Estimated monthly savings
 - Performance risk rating
 
-For a broader perspective on instance selection, check out our guide on [choosing the right EC2 instance type](https://oneuptime.com/blog/post/choose-right-ec2-instance-type-for-your-workload/view).
+For a broader perspective on instance selection, check out our guide on [choosing the right EC2 instance type](https://oneuptime.com/blog/post/2026-02-12-choose-right-ec2-instance-type-for-your-workload/view).
 
 ## What About Zero-Downtime Resizing?
 

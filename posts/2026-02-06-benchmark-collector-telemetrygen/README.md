@@ -616,6 +616,6 @@ Follow these practices for accurate benchmarks:
 telemetrygen is an essential tool for validating OpenTelemetry Collector performance before production deployment. By systematically benchmarking with realistic loads and analyzing the results, you can right-size resources, tune configurations, and ensure reliable telemetry pipelines. Always benchmark with workloads that match your production characteristics, and monitor collector metrics throughout testing to identify bottlenecks early.
 
 For more information on collector performance tuning, see related posts:
-- https://oneuptime.com/blog/post/right-size-cpu-memory-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/persistent-queue-storage-collector-reliability/view
-- https://oneuptime.com/blog/post/troubleshoot-collector-not-exporting-data/view
+- https://oneuptime.com/blog/post/2026-02-06-right-size-cpu-memory-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-persistent-queue-storage-collector-reliability/view
+- https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-not-exporting-data/view

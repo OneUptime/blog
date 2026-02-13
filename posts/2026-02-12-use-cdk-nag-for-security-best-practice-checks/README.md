@@ -228,7 +228,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 ```
 
-For more on CDK CI/CD, check out our guide on [setting up Terraform CI/CD with GitHub Actions](https://oneuptime.com/blog/post/terraform-cicd-github-actions-for-aws/view) - the pipeline patterns are similar.
+For more on CDK CI/CD, check out our guide on [setting up Terraform CI/CD with GitHub Actions](https://oneuptime.com/blog/post/2026-02-12-terraform-cicd-github-actions-for-aws/view) - the pipeline patterns are similar.
 
 ## Generating Reports
 
@@ -276,4 +276,4 @@ CDK Nag is one of those tools that pays for itself immediately. It takes five mi
 
 The goal isn't to have zero findings - it's to have zero unintentional security gaps. Every suppression should be a conscious decision, not a shortcut.
 
-For more on CDK tooling, check out our guide on [using Projen to manage CDK project configuration](https://oneuptime.com/blog/post/use-projen-to-manage-cdk-project-configuration/view).
+For more on CDK tooling, check out our guide on [using Projen to manage CDK project configuration](https://oneuptime.com/blog/post/2026-02-12-use-projen-to-manage-cdk-project-configuration/view).

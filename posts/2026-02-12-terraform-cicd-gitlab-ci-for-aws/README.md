@@ -287,7 +287,7 @@ variables:
   TF_HTTP_PASSWORD: ${CI_JOB_TOKEN}
 ```
 
-For larger projects, I'd still recommend S3 backend with DynamoDB locking - see our [state management guide](https://oneuptime.com/blog/post/terraform-state-with-s3-backend-and-dynamodb-locking/view).
+For larger projects, I'd still recommend S3 backend with DynamoDB locking - see our [state management guide](https://oneuptime.com/blog/post/2026-02-12-terraform-state-with-s3-backend-and-dynamodb-locking/view).
 
 ## Merge Request Integration
 
@@ -384,4 +384,4 @@ For comprehensive post-deployment monitoring, pair this with [OneUptime](https:/
 
 GitLab CI provides everything you need for Terraform pipelines - built-in environments, manual approval gates, MR integration, and OIDC authentication. Start with the basic plan/apply pipeline, add environment protection and notifications, and you'll have a deployment workflow your team can trust.
 
-For the GitHub Actions equivalent, see our guide on [Terraform CI/CD with GitHub Actions](https://oneuptime.com/blog/post/terraform-cicd-github-actions-for-aws/view). And for managed state, check out [Terraform Cloud with AWS](https://oneuptime.com/blog/post/terraform-cloud-with-aws/view).
+For the GitHub Actions equivalent, see our guide on [Terraform CI/CD with GitHub Actions](https://oneuptime.com/blog/post/2026-02-12-terraform-cicd-github-actions-for-aws/view). And for managed state, check out [Terraform Cloud with AWS](https://oneuptime.com/blog/post/2026-02-12-terraform-cloud-with-aws/view).

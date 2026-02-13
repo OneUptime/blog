@@ -243,7 +243,7 @@ aws cloudformation describe-stacks \
   --stack-name my-first-stack
 ```
 
-For a deeper dive into CLI deployment, check out our guide on [deploying CloudFormation templates with the AWS CLI](https://oneuptime.com/blog/post/deploy-cloudformation-templates-aws-cli/view).
+For a deeper dive into CLI deployment, check out our guide on [deploying CloudFormation templates with the AWS CLI](https://oneuptime.com/blog/post/2026-02-12-deploy-cloudformation-templates-aws-cli/view).
 
 ## Tips for Beginners
 
@@ -251,7 +251,7 @@ For a deeper dive into CLI deployment, check out our guide on [deploying CloudFo
 
 **Use the AWS docs.** Every resource type has a documentation page listing all available properties. Bookmark it.
 
-**Validate before deploying.** Run `aws cloudformation validate-template` to catch syntax errors before you waste time on a failed deployment. We've got a full post on [validating CloudFormation templates](https://oneuptime.com/blog/post/validate-cloudformation-templates-before-deployment/view) if you want the details.
+**Validate before deploying.** Run `aws cloudformation validate-template` to catch syntax errors before you waste time on a failed deployment. We've got a full post on [validating CloudFormation templates](https://oneuptime.com/blog/post/2026-02-12-validate-cloudformation-templates-before-deployment/view) if you want the details.
 
 **Name your resources descriptively.** Logical names like `MyS3Bucket` are fine for tutorials, but in real projects use names like `ApplicationDataBucket` or `UserUploadsBucket`.
 
@@ -259,6 +259,6 @@ For a deeper dive into CLI deployment, check out our guide on [deploying CloudFo
 
 ## What's Next?
 
-You've written your first template, and you understand the basic structure. From here, you'll want to explore [CloudFormation parameters](https://oneuptime.com/blog/post/cloudformation-parameters-reusable-templates/view) for building reusable templates, [outputs and exports](https://oneuptime.com/blog/post/cloudformation-outputs-export-values/view) for sharing values between stacks, and [nested stacks](https://oneuptime.com/blog/post/cloudformation-nested-stacks/view) for organizing large deployments.
+You've written your first template, and you understand the basic structure. From here, you'll want to explore [CloudFormation parameters](https://oneuptime.com/blog/post/2026-02-12-cloudformation-parameters-reusable-templates/view) for building reusable templates, [outputs and exports](https://oneuptime.com/blog/post/2026-02-12-cloudformation-outputs-export-values/view) for sharing values between stacks, and [nested stacks](https://oneuptime.com/blog/post/2026-02-12-cloudformation-nested-stacks/view) for organizing large deployments.
 
 CloudFormation has a learning curve, but once you get comfortable with templates, you'll never want to go back to clicking through the console. Your infrastructure becomes reviewable, repeatable, and reliable - and that's worth the investment.

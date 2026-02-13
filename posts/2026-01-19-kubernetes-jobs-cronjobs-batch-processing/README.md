@@ -643,6 +643,6 @@ For monitoring your batch jobs, check out [OneUptime's Kubernetes monitoring](ht
 
 ## Related Resources
 
-- [How to Set Up Resource Quotas](https://oneuptime.com/blog/post/kubernetes-resource-quotas-limit-ranges/view)
-- [How to Configure Pod Priority and Preemption](https://oneuptime.com/blog/post/kubernetes-pod-priority-preemption/view)
-- [How to Handle Pod Evictions](https://oneuptime.com/blog/post/kubernetes-pod-evictions-resource-pressure/view)
+- [How to Set Up Resource Quotas](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-quotas-limit-ranges/view)
+- [How to Configure Pod Priority and Preemption](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-priority-preemption/view)
+- [How to Handle Pod Evictions](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-evictions-resource-pressure/view)

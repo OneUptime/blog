@@ -853,7 +853,7 @@ Monitor CloudWatch metrics and CloudTrail logs for unusual authentication patter
 
 For more information about OpenTelemetry Collector authentication, check out these related posts:
 
-- [How to Configure Bearer Token Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/bearer-token-auth-extension-opentelemetry-collector/view)
-- [How to Configure OAuth2 Client Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/oauth2-client-auth-extension-opentelemetry-collector/view)
+- [How to Configure Bearer Token Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-bearer-token-auth-extension-opentelemetry-collector/view)
+- [How to Configure OAuth2 Client Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-oauth2-client-auth-extension-opentelemetry-collector/view)
 
 The SigV4 auth extension provides seamless integration with AWS services by implementing the standard AWS authentication mechanism. By leveraging IAM roles and temporary credentials, you can securely send telemetry data to AWS services without managing long-lived credentials or API keys.

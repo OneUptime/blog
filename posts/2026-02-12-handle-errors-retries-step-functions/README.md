@@ -366,7 +366,7 @@ exports.handler = async (event) => {
 
 ## Monitoring Error Rates
 
-Keep an eye on your retry and catch rates. A sudden spike in retries might mean a downstream service is degrading. Set up CloudWatch alarms on `ExecutionsFailed` and `ExecutionsTimedOut` metrics. For comprehensive monitoring guidance, see our post on [monitoring Step Functions executions](https://oneuptime.com/blog/post/monitor-step-functions-executions-console/view).
+Keep an eye on your retry and catch rates. A sudden spike in retries might mean a downstream service is degrading. Set up CloudWatch alarms on `ExecutionsFailed` and `ExecutionsTimedOut` metrics. For comprehensive monitoring guidance, see our post on [monitoring Step Functions executions](https://oneuptime.com/blog/post/2026-02-12-monitor-step-functions-executions-console/view).
 
 ## Wrapping Up
 

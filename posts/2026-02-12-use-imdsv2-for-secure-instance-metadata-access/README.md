@@ -108,7 +108,7 @@ aws ec2 create-launch-template \
     }'
 ```
 
-For more on launch templates, see our guide on [using launch templates for EC2 instances](https://oneuptime.com/blog/post/use-launch-templates-for-ec2-instances/view).
+For more on launch templates, see our guide on [using launch templates for EC2 instances](https://oneuptime.com/blog/post/2026-02-12-use-launch-templates-for-ec2-instances/view).
 
 ## Setting Account-Level Defaults
 

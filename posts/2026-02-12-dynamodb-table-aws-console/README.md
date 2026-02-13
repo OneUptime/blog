@@ -49,7 +49,7 @@ For a Users table, you might use `userId` as the partition key with type String:
 Partition key: userId (String)
 ```
 
-For detailed guidance on choosing partition keys, check out our post on [choosing the right partition key for DynamoDB](https://oneuptime.com/blog/post/dynamodb-partition-key/view).
+For detailed guidance on choosing partition keys, check out our post on [choosing the right partition key for DynamoDB](https://oneuptime.com/blog/post/2026-02-12-dynamodb-partition-key/view).
 
 ## Step 3: Sort Key (Optional)
 
@@ -94,7 +94,7 @@ This is a big decision. DynamoDB offers two capacity modes:
 
 **Provisioned** - you specify how many reads and writes per second your table needs. You pay for the provisioned capacity whether you use it or not. Cheaper for predictable, steady workloads.
 
-For more details on choosing between these, see our post on [DynamoDB on-demand vs provisioned capacity](https://oneuptime.com/blog/post/dynamodb-on-demand-vs-provisioned/view).
+For more details on choosing between these, see our post on [DynamoDB on-demand vs provisioned capacity](https://oneuptime.com/blog/post/2026-02-12-dynamodb-on-demand-vs-provisioned/view).
 
 If you choose Provisioned, you'll need to set:
 

@@ -314,7 +314,7 @@ kubectl rbac-tool lookup system:serviceaccount:default:my-app
 kubectl rbac-tool viz
 ```
 
-This provides a complete view of granted permissions. See https://oneuptime.com/blog/post/kubectl-plugins-krew-package-manager/view for information on installing kubectl plugins.
+This provides a complete view of granted permissions. See https://oneuptime.com/blog/post/2026-02-09-kubectl-plugins-krew-package-manager/view for information on installing kubectl plugins.
 
 ## Checking Custom Resource Permissions
 
@@ -472,4 +472,4 @@ echo "Service account permissions follow least privilege"
 
 This enforces security policies programmatically.
 
-kubectl auth can-i turns permission verification from guesswork into certainty. Check permissions before operations, validate RBAC configurations, and debug access issues systematically. Integrate these checks into scripts and pipelines to prevent authorization failures in production. For more kubectl debugging techniques, see https://oneuptime.com/blog/post/kubectl-describe-debugging/view.
+kubectl auth can-i turns permission verification from guesswork into certainty. Check permissions before operations, validate RBAC configurations, and debug access issues systematically. Integrate these checks into scripts and pipelines to prevent authorization failures in production. For more kubectl debugging techniques, see https://oneuptime.com/blog/post/2026-01-25-kubectl-describe-debugging/view.

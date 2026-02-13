@@ -260,7 +260,7 @@ If your Lambda function cannot keep up with the message production rate, consume
 
 When lag gets too high, you have a few options: increase parallelization factor, increase batch size to process more messages per invocation, optimize your function's processing speed, or add more partitions to the topic.
 
-For comprehensive monitoring setup, take a look at our guide on [connecting Amazon Managed Grafana to CloudWatch](https://oneuptime.com/blog/post/connect-amazon-managed-grafana-to-cloudwatch/view).
+For comprehensive monitoring setup, take a look at our guide on [connecting Amazon Managed Grafana to CloudWatch](https://oneuptime.com/blog/post/2026-02-12-connect-amazon-managed-grafana-to-cloudwatch/view).
 
 ## Common Pitfalls
 

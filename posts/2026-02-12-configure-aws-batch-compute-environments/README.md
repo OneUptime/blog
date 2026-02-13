@@ -304,4 +304,4 @@ Some changes (like switching from EC2 to Fargate) require creating a new compute
 7. Monitor `desiredvCpus` vs `maxvCpus` to ensure you have headroom
 8. For GPU, confirm you're using the NVIDIA AMI image type
 
-A well-configured compute environment balances cost, performance, and reliability. Use Spot for fault-tolerant workloads, keep instance type lists diverse for availability, and monitor utilization to right-size your limits. For the full Batch setup guide, see our post on [setting up AWS Batch for HPC](https://oneuptime.com/blog/post/setup-aws-batch-high-performance-computing-jobs/view).
+A well-configured compute environment balances cost, performance, and reliability. Use Spot for fault-tolerant workloads, keep instance type lists diverse for availability, and monitor utilization to right-size your limits. For the full Batch setup guide, see our post on [setting up AWS Batch for HPC](https://oneuptime.com/blog/post/2026-02-12-setup-aws-batch-high-performance-computing-jobs/view).

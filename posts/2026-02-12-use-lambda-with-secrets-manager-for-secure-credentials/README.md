@@ -362,7 +362,7 @@ const secretArn = process.env.DB_SECRET_ARN;
 const creds = await getSecret(secretArn);
 ```
 
-For configuration that doesn't need rotation or encryption, [Parameter Store](https://oneuptime.com/blog/post/use-lambda-with-parameter-store-for-configuration/view) might be a simpler (and cheaper) alternative.
+For configuration that doesn't need rotation or encryption, [Parameter Store](https://oneuptime.com/blog/post/2026-02-12-use-lambda-with-parameter-store-for-configuration/view) might be a simpler (and cheaper) alternative.
 
 ## Wrapping Up
 

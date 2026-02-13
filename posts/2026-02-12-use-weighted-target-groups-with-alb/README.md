@@ -316,7 +316,7 @@ This lets you canary-deploy specific parts of your application independently.
 
 **Weight = 0 is not the same as removing the target group**: A target group with weight 0 still exists in the configuration but receives no traffic. This makes it easy to re-enable by just changing the weight.
 
-**Monitoring**: You need per-target-group metrics to compare v1 and v2 performance. CloudWatch provides these automatically. For more ALB configuration options, see our post on [configuring ALB slow start mode](https://oneuptime.com/blog/post/configure-alb-slow-start-mode/view).
+**Monitoring**: You need per-target-group metrics to compare v1 and v2 performance. CloudWatch provides these automatically. For more ALB configuration options, see our post on [configuring ALB slow start mode](https://oneuptime.com/blog/post/2026-02-12-configure-alb-slow-start-mode/view).
 
 ## Conclusion
 

@@ -346,4 +346,4 @@ cpuAlarm.addOkAction(new cloudwatch_actions.SnsAction(warningTopic));
 
 CloudWatch alarms with SNS notifications are the foundation of any AWS monitoring strategy. Start with alarms on the metrics that directly impact your users - error rates, latency, and availability - and add more as you identify what matters for your specific application.
 
-For DynamoDB-specific monitoring, see [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/monitor-dynamodb-with-cloudwatch-alarms/view). For encryption on your alert topics, check out [enabling SNS message encryption with KMS](https://oneuptime.com/blog/post/enable-sns-message-encryption-with-kms/view).
+For DynamoDB-specific monitoring, see [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-monitor-dynamodb-with-cloudwatch-alarms/view). For encryption on your alert topics, check out [enabling SNS message encryption with KMS](https://oneuptime.com/blog/post/2026-02-12-enable-sns-message-encryption-with-kms/view).

@@ -356,7 +356,7 @@ Custom platforms and Docker both solve the "I need a custom runtime" problem, bu
 - Development/production parity matters most
 - You don't need OS-level customization
 
-For most teams, Docker on Elastic Beanstalk is simpler. Check out our guide on [deploying Docker apps with Elastic Beanstalk](https://oneuptime.com/blog/post/deploy-docker-app-with-elastic-beanstalk/view) if that's a better fit.
+For most teams, Docker on Elastic Beanstalk is simpler. Check out our guide on [deploying Docker apps with Elastic Beanstalk](https://oneuptime.com/blog/post/2026-02-12-deploy-docker-app-with-elastic-beanstalk/view) if that's a better fit.
 
 ## Wrapping Up
 

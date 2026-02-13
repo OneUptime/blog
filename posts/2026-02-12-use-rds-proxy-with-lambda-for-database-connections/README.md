@@ -30,7 +30,7 @@ Instead of N Lambda instances creating N database connections, RDS Proxy funnels
 
 You'll need:
 - An RDS or Aurora database running in a VPC
-- Lambda functions configured for VPC access (see [connecting Lambda to a VPC](https://oneuptime.com/blog/post/connect-lambda-functions-to-a-vpc/view))
+- Lambda functions configured for VPC access (see [connecting Lambda to a VPC](https://oneuptime.com/blog/post/2026-02-12-connect-lambda-functions-to-a-vpc/view))
 - Database credentials stored in AWS Secrets Manager (RDS Proxy requires this)
 - An IAM role for the proxy to access the secret
 
@@ -333,7 +333,7 @@ Keep an eye on these CloudWatch metrics:
 - **QueryRequests** - Total number of queries processed
 - **AvailabilityPercentage** - Should be close to 100%
 
-For comprehensive Lambda monitoring, check out [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/monitor-lambda-function-performance-with-cloudwatch/view).
+For comprehensive Lambda monitoring, check out [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-lambda-function-performance-with-cloudwatch/view).
 
 ## Wrapping Up
 

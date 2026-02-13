@@ -245,7 +245,7 @@ const distribution = new cloudfront.Distribution(this, 'ProtectedDist', {
 });
 ```
 
-For more on setting up WAF rules, see our post on [creating WAF rules with CDK](https://oneuptime.com/blog/post/waf-rules-cdk/view). And if you need to manage the DNS records for your distribution, check out [Route 53 records with CDK](https://oneuptime.com/blog/post/route-53-records-cdk/view).
+For more on setting up WAF rules, see our post on [creating WAF rules with CDK](https://oneuptime.com/blog/post/2026-02-12-waf-rules-cdk/view). And if you need to manage the DNS records for your distribution, check out [Route 53 records with CDK](https://oneuptime.com/blog/post/2026-02-12-route-53-records-cdk/view).
 
 ## Wrapping Up
 

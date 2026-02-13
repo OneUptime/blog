@@ -306,7 +306,7 @@ data:
             regex: (.+)
 ```
 
-This sends your custom Prometheus metrics to CloudWatch alongside the built-in Container Insights metrics. For a more Prometheus-native approach, check out [Amazon Managed Prometheus](https://oneuptime.com/blog/post/amazon-managed-prometheus-container-metrics/view).
+This sends your custom Prometheus metrics to CloudWatch alongside the built-in Container Insights metrics. For a more Prometheus-native approach, check out [Amazon Managed Prometheus](https://oneuptime.com/blog/post/2026-02-12-amazon-managed-prometheus-container-metrics/view).
 
 ## Cost Optimization Tips
 
@@ -317,10 +317,10 @@ Container Insights generates a lot of data, which means CloudWatch costs can cli
 - **Use metric filters** instead of querying raw logs for frequently checked patterns
 - **Consider sampling** for high-cardinality environments
 
-For more cost strategies, see our detailed guide on [reducing CloudWatch costs](https://oneuptime.com/blog/post/reduce-cloudwatch-costs/view).
+For more cost strategies, see our detailed guide on [reducing CloudWatch costs](https://oneuptime.com/blog/post/2026-02-12-reduce-cloudwatch-costs/view).
 
 ## Wrapping Up
 
 Setting up Container Insights for EKS takes a bit more work than ECS, but the result is the same - solid visibility into your container workloads. Whether you use the Helm chart or the EKS add-on, you'll have cluster-to-container metrics flowing into CloudWatch within minutes.
 
-Combine these metrics with control plane logging and you've got a comprehensive monitoring foundation for your EKS clusters. From there, you can layer on tracing with X-Ray and visualization with [Amazon Managed Grafana](https://oneuptime.com/blog/post/amazon-managed-grafana-cloudwatch/view) for an even richer observability stack.
+Combine these metrics with control plane logging and you've got a comprehensive monitoring foundation for your EKS clusters. From there, you can layer on tracing with X-Ray and visualization with [Amazon Managed Grafana](https://oneuptime.com/blog/post/2026-02-12-amazon-managed-grafana-cloudwatch/view) for an even richer observability stack.

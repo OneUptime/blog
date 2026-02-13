@@ -330,4 +330,4 @@ cdk deploy
 cdk deploy --require-approval broadening
 ```
 
-CDK gives you the best of both worlds - the repeatability of infrastructure as code with the developer experience of a real programming language. For monitoring the tables you create, check out [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/monitor-dynamodb-with-cloudwatch-alarms/view) and [enabling DynamoDB Contributor Insights](https://oneuptime.com/blog/post/enable-dynamodb-contributor-insights/view).
+CDK gives you the best of both worlds - the repeatability of infrastructure as code with the developer experience of a real programming language. For monitoring the tables you create, check out [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-monitor-dynamodb-with-cloudwatch-alarms/view) and [enabling DynamoDB Contributor Insights](https://oneuptime.com/blog/post/2026-02-12-enable-dynamodb-contributor-insights/view).

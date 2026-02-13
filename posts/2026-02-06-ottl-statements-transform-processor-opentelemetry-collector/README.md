@@ -554,8 +554,8 @@ Debug logs show statement execution and errors, helping identify issues with syn
 
 For more information on OpenTelemetry data transformation:
 
-- [How to Filter Spans Using OTTL](https://oneuptime.com/blog/post/filter-spans-ottl-opentelemetry-collector/view)
-- [How to Configure the Lookup Processor](https://oneuptime.com/blog/post/lookup-processor-opentelemetry-collector/view)
-- [How to Configure the Unroll Processor](https://oneuptime.com/blog/post/unroll-processor-opentelemetry-collector/view)
+- [How to Filter Spans Using OTTL](https://oneuptime.com/blog/post/2026-02-06-filter-spans-ottl-opentelemetry-collector/view)
+- [How to Configure the Lookup Processor](https://oneuptime.com/blog/post/2026-02-06-lookup-processor-opentelemetry-collector/view)
+- [How to Configure the Unroll Processor](https://oneuptime.com/blog/post/2026-02-06-unroll-processor-opentelemetry-collector/view)
 
 OTTL provides a powerful, expressive language for transforming telemetry data in the OpenTelemetry Collector. From simple attribute renaming to complex conditional logic and data extraction, OTTL statements enable sophisticated data processing without custom code. Master the core functions (set, delete, conditionals), understand the available string and mathematical operations, and apply performance best practices to build efficient transformation pipelines. Always validate attribute existence before operations, handle potential errors gracefully, and use debug logging to troubleshoot issues during development.

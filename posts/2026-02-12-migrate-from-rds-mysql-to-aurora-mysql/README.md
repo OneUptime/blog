@@ -305,10 +305,10 @@ Run your application's test suite against the new Aurora cluster. Check query pe
 
 **Storage engine compatibility.** Aurora only supports InnoDB. If you have MyISAM tables, convert them before migration.
 
-**Application connection strings.** Aurora uses cluster endpoints instead of instance endpoints. Update your application to use the [proper Aurora endpoints](https://oneuptime.com/blog/post/configure-aurora-endpoints-writer-reader-custom/view) for read/write splitting.
+**Application connection strings.** Aurora uses cluster endpoints instead of instance endpoints. Update your application to use the [proper Aurora endpoints](https://oneuptime.com/blog/post/2026-02-12-configure-aurora-endpoints-writer-reader-custom/view) for read/write splitting.
 
 ## Wrapping Up
 
 The read replica promotion method is the gold standard for production migrations - minimal downtime, no data loss, and straightforward rollback (just keep the source instance running until you're confident). For simpler scenarios, snapshot-and-restore works fine. Save DMS for the complex cases.
 
-Whichever approach you choose, test it in a non-production environment first. For understanding the performance differences you'll see after migration, check out the guide on [comparing Aurora vs Standard RDS](https://oneuptime.com/blog/post/compare-aurora-vs-standard-rds/view).
+Whichever approach you choose, test it in a non-production environment first. For understanding the performance differences you'll see after migration, check out the guide on [comparing Aurora vs Standard RDS](https://oneuptime.com/blog/post/2026-02-12-compare-aurora-vs-standard-rds/view).

@@ -10,7 +10,7 @@ Description: A practical guide to using the AWS Schema Conversion Tool for datab
 
 When you're migrating between different database engines - say Oracle to PostgreSQL, or SQL Server to MySQL - the schema doesn't just transfer directly. Data types differ, stored procedures use different syntax, and database-specific features need alternatives. The AWS Schema Conversion Tool (SCT) automates as much of this conversion as possible and clearly flags what needs manual attention.
 
-SCT works hand-in-hand with [AWS Database Migration Service (DMS)](https://oneuptime.com/blog/post/database-migration-service-dms-replication/view). While DMS handles moving the actual data, SCT handles converting the schema - tables, views, stored procedures, functions, and triggers.
+SCT works hand-in-hand with [AWS Database Migration Service (DMS)](https://oneuptime.com/blog/post/2026-02-12-database-migration-service-dms-replication/view). While DMS handles moving the actual data, SCT handles converting the schema - tables, views, stored procedures, functions, and triggers.
 
 ## What SCT Converts
 

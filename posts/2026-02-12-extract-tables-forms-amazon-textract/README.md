@@ -10,7 +10,7 @@ Description: Deep dive into extracting and processing tables and key-value form 
 
 Table and form extraction is where Textract really differentiates itself from basic OCR. Plenty of tools can read text off a page, but understanding that a bunch of numbers are organized in a table with headers, or that "Date of Birth" is a label paired with "1990-05-15" as its value - that's a different level of intelligence.
 
-If you've worked with the basic Textract APIs already (see our [Textract document processing guide](https://oneuptime.com/blog/post/amazon-textract-document-processing/view)), this post goes deeper into table and form extraction specifically. We'll cover parsing the response structure, handling complex tables, and building reliable extraction pipelines.
+If you've worked with the basic Textract APIs already (see our [Textract document processing guide](https://oneuptime.com/blog/post/2026-02-12-amazon-textract-document-processing/view)), this post goes deeper into table and form extraction specifically. We'll cover parsing the response structure, handling complex tables, and building reliable extraction pipelines.
 
 ## Understanding Textract's Block Model
 
@@ -379,4 +379,4 @@ def filter_by_confidence(form_pairs, min_confidence=90):
     return high_confidence, low_confidence
 ```
 
-Getting reliable table and form extraction from messy real-world documents takes experimentation. Document quality varies wildly, and you'll want to build validation logic specific to your use case. For a complete document processing workflow that goes beyond extraction, check out our guide on [intelligent document processing with Textract](https://oneuptime.com/blog/post/amazon-textract-intelligent-document-processing/view).
+Getting reliable table and form extraction from messy real-world documents takes experimentation. Document quality varies wildly, and you'll want to build validation logic specific to your use case. For a complete document processing workflow that goes beyond extraction, check out our guide on [intelligent document processing with Textract](https://oneuptime.com/blog/post/2026-02-12-amazon-textract-intelligent-document-processing/view).

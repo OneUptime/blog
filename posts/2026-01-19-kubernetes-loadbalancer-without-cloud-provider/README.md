@@ -231,7 +231,7 @@ kubectl get svc nginx
 curl http://192.168.1.240
 ```
 
-For more details on MetalLB configuration, check out our guide on [configuring MetalLB with MicroK8s](https://oneuptime.com/blog/post/configure-metallb-with-kubernetes-microk8s/view).
+For more details on MetalLB configuration, check out our guide on [configuring MetalLB with MicroK8s](https://oneuptime.com/blog/post/2023-11-06-configure-metallb-with-kubernetes-microk8s/view).
 
 ## Solution 2: kube-vip
 
@@ -683,6 +683,6 @@ For monitoring your LoadBalancer services and the applications behind them, chec
 
 ## Related Resources
 
-- [Configuring MetalLB with MicroK8s](https://oneuptime.com/blog/post/configure-metallb-with-kubernetes-microk8s/view)
-- [Moving from AWS to Bare Metal](https://oneuptime.com/blog/post/moving-from-aws-to-bare-metal/view)
-- [How to Set Up Health Checks for Kubernetes](https://oneuptime.com/blog/post/python-health-checks-kubernetes/view)
+- [Configuring MetalLB with MicroK8s](https://oneuptime.com/blog/post/2023-11-06-configure-metallb-with-kubernetes-microk8s/view)
+- [Moving from AWS to Bare Metal](https://oneuptime.com/blog/post/2023-10-30-moving-from-aws-to-bare-metal/view)
+- [How to Set Up Health Checks for Kubernetes](https://oneuptime.com/blog/post/2025-01-06-python-health-checks-kubernetes/view)

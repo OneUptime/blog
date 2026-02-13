@@ -304,4 +304,4 @@ aws cloudwatch put-metric-alarm \
 
 The decision between on-demand and provisioned mode comes down to traffic predictability. Analyze your peak-to-average ratio: if it's above 4x, on-demand is probably cheaper when you factor in the provisioned headroom you'd need. Below 4x, provisioned with auto-scaling wins. For steady baselines, add reserved capacity for maximum savings.
 
-For a broader look at database cost optimization, check out our guide on [reducing RDS costs with Reserved Instances](https://oneuptime.com/blog/post/reduce-rds-costs-with-reserved-instances/view). And for overall AWS cost strategy, see [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/create-a-cost-optimization-strategy-for-aws/view).
+For a broader look at database cost optimization, check out our guide on [reducing RDS costs with Reserved Instances](https://oneuptime.com/blog/post/2026-02-12-reduce-rds-costs-with-reserved-instances/view). And for overall AWS cost strategy, see [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/2026-02-12-create-a-cost-optimization-strategy-for-aws/view).

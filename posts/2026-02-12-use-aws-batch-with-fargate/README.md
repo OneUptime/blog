@@ -324,4 +324,4 @@ aws ec2 create-vpc-endpoint \
 6. If jobs are stuck in RUNNABLE, check compute environment capacity and subnet availability
 7. For Fargate Spot, ensure your job handles interruptions gracefully
 
-Fargate with AWS Batch gives you the best of both worlds - powerful batch processing without infrastructure management. For configuring the compute environment in more detail, see our guide on [configuring Batch compute environments](https://oneuptime.com/blog/post/configure-aws-batch-compute-environments/view).
+Fargate with AWS Batch gives you the best of both worlds - powerful batch processing without infrastructure management. For configuring the compute environment in more detail, see our guide on [configuring Batch compute environments](https://oneuptime.com/blog/post/2026-02-12-configure-aws-batch-compute-environments/view).

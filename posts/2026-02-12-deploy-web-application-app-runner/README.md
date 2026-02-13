@@ -361,4 +361,4 @@ Before going live, verify:
 
 App Runner makes deploying web applications remarkably simple. Push your container, configure the basics, and you've got a production-ready service. The auto-scaling handles traffic spikes, rolling deployments prevent downtime, and automatic TLS keeps things secure.
 
-For more deployment options, check out our guide on [setting up App Runner with GitHub](https://oneuptime.com/blog/post/app-runner-with-github/view) for source-based deployments, or [App Runner with ECR](https://oneuptime.com/blog/post/app-runner-with-ecr/view) for more ECR-specific workflows.
+For more deployment options, check out our guide on [setting up App Runner with GitHub](https://oneuptime.com/blog/post/2026-02-12-app-runner-with-github/view) for source-based deployments, or [App Runner with ECR](https://oneuptime.com/blog/post/2026-02-12-app-runner-with-ecr/view) for more ECR-specific workflows.

@@ -345,10 +345,10 @@ variable "cidr_block" {
 
 Use consistent naming. Prefix resource names with the module's purpose to avoid collisions.
 
-For community modules, the Terraform AWS modules on the registry are battle-tested. Check out our guides on the [VPC module](https://oneuptime.com/blog/post/terraform-aws-vpc-module/view) and [RDS module](https://oneuptime.com/blog/post/terraform-aws-rds-module/view) for examples.
+For community modules, the Terraform AWS modules on the registry are battle-tested. Check out our guides on the [VPC module](https://oneuptime.com/blog/post/2026-02-12-terraform-aws-vpc-module/view) and [RDS module](https://oneuptime.com/blog/post/2026-02-12-terraform-aws-rds-module/view) for examples.
 
 ## Wrapping Up
 
 Modules are what make Terraform scalable. Start by extracting repeated patterns into local modules, then consider publishing shared modules for your organization. Keep them focused, well-documented, and version-pinned for production use.
 
-For creating your own modules, see our guide on [building custom Terraform modules for AWS](https://oneuptime.com/blog/post/create-custom-terraform-module-for-aws/view).
+For creating your own modules, see our guide on [building custom Terraform modules for AWS](https://oneuptime.com/blog/post/2026-02-12-create-custom-terraform-module-for-aws/view).

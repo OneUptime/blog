@@ -320,7 +320,7 @@ When configuring the load balancing exporter, follow these best practices:
 
 ## Integration with Other Exporters
 
-The load balancing exporter works with various protocol exporters including OTLP, Jaeger, and Zipkin. For more information on configuring other exporters, see our related posts on [configuring OTLP exporters](https://oneuptime.com/blog/post/otlp-exporter-opentelemetry-collector/view) and [understanding OpenTelemetry Collector pipelines](https://oneuptime.com/blog/post/opentelemetry-collector-pipelines/view).
+The load balancing exporter works with various protocol exporters including OTLP, Jaeger, and Zipkin. For more information on configuring other exporters, see our related posts on [configuring OTLP exporters](https://oneuptime.com/blog/post/otlp-exporter-opentelemetry-collector/view) and [understanding OpenTelemetry Collector pipelines](https://oneuptime.com/blog/post/2026-01-07-opentelemetry-collector-pipelines/view).
 
 ## Conclusion
 

@@ -35,7 +35,7 @@ Before configuring SSE-S3, make sure it's the right choice for your use case.
 | Access control | Standard S3 policies | KMS key policies + S3 policies | You control |
 | Best for | General purpose | Regulated data | Maximum control |
 
-If you need audit trails for key usage or fine-grained access control on a per-key basis, look at [SSE-KMS instead](https://oneuptime.com/blog/post/server-side-encryption-aws-kms-sse-kms/view).
+If you need audit trails for key usage or fine-grained access control on a per-key basis, look at [SSE-KMS instead](https://oneuptime.com/blog/post/2026-02-12-server-side-encryption-aws-kms-sse-kms/view).
 
 ## Step 1: Set Default Encryption on a Bucket
 
@@ -177,7 +177,7 @@ aws s3api put-bucket-inventory-configuration \
   }'
 ```
 
-For more on using S3 Inventory, see our post on [auditing S3 objects at scale](https://oneuptime.com/blog/post/s3-inventory-audit-objects-at-scale/view).
+For more on using S3 Inventory, see our post on [auditing S3 objects at scale](https://oneuptime.com/blog/post/2026-02-12-s3-inventory-audit-objects-at-scale/view).
 
 ## Step 5: Encrypt Existing Unencrypted Objects
 
@@ -216,7 +216,7 @@ for page in pages:
 print(f"\nTotal objects encrypted: {encrypted_count}")
 ```
 
-For millions of objects, use S3 Batch Operations instead of scripting it yourself. See our guide on [S3 Batch Operations](https://oneuptime.com/blog/post/s3-batch-operations-process-millions-objects/view).
+For millions of objects, use S3 Batch Operations instead of scripting it yourself. See our guide on [S3 Batch Operations](https://oneuptime.com/blog/post/2026-02-12-s3-batch-operations-process-millions-objects/view).
 
 ## How SSE-S3 Encryption Works Under the Hood
 
@@ -269,7 +269,7 @@ s3.upload_file(
 
 ## Monitoring Encryption Status
 
-Use S3 Storage Lens to continuously monitor the encryption status across all your buckets. It'll flag any buckets that don't have default encryption configured. Check out our guide on [S3 Storage Lens](https://oneuptime.com/blog/post/s3-storage-lens-visibility-storage-usage/view) for setup details.
+Use S3 Storage Lens to continuously monitor the encryption status across all your buckets. It'll flag any buckets that don't have default encryption configured. Check out our guide on [S3 Storage Lens](https://oneuptime.com/blog/post/2026-02-12-s3-storage-lens-visibility-storage-usage/view) for setup details.
 
 You should also set up AWS Config rules to detect and auto-remediate buckets without encryption.
 

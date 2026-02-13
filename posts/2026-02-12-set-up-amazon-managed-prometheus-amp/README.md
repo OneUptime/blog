@@ -222,7 +222,7 @@ awscurl --service aps \
 
 If you see results, metrics are flowing into AMP.
 
-You can also verify through Managed Grafana. Connect Grafana to AMP (see [connecting Managed Grafana to Prometheus](https://oneuptime.com/blog/post/connect-amazon-managed-grafana-to-prometheus/view)) and run the same `up` query in the Explore view.
+You can also verify through Managed Grafana. Connect Grafana to AMP (see [connecting Managed Grafana to Prometheus](https://oneuptime.com/blog/post/2026-02-12-connect-amazon-managed-grafana-to-prometheus/view)) and run the same `up` query in the Explore view.
 
 ## Step 6: Configure Workspace Settings
 
@@ -251,7 +251,7 @@ EOF
 
 ### Set Up Alerting Rules
 
-Define alert rules that AMP evaluates continuously. See our dedicated guide on [setting up alerting rules in Amazon Managed Prometheus](https://oneuptime.com/blog/post/set-up-alerting-rules-in-amazon-managed-prometheus/view).
+Define alert rules that AMP evaluates continuously. See our dedicated guide on [setting up alerting rules in Amazon Managed Prometheus](https://oneuptime.com/blog/post/2026-02-12-set-up-alerting-rules-in-amazon-managed-prometheus/view).
 
 ## Step 7: Configure Metric Retention
 

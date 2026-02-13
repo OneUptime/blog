@@ -287,7 +287,7 @@ The performance impact of desync mitigation is negligible. The ALB already parse
 - Set up CloudWatch alarms for non-compliant requests
 - Use strictest mode for internet-facing ALBs handling sensitive data
 - Combine with AWS WAF for defense in depth
-- For other ALB security configurations, see our guide on [configuring CloudFront response headers policy](https://oneuptime.com/blog/post/configure-cloudfront-response-headers-policy/view)
+- For other ALB security configurations, see our guide on [configuring CloudFront response headers policy](https://oneuptime.com/blog/post/2026-02-12-configure-cloudfront-response-headers-policy/view)
 
 ## Conclusion
 

@@ -774,4 +774,4 @@ Optimize by:
 
 The metrics transform processor provides powerful capabilities for standardizing, enriching, and optimizing metrics as they flow through the collector. By renaming metrics, normalizing labels, and aggregating data points, you can ensure consistent metric formats across different sources and reduce storage costs.
 
-For more on metrics handling, see our guides on [cumulative to delta conversion](https://oneuptime.com/blog/post/cumulative-to-delta-processor-opentelemetry-collector/view) and [what are metrics in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view).
+For more on metrics handling, see our guides on [cumulative to delta conversion](https://oneuptime.com/blog/post/2026-02-06-cumulative-to-delta-processor-opentelemetry-collector/view) and [what are metrics in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view).

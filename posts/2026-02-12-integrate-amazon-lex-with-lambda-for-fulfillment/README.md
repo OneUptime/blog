@@ -404,10 +404,10 @@ After connecting everything, rebuild your bot and test. In the Lex test window, 
 
 Check your Lambda function's CloudWatch logs for debugging. Every invocation is logged there, and you can see the full event payload and any errors.
 
-For production bots, set up proper monitoring. Track Lambda invocation errors, Lex missed utterances, and conversation completion rates. Tools like [OneUptime](https://oneuptime.com/blog/post/use-amazon-devops-guru-for-operational-insights/view) can help you monitor the full stack from Lex through Lambda to your backend services.
+For production bots, set up proper monitoring. Track Lambda invocation errors, Lex missed utterances, and conversation completion rates. Tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-use-amazon-devops-guru-for-operational-insights/view) can help you monitor the full stack from Lex through Lambda to your backend services.
 
 ## Wrapping Up
 
 Lambda fulfillment is what turns your Lex bot from a conversation demo into a real product. The pattern is straightforward - validate during dialog, process during fulfillment, handle errors gracefully. Once you've got this working, you can build increasingly complex bots that integrate with databases, APIs, and other AWS services.
 
-If you haven't set up your intents and slots yet, check out our guide on [configuring Amazon Lex intents and slots](https://oneuptime.com/blog/post/configure-amazon-lex-intents-and-slots/view) to get the foundation right before adding Lambda.
+If you haven't set up your intents and slots yet, check out our guide on [configuring Amazon Lex intents and slots](https://oneuptime.com/blog/post/2026-02-12-configure-amazon-lex-intents-and-slots/view) to get the foundation right before adding Lambda.

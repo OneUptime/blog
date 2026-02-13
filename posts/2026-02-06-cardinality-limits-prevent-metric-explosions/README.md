@@ -710,6 +710,6 @@ manager.report()
 7. **Establish cardinality budgets**: Give teams clear limits
 8. **Never use unbounded attributes**: User IDs, timestamps, and UUIDs don't belong in metric labels
 
-For related optimization strategies, see [How to Aggregate Metrics at the Source to Reduce Data Volume](https://oneuptime.com/blog/post/aggregate-metrics-source-reduce-data-volume/view) and [How to Implement Rate-Based Sampling for High-Traffic Pipelines](https://oneuptime.com/blog/post/rate-based-sampling-high-traffic-pipelines/view).
+For related optimization strategies, see [How to Aggregate Metrics at the Source to Reduce Data Volume](https://oneuptime.com/blog/post/2026-02-06-aggregate-metrics-source-reduce-data-volume/view) and [How to Implement Rate-Based Sampling for High-Traffic Pipelines](https://oneuptime.com/blog/post/2026-02-06-rate-based-sampling-high-traffic-pipelines/view).
 
 Cardinality limits are essential for stable, cost-effective OpenTelemetry deployments, preventing metric explosions before they impact your observability system.

@@ -289,4 +289,4 @@ A few things I've found work well:
 
 The ECR and App Runner integration provides a clean, automated deployment pipeline. Push an image, and it's live within minutes. With proper IAM scoping, lifecycle policies, and vulnerability scanning, you've got a production-grade workflow that's both secure and low-maintenance.
 
-For source-code-based deployments instead of container images, check out our guide on [setting up App Runner with GitHub](https://oneuptime.com/blog/post/app-runner-with-github/view).
+For source-code-based deployments instead of container images, check out our guide on [setting up App Runner with GitHub](https://oneuptime.com/blog/post/2026-02-12-app-runner-with-github/view).

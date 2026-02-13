@@ -67,7 +67,7 @@ IAM Identity Center can use three identity sources:
 2. **Active Directory** - Connect to AWS Managed Microsoft AD or AD Connector
 3. **External identity provider** - SAML 2.0 federation (Okta, Azure AD, etc.)
 
-For small teams, the built-in directory is fine. For organizations with an existing IdP, federation is the way to go. We'll cover external IdP integration in separate guides for [Azure AD](https://oneuptime.com/blog/post/integrate-iam-identity-center-azure-ad/view), [Okta](https://oneuptime.com/blog/post/integrate-iam-identity-center-okta/view), and [Google Workspace](https://oneuptime.com/blog/post/integrate-iam-identity-center-google-workspace/view).
+For small teams, the built-in directory is fine. For organizations with an existing IdP, federation is the way to go. We'll cover external IdP integration in separate guides for [Azure AD](https://oneuptime.com/blog/post/2026-02-12-integrate-iam-identity-center-azure-ad/view), [Okta](https://oneuptime.com/blog/post/2026-02-12-integrate-iam-identity-center-okta/view), and [Google Workspace](https://oneuptime.com/blog/post/2026-02-12-integrate-iam-identity-center-google-workspace/view).
 
 For now, let's use the built-in directory.
 

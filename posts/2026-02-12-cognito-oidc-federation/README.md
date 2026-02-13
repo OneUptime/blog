@@ -330,7 +330,7 @@ function validateCognitoToken(idToken) {
 }
 ```
 
-For SAML-based federation alternatives, see [Cognito SAML federation with Okta](https://oneuptime.com/blog/post/cognito-saml-federation-okta/view) and [Cognito SAML federation with Azure AD](https://oneuptime.com/blog/post/cognito-saml-federation-azure-ad/view).
+For SAML-based federation alternatives, see [Cognito SAML federation with Okta](https://oneuptime.com/blog/post/2026-02-12-cognito-saml-federation-okta/view) and [Cognito SAML federation with Azure AD](https://oneuptime.com/blog/post/2026-02-12-cognito-saml-federation-azure-ad/view).
 
 ## Summary
 

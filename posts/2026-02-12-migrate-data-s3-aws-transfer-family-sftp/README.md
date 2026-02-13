@@ -21,7 +21,7 @@ Transfer Family makes sense when:
 - Legacy applications can only use FTP/SFTP protocols
 - You need compliance with standards that require SFTP
 
-If you're doing a bulk one-time migration from on-premises storage, [AWS DataSync](https://oneuptime.com/blog/post/migrate-data-s3-aws-datasync/view) is a better fit. Transfer Family is designed for ongoing file transfers.
+If you're doing a bulk one-time migration from on-premises storage, [AWS DataSync](https://oneuptime.com/blog/post/2026-02-12-migrate-data-s3-aws-datasync/view) is a better fit. Transfer Family is designed for ongoing file transfers.
 
 ## Step 1: Create the IAM Role
 
@@ -333,4 +333,4 @@ The endpoint cost is the big one. If you don't need 24/7 availability, you can s
 
 ## Wrapping Up
 
-AWS Transfer Family removes the headaches of managing SFTP servers while giving your files a landing zone in S3. The setup is straightforward - create a server, add users, and point them at your bucket. From there, you can build automated processing pipelines using S3 events and Lambda. For processing that landed data at scale, you might want to look into [integrating S3 with AWS Glue](https://oneuptime.com/blog/post/integrate-s3-aws-glue-etl/view).
+AWS Transfer Family removes the headaches of managing SFTP servers while giving your files a landing zone in S3. The setup is straightforward - create a server, add users, and point them at your bucket. From there, you can build automated processing pipelines using S3 events and Lambda. For processing that landed data at scale, you might want to look into [integrating S3 with AWS Glue](https://oneuptime.com/blog/post/2026-02-12-integrate-s3-aws-glue-etl/view).

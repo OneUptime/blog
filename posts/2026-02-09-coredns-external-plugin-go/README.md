@@ -489,4 +489,4 @@ Follow these guidelines:
 
 Developing custom CoreDNS plugins extends DNS functionality to meet specialized requirements. By understanding the plugin API, implementing proper error handling, and following best practices, you can create reliable plugins that integrate seamlessly with CoreDNS and Kubernetes infrastructure.
 
-For more CoreDNS customization, explore our guides on [CoreDNS configuration](https://oneuptime.com/blog/post/coredns-custom-forward-zones/view) and [plugin chain debugging](https://oneuptime.com/blog/post/debug-coredns-plugin-chain/view).
+For more CoreDNS customization, explore our guides on [CoreDNS configuration](https://oneuptime.com/blog/post/2026-02-09-coredns-custom-forward-zones/view) and [plugin chain debugging](https://oneuptime.com/blog/post/2026-02-09-debug-coredns-plugin-chain/view).

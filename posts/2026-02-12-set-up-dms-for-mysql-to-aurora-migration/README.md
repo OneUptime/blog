@@ -357,4 +357,4 @@ aws dms stop-replication-task \
 
 DMS makes MySQL to Aurora migrations straightforward with its full load plus CDC approach. The key to a smooth migration is proper preparation - ensure binary logging is configured correctly, test your endpoints before starting, monitor the replication lag during CDC, and validate data before cutting over. With careful planning, you can complete the migration with minimal downtime.
 
-For more on database migrations, see our guides on [DMS for Oracle to PostgreSQL migration](https://oneuptime.com/blog/post/set-up-dms-for-oracle-to-postgresql-migration/view) and [DMS for SQL Server to RDS migration](https://oneuptime.com/blog/post/set-up-dms-for-sql-server-to-rds-migration/view).
+For more on database migrations, see our guides on [DMS for Oracle to PostgreSQL migration](https://oneuptime.com/blog/post/2026-02-12-set-up-dms-for-oracle-to-postgresql-migration/view) and [DMS for SQL Server to RDS migration](https://oneuptime.com/blog/post/2026-02-12-set-up-dms-for-sql-server-to-rds-migration/view).

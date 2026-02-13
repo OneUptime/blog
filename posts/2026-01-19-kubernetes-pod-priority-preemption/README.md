@@ -555,6 +555,6 @@ For monitoring your Kubernetes scheduling, check out [OneUptime's cluster monito
 
 ## Related Resources
 
-- [How to Configure Node Affinity](https://oneuptime.com/blog/post/kubernetes-node-affinity-anti-affinity/view)
-- [How to Configure Taints and Tolerations](https://oneuptime.com/blog/post/kubernetes-taints-tolerations-scheduling/view)
-- [How to Manage Resource Quotas](https://oneuptime.com/blog/post/kubernetes-resource-quotas-limit-ranges/view)
+- [How to Configure Node Affinity](https://oneuptime.com/blog/post/2026-01-19-kubernetes-node-affinity-anti-affinity/view)
+- [How to Configure Taints and Tolerations](https://oneuptime.com/blog/post/2026-01-19-kubernetes-taints-tolerations-scheduling/view)
+- [How to Manage Resource Quotas](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-quotas-limit-ranges/view)

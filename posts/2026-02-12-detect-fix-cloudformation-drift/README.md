@@ -169,7 +169,7 @@ Deploy the updated template. Now CloudFormation's view matches reality, and the 
 
 ### Option 3: Import the Resource
 
-If the resource was deleted and recreated outside CloudFormation, you may need to use [resource import](https://oneuptime.com/blog/post/cloudformation-resource-import/view) to bring it back under CloudFormation management.
+If the resource was deleted and recreated outside CloudFormation, you may need to use [resource import](https://oneuptime.com/blog/post/2026-02-12-cloudformation-resource-import/view) to bring it back under CloudFormation management.
 
 ## Automating Drift Detection
 
@@ -306,6 +306,6 @@ Also, drift detection only checks properties that are specified in your template
 
 **Treat drift as an incident.** When drift is detected, investigate why it happened and address the root cause. Was it a process gap? Missing automation? Insufficient permissions controls?
 
-**Use change sets for updates.** [Change sets](https://oneuptime.com/blog/post/cloudformation-change-sets-safe-updates/view) prevent you from accidentally introducing new drift during updates by letting you review changes first.
+**Use change sets for updates.** [Change sets](https://oneuptime.com/blog/post/2026-02-12-cloudformation-change-sets-safe-updates/view) prevent you from accidentally introducing new drift during updates by letting you review changes first.
 
 Drift detection is your safety net against configuration creep. Make it part of your regular operations workflow and you'll catch problems before they become incidents.

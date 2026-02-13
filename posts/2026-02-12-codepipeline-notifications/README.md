@@ -274,4 +274,4 @@ Keep these in mind when setting up notifications:
 - Include actionable information. A notification that says "pipeline failed" isn't helpful without a link to view the details.
 - Set up notifications before you need them. Don't wait for a production incident to realize you don't have alerts configured.
 
-For comprehensive monitoring beyond just pipeline events, [OneUptime](https://oneuptime.com) can monitor your applications, infrastructure, and deployment pipelines in one place. If pipelines are failing repeatedly, our guide on [troubleshooting CodePipeline failures](https://oneuptime.com/blog/post/troubleshoot-codepipeline-failures/view) can help you dig into the root causes.
+For comprehensive monitoring beyond just pipeline events, [OneUptime](https://oneuptime.com) can monitor your applications, infrastructure, and deployment pipelines in one place. If pipelines are failing repeatedly, our guide on [troubleshooting CodePipeline failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-codepipeline-failures/view) can help you dig into the root causes.

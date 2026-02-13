@@ -208,7 +208,7 @@ aws glue get-schema-version \
 
 ## Monitoring Schema Registry
 
-You should monitor schema registration failures and compatibility check rejections. These are signs that teams are trying to make breaking changes. Set up CloudWatch alarms on the `SchemaVersionFailure` metric, and pipe notifications into your monitoring stack. If you're running OneUptime for observability, you can create alerts that trigger when schema validation failures spike - check out how to [set up custom monitoring](https://oneuptime.com/blog/post/configure-amazon-kinesis-data-streams/view) for your streaming pipeline.
+You should monitor schema registration failures and compatibility check rejections. These are signs that teams are trying to make breaking changes. Set up CloudWatch alarms on the `SchemaVersionFailure` metric, and pipe notifications into your monitoring stack. If you're running OneUptime for observability, you can create alerts that trigger when schema validation failures spike - check out how to [set up custom monitoring](https://oneuptime.com/blog/post/2026-02-12-configure-amazon-kinesis-data-streams/view) for your streaming pipeline.
 
 ## Best Practices
 

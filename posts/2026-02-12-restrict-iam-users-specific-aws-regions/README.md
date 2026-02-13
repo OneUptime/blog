@@ -325,4 +325,4 @@ LIMIT 100;
 
 **AWS Backup**: Cross-region backup copies require access to the destination region.
 
-Region restrictions are a powerful control for compliance and cost management. Use SCPs for hard boundaries, IAM policies for user-level controls, and always test thoroughly before deploying. For related security controls, check out our guide on [restricting IAM users to specific services](https://oneuptime.com/blog/post/restrict-iam-users-specific-aws-services/view).
+Region restrictions are a powerful control for compliance and cost management. Use SCPs for hard boundaries, IAM policies for user-level controls, and always test thoroughly before deploying. For related security controls, check out our guide on [restricting IAM users to specific services](https://oneuptime.com/blog/post/2026-02-12-restrict-iam-users-specific-aws-services/view).

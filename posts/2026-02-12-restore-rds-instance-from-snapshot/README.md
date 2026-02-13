@@ -335,4 +335,4 @@ Set up monitoring for your restored instance immediately after restore. Don't as
 
 ## Wrapping Up
 
-Restoring from a snapshot is straightforward, but the devil is in the details. Remember that restoration creates a new instance, security groups and parameter groups need to be specified explicitly, and you should verify the data before switching your application. Practice the restore process regularly so when you actually need it, you can execute confidently. For point-in-time recovery to a specific second, check out [restoring to a point in time](https://oneuptime.com/blog/post/restore-rds-instance-point-in-time/view).
+Restoring from a snapshot is straightforward, but the devil is in the details. Remember that restoration creates a new instance, security groups and parameter groups need to be specified explicitly, and you should verify the data before switching your application. Practice the restore process regularly so when you actually need it, you can execute confidently. For point-in-time recovery to a specific second, check out [restoring to a point in time](https://oneuptime.com/blog/post/2026-02-12-restore-rds-instance-point-in-time/view).

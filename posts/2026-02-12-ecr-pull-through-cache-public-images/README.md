@@ -323,4 +323,4 @@ aws ecr delete-pull-through-cache-rule \
   --ecr-repository-prefix docker-hub
 ```
 
-Pull-through cache is one of those set-and-forget features that eliminates a whole class of deployment failures. If you're using any public container images in your ECS tasks, set it up. Your on-call team will thank you when Docker Hub has its next outage and your deployments keep working. For more on managing your container images, see our post on [managing ECS container images in ECR](https://oneuptime.com/blog/post/manage-ecs-container-images-ecr/view).
+Pull-through cache is one of those set-and-forget features that eliminates a whole class of deployment failures. If you're using any public container images in your ECS tasks, set it up. Your on-call team will thank you when Docker Hub has its next outage and your deployments keep working. For more on managing your container images, see our post on [managing ECS container images in ECR](https://oneuptime.com/blog/post/2026-02-12-manage-ecs-container-images-ecr/view).

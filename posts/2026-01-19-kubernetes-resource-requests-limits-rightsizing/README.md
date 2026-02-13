@@ -741,6 +741,6 @@ For comprehensive resource monitoring and alerting, check out [OneUptime's Kuber
 
 ## Related Resources
 
-- [How to Debug CrashLoopBackOff Pods](https://oneuptime.com/blog/post/kubernetes-debug-crashloopbackoff/view)
-- [How to Set Up Prometheus and Grafana on Kubernetes](https://oneuptime.com/blog/post/python-custom-metrics-prometheus/view)
-- [How to Profile Python Applications](https://oneuptime.com/blog/post/profile-python-cprofile-pyspy/view)
+- [How to Debug CrashLoopBackOff Pods](https://oneuptime.com/blog/post/2026-01-19-kubernetes-debug-crashloopbackoff/view)
+- [How to Set Up Prometheus and Grafana on Kubernetes](https://oneuptime.com/blog/post/2025-01-06-python-custom-metrics-prometheus/view)
+- [How to Profile Python Applications](https://oneuptime.com/blog/post/2025-01-06-profile-python-cprofile-pyspy/view)

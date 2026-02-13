@@ -341,7 +341,7 @@ Resources:
 
 ## Monitoring Microservices
 
-Once decomposed, you need distributed tracing to follow requests across services. Use AWS X-Ray or integrate with monitoring platforms like [OneUptime](https://oneuptime.com/blog/post/containerize-legacy-applications-for-aws/view) for end-to-end visibility across your microservices.
+Once decomposed, you need distributed tracing to follow requests across services. Use AWS X-Ray or integrate with monitoring platforms like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-containerize-legacy-applications-for-aws/view) for end-to-end visibility across your microservices.
 
 ## Common Pitfalls
 

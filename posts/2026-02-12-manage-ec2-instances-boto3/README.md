@@ -379,8 +379,8 @@ print(f"AMI {image.id} is ready")
 ## Best Practices
 
 - **Always tag your instances.** Tags make filtering, cost tracking, and automation so much easier.
-- **Use waiter methods** instead of polling loops. Boto3's `wait_until_running()` and similar methods are more reliable than custom loops. See our guide on [Boto3 waiters](https://oneuptime.com/blog/post/boto3-waiters-async-operations/view) for details.
+- **Use waiter methods** instead of polling loops. Boto3's `wait_until_running()` and similar methods are more reliable than custom loops. See our guide on [Boto3 waiters](https://oneuptime.com/blog/post/2026-02-12-boto3-waiters-async-operations/view) for details.
 - **Enable termination protection** for production instances to prevent accidental deletion.
 - **Monitor costs.** Use tags and CloudWatch to track spending per instance and automate shutdowns for non-production resources.
-- **Handle errors properly.** EC2 operations can fail for many reasons. See [Boto3 error handling](https://oneuptime.com/blog/post/boto3-errors-and-exceptions/view) for comprehensive error management strategies.
+- **Handle errors properly.** EC2 operations can fail for many reasons. See [Boto3 error handling](https://oneuptime.com/blog/post/2026-02-12-boto3-errors-and-exceptions/view) for comprehensive error management strategies.
 - **Use the resource interface** for single-instance operations and the client for batch operations.

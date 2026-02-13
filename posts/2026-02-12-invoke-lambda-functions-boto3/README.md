@@ -310,4 +310,4 @@ for page in paginator.paginate():
 - **Don't hardcode function names.** Use environment variables or parameter store, especially when the same code runs in multiple environments.
 - **Monitor invocation metrics.** Keep an eye on error rates, duration, and throttling in CloudWatch.
 
-For handling the various errors that can occur during invocation, check out the detailed guide on [Boto3 error handling](https://oneuptime.com/blog/post/boto3-errors-and-exceptions/view). And if you're managing the Lambda functions themselves through Boto3, see the guide on [managing EC2 instances](https://oneuptime.com/blog/post/manage-ec2-instances-boto3/view) for similar patterns of managing AWS resources programmatically.
+For handling the various errors that can occur during invocation, check out the detailed guide on [Boto3 error handling](https://oneuptime.com/blog/post/2026-02-12-boto3-errors-and-exceptions/view). And if you're managing the Lambda functions themselves through Boto3, see the guide on [managing EC2 instances](https://oneuptime.com/blog/post/2026-02-12-manage-ec2-instances-boto3/view) for similar patterns of managing AWS resources programmatically.

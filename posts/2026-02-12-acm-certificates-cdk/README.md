@@ -263,7 +263,7 @@ const expiryAlarm = new cloudwatch.Alarm(this, 'CertExpiryAlarm', {
 });
 ```
 
-For setting up the DNS records your certificates need, see [Route 53 records with CDK](https://oneuptime.com/blog/post/route-53-records-cdk/view). If you're using certificates with CloudFront, our post on [CloudFront distributions with CDK](https://oneuptime.com/blog/post/cloudfront-distributions-cdk/view) covers that integration in detail.
+For setting up the DNS records your certificates need, see [Route 53 records with CDK](https://oneuptime.com/blog/post/2026-02-12-route-53-records-cdk/view). If you're using certificates with CloudFront, our post on [CloudFront distributions with CDK](https://oneuptime.com/blog/post/2026-02-12-cloudfront-distributions-cdk/view) covers that integration in detail.
 
 ## Wrapping Up
 

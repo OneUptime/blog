@@ -672,6 +672,6 @@ For monitoring your operators and custom resources, check out [OneUptime's Kuber
 
 ## Related Resources
 
-- [How to Use Jobs and CronJobs](https://oneuptime.com/blog/post/kubernetes-jobs-cronjobs-batch-processing/view)
-- [How to Build Helm Charts](https://oneuptime.com/blog/post/kubernetes-helm-charts-from-scratch/view)
+- [How to Use Jobs and CronJobs](https://oneuptime.com/blog/post/2026-01-19-kubernetes-jobs-cronjobs-batch-processing/view)
+- [How to Build Helm Charts](https://oneuptime.com/blog/post/2026-01-19-kubernetes-helm-charts-from-scratch/view)
 - [How to Set Up ArgoCD for GitOps](https://oneuptime.com/blog/post/kubernetes-argocd-gitops/view)

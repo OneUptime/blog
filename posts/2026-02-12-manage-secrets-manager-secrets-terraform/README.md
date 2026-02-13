@@ -343,7 +343,7 @@ Secrets Manager charges $0.40 per secret per month and $0.05 per 10,000 API call
 - RDS integration
 - Multi-region replication
 
-For everything else, Parameter Store is usually sufficient. We covered that integration pattern in our post on [using Parameter Store with EKS](https://oneuptime.com/blog/post/parameter-store-eks-external-secrets-operator/view).
+For everything else, Parameter Store is usually sufficient. We covered that integration pattern in our post on [using Parameter Store with EKS](https://oneuptime.com/blog/post/2026-02-12-parameter-store-eks-external-secrets-operator/view).
 
 ## Wrapping Up
 

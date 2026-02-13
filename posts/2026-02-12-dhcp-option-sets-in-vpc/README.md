@@ -87,7 +87,7 @@ aws ec2 create-dhcp-options \
 # (See our DNS resolution guide for details)
 ```
 
-For more on this approach, see our guide on configuring DNS resolution at https://oneuptime.com/blog/post/configure-dns-resolution-in-vpc/view.
+For more on this approach, see our guide on configuring DNS resolution at https://oneuptime.com/blog/post/2026-02-12-configure-dns-resolution-in-vpc/view.
 
 ## Terraform Configuration
 

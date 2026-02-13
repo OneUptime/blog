@@ -258,4 +258,4 @@ aws cloudwatch get-metric-statistics \
 
 Aurora I/O-Optimized eliminates the most unpredictable part of your Aurora bill. For I/O-heavy workloads, it can save up to 40% on database costs. For lighter workloads, Standard pricing is still cheaper. The key is running the numbers on your specific workload before making the switch.
 
-For more on Aurora cost optimization, check out our guide on [Aurora Limitless Database for horizontal scaling](https://oneuptime.com/blog/post/set-up-aurora-limitless-database-for-horizontal-scaling/view) and [Aurora Zero-ETL integration with Redshift](https://oneuptime.com/blog/post/use-aurora-zero-etl-integration-with-redshift/view).
+For more on Aurora cost optimization, check out our guide on [Aurora Limitless Database for horizontal scaling](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-limitless-database-for-horizontal-scaling/view) and [Aurora Zero-ETL integration with Redshift](https://oneuptime.com/blog/post/2026-02-12-use-aurora-zero-etl-integration-with-redshift/view).

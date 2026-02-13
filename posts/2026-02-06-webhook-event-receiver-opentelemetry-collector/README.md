@@ -736,4 +736,4 @@ service:
 
 The Webhook Event Receiver enables event collection from any system that can send HTTP POST requests. Combined with transform processors, you can normalize events from diverse sources into structured OpenTelemetry logs, providing unified observability across your entire toolchain.
 
-For more on processing webhook events, see our guides on [transform processor](https://oneuptime.com/blog/post/transform-processor-opentelemetry-collector/view) and [filter processor](https://oneuptime.com/blog/post/filter-processor-opentelemetry-collector/view).
+For more on processing webhook events, see our guides on [transform processor](https://oneuptime.com/blog/post/2026-02-06-transform-processor-opentelemetry-collector/view) and [filter processor](https://oneuptime.com/blog/post/2026-02-06-filter-processor-opentelemetry-collector/view).

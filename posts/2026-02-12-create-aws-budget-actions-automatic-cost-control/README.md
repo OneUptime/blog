@@ -380,7 +380,7 @@ aws budgets execute-budget-action \
 4. **Always notify before acting**. Set an alert threshold below your action threshold so people get a warning first.
 5. **Document the reversal process**. When someone hits the budget cap and can't create resources, they need to know who to contact and how to get it resolved.
 
-For setting up the budget alerts themselves, see our post on [setting up AWS Budgets for cost alerts](https://oneuptime.com/blog/post/setup-aws-budgets-cost-alerts/view).
+For setting up the budget alerts themselves, see our post on [setting up AWS Budgets for cost alerts](https://oneuptime.com/blog/post/2026-02-12-setup-aws-budgets-cost-alerts/view).
 
 ## Wrapping Up
 

@@ -220,7 +220,7 @@ done
 
 After switching over, keep an eye on your Auto Scaling group activity to make sure new instances launch correctly. You can check the ASG activity history to spot any launch failures.
 
-For comprehensive monitoring of your EC2 instances and Auto Scaling groups during and after migration, consider using [OneUptime's infrastructure monitoring](https://oneuptime.com/blog/post/configure-health-checks-ec2-load-balancer/view) to track instance health and catch any issues early.
+For comprehensive monitoring of your EC2 instances and Auto Scaling groups during and after migration, consider using [OneUptime's infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-12-configure-health-checks-ec2-load-balancer/view) to track instance health and catch any issues early.
 
 ## Summary
 

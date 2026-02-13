@@ -716,7 +716,7 @@ Common troubleshooting steps:
 
 For more information on OpenTelemetry exporters, check out these related posts:
 
-- [How to Configure the OpenSearch Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/opensearch-exporter-opentelemetry-collector/view)
-- [How to Configure the Coralogix Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/coralogix-exporter-opentelemetry-collector/view)
+- [How to Configure the OpenSearch Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-opensearch-exporter-opentelemetry-collector/view)
+- [How to Configure the Coralogix Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-coralogix-exporter-opentelemetry-collector/view)
 
 The Splunk HEC exporter provides a robust, performant integration between OpenTelemetry and Splunk. With proper configuration, it can handle production-scale workloads while maintaining data integrity and providing comprehensive observability.

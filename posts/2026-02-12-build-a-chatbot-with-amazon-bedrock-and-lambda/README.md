@@ -402,7 +402,7 @@ def delete_conversation(event, context):
 
 ## Monitoring the Chatbot
 
-Track response times (users expect sub-second for streaming), error rates, guardrail intervention rates, and conversation completion rates. High guardrail intervention rates might mean your system prompt needs adjustment. Monitor these metrics with [OneUptime](https://oneuptime.com/blog/post/build-an-ai-writing-assistant-with-amazon-bedrock/view) to keep the chatbot responsive and reliable.
+Track response times (users expect sub-second for streaming), error rates, guardrail intervention rates, and conversation completion rates. High guardrail intervention rates might mean your system prompt needs adjustment. Monitor these metrics with [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-an-ai-writing-assistant-with-amazon-bedrock/view) to keep the chatbot responsive and reliable.
 
 ## Wrapping Up
 

@@ -332,4 +332,4 @@ CDK automatically grants the task execution role permission to read the secret.
 
 Using Secrets Manager with ECS is the right way to handle database credentials in containers. Your secrets stay encrypted, access is audited through CloudTrail, and rotation can happen automatically. The key points to remember: use the `secrets` field in your task definition (not `environment`), make sure your task execution role has the right permissions, and plan for how your application handles credential rotation.
 
-For related topics, see our guides on [passing environment variables to ECS tasks](https://oneuptime.com/blog/post/pass-environment-variables-ecs-tasks/view) and [configuring ECS task execution roles](https://oneuptime.com/blog/post/configure-ecs-task-execution-roles/view).
+For related topics, see our guides on [passing environment variables to ECS tasks](https://oneuptime.com/blog/post/2026-02-12-pass-environment-variables-ecs-tasks/view) and [configuring ECS task execution roles](https://oneuptime.com/blog/post/2026-02-12-configure-ecs-task-execution-roles/view).

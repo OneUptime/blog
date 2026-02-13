@@ -129,7 +129,7 @@ The three options:
 | `Retain` | Resource is kept, just detached from the stack | Databases, encryption keys, critical data |
 | `Snapshot` | Creates a final snapshot, then deletes | RDS, ElastiCache, Redshift |
 
-For a deeper dive, see our post on [DeletionPolicy to retain resources](https://oneuptime.com/blog/post/cloudformation-deletionpolicy-retain-resources/view).
+For a deeper dive, see our post on [DeletionPolicy to retain resources](https://oneuptime.com/blog/post/2026-02-12-cloudformation-deletionpolicy-retain-resources/view).
 
 ### Termination Protection
 
@@ -275,7 +275,7 @@ aws cloudformation delete-stack \
 
 The `--retain-resources` flag skips those resources during deletion. The stack will be deleted, but those resources will remain in your account, unmanaged. Clean them up manually afterward.
 
-For more details, see our post on [handling stack deletion failures](https://oneuptime.com/blog/post/cloudformation-stack-deletion-failures/view).
+For more details, see our post on [handling stack deletion failures](https://oneuptime.com/blog/post/2026-02-12-cloudformation-stack-deletion-failures/view).
 
 ## Best Practices
 

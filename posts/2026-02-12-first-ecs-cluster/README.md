@@ -233,9 +233,9 @@ aws ecs list-container-instances --cluster my-ec2-cluster
 
 With your cluster created, you're ready to:
 
-1. [Create a task definition](https://oneuptime.com/blog/post/ecs-task-definition/view) that describes your container
-2. [Run a one-off task](https://oneuptime.com/blog/post/run-ecs-task-manually/view) for testing
-3. [Create a service](https://oneuptime.com/blog/post/ecs-service-long-running-containers/view) for long-running workloads
+1. [Create a task definition](https://oneuptime.com/blog/post/2026-02-12-ecs-task-definition/view) that describes your container
+2. [Run a one-off task](https://oneuptime.com/blog/post/2026-02-12-run-ecs-task-manually/view) for testing
+3. [Create a service](https://oneuptime.com/blog/post/2026-02-12-ecs-service-long-running-containers/view) for long-running workloads
 
 ## Wrapping Up
 

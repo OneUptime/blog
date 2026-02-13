@@ -358,4 +358,4 @@ Bundling everything into the function package is better when:
 
 Lambda Layers keep your deployment packages lean and your dependencies DRY. Create a layer for your common libraries, another for your shared business logic, and attach them to functions as needed. Just remember that layers are versioned separately from functions, so you'll need a process for rolling out layer updates across your functions.
 
-For more on packaging strategies, see our guide on [packaging Lambda functions with dependencies](https://oneuptime.com/blog/post/package-lambda-functions-dependencies/view).
+For more on packaging strategies, see our guide on [packaging Lambda functions with dependencies](https://oneuptime.com/blog/post/2026-02-12-package-lambda-functions-dependencies/view).

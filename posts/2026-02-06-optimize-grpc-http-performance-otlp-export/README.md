@@ -576,7 +576,7 @@ gRPC + zstd:      ~500 bytes (75% reduction)
 HTTP + zstd:      ~550 bytes (72.5% reduction)
 ```
 
-For bandwidth-constrained environments, see our guide on [reducing network bandwidth with compression](https://oneuptime.com/blog/post/reduce-network-bandwidth-opentelemetry-compression/view).
+For bandwidth-constrained environments, see our guide on [reducing network bandwidth with compression](https://oneuptime.com/blog/post/2026-02-06-reduce-network-bandwidth-opentelemetry-compression/view).
 
 ## Security Considerations
 
@@ -612,7 +612,7 @@ HTTP advantages:
 - Simpler debugging (reduced operational costs)
 ```
 
-For a comprehensive cost analysis, see our guide on [building cost-effective observability platforms](https://oneuptime.com/blog/post/cost-effective-observability-platform-opentelemetry/view).
+For a comprehensive cost analysis, see our guide on [building cost-effective observability platforms](https://oneuptime.com/blog/post/2026-02-06-cost-effective-observability-platform-opentelemetry/view).
 
 ## Best Practices Summary
 

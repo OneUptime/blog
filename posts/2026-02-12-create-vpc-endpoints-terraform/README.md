@@ -291,7 +291,7 @@ Compare this to NAT Gateway costs: $0.045/hour per gateway plus $0.045/GB data p
 
 The rule of thumb: create gateway endpoints always (they're free). Create interface endpoints for services your workloads call frequently, especially if the data volume is significant.
 
-For more on managing your networking infrastructure and costs, see our guide on [creating NAT Gateways with Terraform](https://oneuptime.com/blog/post/create-nat-gateways-terraform/view).
+For more on managing your networking infrastructure and costs, see our guide on [creating NAT Gateways with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-nat-gateways-terraform/view).
 
 ## Wrapping Up
 

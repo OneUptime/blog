@@ -299,7 +299,7 @@ graph LR
 
 6. **Monitor your Athena costs.** Querying large billing datasets is not free. Use Athena workgroups with query limits to prevent runaway costs.
 
-For more ways to optimize your AWS costs, check out our guide on [optimizing data transfer costs with VPC endpoints](https://oneuptime.com/blog/post/optimize-data-transfer-costs-with-vpc-endpoints/view).
+For more ways to optimize your AWS costs, check out our guide on [optimizing data transfer costs with VPC endpoints](https://oneuptime.com/blog/post/2026-02-12-optimize-data-transfer-costs-with-vpc-endpoints/view).
 
 ## Wrapping Up
 

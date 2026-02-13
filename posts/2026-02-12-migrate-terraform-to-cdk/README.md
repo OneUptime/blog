@@ -301,7 +301,7 @@ export class Microservice extends Construct {
 
 **Test the import in a staging environment first**. Practice the import process on a non-production copy of your infrastructure before touching production.
 
-For getting up to speed with CDK best practices, check out [CDK with Projen for project management](https://oneuptime.com/blog/post/cdk-projen-project-management/view). If you're building reusable patterns during migration, see [sharing CDK constructs across projects](https://oneuptime.com/blog/post/share-cdk-constructs-across-projects/view).
+For getting up to speed with CDK best practices, check out [CDK with Projen for project management](https://oneuptime.com/blog/post/2026-02-12-cdk-projen-project-management/view). If you're building reusable patterns during migration, see [sharing CDK constructs across projects](https://oneuptime.com/blog/post/2026-02-12-share-cdk-constructs-across-projects/view).
 
 ## Wrapping Up
 

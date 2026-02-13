@@ -48,7 +48,7 @@ WITH (
 SELECT * FROM analytics.events_csv;
 ```
 
-For the full deep dive, see our guide on [optimizing Athena with column formats](https://oneuptime.com/blog/post/optimize-athena-queries-with-column-formats-parquet-orc/view).
+For the full deep dive, see our guide on [optimizing Athena with column formats](https://oneuptime.com/blog/post/2026-02-12-optimize-athena-queries-with-column-formats-parquet-orc/view).
 
 ## Strategy 2: Partition Your Data
 
@@ -87,7 +87,7 @@ TBLPROPERTIES (
 );
 ```
 
-See our full guide on [partitioning for Athena](https://oneuptime.com/blog/post/optimize-athena-query-performance-with-partitioning/view).
+See our full guide on [partitioning for Athena](https://oneuptime.com/blog/post/2026-02-12-optimize-athena-query-performance-with-partitioning/view).
 
 ## Strategy 3: Compress Your Data
 

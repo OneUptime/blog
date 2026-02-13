@@ -394,7 +394,7 @@ aws events put-events \
 
 If your email/Slack/PagerDuty notification comes through, everything's wired correctly.
 
-For a broader view on using the Health Dashboard itself, check out our guide on [using the AWS Health Dashboard for service status](https://oneuptime.com/blog/post/aws-health-dashboard-service-status/view).
+For a broader view on using the Health Dashboard itself, check out our guide on [using the AWS Health Dashboard for service status](https://oneuptime.com/blog/post/2026-02-12-aws-health-dashboard-service-status/view).
 
 ## Best Practices
 

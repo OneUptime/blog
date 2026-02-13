@@ -56,7 +56,7 @@ spec:
                   number: 80
 ```
 
-This terminates TLS at the ALB. Traffic between the ALB and your pods is unencrypted (within the VPC), which is fine for most use cases. For more on ALB Ingress, see our [ALB setup guide](https://oneuptime.com/blog/post/set-up-ingress-with-alb-on-eks/view).
+This terminates TLS at the ALB. Traffic between the ALB and your pods is unencrypted (within the VPC), which is fine for most use cases. For more on ALB Ingress, see our [ALB setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-ingress-with-alb-on-eks/view).
 
 ## Option 2: cert-manager for Pod-Level TLS
 
@@ -285,4 +285,4 @@ kubectl logs -n cert-manager -l app=cert-manager --tail=100
 
 Common issues include Route 53 permission errors, DNS propagation delays, and rate limits on the Let's Encrypt production server.
 
-Whether you go with ACM at the ALB layer or cert-manager for pod-level TLS, automating certificate management removes one of the most annoying operational tasks from your plate. Combined with [ExternalDNS](https://oneuptime.com/blog/post/set-up-external-dns-on-eks-with-route-53/view), you get a fully automated workflow from deployment to working HTTPS endpoint.
+Whether you go with ACM at the ALB layer or cert-manager for pod-level TLS, automating certificate management removes one of the most annoying operational tasks from your plate. Combined with [ExternalDNS](https://oneuptime.com/blog/post/2026-02-12-set-up-external-dns-on-eks-with-route-53/view), you get a fully automated workflow from deployment to working HTTPS endpoint.

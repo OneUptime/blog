@@ -231,4 +231,4 @@ A few things I've learned from running Kinesis in production:
 4. **Set up dead letter queues** for records that fail processing. Don't lose data just because a single record is malformed.
 5. **Use enhanced fan-out** when you have multiple independent consumers reading the same stream.
 
-For the next step, check out our guide on [putting records into Kinesis Data Streams](https://oneuptime.com/blog/post/put-records-into-kinesis-data-streams/view) to start sending data to your newly configured stream.
+For the next step, check out our guide on [putting records into Kinesis Data Streams](https://oneuptime.com/blog/post/2026-02-12-put-records-into-kinesis-data-streams/view) to start sending data to your newly configured stream.

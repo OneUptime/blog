@@ -310,7 +310,7 @@ If you're moving from provisioned MSK to serverless, the key changes are:
 3. **Retention** - Max 24 hours. Archive older data to S3 using Kafka Connect or Firehose.
 4. **Client libraries** - Add the IAM auth library and update connection properties.
 
-For setting up a provisioned cluster, see our guide on [setting up Amazon MSK](https://oneuptime.com/blog/post/set-up-amazon-msk/view). For connecting Lambda to your cluster, check out [connecting to MSK from Lambda](https://oneuptime.com/blog/post/connect-to-msk-from-lambda/view).
+For setting up a provisioned cluster, see our guide on [setting up Amazon MSK](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-msk/view). For connecting Lambda to your cluster, check out [connecting to MSK from Lambda](https://oneuptime.com/blog/post/2026-02-12-connect-to-msk-from-lambda/view).
 
 ## Monitoring
 

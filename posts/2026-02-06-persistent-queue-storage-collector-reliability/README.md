@@ -725,6 +725,6 @@ iostat -x 1
 Persistent queues are essential for production OpenTelemetry Collector deployments, providing resilience against restarts, outages, and network failures. Properly size your persistent storage based on throughput and recovery time objectives, monitor queue health metrics, and test failure scenarios before production deployment. While persistent queues add some performance overhead, the reliability benefits far outweigh the costs for critical telemetry pipelines.
 
 For more information on collector reliability, see related posts:
-- https://oneuptime.com/blog/post/right-size-cpu-memory-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/benchmark-collector-telemetrygen/view
-- https://oneuptime.com/blog/post/troubleshoot-collector-not-exporting-data/view
+- https://oneuptime.com/blog/post/2026-02-06-right-size-cpu-memory-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-benchmark-collector-telemetrygen/view
+- https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-not-exporting-data/view

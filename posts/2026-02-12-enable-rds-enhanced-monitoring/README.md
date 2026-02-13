@@ -259,8 +259,8 @@ To control costs, consider:
 
 ## Best Practices
 
-Use Enhanced Monitoring alongside [Performance Insights](https://oneuptime.com/blog/post/monitor-rds-with-performance-insights/view). They complement each other perfectly. Performance Insights shows you what the database engine is doing (queries, waits, locks), while Enhanced Monitoring shows you what the OS is doing (CPU, memory, disk, processes).
+Use Enhanced Monitoring alongside [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view). They complement each other perfectly. Performance Insights shows you what the database engine is doing (queries, waits, locks), while Enhanced Monitoring shows you what the OS is doing (CPU, memory, disk, processes).
 
-Set up [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view) on the custom metrics you extract from Enhanced Monitoring. Alerting on CPU steal or I/O wait is much more actionable than alerting on total CPU utilization.
+Set up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view) on the custom metrics you extract from Enhanced Monitoring. Alerting on CPU steal or I/O wait is much more actionable than alerting on total CPU utilization.
 
 During incidents, start with Enhanced Monitoring to determine if the problem is CPU-bound, I/O-bound, or memory-bound. Then switch to Performance Insights to identify the specific queries causing the load. This two-tool approach gets you from symptom to root cause faster than either tool alone.

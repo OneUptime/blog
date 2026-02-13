@@ -172,7 +172,7 @@ exports.handler = async (event) => {
 };
 ```
 
-For more on building full custom authentication flows, check out [implementing custom authentication flows in Cognito](https://oneuptime.com/blog/post/custom-authentication-flows-cognito/view).
+For more on building full custom authentication flows, check out [implementing custom authentication flows in Cognito](https://oneuptime.com/blog/post/2026-02-12-custom-authentication-flows-cognito/view).
 
 ## Allowing Retries
 

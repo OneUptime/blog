@@ -778,6 +778,6 @@ For monitoring your Helm deployments, check out [OneUptime's Kubernetes monitori
 
 ## Related Resources
 
-- [How to Set Up Flux CD for GitOps](https://oneuptime.com/blog/post/kubernetes-flux-cd-gitops/view)
+- [How to Set Up Flux CD for GitOps](https://oneuptime.com/blog/post/2026-01-19-kubernetes-flux-cd-gitops/view)
 - [How to Set Up ArgoCD for GitOps](https://oneuptime.com/blog/post/kubernetes-argocd-gitops/view)
 - [How to Implement Blue-Green Deployments](https://oneuptime.com/blog/post/kubernetes-blue-green-deployments/view)

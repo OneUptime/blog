@@ -336,4 +336,4 @@ Key metrics to watch:
 
 The Terraform AWS RDS module takes the tedium out of database provisioning. Start with the basics, add multi-AZ and monitoring for production, and always enable encryption and automated backups. The module's parameters array makes it easy to tune database settings without creating a separate parameter group resource.
 
-For the VPC layer underneath your database, see our guide on the [Terraform AWS VPC module](https://oneuptime.com/blog/post/terraform-aws-vpc-module/view). For the application layer that connects to it, check out [creating Application Load Balancers with Terraform](https://oneuptime.com/blog/post/create-application-load-balancers-with-terraform/view).
+For the VPC layer underneath your database, see our guide on the [Terraform AWS VPC module](https://oneuptime.com/blog/post/2026-02-12-terraform-aws-vpc-module/view). For the application layer that connects to it, check out [creating Application Load Balancers with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-application-load-balancers-with-terraform/view).

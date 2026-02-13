@@ -396,4 +396,4 @@ Cache aggressively. Translation is deterministic for the same input and model ve
 
 Use formality settings when available. Some languages have formal and informal registers, and picking the right one matters for customer-facing content.
 
-For applications that also need text analysis alongside translation, Amazon Comprehend works great as a complement. Check our guide on [text analysis with Amazon Comprehend](https://oneuptime.com/blog/post/amazon-comprehend-text-analysis/view) for details on combining these services.
+For applications that also need text analysis alongside translation, Amazon Comprehend works great as a complement. Check our guide on [text analysis with Amazon Comprehend](https://oneuptime.com/blog/post/2026-02-12-amazon-comprehend-text-analysis/view) for details on combining these services.

@@ -455,4 +455,4 @@ Follow these guidelines for host network pods:
 
 The ClusterFirstWithHostNet DNS policy enables pods using host network to maintain cluster DNS resolution capabilities. By properly configuring this policy, system components, ingress controllers, and monitoring agents can leverage host network performance while still accessing Kubernetes services through standard DNS names.
 
-For more DNS configuration patterns, explore our guides on [custom DNS resolvers](https://oneuptime.com/blog/post/custom-dns-resolvers-pod-dnsconfig/view) and [DNS troubleshooting](https://oneuptime.com/blog/post/debug-dns-resolution-dnsutils/view).
+For more DNS configuration patterns, explore our guides on [custom DNS resolvers](https://oneuptime.com/blog/post/2026-02-09-custom-dns-resolvers-pod-dnsconfig/view) and [DNS troubleshooting](https://oneuptime.com/blog/post/2026-02-09-debug-dns-resolution-dnsutils/view).

@@ -228,7 +228,7 @@ If you can't connect, check these common issues in order:
 5. **Credentials**: Double-check username, password, and database name
 6. **SSL/TLS**: Some connections require SSL. Add `--ssl-mode=require` for PostgreSQL or `--ssl` for MySQL
 
-For persistent connectivity issues, try using [Reachability Analyzer](https://oneuptime.com/blog/post/use-reachability-analyzer-diagnose-vpc-connectivity/view) to diagnose the network path.
+For persistent connectivity issues, try using [Reachability Analyzer](https://oneuptime.com/blog/post/2026-02-12-use-reachability-analyzer-diagnose-vpc-connectivity/view) to diagnose the network path.
 
 ## Wrapping Up
 

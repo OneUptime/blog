@@ -195,7 +195,7 @@ The exact URL format depends on your region:
 - **EU West**: `http://bucket-name.s3-website-eu-west-1.amazonaws.com`
 - **AP Southeast**: `http://bucket-name.s3-website-ap-southeast-1.amazonaws.com`
 
-Note: S3 website endpoints only support HTTP, not HTTPS. For HTTPS, you need CloudFront in front of S3. See our guide on [setting up S3 with CloudFront for a CDN-backed static site](https://oneuptime.com/blog/post/s3-cloudfront-cdn-backed-static-site/view).
+Note: S3 website endpoints only support HTTP, not HTTPS. For HTTPS, you need CloudFront in front of S3. See our guide on [setting up S3 with CloudFront for a CDN-backed static site](https://oneuptime.com/blog/post/2026-02-12-s3-cloudfront-cdn-backed-static-site/view).
 
 ## Adding Routing Rules
 
@@ -365,7 +365,7 @@ S3 static hosting has some limitations to be aware of:
 - URL rewriting is limited to routing rules
 - No gzip compression from S3 directly (pre-compress or use CloudFront)
 
-For production sites, you'll almost always want CloudFront in front. Check our guide on [setting up S3 with CloudFront](https://oneuptime.com/blog/post/s3-cloudfront-cdn-backed-static-site/view) for the full setup.
+For production sites, you'll almost always want CloudFront in front. Check our guide on [setting up S3 with CloudFront](https://oneuptime.com/blog/post/2026-02-12-s3-cloudfront-cdn-backed-static-site/view) for the full setup.
 
 ## Wrapping Up
 

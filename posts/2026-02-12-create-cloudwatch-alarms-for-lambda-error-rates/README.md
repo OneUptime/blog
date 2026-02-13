@@ -319,4 +319,4 @@ Resources:
 
 ## Wrapping Up
 
-Lambda error rate alarms are the first line of defense for your serverless applications. Start with a simple error rate alarm and evolve to anomaly detection and composite alarms as your maturity grows. For alarms on other AWS services, check out our posts on [CloudWatch alarms for SQS queue backlog](https://oneuptime.com/blog/post/create-cloudwatch-alarms-for-sqs-queue-backlog/view) and [CloudWatch alarms for ECS service health](https://oneuptime.com/blog/post/create-cloudwatch-alarms-for-ecs-service-health/view).
+Lambda error rate alarms are the first line of defense for your serverless applications. Start with a simple error rate alarm and evolve to anomaly detection and composite alarms as your maturity grows. For alarms on other AWS services, check out our posts on [CloudWatch alarms for SQS queue backlog](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-for-sqs-queue-backlog/view) and [CloudWatch alarms for ECS service health](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-for-ecs-service-health/view).

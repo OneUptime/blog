@@ -394,7 +394,7 @@ Distributed Map pricing is based on state transitions in both the parent and chi
 2. **Use Express child executions** - For processing steps under 5 minutes, set `ExecutionType` to `EXPRESS` for lower per-transition costs
 3. **Right-size concurrency** - Higher concurrency finishes faster but may hit Lambda concurrency limits
 
-For high-volume scenarios, see our guide on [Step Functions Express Workflows](https://oneuptime.com/blog/post/use-step-functions-express-workflows-for-high-volume-events/view).
+For high-volume scenarios, see our guide on [Step Functions Express Workflows](https://oneuptime.com/blog/post/2026-02-12-use-step-functions-express-workflows-for-high-volume-events/view).
 
 ## Wrapping Up
 

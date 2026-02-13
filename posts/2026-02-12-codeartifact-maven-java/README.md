@@ -16,7 +16,7 @@ This guide covers setting up Maven with CodeArtifact, configuring Gradle, publis
 
 You'll need:
 
-- An AWS CodeArtifact domain and repository with a Maven Central upstream (see our guide on [setting up CodeArtifact](https://oneuptime.com/blog/post/aws-codeartifact-package-management/view))
+- An AWS CodeArtifact domain and repository with a Maven Central upstream (see our guide on [setting up CodeArtifact](https://oneuptime.com/blog/post/2026-02-12-aws-codeartifact-package-management/view))
 - AWS CLI installed and configured
 - Java JDK and Maven installed
 
@@ -316,7 +316,7 @@ Include a CI-specific `settings.xml` in your repo:
 </settings>
 ```
 
-The CodeBuild service role needs the same CodeArtifact permissions as mentioned in our [npm guide](https://oneuptime.com/blog/post/codeartifact-npm/view).
+The CodeBuild service role needs the same CodeArtifact permissions as mentioned in our [npm guide](https://oneuptime.com/blog/post/2026-02-12-codeartifact-npm/view).
 
 ## Token Refresh Helper
 

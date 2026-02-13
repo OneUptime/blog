@@ -683,8 +683,8 @@ If `expired_edges` is high relative to `total_edges`, increase your TTL.
 
 For more information about connectors and trace-to-metrics conversion:
 
-- [How to Use Connectors to Link Traces and Metrics Pipelines](https://oneuptime.com/blog/post/connectors-link-traces-metrics-pipelines-opentelemetry/view)
-- [How to Convert Spans to Metrics Using the Span Metrics Connector](https://oneuptime.com/blog/post/convert-spans-to-metrics-span-metrics-connector/view)
-- [How to Configure the Signal to Metrics Connector in the OpenTelemetry Collector](https://oneuptime.com/blog/post/signal-to-metrics-connector-opentelemetry-collector/view)
+- [How to Use Connectors to Link Traces and Metrics Pipelines](https://oneuptime.com/blog/post/2026-02-06-connectors-link-traces-metrics-pipelines-opentelemetry/view)
+- [How to Convert Spans to Metrics Using the Span Metrics Connector](https://oneuptime.com/blog/post/2026-02-06-convert-spans-to-metrics-span-metrics-connector/view)
+- [How to Configure the Signal to Metrics Connector in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-signal-to-metrics-connector-opentelemetry-collector/view)
 
 The Service Graph connector transforms your distributed traces into a clear picture of service dependencies, communication patterns, and interaction health, providing essential insights for operating and evolving microservices architectures.

@@ -325,7 +325,7 @@ Prevent build failures before they reach Amplify:
 1. **Run builds in CI before pushing**: Use GitHub Actions or similar to run `npm ci && npm run build` on every PR
 2. **Pin dependency versions**: Use exact versions in `package.json` to prevent surprise updates
 3. **Test with the same Node.js version**: Use `.nvmrc` to ensure local and CI environments match
-4. **Monitor build times**: Set up alerts for builds that take longer than expected, using [CloudWatch monitoring](https://oneuptime.com/blog/post/monitor-amplify-hosting-with-cloudwatch/view)
+4. **Monitor build times**: Set up alerts for builds that take longer than expected, using [CloudWatch monitoring](https://oneuptime.com/blog/post/2026-02-12-monitor-amplify-hosting-with-cloudwatch/view)
 
 ## Wrapping Up
 

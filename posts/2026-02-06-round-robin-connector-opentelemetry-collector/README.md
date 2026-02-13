@@ -390,8 +390,8 @@ This configuration distributes traces evenly across three regional collectors, r
 
 For more information about OpenTelemetry connectors and pipeline configuration, check out these related posts:
 
-- [How to Use Connectors to Link Traces and Metrics Pipelines](https://oneuptime.com/blog/post/connectors-link-traces-metrics-pipelines-opentelemetry/view)
-- [How to Generate Service Graph Metrics from Traces in the Collector](https://oneuptime.com/blog/post/generate-service-graph-metrics-traces-collector/view)
-- [How to Convert Spans to Metrics Using the Span Metrics Connector](https://oneuptime.com/blog/post/convert-spans-to-metrics-span-metrics-connector/view)
+- [How to Use Connectors to Link Traces and Metrics Pipelines](https://oneuptime.com/blog/post/2026-02-06-connectors-link-traces-metrics-pipelines-opentelemetry/view)
+- [How to Generate Service Graph Metrics from Traces in the Collector](https://oneuptime.com/blog/post/2026-02-06-generate-service-graph-metrics-traces-collector/view)
+- [How to Convert Spans to Metrics Using the Span Metrics Connector](https://oneuptime.com/blog/post/2026-02-06-convert-spans-to-metrics-span-metrics-connector/view)
 
 The Round Robin connector provides a powerful tool for load balancing and distributing telemetry data within your OpenTelemetry Collector deployment. By understanding its configuration options and use cases, you can build more resilient and scalable observability pipelines.

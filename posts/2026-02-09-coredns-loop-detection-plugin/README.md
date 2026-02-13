@@ -473,4 +473,4 @@ Follow these practices to prevent DNS loops:
 
 The CoreDNS loop detection plugin prevents DNS resolution cycles that can cripple your Kubernetes cluster. By understanding how loops form, testing configurations thoroughly, and monitoring for loop conditions, you maintain reliable DNS resolution. Always investigate loop detection failures rather than disabling the plugin.
 
-For more CoreDNS troubleshooting, explore our guides on [debugging DNS resolution](https://oneuptime.com/blog/post/debug-dns-resolution-dnsutils/view) and [CoreDNS plugin chain debugging](https://oneuptime.com/blog/post/debug-coredns-plugin-chain/view).
+For more CoreDNS troubleshooting, explore our guides on [debugging DNS resolution](https://oneuptime.com/blog/post/2026-02-09-debug-dns-resolution-dnsutils/view) and [CoreDNS plugin chain debugging](https://oneuptime.com/blog/post/2026-02-09-debug-coredns-plugin-chain/view).

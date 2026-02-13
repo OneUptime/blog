@@ -476,6 +476,6 @@ aws cloudformation get-template \
 
 **Include CAPABILITY_AUTO_EXPAND.** The SAM transform creates additional resources that require this capability acknowledgment.
 
-**Monitor your functions.** Set up CloudWatch alarms for errors and duration. You can add standard CloudFormation alarm resources alongside your SAM resources, or integrate with [OneUptime](https://oneuptime.com/blog/post/detect-fix-cloudformation-drift/view) for comprehensive monitoring.
+**Monitor your functions.** Set up CloudWatch alarms for errors and duration. You can add standard CloudFormation alarm resources alongside your SAM resources, or integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-12-detect-fix-cloudformation-drift/view) for comprehensive monitoring.
 
 The SAM transform dramatically reduces the boilerplate for serverless applications. It's not a separate product - it's just a smarter way to write CloudFormation templates for serverless workloads.

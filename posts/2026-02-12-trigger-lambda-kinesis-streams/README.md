@@ -242,7 +242,7 @@ Choosing the right event source depends on your use case:
 | Multiple consumers | Yes (enhanced fan-out) | Yes (up to 2) | No (single consumer) |
 | Data source | Any producer | DynamoDB table changes | Any producer |
 
-Use Kinesis for high-throughput streaming from external sources. Use DynamoDB Streams for change data capture. Use SQS for work queues. For DynamoDB Stream triggers, see our post on [triggering Lambda from DynamoDB Streams](https://oneuptime.com/blog/post/trigger-lambda-dynamodb-streams/view).
+Use Kinesis for high-throughput streaming from external sources. Use DynamoDB Streams for change data capture. Use SQS for work queues. For DynamoDB Stream triggers, see our post on [triggering Lambda from DynamoDB Streams](https://oneuptime.com/blog/post/2026-02-12-trigger-lambda-dynamodb-streams/view).
 
 ## Error Handling Deep Dive
 
@@ -264,7 +264,7 @@ Watch these CloudWatch metrics:
 - **GetRecords.IteratorAgeMilliseconds** - similar but from the Kinesis side.
 - **ReadProvisionedThroughputExceeded** - you're hitting the shard's read limit.
 
-Set alarms on IteratorAge. If it exceeds a few seconds, consider increasing shards, parallelization factor, or optimizing your function. For monitoring strategies, check out [Lambda extensions for monitoring](https://oneuptime.com/blog/post/lambda-extensions-monitoring/view).
+Set alarms on IteratorAge. If it exceeds a few seconds, consider increasing shards, parallelization factor, or optimizing your function. For monitoring strategies, check out [Lambda extensions for monitoring](https://oneuptime.com/blog/post/2026-02-12-lambda-extensions-monitoring/view).
 
 ## Wrapping Up
 

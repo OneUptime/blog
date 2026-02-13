@@ -287,7 +287,7 @@ Amazon Forecast pricing is based on:
 
 For a typical use case with a few thousand items and daily data, expect training costs of $10-50 per run. Forecast queries are cheap at $0.60 per 1000 units. The biggest cost driver is running AutoML on large datasets, so consider using a specific algorithm once you know what works for your data.
 
-Monitor your forecast pipeline health alongside your other systems. For comprehensive observability across your forecasting infrastructure and beyond, tools like [OneUptime](https://oneuptime.com/blog/post/build-a-time-series-dashboard-for-iot-on-aws/view) can help you track pipeline execution and catch failures early.
+Monitor your forecast pipeline health alongside your other systems. For comprehensive observability across your forecasting infrastructure and beyond, tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-time-series-dashboard-for-iot-on-aws/view) can help you track pipeline execution and catch failures early.
 
 ## Wrapping Up
 

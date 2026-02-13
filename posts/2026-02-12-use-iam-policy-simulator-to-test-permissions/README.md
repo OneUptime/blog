@@ -239,7 +239,7 @@ Run this as part of your CI/CD pipeline whenever IAM policies change.
 
 The Policy Simulator has some limitations to be aware of. It doesn't evaluate resource-based policies (S3 bucket policies, KMS key policies, etc.) - only identity-based policies. It also doesn't evaluate service control policies or VPC endpoint policies. And it can't simulate cross-account access scenarios accurately.
 
-For comprehensive access testing, combine the Policy Simulator with IAM Access Analyzer. Our guide on [using IAM Access Analyzer to find unintended access](https://oneuptime.com/blog/post/use-iam-access-analyzer-to-find-unintended-access/view) covers the complementary approach.
+For comprehensive access testing, combine the Policy Simulator with IAM Access Analyzer. Our guide on [using IAM Access Analyzer to find unintended access](https://oneuptime.com/blog/post/2026-02-12-use-iam-access-analyzer-to-find-unintended-access/view) covers the complementary approach.
 
 ## Wrapping Up
 

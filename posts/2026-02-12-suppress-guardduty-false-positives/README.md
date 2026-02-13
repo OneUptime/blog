@@ -288,4 +288,4 @@ echo "Archived findings: $ARCHIVED"
 
 If your archived count is very high relative to active, your suppression rules might be too aggressive. If active count is overwhelming, you need more targeted suppression.
 
-For setting up GuardDuty across your organization, see [GuardDuty multi-account setup](https://oneuptime.com/blog/post/guardduty-multiple-aws-accounts/view). To get all your security findings in one place, check out [integrating GuardDuty with Security Hub](https://oneuptime.com/blog/post/integrate-guardduty-security-hub/view).
+For setting up GuardDuty across your organization, see [GuardDuty multi-account setup](https://oneuptime.com/blog/post/2026-02-12-guardduty-multiple-aws-accounts/view). To get all your security findings in one place, check out [integrating GuardDuty with Security Hub](https://oneuptime.com/blog/post/2026-02-12-integrate-guardduty-security-hub/view).

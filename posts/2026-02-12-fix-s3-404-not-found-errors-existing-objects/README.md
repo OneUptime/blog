@@ -154,7 +154,7 @@ aws s3api list-objects-v2 --bucket my-bucket --max-keys 1
 # If this fails with Access Denied, the 404 is actually a permissions issue
 ```
 
-If listing fails, the fix is to add `s3:ListBucket` to your IAM policy. See our guide on [fixing S3 403 Access Denied errors](https://oneuptime.com/blog/post/fix-s3-403-access-denied-errors/view) for more details.
+If listing fails, the fix is to add `s3:ListBucket` to your IAM policy. See our guide on [fixing S3 403 Access Denied errors](https://oneuptime.com/blog/post/2026-02-12-fix-s3-403-access-denied-errors/view) for more details.
 
 ## Cause 7: Static Website Hosting Configuration
 

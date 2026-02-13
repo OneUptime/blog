@@ -254,8 +254,8 @@ aws s3api put-bucket-logging \
 
 ## Bottom Line
 
-For new buckets, keep ACLs disabled and use [bucket policies](https://oneuptime.com/blog/post/set-up-s3-bucket-policies-access-control/view) for access control. They're more flexible, easier to audit, and don't have the object ownership complications that ACLs introduce.
+For new buckets, keep ACLs disabled and use [bucket policies](https://oneuptime.com/blog/post/2026-02-12-set-up-s3-bucket-policies-access-control/view) for access control. They're more flexible, easier to audit, and don't have the object ownership complications that ACLs introduce.
 
 For existing buckets with ACLs, plan a migration to bucket policies. It's usually straightforward - the hardest part is identifying all the ACL grants that need to be replicated as policy statements.
 
-And make sure you've got [public access blocked](https://oneuptime.com/blog/post/block-public-access-on-s3-buckets/view) on every bucket, regardless of whether you're using ACLs or policies.
+And make sure you've got [public access blocked](https://oneuptime.com/blog/post/2026-02-12-block-public-access-on-s3-buckets/view) on every bucket, regardless of whether you're using ACLs or policies.

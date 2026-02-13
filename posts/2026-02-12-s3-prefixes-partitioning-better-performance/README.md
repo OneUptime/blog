@@ -241,7 +241,7 @@ Prefix strategy decision guide:
 """
 ```
 
-For high-throughput optimization techniques beyond prefix design, see our guide on [optimizing S3 performance for high-throughput workloads](https://oneuptime.com/blog/post/optimize-s3-performance-high-throughput-workloads/view).
+For high-throughput optimization techniques beyond prefix design, see our guide on [optimizing S3 performance for high-throughput workloads](https://oneuptime.com/blog/post/2026-02-12-optimize-s3-performance-high-throughput-workloads/view).
 
 ## Listing Objects by Prefix Efficiently
 
@@ -313,7 +313,7 @@ with ThreadPoolExecutor(max_workers=20) as executor:
 print(f"Migrated {len(results)} objects")
 ```
 
-For millions of objects, use [S3 Batch Operations](https://oneuptime.com/blog/post/s3-batch-operations-process-millions-objects/view) instead.
+For millions of objects, use [S3 Batch Operations](https://oneuptime.com/blog/post/2026-02-12-s3-batch-operations-process-millions-objects/view) instead.
 
 ## Wrapping Up
 

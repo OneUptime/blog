@@ -479,4 +479,4 @@ A good CI/CD pipeline should make deployments boring - predictable, reliable, an
 
 The pipeline itself is a production system. Secure it, monitor it, and treat changes to the pipeline with the same rigor as changes to your application code.
 
-For related topics, check out our guides on [infrastructure as code best practices on AWS](https://oneuptime.com/blog/post/infrastructure-as-code-best-practices-aws/view) and [container security best practices on AWS](https://oneuptime.com/blog/post/container-security-best-practices-aws/view).
+For related topics, check out our guides on [infrastructure as code best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-infrastructure-as-code-best-practices-aws/view) and [container security best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-container-security-best-practices-aws/view).

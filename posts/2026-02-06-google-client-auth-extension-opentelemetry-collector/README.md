@@ -325,4 +325,4 @@ service:
 
 The Google Client Auth extension is essential for securely connecting your OpenTelemetry Collector to Google Cloud services. By supporting multiple authentication methods and handling token management automatically, it simplifies the deployment of collectors in various environments from local development to production Kubernetes clusters.
 
-For more information on OpenTelemetry authentication, see the related guides on [Azure Auth Extension](https://oneuptime.com/blog/post/azure-auth-extension-opentelemetry-collector/view) and [storage extension configuration](https://oneuptime.com/blog/post/storage-extension-opentelemetry-collector/view).
+For more information on OpenTelemetry authentication, see the related guides on [Azure Auth Extension](https://oneuptime.com/blog/post/2026-02-06-azure-auth-extension-opentelemetry-collector/view) and [storage extension configuration](https://oneuptime.com/blog/post/2026-02-06-storage-extension-opentelemetry-collector/view).

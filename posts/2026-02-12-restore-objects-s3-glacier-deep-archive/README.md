@@ -29,7 +29,7 @@ Each Glacier storage class offers different retrieval speeds at different prices
 | Standard | 12 hours | $0.02 |
 | Bulk | 48 hours | $0.0025 |
 
-Expedited retrieval isn't available for Deep Archive. If you need frequent fast restores, you might want Glacier Instant Retrieval instead. See our guide on [S3 Glacier storage classes](https://oneuptime.com/blog/post/s3-glacier-long-term-archival-storage/view).
+Expedited retrieval isn't available for Deep Archive. If you need frequent fast restores, you might want Glacier Instant Retrieval instead. See our guide on [S3 Glacier storage classes](https://oneuptime.com/blog/post/2026-02-12-s3-glacier-long-term-archival-storage/view).
 
 ## Step 1: Check Object Storage Class
 

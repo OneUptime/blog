@@ -326,4 +326,4 @@ This is why versioning is non-negotiable for state buckets. It's your safety net
 5. **Never manually edit state files** - Use `terraform state mv` and `terraform import` instead.
 6. **Set up monitoring** - Use [OneUptime](https://oneuptime.com) or CloudWatch to alert on failed applies and state lock issues.
 
-For more on securing your S3 buckets, including the state bucket, check out our post on [S3 IAM policies for fine-grained access control](https://oneuptime.com/blog/post/s3-iam-policies-fine-grained-access-control/view).
+For more on securing your S3 buckets, including the state bucket, check out our post on [S3 IAM policies for fine-grained access control](https://oneuptime.com/blog/post/2026-02-12-s3-iam-policies-fine-grained-access-control/view).

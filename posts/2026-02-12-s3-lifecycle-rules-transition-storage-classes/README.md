@@ -189,7 +189,7 @@ aws s3api put-bucket-lifecycle-configuration \
 
 ## Handling Non-Current Versions
 
-If your bucket has [versioning enabled](https://oneuptime.com/blog/post/enable-s3-bucket-versioning/view), you'll want lifecycle rules for non-current versions too. These old versions can silently accumulate storage costs.
+If your bucket has [versioning enabled](https://oneuptime.com/blog/post/2026-02-12-enable-s3-bucket-versioning/view), you'll want lifecycle rules for non-current versions too. These old versions can silently accumulate storage costs.
 
 Transition non-current versions to cheaper storage:
 
@@ -236,7 +236,7 @@ aws s3api put-bucket-lifecycle-configuration \
     }'
 ```
 
-This keeps the 3 most recent non-current versions, transitions older ones through cheaper storage classes, and eventually deletes them after a year. For more on expiring old objects, see our guide on [automatically deleting old objects](https://oneuptime.com/blog/post/automatically-delete-old-objects-s3-lifecycle/view).
+This keeps the 3 most recent non-current versions, transitions older ones through cheaper storage classes, and eventually deletes them after a year. For more on expiring old objects, see our guide on [automatically deleting old objects](https://oneuptime.com/blog/post/2026-02-12-automatically-delete-old-objects-s3-lifecycle/view).
 
 ## Viewing Current Lifecycle Configuration
 

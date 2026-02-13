@@ -297,4 +297,4 @@ console.log(response.ETag);
 - **Handle streams properly.** Don't forget that S3 response bodies are streams in v3.
 - **Use paginators for list operations.** They handle continuation tokens automatically.
 
-For more on setting up credentials for your clients, see the guide on [handling credentials in AWS SDK v3](https://oneuptime.com/blog/post/credentials-aws-sdk-javascript-v3/view). If you're migrating from v2, check out the [migration guide](https://oneuptime.com/blog/post/migrate-aws-sdk-v2-to-v3-nodejs/view) for a step-by-step walkthrough.
+For more on setting up credentials for your clients, see the guide on [handling credentials in AWS SDK v3](https://oneuptime.com/blog/post/2026-02-12-credentials-aws-sdk-javascript-v3/view). If you're migrating from v2, check out the [migration guide](https://oneuptime.com/blog/post/2026-02-12-migrate-aws-sdk-v2-to-v3-nodejs/view) for a step-by-step walkthrough.

@@ -337,4 +337,4 @@ aws route53 change-resource-record-sets \
 
 MGN makes lift-and-shift migrations about as painless as they can be. The continuous replication means your target is always close to the source, and the test-then-cutover workflow gives you confidence before committing. The key is to test thoroughly, validate networking, and keep a rollback plan.
 
-For tracking migration progress across multiple servers and tools, see our guide on [using AWS Migration Hub](https://oneuptime.com/blog/post/use-aws-migration-hub-for-application-migration/view). For database migrations, check out our guide on [AWS Database Migration Service](https://oneuptime.com/blog/post/use-aws-database-migration-service-for-schema-conversion/view).
+For tracking migration progress across multiple servers and tools, see our guide on [using AWS Migration Hub](https://oneuptime.com/blog/post/2026-02-12-use-aws-migration-hub-for-application-migration/view). For database migrations, check out our guide on [AWS Database Migration Service](https://oneuptime.com/blog/post/2026-02-12-use-aws-database-migration-service-for-schema-conversion/view).

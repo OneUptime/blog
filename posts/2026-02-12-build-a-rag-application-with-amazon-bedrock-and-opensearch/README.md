@@ -477,7 +477,7 @@ Return only the reformulated question, nothing else."""
 
 ## Monitoring Your RAG Application
 
-RAG applications have multiple failure modes: embedding generation can fail, vector search can return irrelevant results, and the LLM can still hallucinate despite context. Monitor embedding latency, search relevance scores, answer generation time, and user feedback. Track the full pipeline with [OneUptime](https://oneuptime.com/blog/post/build-a-chatbot-with-amazon-bedrock-and-lambda/view) to ensure every component is healthy.
+RAG applications have multiple failure modes: embedding generation can fail, vector search can return irrelevant results, and the LLM can still hallucinate despite context. Monitor embedding latency, search relevance scores, answer generation time, and user feedback. Track the full pipeline with [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-chatbot-with-amazon-bedrock-and-lambda/view) to ensure every component is healthy.
 
 ## Wrapping Up
 

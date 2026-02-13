@@ -470,7 +470,7 @@ A CDP holds sensitive personal data. Implement:
 - **Data access**: Allow customers to export all data you hold about them
 - **Encryption**: Use KMS encryption for DynamoDB and S3
 
-For a deeper dive into compliance, see our guide on [building a compliance reporting system on AWS](https://oneuptime.com/blog/post/build-a-compliance-reporting-system-on-aws/view).
+For a deeper dive into compliance, see our guide on [building a compliance reporting system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-compliance-reporting-system-on-aws/view).
 
 ## Wrapping Up
 

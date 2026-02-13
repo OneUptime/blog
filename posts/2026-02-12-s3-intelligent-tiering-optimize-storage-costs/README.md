@@ -210,7 +210,7 @@ for storage_type, tier_name in tiers.items():
         print(f"{tier_name}: {size_gb:.2f} GB")
 ```
 
-For a broader view across all your buckets, see our guide on [S3 Storage Lens](https://oneuptime.com/blog/post/s3-storage-lens-visibility-storage-usage/view).
+For a broader view across all your buckets, see our guide on [S3 Storage Lens](https://oneuptime.com/blog/post/2026-02-12-s3-storage-lens-visibility-storage-usage/view).
 
 ## When to Use Intelligent-Tiering vs. Manual Lifecycle Policies
 
@@ -265,7 +265,7 @@ for page in pages:
 print(f"Migrated {migrated} objects to Intelligent-Tiering")
 ```
 
-For millions of objects, use [S3 Batch Operations](https://oneuptime.com/blog/post/s3-batch-operations-process-millions-objects/view) instead.
+For millions of objects, use [S3 Batch Operations](https://oneuptime.com/blog/post/2026-02-12-s3-batch-operations-process-millions-objects/view) instead.
 
 ## Wrapping Up
 

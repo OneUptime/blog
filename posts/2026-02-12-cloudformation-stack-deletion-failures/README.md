@@ -313,7 +313,7 @@ Resources:
 
 ### Avoid manual modifications
 
-Resources modified outside of CloudFormation are more likely to cause deletion issues. Use [drift detection](https://oneuptime.com/blog/post/detect-fix-cloudformation-drift/view) to catch manual changes before they become deletion blockers.
+Resources modified outside of CloudFormation are more likely to cause deletion issues. Use [drift detection](https://oneuptime.com/blog/post/2026-02-12-detect-fix-cloudformation-drift/view) to catch manual changes before they become deletion blockers.
 
 ## Best Practices
 
@@ -325,6 +325,6 @@ Resources modified outside of CloudFormation are more likely to cause deletion i
 
 **Set DeletionPolicy on data resources.** Even if you plan to delete the data, having a Snapshot policy gives you a safety net.
 
-**Check dependencies before deleting.** Run the pre-deletion checks from our guide on [deleting stacks safely](https://oneuptime.com/blog/post/delete-cloudformation-stacks-safely/view) to avoid surprises.
+**Check dependencies before deleting.** Run the pre-deletion checks from our guide on [deleting stacks safely](https://oneuptime.com/blog/post/2026-02-12-delete-cloudformation-stacks-safely/view) to avoid surprises.
 
 Stack deletion failures are annoying but solvable. The key is understanding what's blocking the deletion and having the right approach for each scenario.

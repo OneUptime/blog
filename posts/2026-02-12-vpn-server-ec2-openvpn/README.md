@@ -45,7 +45,7 @@ aws ec2 run-instances \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=openvpn-server}]'
 ```
 
-Critically, you need to disable source/destination check on the VPN instance so it can route traffic. For details on why this matters, see our post on [configuring source/destination check for NAT](https://oneuptime.com/blog/post/configure-source-destination-check-ec2-nat/view).
+Critically, you need to disable source/destination check on the VPN instance so it can route traffic. For details on why this matters, see our post on [configuring source/destination check for NAT](https://oneuptime.com/blog/post/2026-02-12-configure-source-destination-check-ec2-nat/view).
 
 ```bash
 # Disable source/destination check

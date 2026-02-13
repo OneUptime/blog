@@ -464,7 +464,7 @@ service:
 The AWS S3 exporter provides a robust solution for long-term storage of OpenTelemetry data. By following the configuration examples and best practices in this guide, you can build a cost-effective, secure, and scalable telemetry storage solution.
 
 For more information on OpenTelemetry exporters, check out these related articles:
-- https://oneuptime.com/blog/post/azure-monitor-exporter-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/google-cloud-operations-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-azure-monitor-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-google-cloud-operations-exporter-opentelemetry-collector/view
 
 For detailed information about the S3 exporter configuration options, refer to the official OpenTelemetry Collector documentation.

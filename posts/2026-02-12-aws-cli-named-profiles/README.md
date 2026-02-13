@@ -156,7 +156,7 @@ region = us-east-1
 mfa_serial = arn:aws:iam::111111111111:mfa/myuser
 ```
 
-With this setup, your `dev` profile has the actual credentials. The `staging` and `production` profiles use those credentials to assume a role in another account. The `production` profile also requires MFA (more on that in our [MFA authentication guide](https://oneuptime.com/blog/post/aws-cli-mfa-authentication/view)).
+With this setup, your `dev` profile has the actual credentials. The `staging` and `production` profiles use those credentials to assume a role in another account. The `production` profile also requires MFA (more on that in our [MFA authentication guide](https://oneuptime.com/blog/post/2026-02-12-aws-cli-mfa-authentication/view)).
 
 ### Region-Specific Profiles
 
@@ -293,7 +293,7 @@ aws sts get-caller-identity --profile production
 2. **Use assume-role profiles** instead of long-term credentials for each account.
 3. **Require MFA for production profiles.** Add `mfa_serial` to sensitive profiles.
 4. **Rotate access keys regularly.** Use `aws iam create-access-key` and `aws iam delete-access-key`.
-5. **Consider using [SSO profiles](https://oneuptime.com/blog/post/aws-cli-sso-profiles/view)** instead of IAM access keys entirely.
+5. **Consider using [SSO profiles](https://oneuptime.com/blog/post/2026-02-12-aws-cli-sso-profiles/view)** instead of IAM access keys entirely.
 6. **Set file permissions** on your credentials file.
 
 ```bash

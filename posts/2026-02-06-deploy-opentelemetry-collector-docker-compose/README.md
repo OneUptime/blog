@@ -908,8 +908,8 @@ docker inspect otel-collector
 
 For other deployment options, see:
 
-- [How to Deploy the OpenTelemetry Collector with the Kubernetes Operator](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-kubernetes-operator/view)
-- [How to Deploy the OpenTelemetry Collector on AWS ECS Fargate](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-aws-ecs-fargate/view)
-- [How to Set Up a Two-Tier Collector Architecture (Agent + Gateway)](https://oneuptime.com/blog/post/two-tier-collector-architecture-agent-gateway/view)
+- [How to Deploy the OpenTelemetry Collector with the Kubernetes Operator](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-kubernetes-operator/view)
+- [How to Deploy the OpenTelemetry Collector on AWS ECS Fargate](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-aws-ecs-fargate/view)
+- [How to Set Up a Two-Tier Collector Architecture (Agent + Gateway)](https://oneuptime.com/blog/post/2026-02-06-two-tier-collector-architecture-agent-gateway/view)
 
 Docker and Docker Compose provide a flexible, portable platform for deploying OpenTelemetry Collectors across development, testing, and production environments. The containerized approach ensures consistent behavior and simplifies configuration management.

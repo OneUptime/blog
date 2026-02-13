@@ -269,7 +269,7 @@ aws ec2 create-flow-logs \
 
 For more complex multi-region topologies, consider:
 
-- **Transit Gateway peering**: Connect transit gateways across regions for hub-and-spoke connectivity. See [configuring transit gateway route tables](https://oneuptime.com/blog/post/configure-transit-gateway-route-tables/view).
+- **Transit Gateway peering**: Connect transit gateways across regions for hub-and-spoke connectivity. See [configuring transit gateway route tables](https://oneuptime.com/blog/post/2026-02-12-configure-transit-gateway-route-tables/view).
 - **AWS Global Accelerator**: For front-end traffic routing to the nearest region.
 - **AWS PrivateLink**: For exposing specific services across regions without full VPC peering.
 

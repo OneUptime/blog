@@ -258,4 +258,4 @@ For a typical production setup, I'd recommend three event subscriptions:
 
 This gives you immediate alerting for urgent issues without drowning in noise for routine operations.
 
-For more comprehensive monitoring, combine event notifications with [CloudWatch alarms for RDS metrics](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view) and [Performance Insights](https://oneuptime.com/blog/post/monitor-rds-with-performance-insights/view). Events tell you what happened, alarms tell you what's currently wrong, and Performance Insights tells you why.
+For more comprehensive monitoring, combine event notifications with [CloudWatch alarms for RDS metrics](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view) and [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view). Events tell you what happened, alarms tell you what's currently wrong, and Performance Insights tells you why.

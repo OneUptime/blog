@@ -387,4 +387,4 @@ aws wafv2 put-logging-configuration \
   }'
 ```
 
-For a more comprehensive WAF setup, look into [WAF managed rule groups](https://oneuptime.com/blog/post/waf-managed-rule-groups/view) which provide pre-built protection for common threats, and [rate-limiting rules](https://oneuptime.com/blog/post/waf-rate-limiting-rules-prevent-ddos/view) to protect against DDoS attacks. For global protection, consider [WAF with CloudFront](https://oneuptime.com/blog/post/waf-cloudfront-global-protection/view).
+For a more comprehensive WAF setup, look into [WAF managed rule groups](https://oneuptime.com/blog/post/2026-02-12-waf-managed-rule-groups/view) which provide pre-built protection for common threats, and [rate-limiting rules](https://oneuptime.com/blog/post/2026-02-12-waf-rate-limiting-rules-prevent-ddos/view) to protect against DDoS attacks. For global protection, consider [WAF with CloudFront](https://oneuptime.com/blog/post/2026-02-12-waf-cloudfront-global-protection/view).

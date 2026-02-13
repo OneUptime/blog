@@ -319,4 +319,4 @@ Here's a quick reference for expected speeds.
 
 Monitor your upload performance over time with [OneUptime](https://oneuptime.com) to catch regressions before they impact your data pipeline. Set up alerts on upload duration and error rates.
 
-For more on S3 performance monitoring, see our guide on [configuring S3 bucket metrics in CloudWatch](https://oneuptime.com/blog/post/s3-bucket-metrics-cloudwatch/view).
+For more on S3 performance monitoring, see our guide on [configuring S3 bucket metrics in CloudWatch](https://oneuptime.com/blog/post/2026-02-12-s3-bucket-metrics-cloudwatch/view).

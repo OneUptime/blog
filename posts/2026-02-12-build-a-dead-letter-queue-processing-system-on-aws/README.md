@@ -417,7 +417,7 @@ def handler(event, context):
 
 ## Monitoring the DLQ System
 
-The DLQ processor itself needs monitoring. If it fails, messages pile up in the DLQ with no one processing them. Set up end-to-end monitoring that tracks queue depths, processing rates, and retry success rates. Tools like [OneUptime](https://oneuptime.com/blog/post/build-a-scheduled-task-system-on-aws-without-servers/view) can help you build dashboards and alerts for the entire message processing pipeline.
+The DLQ processor itself needs monitoring. If it fails, messages pile up in the DLQ with no one processing them. Set up end-to-end monitoring that tracks queue depths, processing rates, and retry success rates. Tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-scheduled-task-system-on-aws-without-servers/view) can help you build dashboards and alerts for the entire message processing pipeline.
 
 ## Wrapping Up
 

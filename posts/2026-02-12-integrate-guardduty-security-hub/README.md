@@ -26,8 +26,8 @@ Without integration, you're managing GuardDuty findings in the GuardDuty console
 
 Both services need to be enabled first:
 
-1. [Enable GuardDuty](https://oneuptime.com/blog/post/enable-guardduty-threat-detection/view) in your account
-2. [Enable Security Hub](https://oneuptime.com/blog/post/enable-aws-security-hub/view) in the same account and region
+1. [Enable GuardDuty](https://oneuptime.com/blog/post/2026-02-12-enable-guardduty-threat-detection/view) in your account
+2. [Enable Security Hub](https://oneuptime.com/blog/post/2026-02-12-enable-aws-security-hub/view) in the same account and region
 
 ## Enabling the Integration
 
@@ -296,4 +296,4 @@ aws securityhub batch-update-findings \
 
 ## What's Next
 
-With GuardDuty and Security Hub integrated, you've got centralized threat visibility. Build on this by adding [Security Hub compliance standards](https://oneuptime.com/blog/post/security-hub-compliance-standards-cis-pci/view) to track regulatory compliance alongside threats. For custom dashboards, create [Security Hub insights](https://oneuptime.com/blog/post/custom-security-hub-insights/view). And for multi-account environments, set up [Security Hub finding aggregation](https://oneuptime.com/blog/post/aggregate-security-hub-findings-across-accounts/view).
+With GuardDuty and Security Hub integrated, you've got centralized threat visibility. Build on this by adding [Security Hub compliance standards](https://oneuptime.com/blog/post/2026-02-12-security-hub-compliance-standards-cis-pci/view) to track regulatory compliance alongside threats. For custom dashboards, create [Security Hub insights](https://oneuptime.com/blog/post/2026-02-12-custom-security-hub-insights/view). And for multi-account environments, set up [Security Hub finding aggregation](https://oneuptime.com/blog/post/2026-02-12-aggregate-security-hub-findings-across-accounts/view).

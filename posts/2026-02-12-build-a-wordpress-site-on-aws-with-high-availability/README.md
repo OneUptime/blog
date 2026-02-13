@@ -327,7 +327,7 @@ Monitor your WordPress HA setup with CloudWatch alarms:
 - ElastiCache evictions (alert if increasing)
 - Auto Scaling group size (alert if at max capacity)
 
-For a detailed guide on setting up monitoring, check out our post on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/build-a-metrics-collection-system-on-aws/view).
+For a detailed guide on setting up monitoring, check out our post on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-metrics-collection-system-on-aws/view).
 
 ## Cost Estimates
 

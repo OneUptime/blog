@@ -10,7 +10,7 @@ Description: Deep dive into the AWS CLI --query parameter with practical example
 
 The `--query` parameter is the single most useful feature of the AWS CLI that most people underuse. Instead of piping JSON through jq or writing Python scripts to extract the data you need, you can do it right in the CLI command. It uses JMESPath, a query language designed specifically for JSON, and once you learn the patterns, you'll use it in every command.
 
-This post goes beyond the basics covered in our [JMESPath overview](https://oneuptime.com/blog/post/aws-cli-filters-jmespath-queries/view) and focuses on practical recipes for common filtering tasks.
+This post goes beyond the basics covered in our [JMESPath overview](https://oneuptime.com/blog/post/2026-02-12-aws-cli-filters-jmespath-queries/view) and focuses on practical recipes for common filtering tasks.
 
 ## The Fundamentals
 
@@ -331,4 +331,4 @@ For monitoring the resources you're querying and getting alerted on changes, [On
 
 ## Wrapping Up
 
-The `--query` parameter turns the AWS CLI from a data dumper into a precision tool. The recipes in this post cover the most common patterns you'll encounter. Start by copying these examples and modifying them for your specific needs. After a while, you'll be writing JMESPath expressions from memory, and your colleagues will wonder how you pull data so quickly. For more on combining queries with server-side filters, check out our [filters and JMESPath guide](https://oneuptime.com/blog/post/aws-cli-filters-jmespath-queries/view).
+The `--query` parameter turns the AWS CLI from a data dumper into a precision tool. The recipes in this post cover the most common patterns you'll encounter. Start by copying these examples and modifying them for your specific needs. After a while, you'll be writing JMESPath expressions from memory, and your colleagues will wonder how you pull data so quickly. For more on combining queries with server-side filters, check out our [filters and JMESPath guide](https://oneuptime.com/blog/post/2026-02-12-aws-cli-filters-jmespath-queries/view).

@@ -323,6 +323,6 @@ Moving data between regions isn't free. AMI copies and snapshot copies incur dat
 
 Plan for this in your migration budget, especially if you're moving many instances with large volumes.
 
-For monitoring your instances in the new region, make sure you set up [CloudWatch detailed monitoring](https://oneuptime.com/blog/post/monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) and the [CloudWatch agent](https://oneuptime.com/blog/post/install-and-configure-the-cloudwatch-agent-on-ec2/view) early so you have baseline metrics before cutting over production traffic.
+For monitoring your instances in the new region, make sure you set up [CloudWatch detailed monitoring](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) and the [CloudWatch agent](https://oneuptime.com/blog/post/2026-02-12-install-and-configure-the-cloudwatch-agent-on-ec2/view) early so you have baseline metrics before cutting over production traffic.
 
 Cross-region migration takes planning, but the individual steps are straightforward. The hardest part is usually not the compute migration itself but the surrounding infrastructure - DNS, load balancers, databases, caches, and all the other services your application depends on. Map out those dependencies first, and the migration will go much smoother.

@@ -491,4 +491,4 @@ Follow these monitoring best practices:
 
 Comprehensive CoreDNS monitoring using Prometheus provides visibility into DNS performance and helps maintain reliable name resolution. By tracking key metrics, setting up appropriate alerts, and analyzing query patterns, you can identify and resolve DNS issues quickly while optimizing configuration for better performance.
 
-For related monitoring topics, explore our guides on [CoreDNS cache optimization](https://oneuptime.com/blog/post/coredns-cache-plugin-ttl/view) and [DNS resolution debugging](https://oneuptime.com/blog/post/debug-dns-resolution-dnsutils/view).
+For related monitoring topics, explore our guides on [CoreDNS cache optimization](https://oneuptime.com/blog/post/2026-02-09-coredns-cache-plugin-ttl/view) and [DNS resolution debugging](https://oneuptime.com/blog/post/2026-02-09-debug-dns-resolution-dnsutils/view).

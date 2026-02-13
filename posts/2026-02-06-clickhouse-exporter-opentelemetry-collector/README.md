@@ -545,4 +545,4 @@ The ClickHouse exporter transforms the OpenTelemetry Collector into a high-perfo
 
 The combination of OpenTelemetry's standardized data collection and ClickHouse's analytical capabilities creates a powerful observability platform suitable for organizations of any size. Remember to optimize your table schemas, enable compression, and use materialized views for frequently accessed aggregations.
 
-For more information on other exporters, see our guides on the [Elasticsearch exporter](https://oneuptime.com/blog/post/elasticsearch-exporter-opentelemetry-collector/view) and [AWS X-Ray exporter](https://oneuptime.com/blog/post/aws-xray-exporter-opentelemetry-collector/view).
+For more information on other exporters, see our guides on the [Elasticsearch exporter](https://oneuptime.com/blog/post/2026-02-06-elasticsearch-exporter-opentelemetry-collector/view) and [AWS X-Ray exporter](https://oneuptime.com/blog/post/2026-02-06-aws-xray-exporter-opentelemetry-collector/view).

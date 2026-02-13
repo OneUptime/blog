@@ -274,7 +274,7 @@ Federate into a central "hub" account, then assume roles in other accounts:
 }
 ```
 
-For more on cross-account roles, see our guide on [setting up cross-account IAM roles](https://oneuptime.com/blog/post/set-up-cross-account-iam-roles-shared-services/view).
+For more on cross-account roles, see our guide on [setting up cross-account IAM roles](https://oneuptime.com/blog/post/2026-02-12-set-up-cross-account-iam-roles-shared-services/view).
 
 ## Restricting Federation by MFA
 

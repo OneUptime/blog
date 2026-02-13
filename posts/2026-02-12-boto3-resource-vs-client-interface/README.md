@@ -259,6 +259,6 @@ That said, the existing resource interfaces aren't going anywhere. They're still
 
 ## My Recommendation
 
-Start with the resource interface for services that support it, and fall back to the client when you need something the resource doesn't offer. If you need to handle errors in detail, check out the guide on [Boto3 error handling](https://oneuptime.com/blog/post/boto3-errors-and-exceptions/view) to make sure you're catching exceptions properly regardless of which interface you choose.
+Start with the resource interface for services that support it, and fall back to the client when you need something the resource doesn't offer. If you need to handle errors in detail, check out the guide on [Boto3 error handling](https://oneuptime.com/blog/post/2026-02-12-boto3-errors-and-exceptions/view) to make sure you're catching exceptions properly regardless of which interface you choose.
 
 The client gives you power and coverage. The resource gives you clarity and convenience. Use both.

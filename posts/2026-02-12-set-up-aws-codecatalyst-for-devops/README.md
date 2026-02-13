@@ -219,7 +219,7 @@ Actions:
       CdkRootPath: ./infrastructure
 ```
 
-For a deeper dive into workflows, check out our guide on [using CodeCatalyst Workflows for CI/CD](https://oneuptime.com/blog/post/use-codecatalyst-workflows-for-cicd/view).
+For a deeper dive into workflows, check out our guide on [using CodeCatalyst Workflows for CI/CD](https://oneuptime.com/blog/post/2026-02-12-use-codecatalyst-workflows-for-cicd/view).
 
 ## Step 6: Configure Environments
 
@@ -285,7 +285,7 @@ aws codecatalyst create-dev-environment \
   --inactivity-timeout-minutes 30
 ```
 
-For more on this topic, see our guide on [setting up CodeCatalyst Dev Environments](https://oneuptime.com/blog/post/set-up-codecatalyst-dev-environments/view).
+For more on this topic, see our guide on [setting up CodeCatalyst Dev Environments](https://oneuptime.com/blog/post/2026-02-12-set-up-codecatalyst-dev-environments/view).
 
 ## Best Practices
 

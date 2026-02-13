@@ -361,7 +361,7 @@ Now the Choice state routes based on the enriched data:
 
 Always include a `Default` state. If none of your conditions match and there's no default, the execution fails. Put your most specific conditions first, since Step Functions evaluates them in order and takes the first match. Keep your conditions simple - if you need complex logic, put it in a Lambda function and use the Choice state to route based on a simple output field.
 
-For more on building resilient Step Functions workflows, check out our post on [handling errors and retries in Step Functions](https://oneuptime.com/blog/post/handle-errors-retries-step-functions/view).
+For more on building resilient Step Functions workflows, check out our post on [handling errors and retries in Step Functions](https://oneuptime.com/blog/post/2026-02-12-handle-errors-retries-step-functions/view).
 
 ## Wrapping Up
 

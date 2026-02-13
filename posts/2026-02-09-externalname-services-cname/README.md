@@ -598,4 +598,4 @@ Follow these guidelines when using ExternalName services:
 
 ExternalName services provide an elegant solution for integrating external services into Kubernetes DNS. By creating CNAME aliases, you maintain consistent naming across your applications while seamlessly connecting to external endpoints. This pattern simplifies migrations, enables flexible service routing, and keeps application code decoupled from infrastructure details.
 
-For related service patterns, explore our guides on [headless services](https://oneuptime.com/blog/post/headless-services-pod-ip-discovery/view) and [custom DNS configuration](https://oneuptime.com/blog/post/custom-dns-resolvers-pod-dnsconfig/view).
+For related service patterns, explore our guides on [headless services](https://oneuptime.com/blog/post/2026-02-09-headless-services-pod-ip-discovery/view) and [custom DNS configuration](https://oneuptime.com/blog/post/2026-02-09-custom-dns-resolvers-pod-dnsconfig/view).

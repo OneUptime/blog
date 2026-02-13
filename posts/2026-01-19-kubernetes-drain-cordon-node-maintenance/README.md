@@ -450,6 +450,6 @@ For monitoring your node health and maintenance operations, check out [OneUptime
 
 ## Related Resources
 
-- [How to Troubleshoot Pod Evictions](https://oneuptime.com/blog/post/kubernetes-pod-evictions-resource-pressure/view)
-- [How to Upgrade Kubernetes with Zero Downtime](https://oneuptime.com/blog/post/kubernetes-upgrade-zero-downtime/view)
-- [How to Set Up Resource Quotas and Limit Ranges](https://oneuptime.com/blog/post/kubernetes-resource-quotas-limit-ranges/view)
+- [How to Troubleshoot Pod Evictions](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-evictions-resource-pressure/view)
+- [How to Upgrade Kubernetes with Zero Downtime](https://oneuptime.com/blog/post/2026-01-19-kubernetes-upgrade-zero-downtime/view)
+- [How to Set Up Resource Quotas and Limit Ranges](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-quotas-limit-ranges/view)

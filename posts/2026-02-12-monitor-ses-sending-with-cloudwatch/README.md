@@ -328,7 +328,7 @@ aws sns subscribe \
 # For Slack notifications, see our guide on AWS Chatbot
 ```
 
-For Slack and Teams integration, check out our post on [using AWS Chatbot for Slack and Teams notifications](https://oneuptime.com/blog/post/use-aws-chatbot-for-slack-and-teams-notifications/view).
+For Slack and Teams integration, check out our post on [using AWS Chatbot for Slack and Teams notifications](https://oneuptime.com/blog/post/2026-02-12-use-aws-chatbot-for-slack-and-teams-notifications/view).
 
 ## Monitoring Checklist
 
@@ -342,7 +342,7 @@ Here's what you should have set up at a minimum:
 6. SNS notifications for when alarms fire
 7. Regular review of metrics (weekly at minimum)
 
-For handling the bounces and complaints you detect through monitoring, see our guide on [handling SES bounces and complaints with SNS](https://oneuptime.com/blog/post/handle-ses-bounces-and-complaints-with-sns/view).
+For handling the bounces and complaints you detect through monitoring, see our guide on [handling SES bounces and complaints with SNS](https://oneuptime.com/blog/post/2026-02-12-handle-ses-bounces-and-complaints-with-sns/view).
 
 ## Summary
 

@@ -618,8 +618,8 @@ Consider using more robust authentication methods like OAuth2 or mutual TLS for 
 
 For more information about OpenTelemetry Collector authentication mechanisms, check out these related posts:
 
-- [How to Configure Bearer Token Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/bearer-token-auth-extension-opentelemetry-collector/view)
-- [How to Configure OIDC Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/oidc-auth-extension-opentelemetry-collector/view)
-- [How to Configure OAuth2 Client Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/oauth2-client-auth-extension-opentelemetry-collector/view)
+- [How to Configure Bearer Token Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-bearer-token-auth-extension-opentelemetry-collector/view)
+- [How to Configure OIDC Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-oidc-auth-extension-opentelemetry-collector/view)
+- [How to Configure OAuth2 Client Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-oauth2-client-auth-extension-opentelemetry-collector/view)
 
 Basic Authentication provides a simple, widely-supported method for securing OpenTelemetry Collector communications. While it may not offer the advanced features of modern authentication protocols, its simplicity and universal compatibility make it an excellent choice for many use cases, particularly when properly secured with TLS encryption.

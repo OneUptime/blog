@@ -249,7 +249,7 @@ for sid in team-ml team-analytics team-research; do
 done
 ```
 
-For broader monitoring, see our guide on [monitoring AWS Batch with CloudWatch](https://oneuptime.com/blog/post/monitor-aws-batch-jobs-with-cloudwatch/view).
+For broader monitoring, see our guide on [monitoring AWS Batch with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-aws-batch-jobs-with-cloudwatch/view).
 
 ## Tuning the Scheduling Policy
 

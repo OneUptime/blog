@@ -16,7 +16,7 @@ You'll need these tools installed before we start:
 
 - AWS CLI v2 configured with valid credentials
 - kubectl (version should match your cluster's Kubernetes version, plus or minus one minor version)
-- An existing EKS cluster (if you need to create one, see our [eksctl guide](https://oneuptime.com/blog/post/create-eks-cluster-with-eksctl/view))
+- An existing EKS cluster (if you need to create one, see our [eksctl guide](https://oneuptime.com/blog/post/2026-02-12-create-eks-cluster-with-eksctl/view))
 
 ## Installing kubectl
 
@@ -178,7 +178,7 @@ aws eks update-kubeconfig \
   --role-arn arn:aws:iam::123456789012:role/EKSClusterAdmin
 ```
 
-This is particularly useful in organizations where different teams manage different clusters and access is controlled through IAM roles. For more on this topic, see our post on [cross-account EKS access](https://oneuptime.com/blog/post/set-up-cross-account-eks-cluster-access/view).
+This is particularly useful in organizations where different teams manage different clusters and access is controlled through IAM roles. For more on this topic, see our post on [cross-account EKS access](https://oneuptime.com/blog/post/2026-02-12-set-up-cross-account-eks-cluster-access/view).
 
 ## Verifying Connectivity
 
@@ -199,7 +199,7 @@ If `kubectl cluster-info` works but `kubectl get nodes` fails with an authorizat
 
 ## Troubleshooting Common Issues
 
-**"Unable to connect to the server"** - This usually means your network can't reach the cluster's API endpoint. If it's a private cluster, you'll need VPN or Direct Connect access. Check your [cluster endpoint configuration](https://oneuptime.com/blog/post/configure-eks-control-plane-endpoint-access/view).
+**"Unable to connect to the server"** - This usually means your network can't reach the cluster's API endpoint. If it's a private cluster, you'll need VPN or Direct Connect access. Check your [cluster endpoint configuration](https://oneuptime.com/blog/post/2026-02-12-configure-eks-control-plane-endpoint-access/view).
 
 **"You must be logged in to the server (Unauthorized)"** - Your AWS credentials are either expired, invalid, or the IAM entity isn't mapped in the cluster. Run `aws sts get-caller-identity` to verify your current identity, then check the aws-auth ConfigMap.
 

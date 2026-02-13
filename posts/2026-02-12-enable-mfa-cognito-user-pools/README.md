@@ -335,7 +335,7 @@ resource "aws_cognito_user_pool" "main" {
 }
 ```
 
-For a broader look at securing the authentication flow, see [configuring Cognito password policies](https://oneuptime.com/blog/post/configure-cognito-password-policies/view).
+For a broader look at securing the authentication flow, see [configuring Cognito password policies](https://oneuptime.com/blog/post/2026-02-12-configure-cognito-password-policies/view).
 
 ## Summary
 

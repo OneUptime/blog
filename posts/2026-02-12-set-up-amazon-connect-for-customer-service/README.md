@@ -254,7 +254,7 @@ aws connect start-chat-contact \
   }'
 ```
 
-For an even smarter chat experience, you can integrate Amazon Lex for automated responses before handing off to a human agent. See our guide on [using Amazon Lex with Amazon Connect for IVR](https://oneuptime.com/blog/post/use-amazon-lex-with-amazon-connect-for-ivr/view).
+For an even smarter chat experience, you can integrate Amazon Lex for automated responses before handing off to a human agent. See our guide on [using Amazon Lex with Amazon Connect for IVR](https://oneuptime.com/blog/post/2026-02-12-use-amazon-lex-with-amazon-connect-for-ivr/view).
 
 ## Real-Time and Historical Analytics
 

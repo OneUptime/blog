@@ -260,7 +260,7 @@ aws ram create-resource-share \
   ]'
 ```
 
-This ensures that license consumption is tracked across your entire organization, not just individual accounts. For more details on cross-account resource sharing, see our guide on [setting up AWS RAM for cross-account sharing](https://oneuptime.com/blog/post/set-up-aws-ram-resource-access-manager-for-cross-account-sharing/view).
+This ensures that license consumption is tracked across your entire organization, not just individual accounts. For more details on cross-account resource sharing, see our guide on [setting up AWS RAM for cross-account sharing](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-ram-resource-access-manager-for-cross-account-sharing/view).
 
 ## Best Practices
 

@@ -228,7 +228,7 @@ aws elasticache describe-events \
   --duration 30
 ```
 
-Failover typically completes within 15-30 seconds. During that time, writes will fail. Your application should have retry logic to handle this. See the guide on [connecting to ElastiCache Redis from an application](https://oneuptime.com/blog/post/connect-to-elasticache-redis-from-an-application/view) for retry patterns.
+Failover typically completes within 15-30 seconds. During that time, writes will fail. Your application should have retry logic to handle this. See the guide on [connecting to ElastiCache Redis from an application](https://oneuptime.com/blog/post/2026-02-12-connect-to-elasticache-redis-from-an-application/view) for retry patterns.
 
 ## Monitoring Replication
 
@@ -279,4 +279,4 @@ aws cloudwatch put-metric-alarm \
 
 ElastiCache Redis replication gives you both high availability (automatic failover) and read scalability (replica reader endpoints). For most production workloads, start with cluster mode disabled and 2 replicas across 3 AZs. Only move to cluster mode enabled when you need more than one node's worth of memory or write throughput.
 
-For securing your replication setup, check out the guide on [enabling ElastiCache Redis encryption](https://oneuptime.com/blog/post/enable-elasticache-redis-encryption/view), and for backup strategies, see the guide on [setting up ElastiCache Redis backups](https://oneuptime.com/blog/post/set-up-elasticache-redis-backups/view).
+For securing your replication setup, check out the guide on [enabling ElastiCache Redis encryption](https://oneuptime.com/blog/post/2026-02-12-enable-elasticache-redis-encryption/view), and for backup strategies, see the guide on [setting up ElastiCache Redis backups](https://oneuptime.com/blog/post/2026-02-12-set-up-elasticache-redis-backups/view).

@@ -393,7 +393,7 @@ At minimum, track these for every service:
 3. **Errors**: How many requests fail (counter with success/failure labels)
 4. **Saturation**: How full your resources are (CPU, memory, disk, queue depth)
 
-For the complementary logging setup, see our guide on [building a log aggregation system on AWS](https://oneuptime.com/blog/post/build-a-log-aggregation-system-on-aws/view).
+For the complementary logging setup, see our guide on [building a log aggregation system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-log-aggregation-system-on-aws/view).
 
 ## Wrapping Up
 

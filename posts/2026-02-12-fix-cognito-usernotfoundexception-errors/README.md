@@ -219,4 +219,4 @@ def forgot_password(username):
 6. If migrating, verify the migration Lambda trigger is configured and working
 7. Search by email or phone to find the user's actual username
 
-The most frequent culprits are case sensitivity and the alias/username confusion. Nail those down first, and you'll resolve most `UserNotFoundException` issues. For broader authentication monitoring, consider setting up [alerts on your Cognito service](https://oneuptime.com/blog/post/fix-cognito-notauthorizedexception-errors/view) to catch sign-in failures before users start reporting them.
+The most frequent culprits are case sensitivity and the alias/username confusion. Nail those down first, and you'll resolve most `UserNotFoundException` issues. For broader authentication monitoring, consider setting up [alerts on your Cognito service](https://oneuptime.com/blog/post/2026-02-12-fix-cognito-notauthorizedexception-errors/view) to catch sign-in failures before users start reporting them.

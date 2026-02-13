@@ -337,4 +337,4 @@ Enforce tagging by denying uploads without required tags.
 
 This denies any upload that doesn't include a `department` tag.
 
-For monitoring your tagging compliance and storage costs, integrate with [OneUptime](https://oneuptime.com) to build dashboards that track tagged vs untagged objects and cost breakdowns by tag. For more on optimizing S3 costs, see our guide on [S3 storage class analysis](https://oneuptime.com/blog/post/s3-storage-class-analysis-optimize-costs/view).
+For monitoring your tagging compliance and storage costs, integrate with [OneUptime](https://oneuptime.com) to build dashboards that track tagged vs untagged objects and cost breakdowns by tag. For more on optimizing S3 costs, see our guide on [S3 storage class analysis](https://oneuptime.com/blog/post/2026-02-12-s3-storage-class-analysis-optimize-costs/view).

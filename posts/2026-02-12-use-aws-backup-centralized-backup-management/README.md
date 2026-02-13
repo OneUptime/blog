@@ -284,4 +284,4 @@ aws organizations create-policy \
 
 This ensures that even if a team forgets to set up backups, the organizational policy covers them. No more finding out about missing backups during an incident.
 
-AWS Backup is one of those services that doesn't get enough attention until you need it. Setting it up takes an hour or two; not having it can cost you everything. Take the time to configure it properly, test your restores regularly (see our guide on [restoring from AWS Backup](https://oneuptime.com/blog/post/restore-resources-aws-backup/view)), and you'll sleep a lot better at night.
+AWS Backup is one of those services that doesn't get enough attention until you need it. Setting it up takes an hour or two; not having it can cost you everything. Take the time to configure it properly, test your restores regularly (see our guide on [restoring from AWS Backup](https://oneuptime.com/blog/post/2026-02-12-restore-resources-aws-backup/view)), and you'll sleep a lot better at night.

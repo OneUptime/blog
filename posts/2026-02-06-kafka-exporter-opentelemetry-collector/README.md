@@ -893,8 +893,8 @@ Use Kafka when you need decoupled, multi-consumer architectures. Use OTLP for si
 ## Related Resources
 
 - [What is the OpenTelemetry Collector and Why Use One?](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
-- [How to Configure the OTLP HTTP Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/otlp-http-exporter-opentelemetry-collector/view)
-- [How to Configure the File Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/file-exporter-opentelemetry-collector/view)
+- [How to Configure the OTLP HTTP Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-otlp-http-exporter-opentelemetry-collector/view)
+- [How to Configure the File Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-file-exporter-opentelemetry-collector/view)
 
 ---
 

@@ -402,7 +402,7 @@ async function queueAnalytics(event) {
 }
 ```
 
-For the trigger that fires before authentication, see [Cognito Lambda triggers for pre authentication](https://oneuptime.com/blog/post/cognito-lambda-triggers-pre-authentication/view).
+For the trigger that fires before authentication, see [Cognito Lambda triggers for pre authentication](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-pre-authentication/view).
 
 ## Summary
 

@@ -374,4 +374,4 @@ aws organizations describe-effective-policy \
 
 **Test in sandbox first.** A misconfigured SCP can lock everyone out of an account. Test thoroughly before applying to production.
 
-SCPs are the foundation of security governance in a multi-account AWS environment. For complementary governance using tag enforcement, see [implementing tag policies in AWS Organizations](https://oneuptime.com/blog/post/tag-policies-aws-organizations/view).
+SCPs are the foundation of security governance in a multi-account AWS environment. For complementary governance using tag enforcement, see [implementing tag policies in AWS Organizations](https://oneuptime.com/blog/post/2026-02-12-tag-policies-aws-organizations/view).

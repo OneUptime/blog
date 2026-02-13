@@ -270,4 +270,4 @@ AWS Private 5G pricing includes:
 
 The pricing is significantly lower than building a traditional private cellular network, which requires spectrum licenses, core network equipment, and specialized telecom staff. With AWS Private 5G, you get a managed service that integrates natively with your cloud infrastructure.
 
-For more on network monitoring across your AWS infrastructure, check out our guide on [AWS Network Manager](https://oneuptime.com/blog/post/aws-network-manager-global-monitoring/view).
+For more on network monitoring across your AWS infrastructure, check out our guide on [AWS Network Manager](https://oneuptime.com/blog/post/2026-02-12-aws-network-manager-global-monitoring/view).

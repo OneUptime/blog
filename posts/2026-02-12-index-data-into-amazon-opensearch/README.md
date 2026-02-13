@@ -414,6 +414,6 @@ Watch for:
 - **indexing.index_failed** - Failed index operations
 - **Bulk rejections** - The thread pool is full, back off
 
-For setting up your OpenSearch domain, see our guide on [setting up Amazon OpenSearch Service domains](https://oneuptime.com/blog/post/set-up-amazon-opensearch-service-domains/view). Once your data is indexed, check out [using OpenSearch Dashboards](https://oneuptime.com/blog/post/opensearch-dashboards-for-visualization/view) for visualization.
+For setting up your OpenSearch domain, see our guide on [setting up Amazon OpenSearch Service domains](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-opensearch-service-domains/view). Once your data is indexed, check out [using OpenSearch Dashboards](https://oneuptime.com/blog/post/2026-02-12-opensearch-dashboards-for-visualization/view) for visualization.
 
 The key to fast indexing is batching, proper bulk sizes (1000-5000 documents per batch), and tuning refresh intervals during heavy loads. Start with the defaults, measure your throughput, and tune from there.

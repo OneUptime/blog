@@ -421,7 +421,7 @@ Track these metrics for your e-commerce platform:
 - Cart abandonment events
 - Inventory reservation failures
 
-For more on building a comprehensive monitoring setup, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/build-a-metrics-collection-system-on-aws/view).
+For more on building a comprehensive monitoring setup, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-metrics-collection-system-on-aws/view).
 
 ## Wrapping Up
 

@@ -320,7 +320,7 @@ def respond(status, body):
 
 ## Monitoring the Dashboard Itself
 
-Your cost dashboard is now a critical piece of infrastructure. If the aggregator Lambda fails silently, teams lose visibility. Set up monitoring for the dashboard components - Lambda errors, Glue crawler failures, and API latency. A tool like [OneUptime](https://oneuptime.com/blog/post/build-a-centralized-config-management-system-on-aws/view) can help you track uptime and get alerted when things break.
+Your cost dashboard is now a critical piece of infrastructure. If the aggregator Lambda fails silently, teams lose visibility. Set up monitoring for the dashboard components - Lambda errors, Glue crawler failures, and API latency. A tool like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-centralized-config-management-system-on-aws/view) can help you track uptime and get alerted when things break.
 
 ## Tips for Multi-Account Cost Governance
 

@@ -313,7 +313,7 @@ A production pipeline needs solid error handling. Here's what to monitor:
 - Processing latency (time from upload to completion)
 - Error rates per file type
 
-For building out a full observability stack around your pipeline, check out [building a centralized log aggregation system on AWS](https://oneuptime.com/blog/post/build-centralized-log-aggregation-system-on-aws/view).
+For building out a full observability stack around your pipeline, check out [building a centralized log aggregation system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-centralized-log-aggregation-system-on-aws/view).
 
 ```typescript
 // CloudWatch alarm for DLQ messages

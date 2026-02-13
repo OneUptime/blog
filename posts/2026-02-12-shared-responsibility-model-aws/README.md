@@ -342,4 +342,4 @@ The shared responsibility model isn't a one-time exercise. Build it into your op
 
 The organizations that get breached aren't usually the ones with sophisticated attackers - they're the ones that forgot their side of the deal. They left an S3 bucket public, used overly broad IAM policies, or didn't patch their instances for months.
 
-For monitoring your compliance posture across all these areas, check out our guide on [logging and monitoring best practices on AWS](https://oneuptime.com/blog/post/logging-monitoring-best-practices-aws/view). You can also explore [compliance automation on AWS](https://oneuptime.com/blog/post/compliance-automation-aws/view) for more advanced approaches to staying compliant at scale.
+For monitoring your compliance posture across all these areas, check out our guide on [logging and monitoring best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-logging-monitoring-best-practices-aws/view). You can also explore [compliance automation on AWS](https://oneuptime.com/blog/post/2026-02-12-compliance-automation-aws/view) for more advanced approaches to staying compliant at scale.

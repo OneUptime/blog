@@ -306,7 +306,7 @@ repos:
         args: ['--directory', 'terraform/']
 ```
 
-For more Terraform code quality checks, take a look at [using TFLint for Terraform linting](https://oneuptime.com/blog/post/tflint-terraform-linting/view).
+For more Terraform code quality checks, take a look at [using TFLint for Terraform linting](https://oneuptime.com/blog/post/2026-02-12-tflint-terraform-linting/view).
 
 ## Summary
 

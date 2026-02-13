@@ -274,7 +274,7 @@ Now you can create dashboards in the monitoring account that show metrics from a
 }
 ```
 
-For more on building these dashboards, see our post on [creating CloudWatch dashboards](https://oneuptime.com/blog/post/create-cloudwatch-dashboards-application-monitoring/view).
+For more on building these dashboards, see our post on [creating CloudWatch dashboards](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-dashboards-application-monitoring/view).
 
 ## Cross-Account Alarms
 
@@ -321,4 +321,4 @@ Cross-account observability itself doesn't have a separate charge. You pay the n
 
 ## Wrapping Up
 
-Cross-account observability is essential for any multi-account AWS setup. With a central monitoring account, you get a single pane of glass for all your metrics, logs, and traces. The setup is straightforward - create a sink, set a policy, create links from source accounts - and the payoff is huge. No more context-switching between accounts just to understand what's happening in your infrastructure. Combine this with [shared dashboards](https://oneuptime.com/blog/post/share-cloudwatch-dashboards-across-accounts/view) to give everyone in your organization the visibility they need.
+Cross-account observability is essential for any multi-account AWS setup. With a central monitoring account, you get a single pane of glass for all your metrics, logs, and traces. The setup is straightforward - create a sink, set a policy, create links from source accounts - and the payoff is huge. No more context-switching between accounts just to understand what's happening in your infrastructure. Combine this with [shared dashboards](https://oneuptime.com/blog/post/2026-02-12-share-cloudwatch-dashboards-across-accounts/view) to give everyone in your organization the visibility they need.

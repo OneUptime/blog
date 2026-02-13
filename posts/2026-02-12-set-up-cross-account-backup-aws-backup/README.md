@@ -328,7 +328,7 @@ The backup account should be one of the most locked-down accounts in your organi
 1. **Minimal IAM users** - Only a few trusted operators should have access
 2. **MFA required** for all access
 3. **No development workloads** - This account exists solely for backup storage
-4. **Vault Lock** - Consider enabling vault lock to prevent deletion (see our guide on [backup vault lock](https://oneuptime.com/blog/post/configure-aws-backup-vault-lock-compliance/view))
+4. **Vault Lock** - Consider enabling vault lock to prevent deletion (see our guide on [backup vault lock](https://oneuptime.com/blog/post/2026-02-12-configure-aws-backup-vault-lock-compliance/view))
 5. **CloudTrail enabled** with log file validation
 6. **SCPs** to prevent disabling of backup services
 

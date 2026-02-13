@@ -285,7 +285,7 @@ This means you can't:
 
 Until you first update or delete all importing stacks. This creates a strict dependency chain. It's a safety feature, but it can be frustrating when you need to restructure things.
 
-For a looser coupling approach, check out [Fn::ImportValue alternatives](https://oneuptime.com/blog/post/cloudformation-fn-importvalue-stack-dependencies/view) and SSM Parameter Store patterns.
+For a looser coupling approach, check out [Fn::ImportValue alternatives](https://oneuptime.com/blog/post/2026-02-12-cloudformation-fn-importvalue-stack-dependencies/view) and SSM Parameter Store patterns.
 
 ## Conditional Outputs
 
@@ -319,4 +319,4 @@ Outputs:
 
 **Consider SSM Parameter Store for loose coupling.** If the dependency lock is too restrictive, write values to SSM instead of using exports. Other stacks can read from SSM without the hard dependency.
 
-Outputs and exports form the backbone of multi-stack CloudFormation architectures. Pair them with [nested stacks](https://oneuptime.com/blog/post/cloudformation-nested-stacks/view) for organizing within a deployment, and cross-stack references for sharing between independent deployments.
+Outputs and exports form the backbone of multi-stack CloudFormation architectures. Pair them with [nested stacks](https://oneuptime.com/blog/post/2026-02-12-cloudformation-nested-stacks/view) for organizing within a deployment, and cross-stack references for sharing between independent deployments.

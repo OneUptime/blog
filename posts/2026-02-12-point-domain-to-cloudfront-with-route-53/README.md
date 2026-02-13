@@ -234,7 +234,7 @@ function handler(event) {
 }
 ```
 
-For more on CloudFront Functions, check out our guide on [CloudFront Functions for URL rewrites](https://oneuptime.com/blog/post/cloudfront-functions-url-rewrites/view).
+For more on CloudFront Functions, check out our guide on [CloudFront Functions for URL rewrites](https://oneuptime.com/blog/post/2026-02-12-cloudfront-functions-url-rewrites/view).
 
 ## Troubleshooting Common Issues
 

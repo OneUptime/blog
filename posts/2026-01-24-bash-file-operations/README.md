@@ -868,4 +868,4 @@ Safe file operations in Bash require:
 
 **Related Reading:**
 - [Bash Error Handling Best Practices](https://oneuptime.com/blog/post/bash-error-handling)
-- [Automating Backup Scripts](https://oneuptime.com/blog/post/backup-automation)
+- [Automating Backup Scripts](https://oneuptime.com/blog/post/2026-01-25-backup-automation)

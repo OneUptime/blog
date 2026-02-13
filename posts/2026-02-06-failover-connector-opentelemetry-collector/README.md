@@ -718,7 +718,7 @@ service:
 
 ## Integration with Other Connectors
 
-The Failover Connector works seamlessly with other OpenTelemetry connectors. Combine it with the Routing Connector at https://oneuptime.com/blog/post/routing-connector-opentelemetry-collector/view for advanced traffic management, or use it alongside the Service Graph Connector at https://oneuptime.com/blog/post/service-graph-connector-opentelemetry-collector/view to ensure service topology data remains available during outages.
+The Failover Connector works seamlessly with other OpenTelemetry connectors. Combine it with the Routing Connector at https://oneuptime.com/blog/post/2026-02-06-routing-connector-opentelemetry-collector/view for advanced traffic management, or use it alongside the Service Graph Connector at https://oneuptime.com/blog/post/2026-02-06-service-graph-connector-opentelemetry-collector/view to ensure service topology data remains available during outages.
 
 ## Best Practices
 

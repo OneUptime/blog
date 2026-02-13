@@ -280,7 +280,7 @@ WHERE line_item_line_item_type IN ('Usage', 'DiscountedUsage')
 GROUP BY 1, 2;
 ```
 
-For visualizing these insights in dashboards, see our guide on [visualizing AWS costs with QuickSight](https://oneuptime.com/blog/post/visualize-aws-costs-quicksight/view).
+For visualizing these insights in dashboards, see our guide on [visualizing AWS costs with QuickSight](https://oneuptime.com/blog/post/2026-02-12-visualize-aws-costs-quicksight/view).
 
 ## Wrapping Up
 

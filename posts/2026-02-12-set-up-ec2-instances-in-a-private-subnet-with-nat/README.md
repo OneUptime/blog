@@ -427,7 +427,7 @@ curl -s https://checkip.amazonaws.com
 sudo yum install -y jq
 ```
 
-If the curl fails, check the route table and NAT gateway status. The [network troubleshooting guide](https://oneuptime.com/blog/post/troubleshoot-ec2-network-connectivity-issues/view) covers debugging steps in detail.
+If the curl fails, check the route table and NAT gateway status. The [network troubleshooting guide](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-ec2-network-connectivity-issues/view) covers debugging steps in detail.
 
 ## High Availability for NAT
 

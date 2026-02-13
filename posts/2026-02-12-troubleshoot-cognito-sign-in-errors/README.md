@@ -206,7 +206,7 @@ exports.handler = async (event) => {
 
 After successful sign-in, you might still get errors when using the tokens. Here are common ones.
 
-**"Token is expired"**: ID and access tokens expire after 1 hour by default. You need to use the refresh token to get new ones. See [handling Cognito token refresh in applications](https://oneuptime.com/blog/post/cognito-token-refresh-applications/view).
+**"Token is expired"**: ID and access tokens expire after 1 hour by default. You need to use the refresh token to get new ones. See [handling Cognito token refresh in applications](https://oneuptime.com/blog/post/2026-02-12-cognito-token-refresh-applications/view).
 
 **"Token use mismatch"**: You're sending an ID token where an access token is expected, or vice versa. Check the `token_use` claim.
 
@@ -306,7 +306,7 @@ aws cognito-idp describe-user-pool-client \
     --query '{AuthFlows: UserPoolClient.ExplicitAuthFlows, HasSecret: UserPoolClient.ClientSecret != null}'
 ```
 
-For the full token validation process, check out [decoding and validating Cognito JWT tokens](https://oneuptime.com/blog/post/decode-validate-cognito-jwt-tokens/view).
+For the full token validation process, check out [decoding and validating Cognito JWT tokens](https://oneuptime.com/blog/post/2026-02-12-decode-validate-cognito-jwt-tokens/view).
 
 ## Wrapping Up
 

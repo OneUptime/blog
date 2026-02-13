@@ -226,7 +226,7 @@ resource "aws_db_instance" "production" {
 }
 ```
 
-For more on managing RDS with Terraform, see our guide on [setting up RDS with Terraform](https://oneuptime.com/blog/post/set-up-rds-with-terraform/view).
+For more on managing RDS with Terraform, see our guide on [setting up RDS with Terraform](https://oneuptime.com/blog/post/2026-02-12-set-up-rds-with-terraform/view).
 
 ## Best Practices
 
@@ -236,6 +236,6 @@ For more on managing RDS with Terraform, see our guide on [setting up RDS with T
 
 **Monitor the growth rate, not just the free space.** A database that's growing 10x faster than expected indicates an application problem that auto scaling will mask but not fix.
 
-**Combine with storage alarms.** Even with auto scaling, you should have [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view) for low storage. The alarm acts as a canary - if it fires, it means your database is growing fast enough to trigger scaling, and you should investigate why.
+**Combine with storage alarms.** Even with auto scaling, you should have [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view) for low storage. The alarm acts as a canary - if it fires, it means your database is growing fast enough to trigger scaling, and you should investigate why.
 
 Storage auto scaling is one of those "set it and forget it" features that genuinely makes your infrastructure more resilient. Take five minutes to enable it on all your instances and move on to problems that actually need your attention.

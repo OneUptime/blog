@@ -751,7 +751,7 @@ service:
       exporters: [otlp/metrics]
 ```
 
-Learn more about service topology at https://oneuptime.com/blog/post/service-graph-connector-opentelemetry-collector/view.
+Learn more about service topology at https://oneuptime.com/blog/post/2026-02-06-service-graph-connector-opentelemetry-collector/view.
 
 ## Monitoring Span Metrics Performance
 

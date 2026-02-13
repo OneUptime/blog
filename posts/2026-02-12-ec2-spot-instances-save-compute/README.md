@@ -202,7 +202,7 @@ while true; do
 done
 ```
 
-You can also use EC2 Instance Metadata Service v2 (IMDSv2) for better security, and set up EventBridge rules to handle interruptions at the fleet level. For more details on handling interruptions, check out our guide on [handling Spot Instance interruptions gracefully](https://oneuptime.com/blog/post/handle-spot-instance-interruptions-gracefully/view).
+You can also use EC2 Instance Metadata Service v2 (IMDSv2) for better security, and set up EventBridge rules to handle interruptions at the fleet level. For more details on handling interruptions, check out our guide on [handling Spot Instance interruptions gracefully](https://oneuptime.com/blog/post/2026-02-12-handle-spot-instance-interruptions-gracefully/view).
 
 ## Spot Instance Best Practices
 

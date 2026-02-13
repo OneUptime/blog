@@ -211,7 +211,7 @@ for feature, importance in feature_importance.items():
 
 ## Monitoring Bias in Production
 
-Bias can change over time as the population or data distribution shifts. Use Clarify's monitoring capabilities alongside [SageMaker Model Monitor](https://oneuptime.com/blog/post/sagemaker-model-monitor-drift-detection/view) to continuously check for bias drift.
+Bias can change over time as the population or data distribution shifts. Use Clarify's monitoring capabilities alongside [SageMaker Model Monitor](https://oneuptime.com/blog/post/2026-02-12-sagemaker-model-monitor-drift-detection/view) to continuously check for bias drift.
 
 ```python
 from sagemaker.model_monitor import ModelBiasMonitor
@@ -331,4 +331,4 @@ for facet_name, facet_data in full_report['pre_training_bias_metrics']['facets']
 
 ## Wrapping Up
 
-Bias detection isn't optional - it's a fundamental part of responsible ML development. SageMaker Clarify makes it practical by integrating bias checks into your existing SageMaker workflow. Run pre-training checks on your data, post-training checks on your model, and continuous monitoring in production. The metrics Clarify provides give you concrete, measurable indicators of fairness that you can track and improve over time. Combine it with [SageMaker Pipelines](https://oneuptime.com/blog/post/sagemaker-pipelines-mlops/view) to make bias checks a mandatory gate in your deployment process.
+Bias detection isn't optional - it's a fundamental part of responsible ML development. SageMaker Clarify makes it practical by integrating bias checks into your existing SageMaker workflow. Run pre-training checks on your data, post-training checks on your model, and continuous monitoring in production. The metrics Clarify provides give you concrete, measurable indicators of fairness that you can track and improve over time. Combine it with [SageMaker Pipelines](https://oneuptime.com/blog/post/2026-02-12-sagemaker-pipelines-mlops/view) to make bias checks a mandatory gate in your deployment process.

@@ -330,7 +330,7 @@ resource "aws_cloudwatch_event_target" "with_dlq" {
 }
 ```
 
-For monitoring your event-driven architecture end to end, take a look at our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/create-cloudwatch-alarms-terraform/view) to set up alerts on failed invocations and DLQ depth.
+For monitoring your event-driven architecture end to end, take a look at our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-terraform/view) to set up alerts on failed invocations and DLQ depth.
 
 ## Wrapping Up
 

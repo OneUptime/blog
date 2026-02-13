@@ -323,7 +323,7 @@ aws cloudfront create-public-key \
     }'
 ```
 
-For additional CloudFront security configurations, see our guide on [configuring CloudFront response headers policy](https://oneuptime.com/blog/post/configure-cloudfront-response-headers-policy/view).
+For additional CloudFront security configurations, see our guide on [configuring CloudFront response headers policy](https://oneuptime.com/blog/post/2026-02-12-configure-cloudfront-response-headers-policy/view).
 
 ## Conclusion
 

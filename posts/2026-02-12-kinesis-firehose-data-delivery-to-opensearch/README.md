@@ -14,7 +14,7 @@ Let's set up a Firehose delivery stream that feeds data into OpenSearch with pro
 
 ## Creating the OpenSearch Domain
 
-If you don't have an OpenSearch domain yet, you'll need one. For details on setting up domains, check out our guide on [setting up Amazon OpenSearch Service domains](https://oneuptime.com/blog/post/set-up-amazon-opensearch-service-domains/view). For this post, we'll assume you have a domain running.
+If you don't have an OpenSearch domain yet, you'll need one. For details on setting up domains, check out our guide on [setting up Amazon OpenSearch Service domains](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-opensearch-service-domains/view). For this post, we'll assume you have a domain running.
 
 ## Creating the Delivery Stream
 

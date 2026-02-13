@@ -173,7 +173,7 @@ aws cloudwatch put-metric-alarm \
 
 You might also want to monitor your cross-AZ data transfer costs using AWS Cost Explorer, filtering by the "Data Transfer" service and looking at inter-AZ transfer charges.
 
-For comprehensive monitoring of your AWS infrastructure including FSx file systems, consider setting up [centralized monitoring](https://oneuptime.com/blog/post/use-aws-backup-centralized-backup-management/view) to get alerts before small issues become outages.
+For comprehensive monitoring of your AWS infrastructure including FSx file systems, consider setting up [centralized monitoring](https://oneuptime.com/blog/post/2026-02-12-use-aws-backup-centralized-backup-management/view) to get alerts before small issues become outages.
 
 ## Performance Considerations
 

@@ -722,6 +722,6 @@ The combination of Scala's type system and Play's conventions helps catch errors
 *Building a REST API? Monitor its performance and availability with [OneUptime](https://oneuptime.com). Get real-time alerts, track response times, and ensure your API stays healthy with comprehensive monitoring and observability tools.*
 
 **Related Reading:**
-- [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/traces-and-spans-in-opentelemetry)
-- [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/how-to-reduce-noise-in-opentelemetry)
-- [The Three Pillars of Observability](https://oneuptime.com/blog/post/three-pillars-of-observability-logs-metrics-traces)
+- [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry)
+- [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry)
+- [The Three Pillars of Observability](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces)

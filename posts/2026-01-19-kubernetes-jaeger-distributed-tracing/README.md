@@ -725,6 +725,6 @@ For comprehensive observability including tracing, check out [OneUptime's APM so
 
 ## Related Resources
 
-- [How to Set Up Prometheus ServiceMonitor](https://oneuptime.com/blog/post/kubernetes-prometheus-servicemonitor/view)
-- [How to Set Up Centralized Logging](https://oneuptime.com/blog/post/kubernetes-logging-fluentd-fluent-bit/view)
-- [How to Instrument Python with OpenTelemetry](https://oneuptime.com/blog/post/instrument-python-opentelemetry/view)
+- [How to Set Up Prometheus ServiceMonitor](https://oneuptime.com/blog/post/2026-01-19-kubernetes-prometheus-servicemonitor/view)
+- [How to Set Up Centralized Logging](https://oneuptime.com/blog/post/2026-01-19-kubernetes-logging-fluentd-fluent-bit/view)
+- [How to Instrument Python with OpenTelemetry](https://oneuptime.com/blog/post/2025-01-06-instrument-python-opentelemetry/view)

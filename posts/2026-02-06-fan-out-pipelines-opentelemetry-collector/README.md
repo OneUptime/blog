@@ -344,7 +344,7 @@ Fan-out pipelines duplicate data, which increases memory usage and processing ov
 
 For more information on OpenTelemetry Collector patterns, check out these related articles:
 
-- [How to Route Telemetry to Multiple Backends with the Routing Connector](https://oneuptime.com/blog/post/route-telemetry-multiple-backends-routing-connector/view)
-- [How to Deploy the OpenTelemetry Collector as a Gateway](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-gateway/view)
+- [How to Route Telemetry to Multiple Backends with the Routing Connector](https://oneuptime.com/blog/post/2026-02-06-route-telemetry-multiple-backends-routing-connector/view)
+- [How to Deploy the OpenTelemetry Collector as a Gateway](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-gateway/view)
 
 Fan-out pipelines provide a flexible way to duplicate and process telemetry data for multiple destinations. By understanding the configuration patterns and performance implications, you can build robust observability pipelines that meet your organization's diverse requirements.

@@ -282,7 +282,7 @@ resource "aws_dynamodb_table" "production" {
 }
 ```
 
-For managing the KMS key referenced here, see our post on [creating KMS keys with Terraform](https://oneuptime.com/blog/post/create-kms-keys-with-terraform/view).
+For managing the KMS key referenced here, see our post on [creating KMS keys with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-kms-keys-with-terraform/view).
 
 ## DynamoDB Streams
 

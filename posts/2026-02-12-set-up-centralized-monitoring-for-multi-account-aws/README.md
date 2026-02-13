@@ -257,7 +257,7 @@ aws cloudtrail create-trail \
 aws cloudtrail start-logging --name org-audit-trail
 ```
 
-See our detailed guide on [CloudTrail Organization Trail for multi-account](https://oneuptime.com/blog/post/set-up-cloudtrail-organization-trail-for-multi-account/view) for the full setup.
+See our detailed guide on [CloudTrail Organization Trail for multi-account](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudtrail-organization-trail-for-multi-account/view) for the full setup.
 
 ## Step 7: Set Up Cross-Account SNS Notifications
 
@@ -319,4 +319,4 @@ Not everyone should see everything in the monitoring account. Use IAM policies t
 
 Centralized monitoring turns your multi-account AWS environment from a fragmented set of islands into a unified operational view. The OAM-based approach is native to AWS, requires no third-party tools, and scales automatically as you add accounts.
 
-For more on building effective dashboards, see [CloudWatch cross-account dashboards](https://oneuptime.com/blog/post/use-cloudwatch-cross-account-dashboards/view) and [health-aware dashboards on AWS](https://oneuptime.com/blog/post/set-up-health-aware-dashboards-on-aws/view). For specific alarm configurations, check out our guides on [CloudWatch alarms for Lambda error rates](https://oneuptime.com/blog/post/create-cloudwatch-alarms-for-lambda-error-rates/view) and [CloudWatch alarms for ECS service health](https://oneuptime.com/blog/post/create-cloudwatch-alarms-for-ecs-service-health/view).
+For more on building effective dashboards, see [CloudWatch cross-account dashboards](https://oneuptime.com/blog/post/2026-02-12-use-cloudwatch-cross-account-dashboards/view) and [health-aware dashboards on AWS](https://oneuptime.com/blog/post/2026-02-12-set-up-health-aware-dashboards-on-aws/view). For specific alarm configurations, check out our guides on [CloudWatch alarms for Lambda error rates](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-for-lambda-error-rates/view) and [CloudWatch alarms for ECS service health](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-for-ecs-service-health/view).

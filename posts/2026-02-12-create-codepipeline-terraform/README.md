@@ -403,7 +403,7 @@ resource "aws_cloudwatch_event_rule" "tag_push" {
 }
 ```
 
-For more on setting up EventBridge rules, see our guide on [EventBridge rules with Terraform](https://oneuptime.com/blog/post/create-eventbridge-rules-terraform/view).
+For more on setting up EventBridge rules, see our guide on [EventBridge rules with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-eventbridge-rules-terraform/view).
 
 ## Wrapping Up
 

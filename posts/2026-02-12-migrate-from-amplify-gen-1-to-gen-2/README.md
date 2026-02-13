@@ -314,7 +314,7 @@ Do NOT delete the CloudFormation stacks directly if you are referencing those re
 
 **Build configuration**: Gen 2 uses a different build process. Update your `amplify.yml` for the new build commands.
 
-For building new features on Gen 2 after migrating, see our guide on [building a full-stack app with Amplify Gen 2](https://oneuptime.com/blog/post/build-a-full-stack-app-with-amplify-gen-2/view).
+For building new features on Gen 2 after migrating, see our guide on [building a full-stack app with Amplify Gen 2](https://oneuptime.com/blog/post/2026-02-12-build-a-full-stack-app-with-amplify-gen-2/view).
 
 ## Wrapping Up
 

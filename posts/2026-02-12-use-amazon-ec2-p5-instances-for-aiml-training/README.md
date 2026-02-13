@@ -229,7 +229,7 @@ torchrun \
 # Repeat for nodes 2 and 3 with appropriate node_rank
 ```
 
-For managing multi-node training, consider using AWS Batch multi-node parallel jobs. See our guide on [setting up AWS Batch multi-node parallel jobs](https://oneuptime.com/blog/post/set-up-aws-batch-multi-node-parallel-jobs/view).
+For managing multi-node training, consider using AWS Batch multi-node parallel jobs. See our guide on [setting up AWS Batch multi-node parallel jobs](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-batch-multi-node-parallel-jobs/view).
 
 ## Step 6: Optimize for H100
 
@@ -307,7 +307,7 @@ The RAID 0 array delivers aggregate throughput of ~24 GB/s, which is fast enough
 P5 instances are expensive: around $98/hour for a p5.48xlarge On-Demand. Here are ways to manage costs:
 
 - **Capacity Blocks** - Reserve P5 capacity at a predictable price for defined time periods
-- **Spot Instances** - Available for P5 at significant discounts, but capacity is limited. Use checkpointing. See [using Batch with Spot Instances](https://oneuptime.com/blog/post/use-aws-batch-with-spot-instances-for-cost-savings/view).
+- **Spot Instances** - Available for P5 at significant discounts, but capacity is limited. Use checkpointing. See [using Batch with Spot Instances](https://oneuptime.com/blog/post/2026-02-12-use-aws-batch-with-spot-instances-for-cost-savings/view).
 - **Use mixed precision** - FP8/BF16 training runs faster, meaning you need fewer GPU-hours
 - **Right-size your model** - Not every model needs 32 H100s. Start small and scale up only when needed.
 

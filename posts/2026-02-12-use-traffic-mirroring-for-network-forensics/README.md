@@ -329,7 +329,7 @@ aws ec2 create-traffic-mirror-filter-rule \
     --destination-cidr-block 0.0.0.0/0
 ```
 
-For complementary DNS-based monitoring, see our guide on [monitoring Route 53 DNS query logging](https://oneuptime.com/blog/post/monitor-route-53-dns-query-logging/view).
+For complementary DNS-based monitoring, see our guide on [monitoring Route 53 DNS query logging](https://oneuptime.com/blog/post/2026-02-12-monitor-route-53-dns-query-logging/view).
 
 ## Cost and Performance Considerations
 

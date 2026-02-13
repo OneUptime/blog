@@ -380,7 +380,7 @@ def track_usage(user_id, char_count, source_lang, target_lang):
 
 ## Monitoring Your Translation Service
 
-Translation APIs are latency-sensitive - users expect near-instant results. Monitor API response times, translation quality feedback, cache hit rates, and Translate API throttling. If batch jobs fail silently, content stays untranslated. Track job completion rates and processing times with [OneUptime](https://oneuptime.com/blog/post/build-a-voice-enabled-app-with-aws-lex-and-polly/view) for full pipeline visibility.
+Translation APIs are latency-sensitive - users expect near-instant results. Monitor API response times, translation quality feedback, cache hit rates, and Translate API throttling. If batch jobs fail silently, content stays untranslated. Track job completion rates and processing times with [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-voice-enabled-app-with-aws-lex-and-polly/view) for full pipeline visibility.
 
 ## Wrapping Up
 

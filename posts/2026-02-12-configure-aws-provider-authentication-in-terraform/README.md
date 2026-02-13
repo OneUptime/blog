@@ -136,7 +136,7 @@ provider "aws" {
 
 This is the recommended approach for production deployments. Your CI/CD pipeline authenticates with its own credentials, then assumes a role in the target account. The target account controls what the role can do.
 
-For more detail on assume role patterns, see our dedicated guide on [Terraform with assume role for cross-account access](https://oneuptime.com/blog/post/terraform-assume-role-cross-account-access/view).
+For more detail on assume role patterns, see our dedicated guide on [Terraform with assume role for cross-account access](https://oneuptime.com/blog/post/2026-02-12-terraform-assume-role-cross-account-access/view).
 
 ## Method 4: OIDC Federation (Best for GitHub Actions)
 
@@ -306,4 +306,4 @@ aws sts assume-role \
 
 For local development, use shared credentials with named profiles. For CI/CD, use OIDC federation if your platform supports it, or environment variables with temporary credentials. For cross-account deployments, use assume role. Whatever you do, keep credentials out of your Terraform code and state files.
 
-For managing your Terraform state securely, check out our guide on [Terraform state with S3 backend and DynamoDB locking](https://oneuptime.com/blog/post/terraform-state-with-s3-backend-and-dynamodb-locking/view).
+For managing your Terraform state securely, check out our guide on [Terraform state with S3 backend and DynamoDB locking](https://oneuptime.com/blog/post/2026-02-12-terraform-state-with-s3-backend-and-dynamodb-locking/view).

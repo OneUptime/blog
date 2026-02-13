@@ -376,7 +376,7 @@ aws sagemaker list-notebook-instances \
   --output table
 ```
 
-For more on scheduling non-production resources, see our guide on [scheduling non-production resources to save costs](https://oneuptime.com/blog/post/schedule-non-production-resources-to-save-costs/view).
+For more on scheduling non-production resources, see our guide on [scheduling non-production resources to save costs](https://oneuptime.com/blog/post/2026-02-12-schedule-non-production-resources-to-save-costs/view).
 
 ## Choosing Between Notebook Instances and SageMaker Studio
 
@@ -411,4 +411,4 @@ Always store important data in S3, not on the notebook's local storage. The note
 
 SageMaker notebook instances are the quickest way to start doing ML on AWS. Start with ml.t3.medium for cost efficiency, configure auto-stop to prevent surprise bills, use lifecycle scripts to automate your setup, and connect a Git repo for version control. The whole setup takes about 10 minutes and gives you a production-grade ML development environment.
 
-For the next step of actually training models, check out our guide on [getting started with Amazon SageMaker](https://oneuptime.com/blog/post/get-started-with-amazon-sagemaker/view).
+For the next step of actually training models, check out our guide on [getting started with Amazon SageMaker](https://oneuptime.com/blog/post/2026-02-12-get-started-with-amazon-sagemaker/view).

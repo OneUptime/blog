@@ -399,4 +399,4 @@ const dynamodb = applyObservability(new DynamoDBClient({}), { serviceName: 'Dyna
 - **Don't modify request bodies in `finalize`.** By that point the request is signed, and modifications would break the signature.
 - **Be careful with caching.** Only cache read operations and set appropriate TTLs.
 
-For setting up the SDK clients that use these middleware, see the [client setup guide](https://oneuptime.com/blog/post/aws-sdk-v3-clients-nodejs/view). Monitoring the performance impact of your middleware is important too - make sure you're tracking the overhead you're adding to each API call.
+For setting up the SDK clients that use these middleware, see the [client setup guide](https://oneuptime.com/blog/post/2026-02-12-aws-sdk-v3-clients-nodejs/view). Monitoring the performance impact of your middleware is important too - make sure you're tracking the overhead you're adding to each API call.

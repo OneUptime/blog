@@ -278,4 +278,4 @@ aws quicksight update-dashboard-permissions \
 - **Monitor sharing with CloudTrail.** Track who shared what with whom for compliance and auditing purposes.
 - **Set appropriate session durations.** Shorter sessions for embedded dashboards reduce the window for URL reuse.
 
-Getting the sharing model right early saves you from permission headaches later. For related reading, check out our guide on [setting up QuickSight](https://oneuptime.com/blog/post/set-up-amazon-quicksight-for-business-intelligence/view) if you're still in the initial setup phase.
+Getting the sharing model right early saves you from permission headaches later. For related reading, check out our guide on [setting up QuickSight](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-quicksight-for-business-intelligence/view) if you're still in the initial setup phase.

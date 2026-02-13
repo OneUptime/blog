@@ -289,7 +289,7 @@ Here's a simple flowchart for deciding which service to use:
 6. Do you need to read it thousands of times per second? -> **Parameter Store**
 7. Is cost a major concern? -> **Parameter Store** for everything possible
 
-For more on using these services with specific compute platforms, check out our guides on [accessing secrets from Lambda](https://oneuptime.com/blog/post/access-secrets-manager-secrets-lambda-functions/view) and [accessing secrets from ECS](https://oneuptime.com/blog/post/access-secrets-manager-secrets-ecs-tasks/view).
+For more on using these services with specific compute platforms, check out our guides on [accessing secrets from Lambda](https://oneuptime.com/blog/post/2026-02-12-access-secrets-manager-secrets-lambda-functions/view) and [accessing secrets from ECS](https://oneuptime.com/blog/post/2026-02-12-access-secrets-manager-secrets-ecs-tasks/view).
 
 ## Wrapping Up
 

@@ -827,7 +827,7 @@ Choose Deployments when you need:
 
 For additional deployment patterns, see:
 
-- [How to Deploy the OpenTelemetry Collector with the Kubernetes Operator](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-kubernetes-operator/view)
-- [How to Set Up a Two-Tier Collector Architecture (Agent + Gateway)](https://oneuptime.com/blog/post/two-tier-collector-architecture-agent-gateway/view)
+- [How to Deploy the OpenTelemetry Collector with the Kubernetes Operator](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-kubernetes-operator/view)
+- [How to Set Up a Two-Tier Collector Architecture (Agent + Gateway)](https://oneuptime.com/blog/post/2026-02-06-two-tier-collector-architecture-agent-gateway/view)
 
 StatefulSets provide essential guarantees for collectors requiring persistent state, stable identities, and ordered scaling. They're the right choice for Prometheus-style scraping, data persistence, and workloads where pod identity matters.

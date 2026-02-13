@@ -275,4 +275,4 @@ const sharedLayer = new lambda.LayerVersion(this, 'SharedLayer', {
 });
 ```
 
-CDK assets take the pain out of Lambda packaging. You write your code, CDK builds and deploys it. For more on Lambda with CDK, check out the post on [creating a Lambda function with CDK](https://oneuptime.com/blog/post/create-lambda-function-with-cdk/view). For Docker-based assets, see the guide on [using CDK with Docker assets](https://oneuptime.com/blog/post/cdk-with-docker-assets/view).
+CDK assets take the pain out of Lambda packaging. You write your code, CDK builds and deploys it. For more on Lambda with CDK, check out the post on [creating a Lambda function with CDK](https://oneuptime.com/blog/post/2026-02-12-create-lambda-function-with-cdk/view). For Docker-based assets, see the guide on [using CDK with Docker assets](https://oneuptime.com/blog/post/2026-02-12-cdk-with-docker-assets/view).

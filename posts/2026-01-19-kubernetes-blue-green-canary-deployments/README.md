@@ -714,5 +714,5 @@ For monitoring your deployments, check out [OneUptime's deployment monitoring](h
 ## Related Resources
 
 - [How to Set Up ArgoCD for GitOps](https://oneuptime.com/blog/post/kubernetes-argocd-gitops/view)
-- [How to Build Helm Charts from Scratch](https://oneuptime.com/blog/post/kubernetes-helm-charts-from-scratch/view)
-- [How to Set Up Prometheus ServiceMonitor](https://oneuptime.com/blog/post/kubernetes-prometheus-servicemonitor/view)
+- [How to Build Helm Charts from Scratch](https://oneuptime.com/blog/post/2026-01-19-kubernetes-helm-charts-from-scratch/view)
+- [How to Set Up Prometheus ServiceMonitor](https://oneuptime.com/blog/post/2026-01-19-kubernetes-prometheus-servicemonitor/view)

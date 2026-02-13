@@ -831,9 +831,9 @@ source.type = "s3" AND log.level = "ERROR" AND s3.bucket = "production-logs"
 
 ## Related Resources
 
-- [How to Configure AWS ECS Container Metrics Receiver](https://oneuptime.com/blog/post/aws-ecs-container-metrics-receiver-opentelemetry-collector/view)
-- [OpenTelemetry Collector: What It Is and When You Need It](https://oneuptime.com/blog/post/what-is-opentelemetry-collector-and-why-use-one/view)
-- [How to Structure Logs Properly in OpenTelemetry](https://oneuptime.com/blog/post/how-to-structure-logs-properly-in-opentelemetry/view)
+- [How to Configure AWS ECS Container Metrics Receiver](https://oneuptime.com/blog/post/2026-02-06-aws-ecs-container-metrics-receiver-opentelemetry-collector/view)
+- [OpenTelemetry Collector: What It Is and When You Need It](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
+- [How to Structure Logs Properly in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view)
 
 ---
 

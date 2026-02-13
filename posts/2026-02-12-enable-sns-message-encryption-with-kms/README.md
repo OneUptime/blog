@@ -392,4 +392,4 @@ aws cloudwatch put-metric-alarm \
 
 Encrypting your SNS topics is a quick win for security posture. Use the AWS-managed key for simplicity, or a customer-managed key when you need key rotation control, cross-account access, or audit trail requirements.
 
-For setting up the alerting pipeline on these topics, see [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/use-sns-with-cloudwatch-alarms/view). For cross-account setup with encrypted topics, check out [SNS cross-account subscriptions](https://oneuptime.com/blog/post/set-up-sns-cross-account-subscriptions/view).
+For setting up the alerting pipeline on these topics, see [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-use-sns-with-cloudwatch-alarms/view). For cross-account setup with encrypted topics, check out [SNS cross-account subscriptions](https://oneuptime.com/blog/post/2026-02-12-set-up-sns-cross-account-subscriptions/view).

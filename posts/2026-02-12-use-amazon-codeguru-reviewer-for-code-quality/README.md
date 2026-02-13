@@ -290,7 +290,7 @@ Track CodeGuru metrics through CloudWatch to understand its impact:
 - Recommendation types (security vs. quality vs. performance)
 - Feedback ratios (helpful vs. not helpful)
 
-This data helps you measure ROI and tune your usage. For broader application monitoring and operational insights, take a look at [Amazon DevOps Guru](https://oneuptime.com/blog/post/use-amazon-devops-guru-for-operational-insights/view).
+This data helps you measure ROI and tune your usage. For broader application monitoring and operational insights, take a look at [Amazon DevOps Guru](https://oneuptime.com/blog/post/2026-02-12-use-amazon-devops-guru-for-operational-insights/view).
 
 ## Wrapping Up
 

@@ -609,5 +609,5 @@ Remember that throughput often trades off against latency and durability. Choose
 *Want to monitor your Kafka cluster performance in real-time? [OneUptime](https://oneuptime.com) provides comprehensive Kafka monitoring with throughput dashboards, latency tracking, and alerting for performance degradation.*
 
 **Related Reading:**
-- [How to Monitor Kafka Consumer Lag](https://oneuptime.com/blog/post/kafka-consumer-lag)
+- [How to Monitor Kafka Consumer Lag](https://oneuptime.com/blog/post/2026-01-21-kafka-consumer-lag)
 - [Kafka Performance Tuning Guide](https://oneuptime.com/blog/post/kafka-performance)

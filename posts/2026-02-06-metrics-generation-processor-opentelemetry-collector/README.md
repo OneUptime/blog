@@ -986,7 +986,7 @@ processors:
 
 - [What is OpenTelemetry Collector and Why Use One](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
 - [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view)
-- [How to Configure the Interval Processor in OpenTelemetry Collector](https://oneuptime.com/blog/post/interval-processor-opentelemetry-collector/view)
+- [How to Configure the Interval Processor in OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-interval-processor-opentelemetry-collector/view)
 
 ## Final Thoughts
 

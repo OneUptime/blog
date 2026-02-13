@@ -271,7 +271,7 @@ Resources:
 
 **Inspection VPC**: All traffic routes through a central firewall VPC before reaching its destination. Use static `0.0.0.0/0` routes pointing to the inspection attachment.
 
-For the foundational transit gateway setup, see [using AWS Transit Gateway for multi-VPC connectivity](https://oneuptime.com/blog/post/aws-transit-gateway-multi-vpc-connectivity/view).
+For the foundational transit gateway setup, see [using AWS Transit Gateway for multi-VPC connectivity](https://oneuptime.com/blog/post/2026-02-12-aws-transit-gateway-multi-vpc-connectivity/view).
 
 ## Wrapping Up
 

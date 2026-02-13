@@ -405,7 +405,7 @@ SEARCH('{AWS/ApiGateway, ApiName} MetricName="Count"', 'Sum', 300)
 
 **Watch the metric resolution.** All metrics in an expression must use the same period. If you mix 1-minute and 5-minute metrics, you'll get unexpected results.
 
-For more on building effective dashboards with these expressions, check out our guide on [CloudWatch dashboards with Terraform](https://oneuptime.com/blog/post/cloudwatch-dashboards-terraform/view).
+For more on building effective dashboards with these expressions, check out our guide on [CloudWatch dashboards with Terraform](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-dashboards-terraform/view).
 
 ## Wrapping Up
 

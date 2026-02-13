@@ -235,13 +235,13 @@ cloudwatch.put_metric_data(
 )
 ```
 
-For comprehensive SES monitoring, see our guide on [monitoring SES sending with CloudWatch](https://oneuptime.com/blog/post/monitor-ses-sending-with-cloudwatch/view).
+For comprehensive SES monitoring, see our guide on [monitoring SES sending with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-ses-sending-with-cloudwatch/view).
 
 ## Suppression List vs. Bounce Handling
 
 These are complementary, not competing approaches. The suppression list prevents future sends. Bounce handling with SNS gives you real-time notification when bounces happen so you can take immediate action. You should use both.
 
-For setting up SNS-based bounce handling, see [handling SES bounces and complaints with SNS](https://oneuptime.com/blog/post/handle-ses-bounces-and-complaints-with-sns/view).
+For setting up SNS-based bounce handling, see [handling SES bounces and complaints with SNS](https://oneuptime.com/blog/post/2026-02-12-handle-ses-bounces-and-complaints-with-sns/view).
 
 ## Best Practices
 

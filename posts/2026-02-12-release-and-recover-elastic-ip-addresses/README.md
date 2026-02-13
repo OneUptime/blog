@@ -216,6 +216,6 @@ aws ce get-cost-and-usage \
   --metrics "BlendedCost"
 ```
 
-With the 2024 public IPv4 pricing changes, even active EIPs now have a cost. It's worth reviewing your EIP usage quarterly and asking whether each one is still necessary. For general best practices on using EIPs, check out https://oneuptime.com/blog/post/elastic-ip-addresses-effectively/view.
+With the 2024 public IPv4 pricing changes, even active EIPs now have a cost. It's worth reviewing your EIP usage quarterly and asking whether each one is still necessary. For general best practices on using EIPs, check out https://oneuptime.com/blog/post/2026-02-12-elastic-ip-addresses-effectively/view.
 
 The bottom line: treat EIPs as a cost center. Tag them, audit them regularly, have a process for release approval, and know the recovery procedure for when mistakes happen. A little lifecycle management goes a long way toward keeping your AWS bill under control.

@@ -254,7 +254,7 @@ aws ec2 create-security-group \
 # effectively isolating the container from the network
 ```
 
-For debugging running containers, see our guide on [ECS Exec for interactive container debugging](https://oneuptime.com/blog/post/ecs-exec-interactive-container-debugging/view).
+For debugging running containers, see our guide on [ECS Exec for interactive container debugging](https://oneuptime.com/blog/post/2026-02-12-ecs-exec-interactive-container-debugging/view).
 
 ## Performance Impact
 
@@ -268,4 +268,4 @@ GuardDuty Runtime Monitoring for ECS is priced per vCPU per month for monitored 
 
 GuardDuty Runtime Monitoring fills an important gap in container security. Static image scanning and network monitoring are valuable, but they cannot see what happens inside a running container. With runtime monitoring, you get visibility into process execution, file access, and network behavior - the kind of activity that indicates an active compromise. Enable it, set up notifications, and make sure your team has a response plan for when findings come in.
 
-For more on ECS security, see our guide on [configuring ECS task IAM roles](https://oneuptime.com/blog/post/configure-ecs-task-iam-roles/view).
+For more on ECS security, see our guide on [configuring ECS task IAM roles](https://oneuptime.com/blog/post/2026-02-12-configure-ecs-task-iam-roles/view).

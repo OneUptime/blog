@@ -254,7 +254,7 @@ export AWS_SECRET_ACCESS_KEY="secretexample"
 export AWS_SESSION_TOKEN="tokenexample"
 ```
 
-Check our guide on [enforcing MFA for IAM users](https://oneuptime.com/blog/post/enable-enforce-mfa-iam-users/view) for the policy side of this.
+Check our guide on [enforcing MFA for IAM users](https://oneuptime.com/blog/post/2026-02-12-enable-enforce-mfa-iam-users/view) for the policy side of this.
 
 ## AssumeRoleWithWebIdentity: For EKS and Mobile Apps
 

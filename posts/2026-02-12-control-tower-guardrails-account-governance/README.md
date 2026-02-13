@@ -256,4 +256,4 @@ Wire this to SNS or a Lambda function that posts to your team's Slack channel.
 
 Guardrails turn Control Tower from a nice account factory into a real governance platform. The key is being thoughtful about which guardrails you enable and where. Start with the basics - protect your logging, enforce encryption, restrict regions - and build from there.
 
-For the foundational setup, see our guide on [setting up Control Tower](https://oneuptime.com/blog/post/aws-control-tower-multi-account-governance/view). And if you need to manage firewall rules organization-wide, check out [AWS Firewall Manager](https://oneuptime.com/blog/post/aws-firewall-manager-organization-wide-security/view).
+For the foundational setup, see our guide on [setting up Control Tower](https://oneuptime.com/blog/post/2026-02-12-aws-control-tower-multi-account-governance/view). And if you need to manage firewall rules organization-wide, check out [AWS Firewall Manager](https://oneuptime.com/blog/post/2026-02-12-aws-firewall-manager-organization-wide-security/view).

@@ -381,7 +381,7 @@ url = s3.generate_presigned_url(
 print(f"Download URL: {url}")
 ```
 
-For more on presigned URLs in frontend applications, check out our guide on [S3 presigned URLs in React](https://oneuptime.com/blog/post/s3-presigned-urls-react-application/view).
+For more on presigned URLs in frontend applications, check out our guide on [S3 presigned URLs in React](https://oneuptime.com/blog/post/2026-02-12-s3-presigned-urls-react-application/view).
 
 ## Best Practices
 
@@ -392,4 +392,4 @@ For more on presigned URLs in frontend applications, check out our guide on [S3 
 5. **Implement retry logic** for transient failures
 6. **Monitor upload/download metrics** with [OneUptime](https://oneuptime.com) to catch performance regressions
 
-For Node.js developers, we've got a similar guide on [using the AWS SDK for JavaScript v3 with S3](https://oneuptime.com/blog/post/aws-sdk-javascript-v3-s3/view).
+For Node.js developers, we've got a similar guide on [using the AWS SDK for JavaScript v3 with S3](https://oneuptime.com/blog/post/2026-02-12-aws-sdk-javascript-v3-s3/view).

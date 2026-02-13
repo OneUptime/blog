@@ -73,7 +73,7 @@ Look at the `Duration` field. If it's consistently near 29 seconds, your functio
 
 ### Common Backend Bottlenecks
 
-1. **Cold starts** - Lambda cold starts can eat several seconds (see our [cold start guide](https://oneuptime.com/blog/post/fix-lambda-cold-start-performance-issues/view))
+1. **Cold starts** - Lambda cold starts can eat several seconds (see our [cold start guide](https://oneuptime.com/blog/post/2026-02-12-fix-lambda-cold-start-performance-issues/view))
 2. **Slow database queries** - Unoptimized queries or missing indexes
 3. **External API calls** - Waiting on third-party services
 4. **Large data processing** - Trying to process too much data synchronously

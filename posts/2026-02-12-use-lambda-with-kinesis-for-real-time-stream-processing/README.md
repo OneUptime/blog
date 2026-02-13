@@ -234,7 +234,7 @@ Watch these CloudWatch metrics to keep your pipeline healthy:
 - **Lambda Errors**: Track function errors separately from Kinesis throttling.
 - **Lambda Duration**: Ensure processing time stays well below your timeout.
 
-Set up a CloudWatch alarm on IteratorAge. If it exceeds a few minutes, you need to scale up. For a deeper look at monitoring strategies, see our post on [setting up alerting rules in Amazon Managed Prometheus](https://oneuptime.com/blog/post/set-up-alerting-rules-in-amazon-managed-prometheus/view).
+Set up a CloudWatch alarm on IteratorAge. If it exceeds a few minutes, you need to scale up. For a deeper look at monitoring strategies, see our post on [setting up alerting rules in Amazon Managed Prometheus](https://oneuptime.com/blog/post/2026-02-12-set-up-alerting-rules-in-amazon-managed-prometheus/view).
 
 ## Cost Optimization Tips
 

@@ -351,7 +351,7 @@ Before deploying blocking rules to production, run them in count mode first:
 
 Watch the CloudWatch metrics for a few days, verify the rule matches what you expect, then switch to `block`.
 
-For integrating WAF with your CDN layer, check out [CloudFront distributions with CDK](https://oneuptime.com/blog/post/cloudfront-distributions-cdk/view). For the SSL certificates that go alongside WAF protection, see [ACM certificates with CDK](https://oneuptime.com/blog/post/acm-certificates-cdk/view).
+For integrating WAF with your CDN layer, check out [CloudFront distributions with CDK](https://oneuptime.com/blog/post/2026-02-12-cloudfront-distributions-cdk/view). For the SSL certificates that go alongside WAF protection, see [ACM certificates with CDK](https://oneuptime.com/blog/post/2026-02-12-acm-certificates-cdk/view).
 
 ## Wrapping Up
 

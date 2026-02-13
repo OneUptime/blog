@@ -332,7 +332,7 @@ app.use(metricsMiddleware);
 http.Handle("/metrics", promhttp.Handler())
 ```
 
-For deeper PromQL usage, see our guide on [using PromQL queries in Amazon Managed Prometheus](https://oneuptime.com/blog/post/use-promql-queries-in-amazon-managed-prometheus/view).
+For deeper PromQL usage, see our guide on [using PromQL queries in Amazon Managed Prometheus](https://oneuptime.com/blog/post/2026-02-12-use-promql-queries-in-amazon-managed-prometheus/view).
 
 ## Wrapping Up
 

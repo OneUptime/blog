@@ -350,7 +350,7 @@ export const handler = async () => {
 
 Schedule this with EventBridge to run every 5 months (before the 6-month expiry).
 
-For setting up other social providers, see [Cognito social sign-in with Google](https://oneuptime.com/blog/post/cognito-social-sign-in-google/view) and [Cognito social sign-in with Facebook](https://oneuptime.com/blog/post/cognito-social-sign-in-facebook/view).
+For setting up other social providers, see [Cognito social sign-in with Google](https://oneuptime.com/blog/post/2026-02-12-cognito-social-sign-in-google/view) and [Cognito social sign-in with Facebook](https://oneuptime.com/blog/post/2026-02-12-cognito-social-sign-in-facebook/view).
 
 ## Summary
 

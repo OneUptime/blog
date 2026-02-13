@@ -29,7 +29,7 @@ Before diving in, here's a quick decision guide:
 - You need replication and automatic failover
 - You need pub/sub messaging
 
-For a detailed comparison, check out the guide on [comparing MemoryDB vs ElastiCache](https://oneuptime.com/blog/post/compare-memorydb-vs-elasticache/view).
+For a detailed comparison, check out the guide on [comparing MemoryDB vs ElastiCache](https://oneuptime.com/blog/post/2026-02-12-compare-memorydb-vs-elasticache/view).
 
 ## Creating a Memcached Cluster
 
@@ -300,4 +300,4 @@ aws ec2 authorize-security-group-ingress \
 
 ## Wrapping Up
 
-ElastiCache for Memcached is the right choice when you need a simple, fast, horizontally-scalable cache without the overhead of Redis's feature set. Set it up with multiple nodes spread across AZs, use auto-discovery in your client library, and monitor cache hit rates and evictions. If you find you need more advanced features like persistence or data structures, check out how to [connect to ElastiCache Redis from an application](https://oneuptime.com/blog/post/connect-to-elasticache-redis-from-an-application/view).
+ElastiCache for Memcached is the right choice when you need a simple, fast, horizontally-scalable cache without the overhead of Redis's feature set. Set it up with multiple nodes spread across AZs, use auto-discovery in your client library, and monitor cache hit rates and evictions. If you find you need more advanced features like persistence or data structures, check out how to [connect to ElastiCache Redis from an application](https://oneuptime.com/blog/post/2026-02-12-connect-to-elasticache-redis-from-an-application/view).

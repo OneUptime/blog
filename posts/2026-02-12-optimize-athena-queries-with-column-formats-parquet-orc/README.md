@@ -157,7 +157,7 @@ glueContext.write_dynamic_frame.from_options(
 )
 ```
 
-For more on Glue ETL, see our guide on [creating AWS Glue ETL jobs](https://oneuptime.com/blog/post/create-aws-glue-etl-jobs/view).
+For more on Glue ETL, see our guide on [creating AWS Glue ETL jobs](https://oneuptime.com/blog/post/2026-02-12-create-aws-glue-etl-jobs/view).
 
 ## Compression Options
 
@@ -319,6 +319,6 @@ if csv_bytes and parquet_bytes:
 
 ## Wrapping Up
 
-Switching to columnar formats is the second-highest-impact optimization you can make for Athena, right after [partitioning](https://oneuptime.com/blog/post/optimize-athena-query-performance-with-partitioning/view). The combination of column pruning, compression, and predicate pushdown means your queries scan a fraction of the data they would with row-based formats.
+Switching to columnar formats is the second-highest-impact optimization you can make for Athena, right after [partitioning](https://oneuptime.com/blog/post/2026-02-12-optimize-athena-query-performance-with-partitioning/view). The combination of column pruning, compression, and predicate pushdown means your queries scan a fraction of the data they would with row-based formats.
 
 Use Parquet as your default. Use Snappy compression unless you have a specific reason not to. Keep files between 128 MB and 1 GB. And never use `SELECT *` on a columnar table - you lose the entire benefit of column pruning.

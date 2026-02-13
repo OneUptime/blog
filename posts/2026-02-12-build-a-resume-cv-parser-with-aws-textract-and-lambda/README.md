@@ -406,7 +406,7 @@ def search_profiles(skills=None, min_experience=0):
 
 ## Monitoring the Parser Pipeline
 
-Resume parsing is a batch operation, but reliability matters. If uploads sit in S3 without being processed, recruiting teams lose time. Monitor the Lambda invocation success rate, Textract API latency, and queue depth of unprocessed uploads. [OneUptime](https://oneuptime.com/blog/post/build-an-invoice-processing-system-with-aws-textract/view) can help you track the health of the entire parsing pipeline.
+Resume parsing is a batch operation, but reliability matters. If uploads sit in S3 without being processed, recruiting teams lose time. Monitor the Lambda invocation success rate, Textract API latency, and queue depth of unprocessed uploads. [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-an-invoice-processing-system-with-aws-textract/view) can help you track the health of the entire parsing pipeline.
 
 ## Wrapping Up
 

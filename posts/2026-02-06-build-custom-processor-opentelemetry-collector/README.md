@@ -912,7 +912,7 @@ exporters:
   - gomod: go.opentelemetry.io/collector/exporter/loggingexporter v0.95.0
 ```
 
-For details on building custom distributions, see https://oneuptime.com/blog/post/build-custom-opentelemetry-collector-distribution-ocb/view.
+For details on building custom distributions, see https://oneuptime.com/blog/post/2026-02-06-build-custom-opentelemetry-collector-distribution-ocb/view.
 
 ## Configure the Collector
 
@@ -1153,6 +1153,6 @@ Investigate:
 Building custom processors for the OpenTelemetry Collector enables you to transform, filter, and enrich telemetry data according to your specific requirements. By implementing the processor interface and using the pdata APIs, you can create production-ready processors that integrate seamlessly with the Collector pipeline. Combined with custom receivers, exporters, and extensions, custom processors provide complete control over your telemetry processing pipeline.
 
 For related topics, see:
-- https://oneuptime.com/blog/post/build-custom-receiver-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/build-custom-exporter-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/build-custom-extension-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-extension-opentelemetry-collector/view

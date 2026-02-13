@@ -366,7 +366,7 @@ for region in REGIONS:
 
 ## Monitoring Your Canaries
 
-It sounds circular, but you need to monitor your monitoring. If a canary stops running silently, you lose visibility. Set up alarms not just for canary failures but for missing data points, which indicate the canary itself is broken. For a centralized view of canary health across all regions, tools like [OneUptime](https://oneuptime.com/blog/post/build-a-feature-flag-system-with-aws-appconfig/view) can aggregate canary metrics alongside your other monitoring data.
+It sounds circular, but you need to monitor your monitoring. If a canary stops running silently, you lose visibility. Set up alarms not just for canary failures but for missing data points, which indicate the canary itself is broken. For a centralized view of canary health across all regions, tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-feature-flag-system-with-aws-appconfig/view) can aggregate canary metrics alongside your other monitoring data.
 
 ## Wrapping Up
 

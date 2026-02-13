@@ -891,6 +891,6 @@ For comprehensive monitoring of your Kubernetes clusters and backup jobs, check 
 
 ## Related Resources
 
-- [How to Set Up Health Checks for Kubernetes](https://oneuptime.com/blog/post/python-health-checks-kubernetes/view)
-- [How to Gracefully Shutdown Applications in Kubernetes](https://oneuptime.com/blog/post/python-graceful-shutdown-kubernetes/view)
-- [Moving from AWS to Bare Metal](https://oneuptime.com/blog/post/moving-from-aws-to-bare-metal/view)
+- [How to Set Up Health Checks for Kubernetes](https://oneuptime.com/blog/post/2025-01-06-python-health-checks-kubernetes/view)
+- [How to Gracefully Shutdown Applications in Kubernetes](https://oneuptime.com/blog/post/2025-01-06-python-graceful-shutdown-kubernetes/view)
+- [Moving from AWS to Bare Metal](https://oneuptime.com/blog/post/2023-10-30-moving-from-aws-to-bare-metal/view)

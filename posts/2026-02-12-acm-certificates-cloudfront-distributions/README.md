@@ -52,7 +52,7 @@ aws acm describe-certificate \
   --query 'Certificate.DomainValidationOptions[*].ResourceRecord'
 ```
 
-Step 2: Add the DNS validation records (see our [ACM certificate guide](https://oneuptime.com/blog/post/request-manage-ssl-tls-certificates-acm/view) for details). Wait for validation to complete.
+Step 2: Add the DNS validation records (see our [ACM certificate guide](https://oneuptime.com/blog/post/2026-02-12-request-manage-ssl-tls-certificates-acm/view) for details). Wait for validation to complete.
 
 ```bash
 # Check validation status
@@ -335,7 +335,7 @@ aws cloudfront update-distribution \
 
 **Mixed content warnings:** Your pages reference HTTP resources. Update those references to HTTPS or use protocol-relative URLs.
 
-For details on importing existing certificates, see our guide on [importing external SSL certificates into ACM](https://oneuptime.com/blog/post/import-external-ssl-certificates-acm/view).
+For details on importing existing certificates, see our guide on [importing external SSL certificates into ACM](https://oneuptime.com/blog/post/2026-02-12-import-external-ssl-certificates-acm/view).
 
 ## Wrapping Up
 

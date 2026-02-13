@@ -368,7 +368,7 @@ aws events put-targets \
 
 ## Monitoring SaaS Integrations
 
-Monitor your partner event sources and API destinations through CloudWatch. Watch for `FailedInvocations` on your rules and check your DLQ regularly for events that couldn't be delivered. For broader monitoring practices, check out our guide on [EventBridge archive and replay for debugging](https://oneuptime.com/blog/post/eventbridge-archive-replay-event-debugging/view).
+Monitor your partner event sources and API destinations through CloudWatch. Watch for `FailedInvocations` on your rules and check your DLQ regularly for events that couldn't be delivered. For broader monitoring practices, check out our guide on [EventBridge archive and replay for debugging](https://oneuptime.com/blog/post/2026-02-12-eventbridge-archive-replay-event-debugging/view).
 
 ## Wrapping Up
 

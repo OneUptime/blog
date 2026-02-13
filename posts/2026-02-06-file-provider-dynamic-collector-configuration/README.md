@@ -619,7 +619,7 @@ echo "Deployment successful"
 
 **Documentation**: Document the purpose of each configuration file and when to modify it.
 
-For more advanced configuration management, explore [HTTP provider for remote configuration](https://oneuptime.com/blog/post/http-provider-remote-collector-configuration/view) or [OpAMP for centralized management](https://oneuptime.com/blog/post/manage-collector-configuration-opamp/view). You can also use [environment variables](https://oneuptime.com/blog/post/environment-variables-opentelemetry-collector-configuration/view) alongside file providers for maximum flexibility.
+For more advanced configuration management, explore [HTTP provider for remote configuration](https://oneuptime.com/blog/post/2026-02-06-http-provider-remote-collector-configuration/view) or [OpAMP for centralized management](https://oneuptime.com/blog/post/2026-02-06-manage-collector-configuration-opamp/view). You can also use [environment variables](https://oneuptime.com/blog/post/2026-02-06-environment-variables-opentelemetry-collector-configuration/view) alongside file providers for maximum flexibility.
 
 ## Conclusion
 

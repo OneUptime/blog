@@ -396,7 +396,7 @@ npm run dev
 
 The sandbox watches your `amplify/` directory for changes and hot-deploys backend updates within seconds.
 
-For more on migrating existing Amplify projects to this new model, check out our guide on [migrating from Amplify Gen 1 to Gen 2](https://oneuptime.com/blog/post/migrate-from-amplify-gen-1-to-gen-2/view).
+For more on migrating existing Amplify projects to this new model, check out our guide on [migrating from Amplify Gen 1 to Gen 2](https://oneuptime.com/blog/post/2026-02-12-migrate-from-amplify-gen-1-to-gen-2/view).
 
 ## Wrapping Up
 

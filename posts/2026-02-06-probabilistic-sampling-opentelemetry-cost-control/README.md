@@ -762,8 +762,8 @@ processors:
 ## Related Resources
 
 For more cost optimization strategies:
-- https://oneuptime.com/blog/post/cut-observability-costs-opentelemetry-filtering-sampling/view
-- https://oneuptime.com/blog/post/reduce-telemetry-data-volume-span-suppression/view
-- https://oneuptime.com/blog/post/handle-high-cardinality-metrics-opentelemetry/view
+- https://oneuptime.com/blog/post/2026-02-06-cut-observability-costs-opentelemetry-filtering-sampling/view
+- https://oneuptime.com/blog/post/2026-02-06-reduce-telemetry-data-volume-span-suppression/view
+- https://oneuptime.com/blog/post/2026-02-06-handle-high-cardinality-metrics-opentelemetry/view
 
 Probabilistic sampling is essential for cost-effective tracing at scale. By implementing intelligent sampling strategies, you can reduce costs by 50-90% while maintaining statistical accuracy and debugging capability. The key is balancing cost reduction with observability needs through tiered sampling policies.

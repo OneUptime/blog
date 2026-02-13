@@ -645,4 +645,4 @@ MySQL InnoDB Cluster with MySQL Router provides Oracle's official high availabil
 
 Start with a three-node cluster, configure MySQL Router for load balancing, and test automatic failover. As your application grows, scale by adding more secondary nodes for read capacity. The combination of Group Replication and MySQL Router provides a robust, self-healing MySQL platform.
 
-For more MySQL deployment options, see https://oneuptime.com/blog/post/mysql-connection-pooling/view for connection management strategies.
+For more MySQL deployment options, see https://oneuptime.com/blog/post/2026-01-24-mysql-connection-pooling/view for connection management strategies.

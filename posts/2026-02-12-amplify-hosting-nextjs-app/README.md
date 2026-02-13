@@ -333,7 +333,7 @@ build:
 
 **Environment variables not available at runtime**: Make sure you're using `NEXT_PUBLIC_` prefix for client-side variables. Server-side variables need to be set through Amplify, not just in `.env` files.
 
-For React SPAs, see [setting up Amplify Hosting for a React app](https://oneuptime.com/blog/post/amplify-hosting-react-app/view). And for authentication integration, check out [implementing Cognito Authentication in Next.js](https://oneuptime.com/blog/post/cognito-authentication-nextjs/view).
+For React SPAs, see [setting up Amplify Hosting for a React app](https://oneuptime.com/blog/post/2026-02-12-amplify-hosting-react-app/view). And for authentication integration, check out [implementing Cognito Authentication in Next.js](https://oneuptime.com/blog/post/2026-02-12-cognito-authentication-nextjs/view).
 
 ## Wrapping Up
 

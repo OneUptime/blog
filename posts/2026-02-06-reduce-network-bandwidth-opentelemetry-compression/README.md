@@ -645,12 +645,12 @@ service:
 
 Compression works well with other optimization strategies:
 
-- **Sampling**: First reduce volume with [consistent probability sampling](https://oneuptime.com/blog/post/consistent-probability-sampling-predictable-overhead/view), then compress
+- **Sampling**: First reduce volume with [consistent probability sampling](https://oneuptime.com/blog/post/2026-02-06-consistent-probability-sampling-predictable-overhead/view), then compress
 - **Filtering**: Remove unnecessary data before compression for better ratios
-- **Protocol choice**: Use [gRPC for better compression efficiency](https://oneuptime.com/blog/post/optimize-grpc-http-performance-otlp-export/view)
+- **Protocol choice**: Use [gRPC for better compression efficiency](https://oneuptime.com/blog/post/2026-02-06-optimize-grpc-http-performance-otlp-export/view)
 - **Batching**: Larger batches compress more efficiently
 
-For comprehensive cost optimization, see our guide on [building cost-effective observability platforms](https://oneuptime.com/blog/post/cost-effective-observability-platform-opentelemetry/view).
+For comprehensive cost optimization, see our guide on [building cost-effective observability platforms](https://oneuptime.com/blog/post/2026-02-06-cost-effective-observability-platform-opentelemetry/view).
 
 ## Summary
 

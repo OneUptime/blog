@@ -288,6 +288,6 @@ cfn-lint -u
 
 ## Combining cfn-lint with Other Tools
 
-cfn-lint works great alongside other CloudFormation tools. Pair it with cfn-nag for security-focused checks, or use it with taskcat for deployment testing. For monitoring your deployed infrastructure after the templates are applied, you might also want to look at how [OneUptime can monitor your AWS resources](https://oneuptime.com/blog/post/get-started-with-aws-cdk/view) once they're live.
+cfn-lint works great alongside other CloudFormation tools. Pair it with cfn-nag for security-focused checks, or use it with taskcat for deployment testing. For monitoring your deployed infrastructure after the templates are applied, you might also want to look at how [OneUptime can monitor your AWS resources](https://oneuptime.com/blog/post/2026-02-12-get-started-with-aws-cdk/view) once they're live.
 
 The key takeaway here is that cfn-lint should be the first line of defense in your CloudFormation workflow. It's fast, catches real errors, and saves you from those painful deploy-wait-fail cycles. Add it to your editor, add it to your CI pipeline, and write custom rules for your team's standards. Your future self will thank you.

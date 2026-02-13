@@ -333,7 +333,7 @@ aws ecs update-service \
 
 1. **Scope repository policies narrowly** - Grant access to specific accounts, not `*` without conditions
 2. **Use immutable tags** - Prevent image tags from being overwritten, which could be a supply chain attack vector
-3. **Enable image scanning** - Scan images in the source account before they're available to deployment accounts (see our post on [ECR image scanning](https://oneuptime.com/blog/post/ecr-image-scanning-vulnerabilities/view))
+3. **Enable image scanning** - Scan images in the source account before they're available to deployment accounts (see our post on [ECR image scanning](https://oneuptime.com/blog/post/2026-02-12-ecr-image-scanning-vulnerabilities/view))
 4. **Audit access** - Use CloudTrail to track who pulls images from your repositories
 5. **Use Organizations condition** - If available, use `aws:PrincipalOrgID` instead of listing account IDs
 

@@ -136,7 +136,7 @@ aws ec2 create-launch-template \
     }"
 ```
 
-For more on user data scripts, see our guide on [EC2 user data for instance bootstrapping](https://oneuptime.com/blog/post/use-ec2-user-data-scripts-for-instance-bootstrapping/view).
+For more on user data scripts, see our guide on [EC2 user data for instance bootstrapping](https://oneuptime.com/blog/post/2026-02-12-use-ec2-user-data-scripts-for-instance-bootstrapping/view).
 
 ## Versioning
 
@@ -276,7 +276,7 @@ This configuration:
 - Uses Spot instances for the remaining 75%
 - AWS picks the best instance type based on available Spot capacity
 
-For more on scaling policies to use with your ASG, see our guide on [configuring Auto Scaling policies](https://oneuptime.com/blog/post/configure-auto-scaling-policies-target-tracking-vs-step-scaling/view).
+For more on scaling policies to use with your ASG, see our guide on [configuring Auto Scaling policies](https://oneuptime.com/blog/post/2026-02-12-configure-auto-scaling-policies-target-tracking-vs-step-scaling/view).
 
 ## Template Design Patterns
 
@@ -389,7 +389,7 @@ You can't delete a template version if it's the default or if an ASG is using it
 
 ## Security Best Practices
 
-1. **Always set IMDSv2 as required.** Include metadata options in every template. See our guide on [using IMDSv2](https://oneuptime.com/blog/post/use-imdsv2-for-secure-instance-metadata-access/view).
+1. **Always set IMDSv2 as required.** Include metadata options in every template. See our guide on [using IMDSv2](https://oneuptime.com/blog/post/2026-02-12-use-imdsv2-for-secure-instance-metadata-access/view).
 
 2. **Encrypt all EBS volumes.** Set `"Encrypted": true` in block device mappings.
 
@@ -397,7 +397,7 @@ You can't delete a template version if it's the default or if an ASG is using it
 
 4. **Tag everything.** Include tag specifications for instances, volumes, and network interfaces.
 
-5. **Restrict security groups.** Only open the ports your application actually needs. See our [security groups guide](https://oneuptime.com/blog/post/set-up-security-groups-for-ec2-instances/view).
+5. **Restrict security groups.** Only open the ports your application actually needs. See our [security groups guide](https://oneuptime.com/blog/post/2026-02-12-set-up-security-groups-for-ec2-instances/view).
 
 ## Monitoring Instances from Templates
 

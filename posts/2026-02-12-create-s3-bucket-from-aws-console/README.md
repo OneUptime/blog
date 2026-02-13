@@ -58,7 +58,7 @@ Common considerations:
 
 You'll see an "Object Ownership" section. The recommended setting is **ACLs disabled (recommended)**. This means the bucket owner (your account) owns all objects, regardless of who uploaded them.
 
-The alternative - ACLs enabled - is a legacy approach that AWS actively discourages. Unless you have a very specific reason to use ACLs (like cross-account uploads with bucket owner not being the object owner), keep ACLs disabled. We cover this in more detail in our [guide on S3 ACLs](https://oneuptime.com/blog/post/configure-s3-bucket-acls/view).
+The alternative - ACLs enabled - is a legacy approach that AWS actively discourages. Unless you have a very specific reason to use ACLs (like cross-account uploads with bucket owner not being the object owner), keep ACLs disabled. We cover this in more detail in our [guide on S3 ACLs](https://oneuptime.com/blog/post/2026-02-12-configure-s3-bucket-acls/view).
 
 ## Step 5: Block Public Access Settings
 
@@ -71,7 +71,7 @@ The four settings are:
 4. **Block public access to buckets and objects granted through new public bucket or access point policies**
 5. **Block public and cross-account access to buckets and objects through any public bucket or access point policies**
 
-Keep all of these ON. If you need to serve files publicly later, use CloudFront with an Origin Access Control instead of making your bucket public. For more on this topic, check our dedicated guide on [blocking public access on S3 buckets](https://oneuptime.com/blog/post/block-public-access-on-s3-buckets/view).
+Keep all of these ON. If you need to serve files publicly later, use CloudFront with an Origin Access Control instead of making your bucket public. For more on this topic, check our dedicated guide on [blocking public access on S3 buckets](https://oneuptime.com/blog/post/2026-02-12-block-public-access-on-s3-buckets/view).
 
 ## Step 6: Bucket Versioning
 
@@ -80,7 +80,7 @@ Versioning keeps every version of every object ever stored in the bucket. When y
 - Tracking changes over time
 - Compliance requirements
 
-Enable versioning if this bucket stores anything important. You can always enable it later, but you can never undo it (you can only suspend it). We have a detailed walkthrough of [enabling S3 bucket versioning](https://oneuptime.com/blog/post/enable-s3-bucket-versioning/view) if you want to dive deeper.
+Enable versioning if this bucket stores anything important. You can always enable it later, but you can never undo it (you can only suspend it). We have a detailed walkthrough of [enabling S3 bucket versioning](https://oneuptime.com/blog/post/2026-02-12-enable-s3-bucket-versioning/view) if you want to dive deeper.
 
 For this walkthrough, I'd recommend enabling it for production buckets and leaving it disabled for temporary or cache buckets.
 
@@ -166,11 +166,11 @@ aws s3api put-bucket-tagging \
 
 Now that your bucket exists, here are typical next steps:
 
-1. **Set up a bucket policy** for fine-grained access control - see our [S3 bucket policies guide](https://oneuptime.com/blog/post/set-up-s3-bucket-policies-access-control/view)
+1. **Set up a bucket policy** for fine-grained access control - see our [S3 bucket policies guide](https://oneuptime.com/blog/post/2026-02-12-set-up-s3-bucket-policies-access-control/view)
 2. **Configure lifecycle rules** to automatically transition old objects to cheaper storage classes or delete them
 3. **Enable access logging** to track who's accessing your bucket
 4. **Set up event notifications** to trigger Lambda functions or SQS queues when objects are created or deleted
-5. **Upload your first files** using the [AWS CLI](https://oneuptime.com/blog/post/upload-files-to-s3-using-aws-cli/view) or the console
+5. **Upload your first files** using the [AWS CLI](https://oneuptime.com/blog/post/2026-02-12-upload-files-to-s3-using-aws-cli/view) or the console
 
 ## Common Mistakes to Avoid
 

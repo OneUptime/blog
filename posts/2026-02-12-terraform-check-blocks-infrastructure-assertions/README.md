@@ -104,7 +104,7 @@ check "cert_expiry" {
 }
 ```
 
-For more on managing certificates, see our post on [managing ACM certificates with Terraform](https://oneuptime.com/blog/post/manage-aws-acm-certificates-with-terraform/view).
+For more on managing certificates, see our post on [managing ACM certificates with Terraform](https://oneuptime.com/blog/post/2026-02-12-manage-aws-acm-certificates-with-terraform/view).
 
 ## Checking RDS Instance Health
 

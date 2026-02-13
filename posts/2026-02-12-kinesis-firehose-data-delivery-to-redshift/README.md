@@ -334,7 +334,7 @@ aws cloudwatch put-metric-alarm \
 
 Track `DeliveryToRedshift.DataFreshness` to see how far behind your data is. If it's growing, your Redshift cluster might be struggling with the COPY load.
 
-For end-to-end pipeline monitoring, you can integrate these metrics with OneUptime to get alerts alongside your application monitoring. If you're also delivering data to S3, check out our guide on [Firehose delivery to S3](https://oneuptime.com/blog/post/kinesis-data-firehose-data-delivery-to-s3/view).
+For end-to-end pipeline monitoring, you can integrate these metrics with OneUptime to get alerts alongside your application monitoring. If you're also delivering data to S3, check out our guide on [Firehose delivery to S3](https://oneuptime.com/blog/post/2026-02-12-kinesis-data-firehose-data-delivery-to-s3/view).
 
 ## VPC Configuration
 

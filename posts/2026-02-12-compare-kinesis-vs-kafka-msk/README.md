@@ -236,7 +236,7 @@ If you're currently on Kinesis and considering MSK, or vice versa, here's what t
 - **Data migration** - You can't directly migrate data between them. Run both in parallel during migration
 - **Monitoring** - Different metrics, different dashboards, different alerting
 
-For setting up MSK, check out our guide on [setting up Amazon MSK](https://oneuptime.com/blog/post/set-up-amazon-msk/view). For Kinesis deep dives, see our post on [configuring Kinesis Data Streams](https://oneuptime.com/blog/post/configure-amazon-kinesis-data-streams/view).
+For setting up MSK, check out our guide on [setting up Amazon MSK](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-msk/view). For Kinesis deep dives, see our post on [configuring Kinesis Data Streams](https://oneuptime.com/blog/post/2026-02-12-configure-amazon-kinesis-data-streams/view).
 
 ## The Bottom Line
 

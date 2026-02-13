@@ -271,4 +271,4 @@ The service role that Clean Rooms uses needs read access to the Glue tables and 
 }
 ```
 
-AWS Clean Rooms is a solid choice when you need to collaborate on data analysis without the legal and technical complexity of actually sharing raw data. For related data governance topics, check out [setting up Amazon DataZone](https://oneuptime.com/blog/post/amazon-datazone-data-governance/view) for managing data assets across your organization.
+AWS Clean Rooms is a solid choice when you need to collaborate on data analysis without the legal and technical complexity of actually sharing raw data. For related data governance topics, check out [setting up Amazon DataZone](https://oneuptime.com/blog/post/2026-02-12-amazon-datazone-data-governance/view) for managing data assets across your organization.

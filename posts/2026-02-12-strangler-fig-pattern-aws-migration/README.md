@@ -356,7 +356,7 @@ aws apigateway create-deployment \
 
 ## Migration Tracking
 
-Keep a simple tracker for which modules have been migrated. You can also use [AWS Migration Hub Refactor Spaces](https://oneuptime.com/blog/post/aws-migration-hub-refactor-spaces/view) to manage the routing and migration state.
+Keep a simple tracker for which modules have been migrated. You can also use [AWS Migration Hub Refactor Spaces](https://oneuptime.com/blog/post/2026-02-12-aws-migration-hub-refactor-spaces/view) to manage the routing and migration state.
 
 | Module | Status | Start Date | Completion | Traffic % New |
 |--------|--------|-----------|------------|--------------|

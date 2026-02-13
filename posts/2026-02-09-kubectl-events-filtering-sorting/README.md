@@ -508,4 +508,4 @@ Effective event analysis:
 6. Create alerts for critical event patterns
 7. Combine with describe and logs for complete picture
 
-kubectl events transforms cluster troubleshooting from reactive to proactive. Filter events by resource, type, and reason to find problems quickly. Sort by time to understand failure sequences, and watch in real-time during deployments. Master events alongside logs and describe for comprehensive debugging. For more debugging techniques, see https://oneuptime.com/blog/post/kubectl-logs-debug-containers/view.
+kubectl events transforms cluster troubleshooting from reactive to proactive. Filter events by resource, type, and reason to find problems quickly. Sort by time to understand failure sequences, and watch in real-time during deployments. Master events alongside logs and describe for comprehensive debugging. For more debugging techniques, see https://oneuptime.com/blog/post/2026-01-22-kubectl-logs-debug-containers/view.

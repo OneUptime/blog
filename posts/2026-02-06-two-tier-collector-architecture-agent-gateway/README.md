@@ -501,8 +501,8 @@ Set up alerts for queue depth approaching limits and high failure rates, which i
 
 For more information on deploying OpenTelemetry Collectors, check out:
 
-- [How to Deploy the OpenTelemetry Collector with the Kubernetes Operator](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-kubernetes-operator/view)
-- [How to Deploy the OpenTelemetry Collector as a StatefulSet in Kubernetes](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-statefulset-kubernetes/view)
-- [How to Deploy the OpenTelemetry Collector on Docker and Docker Compose](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-docker-compose/view)
+- [How to Deploy the OpenTelemetry Collector with the Kubernetes Operator](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-kubernetes-operator/view)
+- [How to Deploy the OpenTelemetry Collector as a StatefulSet in Kubernetes](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-statefulset-kubernetes/view)
+- [How to Deploy the OpenTelemetry Collector on Docker and Docker Compose](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-docker-compose/view)
 
 The two-tier collector architecture provides a scalable, reliable foundation for observability at any scale. By separating agent and gateway responsibilities, you can optimize resource usage, implement centralized policies, and maintain high availability for your telemetry pipeline.

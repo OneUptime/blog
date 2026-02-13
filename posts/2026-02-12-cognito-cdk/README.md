@@ -412,7 +412,7 @@ npx cdk deploy -c environment=prod
 npx cdk diff -c environment=prod
 ```
 
-For the Terraform alternative, see [setting up Cognito with Terraform](https://oneuptime.com/blog/post/cognito-terraform/view).
+For the Terraform alternative, see [setting up Cognito with Terraform](https://oneuptime.com/blog/post/2026-02-12-cognito-terraform/view).
 
 ## Wrapping Up
 

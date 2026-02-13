@@ -255,7 +255,7 @@ This returns the actual log events that match your pattern, so you can verify it
 
 There are some things to know about metric filter limitations. Each log group supports up to 100 metric filters. Each metric filter can create up to 3 metric transformations. The filter pattern can be up to 1024 characters long. And metric filters only process new log events - they don't backfill historical data.
 
-Also, metric filters don't support regex. If you need regex-level pattern matching, you might want to use Logs Insights queries instead (see our [Logs Insights query syntax guide](https://oneuptime.com/blog/post/cloudwatch-logs-insights-query-syntax/view)) or stream your logs to Lambda for custom processing.
+Also, metric filters don't support regex. If you need regex-level pattern matching, you might want to use Logs Insights queries instead (see our [Logs Insights query syntax guide](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-logs-insights-query-syntax/view)) or stream your logs to Lambda for custom processing.
 
 ## Common Patterns
 
@@ -285,4 +285,4 @@ Here are some filter patterns you'll find yourself using often:
 
 Metric filters bridge the gap between logs and metrics. They let you turn unstructured or semi-structured log data into actionable CloudWatch metrics that you can alarm on and visualize. The key is structured logging - if your applications output JSON logs with consistent field names, metric filters become incredibly powerful. Start with error counts and latency extraction, then expand to business metrics as needed.
 
-For more on what you can do once you have these metrics, check out our post on [publishing custom CloudWatch metrics](https://oneuptime.com/blog/post/publish-custom-cloudwatch-metrics/view) and [creating CloudWatch dashboards](https://oneuptime.com/blog/post/create-cloudwatch-dashboards-application-monitoring/view).
+For more on what you can do once you have these metrics, check out our post on [publishing custom CloudWatch metrics](https://oneuptime.com/blog/post/2026-02-12-publish-custom-cloudwatch-metrics/view) and [creating CloudWatch dashboards](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-dashboards-application-monitoring/view).

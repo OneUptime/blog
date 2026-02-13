@@ -285,10 +285,10 @@ aws iot describe-certificate \
 5. **Monitor certificate usage**: Set up CloudWatch alarms for authentication failures
 6. **Use IoT Device Defender**: Audit your certificates and policies regularly
 
-For more on IoT security auditing, see our guide on [using IoT Core Device Defender for security audits](https://oneuptime.com/blog/post/iot-core-device-defender-security-audits/view).
+For more on IoT security auditing, see our guide on [using IoT Core Device Defender for security audits](https://oneuptime.com/blog/post/2026-02-12-iot-core-device-defender-security-audits/view).
 
 ## Wrapping Up
 
 Certificate-based authentication is the most secure way to authenticate IoT devices with AWS IoT Core. Whether you use AWS-generated certificates for simplicity or bring your own CA for production control, the underlying mechanism is the same: mutual TLS with X.509 certificates. Get the certificate lifecycle management right from the start - automate issuance, plan for rotation, and have a revocation process ready - and your IoT fleet will be secure by default.
 
-For setting up what comes next after authentication, see our guide on [creating IoT Core policies for device permissions](https://oneuptime.com/blog/post/iot-core-policies-device-permissions/view).
+For setting up what comes next after authentication, see our guide on [creating IoT Core policies for device permissions](https://oneuptime.com/blog/post/2026-02-12-iot-core-policies-device-permissions/view).

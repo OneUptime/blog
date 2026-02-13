@@ -470,7 +470,7 @@ def get_usage(event, context):
 
 ## Monitoring Your API Platform
 
-When your API is generating revenue, downtime directly impacts your bottom line. Monitor API availability, latency, error rates, and usage plan limits. Use [OneUptime](https://oneuptime.com/blog/post/build-a-real-time-leaderboard-on-aws/view) to set up external uptime monitoring for your API endpoints so you catch outages before your paying customers do.
+When your API is generating revenue, downtime directly impacts your bottom line. Monitor API availability, latency, error rates, and usage plan limits. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-real-time-leaderboard-on-aws/view) to set up external uptime monitoring for your API endpoints so you catch outages before your paying customers do.
 
 ## Wrapping Up
 

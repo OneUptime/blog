@@ -303,7 +303,7 @@ Note: This pattern has the 24-hour cooldown limitation. For truly dynamic worklo
 4. **Monitor BurstCreditBalance religiously** if using bursting mode. Running out of credits with no warning is a common cause of sudden performance drops.
 5. **Right-size provisioned throughput** - check actual utilization with CloudWatch and adjust down if you're over-provisioned.
 
-For more on monitoring EFS metrics, see our post on [monitoring EFS with CloudWatch](https://oneuptime.com/blog/post/monitor-efs-cloudwatch/view).
+For more on monitoring EFS metrics, see our post on [monitoring EFS with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-efs-cloudwatch/view).
 
 ## Wrapping Up
 

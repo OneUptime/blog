@@ -706,6 +706,6 @@ metrics = AggregationMetrics.calculate(
 5. **Monitor cardinality**: Track unique time series counts over time
 6. **Test aggregation impact**: Ensure aggregation doesn't hide important patterns
 
-For additional optimization techniques, see [How to Implement Cardinality Limits to Prevent Metric Explosions](https://oneuptime.com/blog/post/cardinality-limits-prevent-metric-explosions/view) and [How to Benchmark OpenTelemetry SDK Overhead in Go, Java, and Python](https://oneuptime.com/blog/post/benchmark-opentelemetry-sdk-overhead-go-java-python/view).
+For additional optimization techniques, see [How to Implement Cardinality Limits to Prevent Metric Explosions](https://oneuptime.com/blog/post/2026-02-06-cardinality-limits-prevent-metric-explosions/view) and [How to Benchmark OpenTelemetry SDK Overhead in Go, Java, and Python](https://oneuptime.com/blog/post/2026-02-06-benchmark-opentelemetry-sdk-overhead-go-java-python/view).
 
 Source-level aggregation dramatically reduces metric data volume while preserving observability, making it a critical optimization for production OpenTelemetry deployments.

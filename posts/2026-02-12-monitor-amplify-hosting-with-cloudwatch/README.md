@@ -343,7 +343,7 @@ CloudWatch gives you the basics, but for production applications you might want 
 - **AWS X-Ray** for distributed tracing across your SSR functions and API calls
 - **Synthetic monitoring** to proactively test your application from different regions
 
-For a broader view of your monitoring strategy, check out our post on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/build-a-metrics-collection-system-on-aws/view).
+For a broader view of your monitoring strategy, check out our post on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-metrics-collection-system-on-aws/view).
 
 ## Wrapping Up
 

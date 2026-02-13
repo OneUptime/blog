@@ -288,6 +288,6 @@ These are often confused but serve different purposes:
 
 The ideal setup is Capacity Reservations for guaranteed availability, combined with Savings Plans for the pricing discount.
 
-For a broader view of right-sizing the instances you're reserving, check out [AWS Compute Optimizer](https://oneuptime.com/blog/post/use-aws-compute-optimizer-to-right-size-ec2-instances/view) to make sure you're reserving the right instance types.
+For a broader view of right-sizing the instances you're reserving, check out [AWS Compute Optimizer](https://oneuptime.com/blog/post/2026-02-12-use-aws-compute-optimizer-to-right-size-ec2-instances/view) to make sure you're reserving the right instance types.
 
 Capacity Reservations are insurance. You pay for the peace of mind that your instances will launch when you need them. For production workloads where a capacity error means an outage, that insurance is worth every penny.

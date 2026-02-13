@@ -313,4 +313,4 @@ aws cloudwatch put-metric-alarm \
 
 Good monitoring is the difference between catching a cache issue during business hours and getting paged at midnight when users are seeing errors. Set up the critical alarms first (CPU, memory, evictions), build a dashboard for daily observation, and use automated health checks for comprehensive coverage.
 
-For more on managing your ElastiCache infrastructure, check out the guides on [scaling ElastiCache Redis clusters](https://oneuptime.com/blog/post/scale-elasticache-redis-clusters/view) when you need more capacity, and [setting up ElastiCache Redis backups](https://oneuptime.com/blog/post/set-up-elasticache-redis-backups/view) for disaster recovery.
+For more on managing your ElastiCache infrastructure, check out the guides on [scaling ElastiCache Redis clusters](https://oneuptime.com/blog/post/2026-02-12-scale-elasticache-redis-clusters/view) when you need more capacity, and [setting up ElastiCache Redis backups](https://oneuptime.com/blog/post/2026-02-12-set-up-elasticache-redis-backups/view) for disaster recovery.

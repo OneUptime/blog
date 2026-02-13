@@ -209,7 +209,7 @@ sudo mdadm --detail /dev/md0
 sudo mdadm --monitor --mail=admin@example.com --delay=300 /dev/md0 --daemonise
 ```
 
-For ongoing monitoring of both the RAID performance and the underlying EBS volumes, consider setting up proper [infrastructure monitoring](https://oneuptime.com/blog/post/benchmark-ec2-instance-performance/view) that tracks I/O metrics continuously.
+For ongoing monitoring of both the RAID performance and the underlying EBS volumes, consider setting up proper [infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-12-benchmark-ec2-instance-performance/view) that tracks I/O metrics continuously.
 
 ## When RAID Makes Sense (and When It Doesn't)
 
@@ -223,7 +223,7 @@ RAID on EBS probably doesn't make sense when:
 - You could use instance store volumes instead (for temporary, high-performance storage)
 - Your workload isn't actually I/O bound
 
-Before going the RAID route, check if a single [io2 Block Express volume](https://oneuptime.com/blog/post/io2-block-express-ebs-volumes-high-performance-storage/view) might be simpler and just as fast.
+Before going the RAID route, check if a single [io2 Block Express volume](https://oneuptime.com/blog/post/2026-02-12-io2-block-express-ebs-volumes-high-performance-storage/view) might be simpler and just as fast.
 
 ## Cleanup
 

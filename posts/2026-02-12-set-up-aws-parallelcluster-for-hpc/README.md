@@ -212,7 +212,7 @@ With this setup, anything in the S3 bucket appears as a file under `/scratch`, a
 
 ## Step 7: Enable EFA for Low-Latency Communication
 
-If your workload is tightly coupled (like CFD or molecular dynamics), you want Elastic Fabric Adapter for inter-node communication. For details on EFA setup, see our guide on [configuring EFA for HPC](https://oneuptime.com/blog/post/configure-efa-elastic-fabric-adapter-for-hpc/view).
+If your workload is tightly coupled (like CFD or molecular dynamics), you want Elastic Fabric Adapter for inter-node communication. For details on EFA setup, see our guide on [configuring EFA for HPC](https://oneuptime.com/blog/post/2026-02-12-configure-efa-elastic-fabric-adapter-for-hpc/view).
 
 ```yaml
 # Update the compute queue to enable EFA
@@ -265,7 +265,7 @@ The default scaledown idle time is 10 minutes. You can adjust it in the configur
 - Choose the right instance type for your workload. Compute-bound jobs should use C-series, memory-bound should use R-series
 - Use FSx for Lustre SCRATCH_2 deployment type for temporary data since it is cheaper than PERSISTENT
 
-For more on saving money with Spot Instances in batch workloads, check out [using AWS Batch with Spot Instances](https://oneuptime.com/blog/post/use-aws-batch-with-spot-instances-for-cost-savings/view).
+For more on saving money with Spot Instances in batch workloads, check out [using AWS Batch with Spot Instances](https://oneuptime.com/blog/post/2026-02-12-use-aws-batch-with-spot-instances-for-cost-savings/view).
 
 ## Updating the Cluster
 

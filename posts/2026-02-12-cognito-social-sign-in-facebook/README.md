@@ -332,7 +332,7 @@ export default SocialSignIn;
 
 **No email in user profile** - The user's Facebook account doesn't have a verified email. Handle this case in your Pre Sign-Up trigger.
 
-For setting up additional social providers, see [Cognito social sign-in with Apple](https://oneuptime.com/blog/post/cognito-social-sign-in-apple/view) and [Cognito social sign-in with Google](https://oneuptime.com/blog/post/cognito-social-sign-in-google/view).
+For setting up additional social providers, see [Cognito social sign-in with Apple](https://oneuptime.com/blog/post/2026-02-12-cognito-social-sign-in-apple/view) and [Cognito social sign-in with Google](https://oneuptime.com/blog/post/2026-02-12-cognito-social-sign-in-google/view).
 
 ## Summary
 

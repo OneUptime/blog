@@ -167,7 +167,7 @@ async function exportTable(tableName) {
 }
 ```
 
-For large exports, consider using [DynamoDB's native S3 export](https://oneuptime.com/blog/post/dynamodb-export-s3/view) instead.
+For large exports, consider using [DynamoDB's native S3 export](https://oneuptime.com/blog/post/2026-02-12-dynamodb-export-s3/view) instead.
 
 ### Small Tables
 

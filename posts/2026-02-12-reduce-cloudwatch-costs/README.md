@@ -320,4 +320,4 @@ Here's a quick checklist you can work through:
 
 CloudWatch cost optimization isn't about cutting monitoring - it's about being intentional. The biggest wins come from fixing dimension cardinality issues in custom metrics and setting retention policies on log groups. These two changes alone typically reduce CloudWatch bills by 30-50%.
 
-Make CloudWatch cost review a monthly habit. Look at your bill, identify the top cost drivers, and apply the relevant optimizations. Your monitoring should be comprehensive, but it doesn't need to be expensive. For setting up billing alarms to catch cost spikes early, check our guide on [CloudWatch billing threshold alarms](https://oneuptime.com/blog/post/cloudwatch-alarms-billing-thresholds/view).
+Make CloudWatch cost review a monthly habit. Look at your bill, identify the top cost drivers, and apply the relevant optimizations. Your monitoring should be comprehensive, but it doesn't need to be expensive. For setting up billing alarms to catch cost spikes early, check our guide on [CloudWatch billing threshold alarms](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-billing-thresholds/view).

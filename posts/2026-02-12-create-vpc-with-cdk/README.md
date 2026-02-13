@@ -280,4 +280,4 @@ export class AppStack extends cdk.Stack {
 }
 ```
 
-The VPC is usually the first thing you create and the last thing you delete. Put it in its own stack with a long lifecycle, and pass it to application stacks that change frequently. For more on organizing stacks, see the post on [CDK stacks and environments](https://oneuptime.com/blog/post/cdk-stacks-and-environments/view). For a complete Fargate deployment that uses a VPC like this, check out [CDK L3 constructs for complete architectures](https://oneuptime.com/blog/post/cdk-l3-constructs-patterns-complete-architectures/view).
+The VPC is usually the first thing you create and the last thing you delete. Put it in its own stack with a long lifecycle, and pass it to application stacks that change frequently. For more on organizing stacks, see the post on [CDK stacks and environments](https://oneuptime.com/blog/post/2026-02-12-cdk-stacks-and-environments/view). For a complete Fargate deployment that uses a VPC like this, check out [CDK L3 constructs for complete architectures](https://oneuptime.com/blog/post/2026-02-12-cdk-l3-constructs-patterns-complete-architectures/view).

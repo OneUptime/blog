@@ -324,7 +324,7 @@ def provide_token(dialect, conn_rec, cargs, cparams):
 
 - **Connection rate limit**: IAM auth is limited to 256 new connections per second. Use connection pooling if this is a concern.
 - **Token size**: The token is about 2KB, which might be too large for some connection libraries with small password field limits.
-- **SSL required**: IAM authentication requires SSL/TLS connections. Make sure your application uses SSL. See our guide on [enabling RDS encryption in transit](https://oneuptime.com/blog/post/enable-rds-encryption-in-transit-ssl-tls/view).
+- **SSL required**: IAM authentication requires SSL/TLS connections. Make sure your application uses SSL. See our guide on [enabling RDS encryption in transit](https://oneuptime.com/blog/post/2026-02-12-enable-rds-encryption-in-transit-ssl-tls/view).
 - **Not for superuser**: The master user account can't use IAM authentication. It always uses password authentication.
 
 ## When to Use IAM Authentication

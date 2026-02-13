@@ -281,9 +281,9 @@ aws cloudtrail lookup-events \
 
 ## Preventing Failures
 
-Run `cdk diff` before every deployment. If the diff shows resource replacements you didn't expect, investigate before deploying. See our guide on [synthesizing and diffing CDK changes](https://oneuptime.com/blog/post/synthesize-and-diff-cdk-changes-before-deployment/view).
+Run `cdk diff` before every deployment. If the diff shows resource replacements you didn't expect, investigate before deploying. See our guide on [synthesizing and diffing CDK changes](https://oneuptime.com/blog/post/2026-02-12-synthesize-and-diff-cdk-changes-before-deployment/view).
 
-Use [CDK Nag](https://oneuptime.com/blog/post/use-cdk-nag-for-security-best-practice-checks/view) to catch misconfigurations before deployment.
+Use [CDK Nag](https://oneuptime.com/blog/post/2026-02-12-use-cdk-nag-for-security-best-practice-checks/view) to catch misconfigurations before deployment.
 
 Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) so you catch deployment-related issues quickly if something does slip through.
 

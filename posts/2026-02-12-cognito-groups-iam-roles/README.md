@@ -119,7 +119,7 @@ aws iam put-role-policy \
 
 ## Step 2: Associate Roles with Cognito Groups
 
-Now link each IAM role to a Cognito group in your user pool. For background on setting up groups, see [using Cognito groups for role-based access control](https://oneuptime.com/blog/post/cognito-groups-role-based-access-control/view).
+Now link each IAM role to a Cognito group in your user pool. For background on setting up groups, see [using Cognito groups for role-based access control](https://oneuptime.com/blog/post/2026-02-12-cognito-groups-role-based-access-control/view).
 
 Attach IAM roles to your Cognito groups:
 
@@ -289,7 +289,7 @@ This way, even users with the same IAM role can only access their own files in S
 
 ## Credential Expiration
 
-The temporary credentials from the Identity Pool expire after a default period (usually 1 hour). Your application needs to handle credential refresh. The simplest approach is to re-request credentials when you detect an expired session, which is a similar pattern to [handling Cognito token refresh](https://oneuptime.com/blog/post/cognito-token-refresh-applications/view).
+The temporary credentials from the Identity Pool expire after a default period (usually 1 hour). Your application needs to handle credential refresh. The simplest approach is to re-request credentials when you detect an expired session, which is a similar pattern to [handling Cognito token refresh](https://oneuptime.com/blog/post/2026-02-12-cognito-token-refresh-applications/view).
 
 ## Wrapping Up
 

@@ -268,7 +268,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
 }
 ```
 
-For more on encryption practices, check out our post on [encryption everywhere on AWS](https://oneuptime.com/blog/post/encryption-everywhere-aws/view).
+For more on encryption practices, check out our post on [encryption everywhere on AWS](https://oneuptime.com/blog/post/2026-02-12-encryption-everywhere-aws/view).
 
 ## Layer 6: Detection and Response
 
@@ -312,4 +312,4 @@ Defense in depth isn't about buying every security tool AWS offers. It's about t
 
 The goal is to make an attacker's job as difficult as possible at every step. Even if they find an exposed service, they hit a locked-down security group. Even if they bypass that, they face strict IAM policies. Even if they get past IAM, the data is encrypted. And the whole time, your monitoring systems are watching.
 
-For monitoring your defense in depth strategy effectively, take a look at our guide on [logging and monitoring best practices on AWS](https://oneuptime.com/blog/post/logging-monitoring-best-practices-aws/view). Visibility into what's happening across all these layers is what ties the whole strategy together.
+For monitoring your defense in depth strategy effectively, take a look at our guide on [logging and monitoring best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-logging-monitoring-best-practices-aws/view). Visibility into what's happening across all these layers is what ties the whole strategy together.

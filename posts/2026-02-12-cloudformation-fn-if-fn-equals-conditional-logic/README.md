@@ -200,7 +200,7 @@ Resources:
           - t3.large
 ```
 
-For more than two branches, [mappings](https://oneuptime.com/blog/post/cloudformation-mappings-region-specific-values/view) are usually cleaner:
+For more than two branches, [mappings](https://oneuptime.com/blog/post/2026-02-12-cloudformation-mappings-region-specific-values/view) are usually cleaner:
 
 ```yaml
 # Mappings are cleaner for multi-branch selection
@@ -352,4 +352,4 @@ Outputs:
 
 **Use conditions for resources, If for properties.** The resource-level `Condition` key controls existence. `Fn::If` in properties controls configuration.
 
-For more on conditional resource creation, see our post on [CloudFormation conditions](https://oneuptime.com/blog/post/cloudformation-conditions-conditional-resources/view). And for the broader picture of intrinsic functions, check out [Ref, Fn::Sub, and Fn::Join](https://oneuptime.com/blog/post/cloudformation-intrinsic-functions-ref-sub-join/view).
+For more on conditional resource creation, see our post on [CloudFormation conditions](https://oneuptime.com/blog/post/2026-02-12-cloudformation-conditions-conditional-resources/view). And for the broader picture of intrinsic functions, check out [Ref, Fn::Sub, and Fn::Join](https://oneuptime.com/blog/post/2026-02-12-cloudformation-intrinsic-functions-ref-sub-join/view).

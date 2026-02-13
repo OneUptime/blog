@@ -298,7 +298,7 @@ aws s3 cp s3://my-config-bucket/cloudwatch-agent-config.json \
   -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
 ```
 
-Or better yet, store the config in SSM Parameter Store and reference it. See our post on [using CloudWatch Agent with SSM Parameter Store](https://oneuptime.com/blog/post/cloudwatch-agent-ssm-parameter-store-config/view) for that approach.
+Or better yet, store the config in SSM Parameter Store and reference it. See our post on [using CloudWatch Agent with SSM Parameter Store](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-agent-ssm-parameter-store-config/view) for that approach.
 
 ## Troubleshooting
 
@@ -314,4 +314,4 @@ Common issues and how to fix them:
 
 ## Wrapping Up
 
-The CloudWatch Agent is essential for getting full visibility into your EC2 instances. The built-in metrics only scratch the surface - memory, disk, and process metrics require the agent. Once installed, you can [configure custom metrics collection](https://oneuptime.com/blog/post/configure-cloudwatch-agent-custom-metrics/view) and set up alarms on everything from memory pressure to application-specific counters. For Windows instances, the setup is similar but with some key differences - see our [Windows installation guide](https://oneuptime.com/blog/post/install-cloudwatch-agent-ec2-windows/view).
+The CloudWatch Agent is essential for getting full visibility into your EC2 instances. The built-in metrics only scratch the surface - memory, disk, and process metrics require the agent. Once installed, you can [configure custom metrics collection](https://oneuptime.com/blog/post/2026-02-12-configure-cloudwatch-agent-custom-metrics/view) and set up alarms on everything from memory pressure to application-specific counters. For Windows instances, the setup is similar but with some key differences - see our [Windows installation guide](https://oneuptime.com/blog/post/2026-02-12-install-cloudwatch-agent-ec2-windows/view).

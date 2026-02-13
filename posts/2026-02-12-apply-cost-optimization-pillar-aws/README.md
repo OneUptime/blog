@@ -95,7 +95,7 @@ resource "aws_ce_cost_allocation_tag" "project" {
 }
 ```
 
-For details on setting up consistent tagging, check out our guide on [managing AWS tagging standards with Terraform](https://oneuptime.com/blog/post/manage-aws-tagging-standards-terraform-default-tags/view).
+For details on setting up consistent tagging, check out our guide on [managing AWS tagging standards with Terraform](https://oneuptime.com/blog/post/2026-02-12-manage-aws-tagging-standards-terraform-default-tags/view).
 
 ## Right-Sizing
 

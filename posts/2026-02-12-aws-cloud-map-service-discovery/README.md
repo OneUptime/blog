@@ -272,4 +272,4 @@ Cloud Map isn't the only option for service discovery in AWS. Here's when you'd 
 - **Load Balancers** - Best when you need advanced routing, SSL termination, or path-based routing
 - **Kubernetes service discovery** - If you're on EKS, Kubernetes has built-in service discovery
 
-Cloud Map is lightweight and integrates natively with ECS, making it the path of least resistance for container-based microservices on AWS. For DNS routing beyond service discovery, check out Route 53's routing policies at https://oneuptime.com/blog/post/route-53-simple-routing-policy/view.
+Cloud Map is lightweight and integrates natively with ECS, making it the path of least resistance for container-based microservices on AWS. For DNS routing beyond service discovery, check out Route 53's routing policies at https://oneuptime.com/blog/post/2026-02-12-route-53-simple-routing-policy/view.

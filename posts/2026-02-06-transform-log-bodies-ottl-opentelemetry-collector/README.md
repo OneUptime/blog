@@ -106,7 +106,7 @@ processors:
           - set(body["processed_at"], UnixMicro(time_now()))
 ```
 
-This approach works when the log body is already parsed as a structured object (map). If your logs arrive as JSON strings, you need to parse them first using the JSON parsing capabilities covered in a related post on [parsing JSON logs with OTTL](https://oneuptime.com/blog/post/parse-json-logs-ottl-opentelemetry-collector/view).
+This approach works when the log body is already parsed as a structured object (map). If your logs arrive as JSON strings, you need to parse them first using the JSON parsing capabilities covered in a related post on [parsing JSON logs with OTTL](https://oneuptime.com/blog/post/2026-02-06-parse-json-logs-ottl-opentelemetry-collector/view).
 
 ## Normalizing Log Bodies Across Sources
 
@@ -134,7 +134,7 @@ processors:
           - set(body, Concat([String(time_now()), " [", String(severity_text), "] ", body], ""))
 ```
 
-This configuration demonstrates conditional transformations using the `where` clause, which is covered in more detail in the post about [conditional logic in OTTL](https://oneuptime.com/blog/post/conditional-logic-ottl-opentelemetry-collector/view).
+This configuration demonstrates conditional transformations using the `where` clause, which is covered in more detail in the post about [conditional logic in OTTL](https://oneuptime.com/blog/post/2026-02-06-conditional-logic-ottl-opentelemetry-collector/view).
 
 ## Enriching Log Bodies with Context
 
@@ -260,7 +260,7 @@ graph LR
 
 2. **Use Specific Patterns**: When using regex for extraction or replacement, be as specific as possible to avoid unintended matches.
 
-3. **Test Thoroughly**: Use the [OTTL Playground](https://oneuptime.com/blog/post/ottl-playground-test-opentelemetry-collector/view) to test your transformations before deploying to production.
+3. **Test Thoroughly**: Use the [OTTL Playground](https://oneuptime.com/blog/post/2026-02-06-ottl-playground-test-opentelemetry-collector/view) to test your transformations before deploying to production.
 
 4. **Consider Performance**: Complex regex operations and multiple transformations can impact performance. Monitor your collector's resource usage.
 
@@ -284,6 +284,6 @@ graph LR
 
 Transforming log bodies with OTTL in the OpenTelemetry Collector provides a powerful way to normalize, enrich, and secure your log data. By extracting structured information, redacting sensitive data, and normalizing formats, you can make your logs more valuable for observability and troubleshooting.
 
-The transform processor's flexibility allows you to handle diverse log formats and implement complex transformation logic without writing custom code. Combined with other OTTL capabilities like [attribute modification](https://oneuptime.com/blog/post/rename-modify-attributes-ottl-opentelemetry-collector/view) and [conditional logic](https://oneuptime.com/blog/post/conditional-logic-ottl-opentelemetry-collector/view), you can build sophisticated log processing pipelines that meet your specific requirements.
+The transform processor's flexibility allows you to handle diverse log formats and implement complex transformation logic without writing custom code. Combined with other OTTL capabilities like [attribute modification](https://oneuptime.com/blog/post/2026-02-06-rename-modify-attributes-ottl-opentelemetry-collector/view) and [conditional logic](https://oneuptime.com/blog/post/2026-02-06-conditional-logic-ottl-opentelemetry-collector/view), you can build sophisticated log processing pipelines that meet your specific requirements.
 
 For more information on OTTL and the transform processor, refer to the [OpenTelemetry Collector documentation](https://opentelemetry.io/docs/collector/transforming-telemetry/).

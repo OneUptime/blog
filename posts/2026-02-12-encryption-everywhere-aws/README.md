@@ -397,4 +397,4 @@ Encryption everywhere isn't just a best practice - it's quickly becoming a regul
 
 Start by enabling default EBS encryption and S3 bucket encryption account-wide. Then enforce it with SCPs so nobody can accidentally deploy unencrypted resources. Finally, audit continuously with AWS Config to catch anything that slips through.
 
-For a broader view of how encryption fits into your security posture, check out our guide on [defense in depth on AWS](https://oneuptime.com/blog/post/defense-in-depth-aws/view) and [data protection best practices on AWS](https://oneuptime.com/blog/post/data-protection-best-practices-aws/view).
+For a broader view of how encryption fits into your security posture, check out our guide on [defense in depth on AWS](https://oneuptime.com/blog/post/2026-02-12-defense-in-depth-aws/view) and [data protection best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-data-protection-best-practices-aws/view).

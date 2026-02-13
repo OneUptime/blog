@@ -152,7 +152,7 @@ But if one tenant is 1000x bigger than others, you'll get a hot partition. In th
 Partition key: tenantId#shard  (e.g., "tenant-megacorp#3")
 ```
 
-For more on this technique, check out our post on [DynamoDB write sharding](https://oneuptime.com/blog/post/dynamodb-write-sharding/view).
+For more on this technique, check out our post on [DynamoDB write sharding](https://oneuptime.com/blog/post/2026-02-12-dynamodb-write-sharding/view).
 
 ### Event Logging
 

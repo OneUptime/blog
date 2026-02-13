@@ -28,7 +28,7 @@ Each job processes a manifest - a list of objects to operate on. The manifest ca
 
 You've got two options for manifests.
 
-**Option A: Use an S3 Inventory report** (best for large-scale operations). If you already have S3 Inventory configured, you can point your batch job directly at the inventory manifest. See our post on [using S3 Inventory to audit objects at scale](https://oneuptime.com/blog/post/s3-inventory-audit-objects-at-scale/view) for setup instructions.
+**Option A: Use an S3 Inventory report** (best for large-scale operations). If you already have S3 Inventory configured, you can point your batch job directly at the inventory manifest. See our post on [using S3 Inventory to audit objects at scale](https://oneuptime.com/blog/post/2026-02-12-s3-inventory-audit-objects-at-scale/view) for setup instructions.
 
 **Option B: Create a CSV manifest** (best for targeted operations). The CSV format is simple - just bucket name and object key per line.
 

@@ -266,7 +266,7 @@ ECDSA is recommended for CloudFront distributions and any high-traffic service w
 
 **Certificate not showing in service dropdown:** Make sure the certificate is in the ISSUED state and in the same region as the service.
 
-For using ACM certificates with specific services, see our guides on [ACM with CloudFront](https://oneuptime.com/blog/post/acm-certificates-cloudfront-distributions/view) and [ACM with ALB](https://oneuptime.com/blog/post/acm-certificates-application-load-balancers/view).
+For using ACM certificates with specific services, see our guides on [ACM with CloudFront](https://oneuptime.com/blog/post/2026-02-12-acm-certificates-cloudfront-distributions/view) and [ACM with ALB](https://oneuptime.com/blog/post/2026-02-12-acm-certificates-application-load-balancers/view).
 
 ## Wrapping Up
 

@@ -333,7 +333,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789:ops-alerts
 ```
 
-For deeper monitoring beyond just the load balancer, set up [CloudWatch alarms for CPU and memory](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) on your individual instances.
+For deeper monitoring beyond just the load balancer, set up [CloudWatch alarms for CPU and memory](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) on your individual instances.
 
 ## Testing AZ Failover
 

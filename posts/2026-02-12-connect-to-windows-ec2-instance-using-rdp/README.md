@@ -21,7 +21,7 @@ You'll need:
 - An RDP client on your local machine
 - A security group that allows inbound RDP (port 3389) from your IP
 
-If you haven't launched a Windows instance yet, the process is the same as Linux - just select a Windows AMI. See our [guide to launching EC2 instances](https://oneuptime.com/blog/post/launch-first-ec2-instance-from-aws-console/view) for the basics.
+If you haven't launched a Windows instance yet, the process is the same as Linux - just select a Windows AMI. See our [guide to launching EC2 instances](https://oneuptime.com/blog/post/2026-02-12-launch-first-ec2-instance-from-aws-console/view) for the basics.
 
 ## Step 1: Wait for the Instance to Initialize
 
@@ -155,7 +155,7 @@ New-NetFirewallRule -DisplayName "Allow HTTP" -Direction Inbound -Protocol TCP -
 New-NetFirewallRule -DisplayName "Allow HTTPS" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow
 ```
 
-Remember that you also need to update the security group in AWS to allow these ports. Check out our [security groups guide](https://oneuptime.com/blog/post/set-up-security-groups-for-ec2-instances/view) for details.
+Remember that you also need to update the security group in AWS to allow these ports. Check out our [security groups guide](https://oneuptime.com/blog/post/2026-02-12-set-up-security-groups-for-ec2-instances/view) for details.
 
 ## Improving RDP Performance
 
@@ -180,7 +180,7 @@ Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Se
 
 ### Use a Larger Instance Type
 
-If RDP feels consistently slow, the instance might be under-resourced. A t3.medium (2 vCPU, 4 GB RAM) is the minimum for a usable Windows desktop experience. t3.micro works for headless Windows servers but makes RDP painful. See our guide on [choosing the right instance type](https://oneuptime.com/blog/post/choose-right-ec2-instance-type-for-your-workload/view) for more on sizing.
+If RDP feels consistently slow, the instance might be under-resourced. A t3.medium (2 vCPU, 4 GB RAM) is the minimum for a usable Windows desktop experience. t3.micro works for headless Windows servers but makes RDP painful. See our guide on [choosing the right instance type](https://oneuptime.com/blog/post/2026-02-12-choose-right-ec2-instance-type-for-your-workload/view) for more on sizing.
 
 ## Multiple Concurrent RDP Sessions
 
@@ -199,7 +199,7 @@ query session
 
 1. **Check the security group** - Port 3389 must be open for inbound traffic from your IP.
 2. **Verify the instance is running** - Both status checks should be green.
-3. **Check the IP address** - If you stopped and started the instance, the public IP changed. Use an [Elastic IP](https://oneuptime.com/blog/post/assign-elastic-ip-address-to-ec2-instance/view) to keep a static address.
+3. **Check the IP address** - If you stopped and started the instance, the public IP changed. Use an [Elastic IP](https://oneuptime.com/blog/post/2026-02-12-assign-elastic-ip-address-to-ec2-instance/view) to keep a static address.
 4. **Wait for Windows to boot** - Windows takes several minutes to fully initialize after launch or restart.
 
 ### "Your credentials did not work"

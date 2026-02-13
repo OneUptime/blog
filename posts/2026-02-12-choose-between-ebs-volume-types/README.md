@@ -79,7 +79,7 @@ flowchart LR
     end
 ```
 
-**Migration tip**: Switch all your gp2 volumes to gp3 online with no downtime. See our guide on [resizing EBS volumes without downtime](https://oneuptime.com/blog/post/resize-ebs-volume-without-downtime/view).
+**Migration tip**: Switch all your gp2 volumes to gp3 online with no downtime. See our guide on [resizing EBS volumes without downtime](https://oneuptime.com/blog/post/2026-02-12-resize-ebs-volume-without-downtime/view).
 
 ```bash
 # Migrate from gp2 to gp3 (no downtime)

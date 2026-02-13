@@ -284,7 +284,7 @@ export const handler = async (event) => {
 };
 ```
 
-For full account linking, you'll need admin API calls to merge the accounts. This is covered in [Cognito Lambda triggers for pre sign-up](https://oneuptime.com/blog/post/cognito-lambda-triggers-pre-sign-up/view).
+For full account linking, you'll need admin API calls to merge the accounts. This is covered in [Cognito Lambda triggers for pre sign-up](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-pre-sign-up/view).
 
 ## Testing the Integration
 
@@ -303,4 +303,4 @@ Open this URL in a browser. It should redirect to Google's sign-in page, then ba
 
 ## Summary
 
-Setting up Google sign-in with Cognito takes about 15 minutes once you know the steps. The OAuth flow is handled entirely by Cognito - you just need the Google credentials, attribute mapping, and a sign-in button. For a complete social sign-in experience, you might also want to add [Facebook sign-in](https://oneuptime.com/blog/post/cognito-social-sign-in-facebook/view) and [Apple sign-in](https://oneuptime.com/blog/post/cognito-social-sign-in-apple/view).
+Setting up Google sign-in with Cognito takes about 15 minutes once you know the steps. The OAuth flow is handled entirely by Cognito - you just need the Google credentials, attribute mapping, and a sign-in button. For a complete social sign-in experience, you might also want to add [Facebook sign-in](https://oneuptime.com/blog/post/2026-02-12-cognito-social-sign-in-facebook/view) and [Apple sign-in](https://oneuptime.com/blog/post/2026-02-12-cognito-social-sign-in-apple/view).

@@ -262,7 +262,7 @@ print(response['Body'].read().decode())
 
 **Watch out for**: Cold starts can add several seconds. Not suitable for latency-sensitive applications. Memory is capped at 6 GB.
 
-For a deeper dive into serverless, see our [SageMaker Serverless Inference guide](https://oneuptime.com/blog/post/sagemaker-serverless-inference/view).
+For a deeper dive into serverless, see our [SageMaker Serverless Inference guide](https://oneuptime.com/blog/post/2026-02-12-sagemaker-serverless-inference/view).
 
 ## Decision Framework
 

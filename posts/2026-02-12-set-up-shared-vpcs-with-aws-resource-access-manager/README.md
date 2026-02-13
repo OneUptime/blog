@@ -235,7 +235,7 @@ aws ec2 authorize-security-group-ingress \
 
 ### VPC Flow Logs
 
-The VPC owner should enable flow logs for visibility across all participant traffic. For monitoring DNS queries in your shared VPC, check our guide on [monitoring Route 53 DNS query logging](https://oneuptime.com/blog/post/monitor-route-53-dns-query-logging/view).
+The VPC owner should enable flow logs for visibility across all participant traffic. For monitoring DNS queries in your shared VPC, check our guide on [monitoring Route 53 DNS query logging](https://oneuptime.com/blog/post/2026-02-12-monitor-route-53-dns-query-logging/view).
 
 ## Cost Implications
 
@@ -246,7 +246,7 @@ VPC sharing reduces costs in several ways:
 - **Fewer Transit Gateway attachments**: One attachment per shared VPC instead of per account
 - **Simpler IP address management**: One CIDR plan instead of many
 
-For a detailed cost analysis approach, see our post on [calculating TCO for AWS migration](https://oneuptime.com/blog/post/calculate-tco-for-aws-migration/view).
+For a detailed cost analysis approach, see our post on [calculating TCO for AWS migration](https://oneuptime.com/blog/post/2026-02-12-calculate-tco-for-aws-migration/view).
 
 ## Limitations to Be Aware Of
 

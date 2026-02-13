@@ -279,4 +279,4 @@ const buildId = process.env.BUILD_ID || 'local';
 
 The CDK team generally recommends context over CloudFormation parameters because context values are known at synthesis time, which enables better validation and type checking. Parameters create "unknown" values that CDK can't reason about during synthesis.
 
-For more about managing configuration across multiple accounts, check out the post on [deploying CDK apps to multiple accounts](https://oneuptime.com/blog/post/deploy-cdk-apps-multiple-aws-accounts-regions/view). For understanding how context interacts with stacks, see [CDK stacks and environments](https://oneuptime.com/blog/post/cdk-stacks-and-environments/view).
+For more about managing configuration across multiple accounts, check out the post on [deploying CDK apps to multiple accounts](https://oneuptime.com/blog/post/2026-02-12-deploy-cdk-apps-multiple-aws-accounts-regions/view). For understanding how context interacts with stacks, see [CDK stacks and environments](https://oneuptime.com/blog/post/2026-02-12-cdk-stacks-and-environments/view).

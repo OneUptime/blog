@@ -649,7 +649,7 @@ See our guide on [collecting OpenTelemetry Collector internal metrics](https://o
 
 ## Prometheus Remote Write Alternative
 
-If you prefer push-based delivery to Prometheus, use the Prometheus Remote Write exporter instead. See our guide: [How to Configure the Prometheus Remote Write Exporter](https://oneuptime.com/blog/post/prometheus-remote-write-exporter-opentelemetry-collector/view).
+If you prefer push-based delivery to Prometheus, use the Prometheus Remote Write exporter instead. See our guide: [How to Configure the Prometheus Remote Write Exporter](https://oneuptime.com/blog/post/2026-02-06-prometheus-remote-write-exporter-opentelemetry-collector/view).
 
 The remote write exporter actively pushes metrics to Prometheus or compatible backends (Thanos, Cortex, Mimir, VictoriaMetrics), eliminating the need for scrape configuration.
 
@@ -658,8 +658,8 @@ The remote write exporter actively pushes metrics to Prometheus or compatible ba
 ## Related Resources
 
 - [What is the OpenTelemetry Collector and Why Use One?](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
-- [How to Configure the OTLP HTTP Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/otlp-http-exporter-opentelemetry-collector/view)
-- [How to Configure the Debug Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/debug-exporter-opentelemetry-collector/view)
+- [How to Configure the OTLP HTTP Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-otlp-http-exporter-opentelemetry-collector/view)
+- [How to Configure the Debug Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-debug-exporter-opentelemetry-collector/view)
 
 ---
 

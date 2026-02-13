@@ -375,4 +375,4 @@ Thing Shadows are one of the most powerful features in IoT Core. They give you a
 
 Start with the classic unnamed shadow for simple devices. As your device's state model gets more complex, use named shadows to separate concerns. And always implement delta handling on the device side so pending changes are applied when the device reconnects.
 
-For processing shadow changes and triggering actions, check out our guide on the [IoT Core Rules Engine](https://oneuptime.com/blog/post/use-iot-core-rules-engine/view).
+For processing shadow changes and triggering actions, check out our guide on the [IoT Core Rules Engine](https://oneuptime.com/blog/post/2026-02-12-use-iot-core-rules-engine/view).

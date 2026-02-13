@@ -66,7 +66,7 @@ aws pinpoint update-sms-channel \
 # or use the phone number management API
 ```
 
-For a deeper dive into SMS, see our post on [using Pinpoint for SMS campaigns](https://oneuptime.com/blog/post/use-pinpoint-for-sms-campaigns/view).
+For a deeper dive into SMS, see our post on [using Pinpoint for SMS campaigns](https://oneuptime.com/blog/post/2026-02-12-use-pinpoint-for-sms-campaigns/view).
 
 ## Importing Your Audience
 

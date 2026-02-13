@@ -663,7 +663,7 @@ openssl s_client -connect collector.example.com:4317 \
 
 **Validate Certificates**: Always verify server certificates in production environments (avoid `insecure: true`).
 
-For comprehensive collector security, combine TLS with [environment variable management](https://oneuptime.com/blog/post/environment-variables-opentelemetry-collector-configuration/view) and [remote configuration management](https://oneuptime.com/blog/post/manage-collector-configuration-opamp/view).
+For comprehensive collector security, combine TLS with [environment variable management](https://oneuptime.com/blog/post/2026-02-06-environment-variables-opentelemetry-collector-configuration/view) and [remote configuration management](https://oneuptime.com/blog/post/2026-02-06-manage-collector-configuration-opamp/view).
 
 ## Conclusion
 

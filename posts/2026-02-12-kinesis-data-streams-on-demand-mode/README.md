@@ -240,4 +240,4 @@ Resources:
           Value: data-engineering
 ```
 
-On-demand mode is the easier starting point for most new Kinesis streams. You can always switch to provisioned later if you need to optimize costs once you understand your traffic patterns. For dedicated per-consumer throughput, combine on-demand with [enhanced fan-out](https://oneuptime.com/blog/post/kinesis-data-streams-enhanced-fan-out/view), and for operational visibility, set up [CloudWatch monitoring for Kinesis](https://oneuptime.com/blog/post/monitor-kinesis-data-streams-cloudwatch/view).
+On-demand mode is the easier starting point for most new Kinesis streams. You can always switch to provisioned later if you need to optimize costs once you understand your traffic patterns. For dedicated per-consumer throughput, combine on-demand with [enhanced fan-out](https://oneuptime.com/blog/post/2026-02-12-kinesis-data-streams-enhanced-fan-out/view), and for operational visibility, set up [CloudWatch monitoring for Kinesis](https://oneuptime.com/blog/post/2026-02-12-monitor-kinesis-data-streams-cloudwatch/view).

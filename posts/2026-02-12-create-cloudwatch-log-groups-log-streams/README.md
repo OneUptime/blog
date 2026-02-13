@@ -306,4 +306,4 @@ done
 
 Log Groups and Log Streams are simple concepts, but getting them right from the start saves you headaches later. Set retention policies immediately - don't let logs accumulate forever. Use consistent naming conventions. Consider encryption for sensitive logs. And if cost is a concern, look into the Infrequent Access log class for logs you rarely query.
 
-With your log groups set up, the next steps are [creating metric filters](https://oneuptime.com/blog/post/create-cloudwatch-metric-filters-log-data/view) to extract metrics from your logs, and [writing Logs Insights queries](https://oneuptime.com/blog/post/cloudwatch-logs-insights-query-syntax/view) to analyze your log data.
+With your log groups set up, the next steps are [creating metric filters](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-metric-filters-log-data/view) to extract metrics from your logs, and [writing Logs Insights queries](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-logs-insights-query-syntax/view) to analyze your log data.

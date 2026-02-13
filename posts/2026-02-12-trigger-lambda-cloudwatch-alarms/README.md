@@ -356,7 +356,7 @@ async function shouldRemediate(alarmName) {
 }
 ```
 
-For comprehensive monitoring of your Lambda remediation functions, see our guide on [debugging Lambda with CloudWatch Logs](https://oneuptime.com/blog/post/debug-lambda-functions-cloudwatch-logs/view).
+For comprehensive monitoring of your Lambda remediation functions, see our guide on [debugging Lambda with CloudWatch Logs](https://oneuptime.com/blog/post/2026-02-12-debug-lambda-functions-cloudwatch-logs/view).
 
 ## Wrapping Up
 

@@ -363,6 +363,6 @@ RTC adds a premium on top of standard replication costs:
 
 The RTC charge is on top of the normal cross-region data transfer fee. For compliance scenarios, the cost is usually justified by the guaranteed SLA.
 
-For existing objects that were uploaded before RTC was enabled, see our guide on [S3 Batch Replication](https://oneuptime.com/blog/post/s3-batch-replication-existing-objects/view).
+For existing objects that were uploaded before RTC was enabled, see our guide on [S3 Batch Replication](https://oneuptime.com/blog/post/2026-02-12-s3-batch-replication-existing-objects/view).
 
 For comprehensive replication monitoring beyond CloudWatch, use [OneUptime](https://oneuptime.com) to build custom dashboards that combine replication metrics with application-level health checks.

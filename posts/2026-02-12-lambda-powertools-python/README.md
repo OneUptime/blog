@@ -331,6 +331,6 @@ def process_order(order: dict) -> dict:
 
 ## Why Lambda Powertools?
 
-You could build all of this yourself. But Lambda Powertools is maintained by AWS, tested by a large community, and follows AWS best practices. It's also consistent across languages - the same patterns work in [TypeScript](https://oneuptime.com/blog/post/lambda-powertools-typescript/view) and [Java](https://oneuptime.com/blog/post/lambda-powertools-java/view).
+You could build all of this yourself. But Lambda Powertools is maintained by AWS, tested by a large community, and follows AWS best practices. It's also consistent across languages - the same patterns work in [TypeScript](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-typescript/view) and [Java](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-java/view).
 
-For specific deep dives into each utility, check out our posts on [structured logging](https://oneuptime.com/blog/post/lambda-powertools-logger-structured-logging/view), [X-Ray tracing](https://oneuptime.com/blog/post/lambda-powertools-tracer-xray-integration/view), and [custom metrics](https://oneuptime.com/blog/post/lambda-powertools-metrics-custom-cloudwatch/view).
+For specific deep dives into each utility, check out our posts on [structured logging](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-logger-structured-logging/view), [X-Ray tracing](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-tracer-xray-integration/view), and [custom metrics](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-metrics-custom-cloudwatch/view).

@@ -632,4 +632,4 @@ fun TodoListScreen() {
 
 ## Wrapping Up
 
-Amplify for Android with Kotlin gives you a modern, coroutine-based API for integrating AWS services. Combined with Jetpack Compose, you can build reactive UIs that connect to a full cloud backend with minimal boilerplate. For cross-platform development, see our guide on [Amplify with Flutter](https://oneuptime.com/blog/post/use-amplify-with-flutter/view). For the iOS counterpart, check out [Amplify with Swift](https://oneuptime.com/blog/post/use-amplify-with-swift-ios/view).
+Amplify for Android with Kotlin gives you a modern, coroutine-based API for integrating AWS services. Combined with Jetpack Compose, you can build reactive UIs that connect to a full cloud backend with minimal boilerplate. For cross-platform development, see our guide on [Amplify with Flutter](https://oneuptime.com/blog/post/2026-02-12-use-amplify-with-flutter/view). For the iOS counterpart, check out [Amplify with Swift](https://oneuptime.com/blog/post/2026-02-12-use-amplify-with-swift-ios/view).

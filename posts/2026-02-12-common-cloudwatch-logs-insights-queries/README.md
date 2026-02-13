@@ -10,7 +10,7 @@ Description: A collection of ready-to-use CloudWatch Logs Insights queries for c
 
 CloudWatch Logs Insights is great, but writing queries from scratch every time you need to investigate something gets old fast. This post is a collection of battle-tested queries that cover the most common monitoring and debugging scenarios. Copy them, tweak them for your log format, and save them as favorites in the CloudWatch console.
 
-If you're new to the query syntax, start with our [Logs Insights query syntax guide](https://oneuptime.com/blog/post/cloudwatch-logs-insights-query-syntax/view) first. This post assumes you know the basics and want practical, ready-to-use queries.
+If you're new to the query syntax, start with our [Logs Insights query syntax guide](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-logs-insights-query-syntax/view) first. This post assumes you know the basics and want practical, ready-to-use queries.
 
 ## Error Analysis Queries
 
@@ -361,4 +361,4 @@ aws logs get-query-results --query-id "abc123-def456-ghi789"
 
 ## Wrapping Up
 
-Having a library of ready-made queries saves precious time during incidents. Start with the error and latency queries, and build up your collection as you learn what questions you ask most often. For queries specific to Lambda, see our post on [querying Lambda logs](https://oneuptime.com/blog/post/query-lambda-logs-cloudwatch-logs-insights/view), and for VPC flow logs, check out [querying VPC Flow Logs](https://oneuptime.com/blog/post/query-vpc-flow-logs-cloudwatch-logs-insights/view).
+Having a library of ready-made queries saves precious time during incidents. Start with the error and latency queries, and build up your collection as you learn what questions you ask most often. For queries specific to Lambda, see our post on [querying Lambda logs](https://oneuptime.com/blog/post/2026-02-12-query-lambda-logs-cloudwatch-logs-insights/view), and for VPC flow logs, check out [querying VPC Flow Logs](https://oneuptime.com/blog/post/2026-02-12-query-vpc-flow-logs-cloudwatch-logs-insights/view).

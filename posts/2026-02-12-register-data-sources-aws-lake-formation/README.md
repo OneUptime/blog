@@ -252,4 +252,4 @@ Resources:
 
 **Role trust issues** - Make sure the IAM role trusts `lakeformation.amazonaws.com` as a principal. Without this, Lake Formation can't assume the role to access your data.
 
-Getting data source registration right is the foundation for everything else in Lake Formation. Once this is solid, you can move on to [tag-based access control](https://oneuptime.com/blog/post/aws-lake-formation-tag-based-access-control/view) for scalable permission management.
+Getting data source registration right is the foundation for everything else in Lake Formation. Once this is solid, you can move on to [tag-based access control](https://oneuptime.com/blog/post/2026-02-12-aws-lake-formation-tag-based-access-control/view) for scalable permission management.

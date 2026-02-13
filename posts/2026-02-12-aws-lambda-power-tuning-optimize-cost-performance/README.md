@@ -344,4 +344,4 @@ Compare that to the monthly savings from right-sizing even one function, and it 
 
 Lambda Power Tuning takes the guesswork out of memory optimization. Deploy it once, run it against your functions periodically, and apply the recommendations. It's one of those tools that takes 10 minutes to set up and saves you money every month.
 
-For understanding the fundamentals of memory configuration, see our guide on [configuring Lambda memory and timeout settings](https://oneuptime.com/blog/post/configure-lambda-memory-timeout-settings/view). And for other performance optimizations, check out [reducing Lambda cold start times](https://oneuptime.com/blog/post/reduce-lambda-cold-start-times/view).
+For understanding the fundamentals of memory configuration, see our guide on [configuring Lambda memory and timeout settings](https://oneuptime.com/blog/post/2026-02-12-configure-lambda-memory-timeout-settings/view). And for other performance optimizations, check out [reducing Lambda cold start times](https://oneuptime.com/blog/post/2026-02-12-reduce-lambda-cold-start-times/view).

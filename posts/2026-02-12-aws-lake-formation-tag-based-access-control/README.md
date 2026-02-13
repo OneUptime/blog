@@ -229,4 +229,4 @@ aws lakeformation search-tables-by-lf-tags \
 
 **Keep your tag values limited.** It's tempting to create very specific tag values, but that defeats the purpose. The power of LF-TBAC comes from broad categories that apply to many resources.
 
-Tag-based access control in Lake Formation pairs nicely with [Amazon DataZone for governance](https://oneuptime.com/blog/post/amazon-datazone-data-governance/view) and with [registering data sources in Lake Formation](https://oneuptime.com/blog/post/register-data-sources-aws-lake-formation/view). Together, these services give you a solid data governance foundation.
+Tag-based access control in Lake Formation pairs nicely with [Amazon DataZone for governance](https://oneuptime.com/blog/post/2026-02-12-amazon-datazone-data-governance/view) and with [registering data sources in Lake Formation](https://oneuptime.com/blog/post/2026-02-12-register-data-sources-aws-lake-formation/view). Together, these services give you a solid data governance foundation.

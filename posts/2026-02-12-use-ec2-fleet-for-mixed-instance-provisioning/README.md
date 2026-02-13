@@ -293,7 +293,7 @@ aws ec2 describe-fleet-instances \
   --output table
 ```
 
-For ongoing fleet monitoring with alerting, you can integrate with [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) to track the health of individual instances within the fleet.
+For ongoing fleet monitoring with alerting, you can integrate with [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) to track the health of individual instances within the fleet.
 
 ## EC2 Fleet vs Auto Scaling Groups
 

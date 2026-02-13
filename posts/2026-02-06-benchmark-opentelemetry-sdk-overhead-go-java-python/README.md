@@ -460,4 +460,4 @@ Benchmarking revealed several patterns:
 
 Use these benchmarks to make data-driven decisions about instrumentation strategy, sampling configuration, and resource allocation for your OpenTelemetry deployment.
 
-For more OpenTelemetry optimization techniques, see [How to Aggregate Metrics at the Source to Reduce Data Volume](https://oneuptime.com/blog/post/aggregate-metrics-source-reduce-data-volume/view) and [How to Implement Rate-Based Sampling for High-Traffic Pipelines](https://oneuptime.com/blog/post/rate-based-sampling-high-traffic-pipelines/view).
+For more OpenTelemetry optimization techniques, see [How to Aggregate Metrics at the Source to Reduce Data Volume](https://oneuptime.com/blog/post/2026-02-06-aggregate-metrics-source-reduce-data-volume/view) and [How to Implement Rate-Based Sampling for High-Traffic Pipelines](https://oneuptime.com/blog/post/2026-02-06-rate-based-sampling-high-traffic-pipelines/view).

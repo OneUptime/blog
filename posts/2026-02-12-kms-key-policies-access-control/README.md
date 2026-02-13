@@ -321,7 +321,7 @@ I've seen these issues repeatedly in production environments:
 3. **Not using conditions.** The `kms:ViaService` condition prevents keys from being used outside their intended service.
 4. **Ignoring grants.** Services create grants automatically, and they accumulate. Review them periodically.
 
-For more on managing the keys themselves, check out our guide on [creating and managing CMKs](https://oneuptime.com/blog/post/create-manage-kms-customer-managed-keys/view).
+For more on managing the keys themselves, check out our guide on [creating and managing CMKs](https://oneuptime.com/blog/post/2026-02-12-create-manage-kms-customer-managed-keys/view).
 
 ## Wrapping Up
 

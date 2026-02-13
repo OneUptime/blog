@@ -200,7 +200,7 @@ Each Connect peer supports up to 5 Gbps. With four peers on a single Connect att
 
 ## Monitoring
 
-You should monitor your Connect peers to catch issues before they affect traffic. Set up CloudWatch alarms for the Transit Gateway metrics and keep an eye on BGP session state. For more on monitoring AWS infrastructure, check out our guide on [monitoring AWS services with CloudWatch](https://oneuptime.com/blog/post/monitor-aws-batch-jobs-with-cloudwatch/view).
+You should monitor your Connect peers to catch issues before they affect traffic. Set up CloudWatch alarms for the Transit Gateway metrics and keep an eye on BGP session state. For more on monitoring AWS infrastructure, check out our guide on [monitoring AWS services with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-aws-batch-jobs-with-cloudwatch/view).
 
 ## Common Pitfalls
 

@@ -565,8 +565,8 @@ Key metrics to monitor:
 
 For more information on data transformation in OpenTelemetry Collector:
 
-- [How to Write OTTL Statements for the Transform Processor](https://oneuptime.com/blog/post/ottl-statements-transform-processor-opentelemetry-collector/view)
-- [How to Configure the Lookup Processor](https://oneuptime.com/blog/post/lookup-processor-opentelemetry-collector/view)
-- [How to Filter Spans Using OTTL](https://oneuptime.com/blog/post/filter-spans-ottl-opentelemetry-collector/view)
+- [How to Write OTTL Statements for the Transform Processor](https://oneuptime.com/blog/post/2026-02-06-ottl-statements-transform-processor-opentelemetry-collector/view)
+- [How to Configure the Lookup Processor](https://oneuptime.com/blog/post/2026-02-06-lookup-processor-opentelemetry-collector/view)
+- [How to Filter Spans Using OTTL](https://oneuptime.com/blog/post/2026-02-06-filter-spans-ottl-opentelemetry-collector/view)
 
 The Unroll processor transforms array-valued attributes into multiple records with scalar values, enabling easier querying and analysis in downstream systems. While powerful, the processor multiplies data volume proportional to array sizes. Implement appropriate safeguards including size limits, filtering, and sampling to manage the impact on pipeline performance and backend load. Use conditional unrolling to process only relevant telemetry, and monitor the unroll ratio to understand the processor's impact on your observability infrastructure.

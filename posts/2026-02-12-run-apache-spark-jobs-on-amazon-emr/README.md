@@ -276,7 +276,7 @@ yarn logs -applicationId application_1234567890_0001 > /tmp/app-logs.txt
 aws s3 ls s3://my-emr-logs/clusters/j-XXXXXXXXXXXXX/steps/
 ```
 
-For deeper troubleshooting of Glue and ETL job failures, check out our guide on [troubleshooting AWS Glue jobs](https://oneuptime.com/blog/post/troubleshoot-aws-glue-job-failures/view).
+For deeper troubleshooting of Glue and ETL job failures, check out our guide on [troubleshooting AWS Glue jobs](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-aws-glue-job-failures/view).
 
 ## Automating with Step Functions
 

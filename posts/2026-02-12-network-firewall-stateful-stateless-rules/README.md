@@ -241,6 +241,6 @@ aws cloudwatch get-metric-statistics \
   --statistics Sum
 ```
 
-For more on the overall Network Firewall architecture, see https://oneuptime.com/blog/post/aws-network-firewall-vpc-traffic-filtering/view.
+For more on the overall Network Firewall architecture, see https://oneuptime.com/blog/post/2026-02-12-aws-network-firewall-vpc-traffic-filtering/view.
 
 Getting the balance right between stateless and stateful rules is an art. Use stateless for the obvious, high-volume decisions. Save the stateful engine for traffic that needs real inspection. Your firewall performance - and your AWS bill - will thank you.

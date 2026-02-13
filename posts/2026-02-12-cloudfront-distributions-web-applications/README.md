@@ -157,7 +157,7 @@ For a typical web app, you want different caching strategies for different conte
 }
 ```
 
-For more on configuring behaviors and cache policies, check out our detailed guide on [CloudFront behaviors and cache policies](https://oneuptime.com/blog/post/cloudfront-behaviors-cache-policies/view).
+For more on configuring behaviors and cache policies, check out our detailed guide on [CloudFront behaviors and cache policies](https://oneuptime.com/blog/post/2026-02-12-cloudfront-behaviors-cache-policies/view).
 
 ## Step 4: Enable Compression
 
@@ -221,7 +221,7 @@ aws cloudfront update-distribution \
   --if-match ETAG_VALUE
 ```
 
-Then create a Route 53 alias record pointing to the distribution. For details on that, see our guide on [pointing a domain to CloudFront with Route 53](https://oneuptime.com/blog/post/point-domain-to-cloudfront-with-route-53/view).
+Then create a Route 53 alias record pointing to the distribution. For details on that, see our guide on [pointing a domain to CloudFront with Route 53](https://oneuptime.com/blog/post/2026-02-12-point-domain-to-cloudfront-with-route-53/view).
 
 ## Step 7: Configure Security Headers
 

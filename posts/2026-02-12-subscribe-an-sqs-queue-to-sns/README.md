@@ -311,4 +311,4 @@ aws sqs set-queue-attributes \
 
 The fan-out pattern with SNS and SQS is battle-tested and scales to massive throughput. It decouples your producers from consumers, makes adding new consumers trivial, and each consumer can process at its own pace without affecting others.
 
-For setting up the SNS topic, see [creating an SNS topic](https://oneuptime.com/blog/post/create-an-sns-topic/view). For FIFO ordering guarantees, check out [SNS FIFO topics](https://oneuptime.com/blog/post/use-sns-fifo-topics-for-ordered-messaging/view).
+For setting up the SNS topic, see [creating an SNS topic](https://oneuptime.com/blog/post/2026-02-12-create-an-sns-topic/view). For FIFO ordering guarantees, check out [SNS FIFO topics](https://oneuptime.com/blog/post/2026-02-12-use-sns-fifo-topics-for-ordered-messaging/view).

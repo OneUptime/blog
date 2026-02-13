@@ -26,7 +26,7 @@ EBS volumes are great for single-pod workloads, but they have a limitation - an 
 Before setting up the EFS CSI driver, you need:
 
 - An EKS cluster running Kubernetes 1.23 or later
-- An OIDC provider associated with your cluster (see our [IRSA guide](https://oneuptime.com/blog/post/set-up-iam-roles-for-eks-service-accounts-irsa/view))
+- An OIDC provider associated with your cluster (see our [IRSA guide](https://oneuptime.com/blog/post/2026-02-12-set-up-iam-roles-for-eks-service-accounts-irsa/view))
 - kubectl and Helm configured
 
 ## Step 1: Create an EFS File System
@@ -273,7 +273,7 @@ EFS throughput depends on the amount of data stored and the throughput mode you 
 - **Provisioned mode** - you specify throughput independently of storage size (good for small datasets with high I/O needs)
 - **Elastic mode** - automatically scales throughput up and down based on demand (recommended for most workloads)
 
-For latency-sensitive workloads, consider using EBS volumes with [stateful applications](https://oneuptime.com/blog/post/deploy-stateful-applications-on-eks/view) instead. EFS adds a few milliseconds of latency compared to EBS.
+For latency-sensitive workloads, consider using EBS volumes with [stateful applications](https://oneuptime.com/blog/post/2026-02-12-deploy-stateful-applications-on-eks/view) instead. EFS adds a few milliseconds of latency compared to EBS.
 
 ## Troubleshooting
 

@@ -224,7 +224,7 @@ aws rds promote-read-replica \
 
 After promotion, you'll need to update your application's database configuration to point to the new endpoint in the new region. This is where DNS-based solutions or configuration management become important.
 
-For details on cross-region replicas, check out [creating cross-region RDS read replicas](https://oneuptime.com/blog/post/create-cross-region-rds-read-replicas/view).
+For details on cross-region replicas, check out [creating cross-region RDS read replicas](https://oneuptime.com/blog/post/2026-02-12-create-cross-region-rds-read-replicas/view).
 
 ## MySQL-Specific Considerations
 

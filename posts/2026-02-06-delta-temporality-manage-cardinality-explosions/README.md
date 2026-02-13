@@ -564,8 +564,8 @@ processors:
 ## Related Resources
 
 For more strategies on managing cardinality and costs:
-- https://oneuptime.com/blog/post/handle-high-cardinality-metrics-opentelemetry/view
-- https://oneuptime.com/blog/post/cut-observability-costs-opentelemetry-filtering-sampling/view
-- https://oneuptime.com/blog/post/probabilistic-sampling-opentelemetry-cost-control/view
+- https://oneuptime.com/blog/post/2026-02-06-handle-high-cardinality-metrics-opentelemetry/view
+- https://oneuptime.com/blog/post/2026-02-06-cut-observability-costs-opentelemetry-filtering-sampling/view
+- https://oneuptime.com/blog/post/2026-02-06-probabilistic-sampling-opentelemetry-cost-control/view
 
 Delta temporality is a powerful tool for managing metric cardinality in dynamic environments. By allowing time series to expire naturally and reducing state accumulation, delta metrics provide a more sustainable approach to observability at scale. The key is understanding your backend's requirements and configuring your SDKs appropriately.

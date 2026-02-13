@@ -236,7 +236,7 @@ That's a **40% savings** just by scaling down during off-hours. And this is a co
 
 **Monitoring**: Set up CloudWatch alarms to alert you if scaling actions fail. You want to know if your scheduled scale-up didn't happen before the morning traffic rush.
 
-For end-to-end monitoring of your Auto Scaling groups and scheduled actions, check out [OneUptime's AWS monitoring capabilities](https://oneuptime.com/blog/post/ec2-spot-instances-save-compute/view) to track instance counts, scaling events, and costs in real time.
+For end-to-end monitoring of your Auto Scaling groups and scheduled actions, check out [OneUptime's AWS monitoring capabilities](https://oneuptime.com/blog/post/2026-02-12-ec2-spot-instances-save-compute/view) to track instance counts, scaling events, and costs in real time.
 
 ## Summary
 

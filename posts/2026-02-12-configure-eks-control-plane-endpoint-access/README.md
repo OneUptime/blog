@@ -47,7 +47,7 @@ Public Access:  Disabled
 Private Access: Enabled
 ```
 
-Maximum security, but requires VPN, Direct Connect, or a bastion host to access the cluster. See our [private cluster guide](https://oneuptime.com/blog/post/set-up-private-eks-clusters/view) for the full setup.
+Maximum security, but requires VPN, Direct Connect, or a bastion host to access the cluster. See our [private cluster guide](https://oneuptime.com/blog/post/2026-02-12-set-up-private-eks-clusters/view) for the full setup.
 
 ```mermaid
 flowchart TB
@@ -189,7 +189,7 @@ The endpoint access configuration affects how worker nodes communicate with the 
 | Public + Private | Through VPC (private) | Lower latency, no NAT costs for API traffic |
 | Private only | Through VPC (private) | Lowest latency, no NAT needed for API traffic |
 
-Enabling private access reduces NAT gateway costs because node-to-API traffic no longer goes through the NAT. For clusters with many nodes making frequent API calls, this can save meaningful money. See our [cost optimization guide](https://oneuptime.com/blog/post/monitor-eks-costs-and-optimize-spending/view).
+Enabling private access reduces NAT gateway costs because node-to-API traffic no longer goes through the NAT. For clusters with many nodes making frequent API calls, this can save meaningful money. See our [cost optimization guide](https://oneuptime.com/blog/post/2026-02-12-monitor-eks-costs-and-optimize-spending/view).
 
 ## Security Considerations
 
@@ -209,7 +209,7 @@ aws ec2 create-flow-logs \
   --log-group-name /vpc/eks-cluster-flow-logs
 ```
 
-**Audit API access** by enabling the [audit log type in control plane logging](https://oneuptime.com/blog/post/configure-eks-cluster-logging/view).
+**Audit API access** by enabling the [audit log type in control plane logging](https://oneuptime.com/blog/post/2026-02-12-configure-eks-cluster-logging/view).
 
 ## Transitioning Between Modes
 

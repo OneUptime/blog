@@ -296,7 +296,7 @@ Primary targets are in AZ-a, secondary in AZ-b. Provides availability zone-level
 
 ### Cross-Region Failover
 
-For cross-region failover, combine NLB target group failover with Route 53 health checks. See our guide on [configuring Route 53 CIDR-based routing](https://oneuptime.com/blog/post/configure-route-53-cidr-based-routing/view) for complementary routing strategies.
+For cross-region failover, combine NLB target group failover with Route 53 health checks. See our guide on [configuring Route 53 CIDR-based routing](https://oneuptime.com/blog/post/2026-02-12-configure-route-53-cidr-based-routing/view) for complementary routing strategies.
 
 ## Conclusion
 

@@ -321,7 +321,7 @@ For continuous monitoring, run these queries on a schedule and alert on threshol
 
 For comprehensive application monitoring that includes uptime checks, incident management, and status pages alongside your log analysis, consider a platform like [OneUptime](https://oneuptime.com). It complements Athena-based log analysis with real-time alerting and incident workflows.
 
-Also check out our guide on [using Athena with VPC Flow Logs](https://oneuptime.com/blog/post/use-athena-with-vpc-flow-logs/view) for network-level traffic analysis.
+Also check out our guide on [using Athena with VPC Flow Logs](https://oneuptime.com/blog/post/2026-02-12-use-athena-with-vpc-flow-logs/view) for network-level traffic analysis.
 
 ## Wrapping Up
 

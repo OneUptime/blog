@@ -149,7 +149,7 @@ Data validation and reconciliation
 Disaster recovery testing in new environment
 ```
 
-For a thorough look at testing strategies, check our post on [testing migrated applications on AWS](https://oneuptime.com/blog/post/test-migrated-applications-on-aws/view).
+For a thorough look at testing strategies, check our post on [testing migrated applications on AWS](https://oneuptime.com/blog/post/2026-02-12-test-migrated-applications-on-aws/view).
 
 ## Pillar 3: Future State Costs
 
@@ -256,7 +256,7 @@ Show the cumulative cost over 3-5 years to demonstrate the break-even point.
 
 **Not accounting for the learning curve**: Productivity dips during the first 6-12 months as teams learn AWS. Budget for it.
 
-**Skipping the optimization phase**: Year 1 cloud costs are always higher than steady-state. Include post-migration optimization in your timeline. See our guide on [post-migration optimization](https://oneuptime.com/blog/post/implement-post-migration-optimization-on-aws/view) for details.
+**Skipping the optimization phase**: Year 1 cloud costs are always higher than steady-state. Include post-migration optimization in your timeline. See our guide on [post-migration optimization](https://oneuptime.com/blog/post/2026-02-12-implement-post-migration-optimization-on-aws/view) for details.
 
 ## Conclusion
 

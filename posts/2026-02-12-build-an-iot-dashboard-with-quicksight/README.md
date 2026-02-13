@@ -35,7 +35,7 @@ The most common patterns are:
 2. **Amazon Timestream** - best for time-series queries on recent data
 3. **RDS/Aurora** - best when IoT data is combined with relational business data
 
-For this walkthrough, we will use the S3 + Athena path since it is the most common for IoT Analytics pipelines. If you are using IoT Analytics, see our guide on [using IoT Analytics for IoT data processing](https://oneuptime.com/blog/post/use-iot-analytics-for-iot-data-processing/view) to get your data into S3.
+For this walkthrough, we will use the S3 + Athena path since it is the most common for IoT Analytics pipelines. If you are using IoT Analytics, see our guide on [using IoT Analytics for IoT data processing](https://oneuptime.com/blog/post/2026-02-12-use-iot-analytics-for-iot-data-processing/view) to get your data into S3.
 
 ## Step 1: Set Up Athena for Your IoT Data
 

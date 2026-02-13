@@ -108,7 +108,7 @@ aws iam put-role-policy \
 
 ## Step 3: Deploy and Activate the Agent
 
-If you haven't already deployed a DataSync agent, do so now. For detailed agent deployment steps, check our [DataSync setup guide](https://oneuptime.com/blog/post/set-up-aws-datasync-data-transfer/view).
+If you haven't already deployed a DataSync agent, do so now. For detailed agent deployment steps, check our [DataSync setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-datasync-data-transfer/view).
 
 ```bash
 # Activate the agent (after deploying the VM)

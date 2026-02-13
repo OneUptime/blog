@@ -418,8 +418,8 @@ spec:
 
 For more information on securing and scaling your OpenTelemetry Collector deployment, check out:
 
-- [How to Monitor the Collector with Its Internal Metrics](https://oneuptime.com/blog/post/monitor-collector-internal-metrics/view)
-- [How to Scale the OpenTelemetry Collector for High-Throughput Environments](https://oneuptime.com/blog/post/scale-opentelemetry-collector-high-throughput/view)
-- [How to Set Up Load Balancing Across Multiple Collector Instances](https://oneuptime.com/blog/post/load-balancing-multiple-collector-instances/view)
+- [How to Monitor the Collector with Its Internal Metrics](https://oneuptime.com/blog/post/2026-02-06-monitor-collector-internal-metrics/view)
+- [How to Scale the OpenTelemetry Collector for High-Throughput Environments](https://oneuptime.com/blog/post/2026-02-06-scale-opentelemetry-collector-high-throughput/view)
+- [How to Set Up Load Balancing Across Multiple Collector Instances](https://oneuptime.com/blog/post/2026-02-06-load-balancing-multiple-collector-instances/view)
 
 Mutual TLS provides robust security for your telemetry pipeline by ensuring that only authenticated clients can send data to your collector and that your collector only sends data to trusted backends. By following the configurations and best practices outlined in this guide, you can establish a secure, production-ready observability infrastructure that protects sensitive telemetry data throughout its lifecycle.

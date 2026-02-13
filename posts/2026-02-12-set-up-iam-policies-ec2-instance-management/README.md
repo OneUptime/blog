@@ -120,7 +120,7 @@ This is the most practical pattern for managing EC2 permissions across teams. Ta
 }
 ```
 
-The `ec2:ResourceTag/Team` condition checks the tag on the instance. `${aws:PrincipalTag/Team}` resolves to the team tag on the calling user or role. This is ABAC in action - see our [session tags guide](https://oneuptime.com/blog/post/configure-session-tags-attribute-based-access-control/view) for more details.
+The `ec2:ResourceTag/Team` condition checks the tag on the instance. `${aws:PrincipalTag/Team}` resolves to the team tag on the calling user or role. This is ABAC in action - see our [session tags guide](https://oneuptime.com/blog/post/2026-02-12-configure-session-tags-attribute-based-access-control/view) for more details.
 
 ### Protect Production Instances
 

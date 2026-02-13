@@ -320,4 +320,4 @@ aws iot test-authorization \
 
 IoT Core policies are how you enforce the principle of least privilege for your device fleet. Use policy variables to write scalable policies that automatically scope permissions to each device, separate Subscribe and Receive actions carefully, and test your policies before deployment. Start restrictive and add permissions as needed - it is much easier to grant access than to revoke it after a security incident.
 
-For more on IoT Core security, see our guides on [IoT Core certificate-based authentication](https://oneuptime.com/blog/post/iot-core-certificate-based-authentication/view) and [IoT Core Device Defender for security audits](https://oneuptime.com/blog/post/iot-core-device-defender-security-audits/view).
+For more on IoT Core security, see our guides on [IoT Core certificate-based authentication](https://oneuptime.com/blog/post/2026-02-12-iot-core-certificate-based-authentication/view) and [IoT Core Device Defender for security audits](https://oneuptime.com/blog/post/2026-02-12-iot-core-device-defender-security-audits/view).

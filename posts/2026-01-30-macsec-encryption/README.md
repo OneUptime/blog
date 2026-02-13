@@ -915,6 +915,6 @@ Whether you are securing data center interconnects, protecting sensitive endpoin
 
 ### Related Reading
 
-- [Why Software Engineers Don't Understand Networking](https://oneuptime.com/blog/post/why-software-engineers-dont-understand-networking/view)
-- [Kubernetes and Ceph Break the Cloud Cartel](https://oneuptime.com/blog/post/kubernetes-and-ceph-break-the-cloud-cartel/view)
-- [The Internet Must Decentralize](https://oneuptime.com/blog/post/the-internet-must-decentralize/view)
+- [Why Software Engineers Don't Understand Networking](https://oneuptime.com/blog/post/2025-12-12-why-software-engineers-dont-understand-networking/view)
+- [Kubernetes and Ceph Break the Cloud Cartel](https://oneuptime.com/blog/post/2025-11-03-kubernetes-and-ceph-break-the-cloud-cartel/view)
+- [The Internet Must Decentralize](https://oneuptime.com/blog/post/2025-10-21-the-internet-must-decentralize/view)

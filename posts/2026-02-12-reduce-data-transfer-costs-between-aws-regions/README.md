@@ -298,4 +298,4 @@ The most effective strategies for reducing cross-region transfer costs are:
 4. **Batch transfers** - Combine and compress instead of streaming individual records.
 5. **Question the architecture** - Sometimes a single-region design with CloudFront is better than true multi-region.
 
-For related cost optimization strategies, see our posts on [reducing S3 data transfer costs](https://oneuptime.com/blog/post/reduce-s3-data-transfer-costs/view) and [reducing data transfer costs between VPCs](https://oneuptime.com/blog/post/reduce-data-transfer-costs-between-vpcs/view).
+For related cost optimization strategies, see our posts on [reducing S3 data transfer costs](https://oneuptime.com/blog/post/2026-02-12-reduce-s3-data-transfer-costs/view) and [reducing data transfer costs between VPCs](https://oneuptime.com/blog/post/2026-02-12-reduce-data-transfer-costs-between-vpcs/view).

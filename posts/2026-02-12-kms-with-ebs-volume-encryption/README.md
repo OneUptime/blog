@@ -323,4 +323,4 @@ aws configservice put-config-rule \
 
 EBS encryption with KMS should be a day-one configuration for every AWS account. Enable default encryption, use customer managed keys for control and auditability, and plan for migration of any existing unencrypted volumes. The zero-performance-impact nature of EBS encryption means there's really no excuse not to encrypt everything.
 
-For more on managing your encryption keys, check out [creating KMS CMKs](https://oneuptime.com/blog/post/create-manage-kms-customer-managed-keys/view) and [KMS with S3](https://oneuptime.com/blog/post/kms-with-s3-encryption/view).
+For more on managing your encryption keys, check out [creating KMS CMKs](https://oneuptime.com/blog/post/2026-02-12-create-manage-kms-customer-managed-keys/view) and [KMS with S3](https://oneuptime.com/blog/post/2026-02-12-kms-with-s3-encryption/view).

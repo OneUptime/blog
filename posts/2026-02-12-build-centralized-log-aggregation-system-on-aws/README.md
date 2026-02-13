@@ -379,7 +379,7 @@ Log aggregation costs can spiral without attention. Here are the levers:
 
 Your logging infrastructure needs monitoring too. Track Kinesis iterator age (are you falling behind?), Firehose delivery success rates, and OpenSearch cluster health.
 
-For a broader view of monitoring practices, check out our companion guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/build-logging-and-monitoring-stack-on-aws/view).
+For a broader view of monitoring practices, check out our companion guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view).
 
 ## Summary
 

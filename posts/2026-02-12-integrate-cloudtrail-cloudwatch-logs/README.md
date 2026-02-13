@@ -286,8 +286,8 @@ CloudWatch Logs charges for data ingestion and storage. CloudTrail can generate 
 - Set a reasonable retention period (30-90 days is usually enough for real-time monitoring)
 - Use metric filters selectively rather than trying to filter everything
 - The S3 logs are your long-term archive - CloudWatch Logs are just for real-time alerts
-- Consider using [CloudTrail Insights](https://oneuptime.com/blog/post/cloudtrail-insights-anomaly-detection/view) for anomaly detection instead of building complex metric filters for every possible scenario
+- Consider using [CloudTrail Insights](https://oneuptime.com/blog/post/2026-02-12-cloudtrail-insights-anomaly-detection/view) for anomaly detection instead of building complex metric filters for every possible scenario
 
 ## Next Steps
 
-With CloudTrail streaming to CloudWatch Logs, you've got the foundation for real-time security monitoring. To build on this, check out [setting up alerts for specific CloudTrail events](https://oneuptime.com/blog/post/alerts-specific-cloudtrail-events/view) for more detailed alerting patterns, and consider [enabling GuardDuty](https://oneuptime.com/blog/post/enable-guardduty-threat-detection/view) which uses CloudTrail data (among other sources) for advanced threat detection.
+With CloudTrail streaming to CloudWatch Logs, you've got the foundation for real-time security monitoring. To build on this, check out [setting up alerts for specific CloudTrail events](https://oneuptime.com/blog/post/2026-02-12-alerts-specific-cloudtrail-events/view) for more detailed alerting patterns, and consider [enabling GuardDuty](https://oneuptime.com/blog/post/2026-02-12-enable-guardduty-threat-detection/view) which uses CloudTrail data (among other sources) for advanced threat detection.

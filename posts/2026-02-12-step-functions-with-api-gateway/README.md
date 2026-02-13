@@ -357,7 +357,7 @@ async function submitOrder(orderData) {
 
 ## Monitoring the Integration
 
-Set up CloudWatch alarms on both API Gateway and Step Functions metrics. Watch for 5xx errors on the API side and execution failures on the Step Functions side. A spike in API Gateway errors without corresponding Step Functions failures usually means your integration mapping has a problem. For more on this, see our post on [monitoring Step Functions executions](https://oneuptime.com/blog/post/monitor-step-functions-executions-console/view).
+Set up CloudWatch alarms on both API Gateway and Step Functions metrics. Watch for 5xx errors on the API side and execution failures on the Step Functions side. A spike in API Gateway errors without corresponding Step Functions failures usually means your integration mapping has a problem. For more on this, see our post on [monitoring Step Functions executions](https://oneuptime.com/blog/post/2026-02-12-monitor-step-functions-executions-console/view).
 
 ## Wrapping Up
 

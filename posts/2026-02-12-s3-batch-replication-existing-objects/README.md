@@ -354,4 +354,4 @@ For large datasets, the data transfer costs dominate. A 10 TB cross-region repli
 
 For ongoing replication monitoring, use [OneUptime](https://oneuptime.com) to track replication lag, failed objects, and storage growth across regions.
 
-For guaranteed replication timing on new objects, see our guide on [S3 Replication Time Control (RTC)](https://oneuptime.com/blog/post/s3-replication-time-control-rtc-compliance/view).
+For guaranteed replication timing on new objects, see our guide on [S3 Replication Time Control (RTC)](https://oneuptime.com/blog/post/2026-02-12-s3-replication-time-control-rtc-compliance/view).

@@ -782,7 +782,7 @@ Common troubleshooting steps:
 
 For more information on OpenTelemetry exporters, check out these related posts:
 
-- [How to Configure the Splunk HEC Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/splunk-hec-exporter-opentelemetry-collector/view)
-- [How to Configure the Honeycomb Marker Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/honeycomb-marker-exporter-opentelemetry-collector/view)
+- [How to Configure the Splunk HEC Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-splunk-hec-exporter-opentelemetry-collector/view)
+- [How to Configure the Honeycomb Marker Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-honeycomb-marker-exporter-opentelemetry-collector/view)
 
 The Coralogix exporter provides a powerful integration with the Coralogix platform, enabling you to leverage advanced analytics, machine learning, and cost optimization features. With proper configuration, it can handle production-scale workloads while providing comprehensive observability across logs, metrics, and traces.

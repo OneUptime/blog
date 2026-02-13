@@ -301,7 +301,7 @@ NACLs can be tricky to debug. Here are common gotchas:
 
 4. **Subnet association confusion** - Remember, only one NACL per subnet. Check which NACL is actually associated with the subnet you're troubleshooting.
 
-When things aren't working, VPC Flow Logs are your best friend. Check out our guide on [enabling VPC Flow Logs](https://oneuptime.com/blog/post/enable-configure-vpc-flow-logs/view) to see exactly what traffic is being accepted or rejected.
+When things aren't working, VPC Flow Logs are your best friend. Check out our guide on [enabling VPC Flow Logs](https://oneuptime.com/blog/post/2026-02-12-enable-configure-vpc-flow-logs/view) to see exactly what traffic is being accepted or rejected.
 
 ## Wrapping Up
 

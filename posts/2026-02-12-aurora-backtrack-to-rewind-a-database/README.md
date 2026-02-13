@@ -227,7 +227,7 @@ The rule of thumb: expect about a 5-10% increase in storage costs for a 24-hour 
 - **Aurora MySQL only.** PostgreSQL-compatible Aurora doesn't support backtrack.
 - **72-hour maximum window.** For anything older, you need traditional point-in-time recovery.
 - **DDL changes.** You can't backtrack past certain DDL operations (like dropping a table).
-- **Cross-region limitations.** Backtrack operates on the local cluster only. If you need to rewind a [global database](https://oneuptime.com/blog/post/set-up-aurora-global-databases-for-multi-region/view), you'd need to handle each region separately.
+- **Cross-region limitations.** Backtrack operates on the local cluster only. If you need to rewind a [global database](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-global-databases-for-multi-region/view), you'd need to handle each region separately.
 - **In-place operation.** Backtrack reverts the live cluster. Any writes that happened between the backtrack point and now are lost.
 
 ## Best Practices
@@ -236,9 +236,9 @@ The rule of thumb: expect about a 5-10% increase in storage costs for a 24-hour 
 
 **Set the window based on your change detection speed.** If your team typically catches data issues within a few hours, a 24-hour window is plenty. If issues might go undetected for a day or two, go with 72 hours.
 
-**Combine with other backup strategies.** Backtrack is great for recent mistakes, but you still need automated snapshots for longer-term recovery. Think of backtrack as your "undo" button and snapshots as your real backup. For snapshot management, check out how to [export Aurora snapshots to S3](https://oneuptime.com/blog/post/export-aurora-snapshots-to-s3/view).
+**Combine with other backup strategies.** Backtrack is great for recent mistakes, but you still need automated snapshots for longer-term recovery. Think of backtrack as your "undo" button and snapshots as your real backup. For snapshot management, check out how to [export Aurora snapshots to S3](https://oneuptime.com/blog/post/2026-02-12-export-aurora-snapshots-to-s3/view).
 
-**Test it regularly.** Run a backtrack in a non-production environment to make sure your team knows the process. Include it in your disaster recovery testing alongside [failover testing](https://oneuptime.com/blog/post/perform-aurora-global-database-failover/view).
+**Test it regularly.** Run a backtrack in a non-production environment to make sure your team knows the process. Include it in your disaster recovery testing alongside [failover testing](https://oneuptime.com/blog/post/2026-02-12-perform-aurora-global-database-failover/view).
 
 ## Wrapping Up
 

@@ -789,7 +789,7 @@ service:
 
 ### Related Reading
 
-- [How to reduce noise in OpenTelemetry?](https://oneuptime.com/blog/post/how-to-reduce-noise-in-opentelemetry/view)
-- [What are Traces and Spans in OpenTelemetry?](https://oneuptime.com/blog/post/traces-and-spans-in-opentelemetry/view)
-- [How to name spans in OpenTelemetry?](https://oneuptime.com/blog/post/how-to-name-spans-in-opentelemetry/view)
-- [How to structure logs properly in OpenTelemetry?](https://oneuptime.com/blog/post/how-to-structure-logs-properly-in-opentelemetry/view)
+- [How to reduce noise in OpenTelemetry?](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view)
+- [What are Traces and Spans in OpenTelemetry?](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)
+- [How to name spans in OpenTelemetry?](https://oneuptime.com/blog/post/2024-11-04-how-to-name-spans-in-opentelemetry/view)
+- [How to structure logs properly in OpenTelemetry?](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view)

@@ -316,4 +316,4 @@ Watch for spikes in error rates (4xx and 5xx responses), unusual latency pattern
 
 **Plan your CIDR ranges.** VPCs associated with a service network don't need overlapping CIDRs to communicate through Lattice (since it uses its own data plane), but overlapping CIDRs can cause confusion in route tables.
 
-For information on connecting services running on ECS and Lambda, check out our guide on [VPC Lattice with ECS and Lambda](https://oneuptime.com/blog/post/vpc-lattice-ecs-lambda/view).
+For information on connecting services running on ECS and Lambda, check out our guide on [VPC Lattice with ECS and Lambda](https://oneuptime.com/blog/post/2026-02-12-vpc-lattice-ecs-lambda/view).

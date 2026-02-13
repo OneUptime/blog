@@ -375,4 +375,4 @@ Before cutting over, verify:
 
 Migrating from Docker Compose to native ECS task definitions is a worthwhile investment once you need features that Compose can't provide. The process is methodical - convert service by service, test each one, and keep Compose around for local development.
 
-The end result is a production deployment that's more robust, more scalable, and gives you access to everything ECS has to offer. For managing your task definitions as infrastructure as code, check out our guides on [ECS with CloudFormation](https://oneuptime.com/blog/post/ecs-with-cloudformation/view) and [ECS with AWS CDK](https://oneuptime.com/blog/post/ecs-with-aws-cdk/view).
+The end result is a production deployment that's more robust, more scalable, and gives you access to everything ECS has to offer. For managing your task definitions as infrastructure as code, check out our guides on [ECS with CloudFormation](https://oneuptime.com/blog/post/2026-02-12-ecs-with-cloudformation/view) and [ECS with AWS CDK](https://oneuptime.com/blog/post/2026-02-12-ecs-with-aws-cdk/view).

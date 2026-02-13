@@ -980,6 +980,6 @@ Start with the environment-based pattern for simple use cases, and evolve to mor
 
 **Related Reading:**
 
-- [Introducing the OneUptime Terraform Provider](https://oneuptime.com/blog/post/introducing-terraform-provider-for-oneuptime/view)
-- [How to Structure Terraform Workspaces Properly](https://oneuptime.com/blog/post/terraform-workspaces-structure/view)
-- [How to Use Terraform Workspaces for Environments](https://oneuptime.com/blog/post/terraform-workspaces-environments/view)
+- [Introducing the OneUptime Terraform Provider](https://oneuptime.com/blog/post/2025-07-01-introducing-terraform-provider-for-oneuptime/view)
+- [How to Structure Terraform Workspaces Properly](https://oneuptime.com/blog/post/2025-12-18-terraform-workspaces-structure/view)
+- [How to Use Terraform Workspaces for Environments](https://oneuptime.com/blog/post/2026-01-25-terraform-workspaces-environments/view)

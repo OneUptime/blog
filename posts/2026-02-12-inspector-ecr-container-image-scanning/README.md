@@ -344,7 +344,7 @@ EXPOSE 8080
 CMD ["node", "server.js"]
 ```
 
-For EC2 vulnerability scanning, see our guide on [Inspector for EC2](https://oneuptime.com/blog/post/amazon-inspector-ec2-vulnerability-scanning/view).
+For EC2 vulnerability scanning, see our guide on [Inspector for EC2](https://oneuptime.com/blog/post/2026-02-12-amazon-inspector-ec2-vulnerability-scanning/view).
 
 ## Wrapping Up
 

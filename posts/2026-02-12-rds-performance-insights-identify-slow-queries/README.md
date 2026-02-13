@@ -208,4 +208,4 @@ Once you've identified slow queries, here's a systematic approach to fix them:
 4. **Test the improvement**: Run the query again and compare execution plans
 5. **Monitor after deployment**: Check Performance Insights after deploying the fix to confirm the improvement
 
-Performance Insights gives you the visibility to stop guessing and start fixing. Instead of adding more hardware every time things slow down, you can address the actual root cause. For more on monitoring your RDS instances comprehensively, check out our guide on [enabling Enhanced Monitoring](https://oneuptime.com/blog/post/enable-rds-enhanced-monitoring/view) to complement what Performance Insights shows you.
+Performance Insights gives you the visibility to stop guessing and start fixing. Instead of adding more hardware every time things slow down, you can address the actual root cause. For more on monitoring your RDS instances comprehensively, check out our guide on [enabling Enhanced Monitoring](https://oneuptime.com/blog/post/2026-02-12-enable-rds-enhanced-monitoring/view) to complement what Performance Insights shows you.

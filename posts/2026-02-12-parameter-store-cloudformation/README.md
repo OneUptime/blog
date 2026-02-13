@@ -295,4 +295,4 @@ aws cloudformation update-stack \
 
 For dynamic references, you can force resolution by making a no-op change to the template.
 
-For monitoring your infrastructure and applications after configuration changes, [OneUptime](https://oneuptime.com) can track the impact of parameter changes on application behavior. Also see our guide on [Parameter Store hierarchies](https://oneuptime.com/blog/post/parameter-store-hierarchies-paths/view) for organizing your parameters effectively.
+For monitoring your infrastructure and applications after configuration changes, [OneUptime](https://oneuptime.com) can track the impact of parameter changes on application behavior. Also see our guide on [Parameter Store hierarchies](https://oneuptime.com/blog/post/2026-02-12-parameter-store-hierarchies-paths/view) for organizing your parameters effectively.

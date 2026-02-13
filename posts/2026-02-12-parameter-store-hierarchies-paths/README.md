@@ -367,4 +367,4 @@ for old_name, new_path in MIGRATIONS.items():
 4. **Scope IAM policies to paths** - This is the main security benefit of hierarchies.
 5. **Document your convention** - New team members need to know where to find and create parameters.
 
-For monitoring configuration-dependent applications and detecting when config changes cause issues, check out [OneUptime](https://oneuptime.com). And for using your organized parameters in infrastructure code, see our guide on [referencing Parameter Store values in CloudFormation](https://oneuptime.com/blog/post/parameter-store-cloudformation/view).
+For monitoring configuration-dependent applications and detecting when config changes cause issues, check out [OneUptime](https://oneuptime.com). And for using your organized parameters in infrastructure code, see our guide on [referencing Parameter Store values in CloudFormation](https://oneuptime.com/blog/post/2026-02-12-parameter-store-cloudformation/view).

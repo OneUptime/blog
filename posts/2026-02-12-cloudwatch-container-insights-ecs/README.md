@@ -362,7 +362,7 @@ Container Insights does add to your CloudWatch bill. The main costs come from:
 - Performance log events stored in CloudWatch Logs
 - Any alarms you create on Container Insights metrics
 
-For a cluster with 50 tasks across 5 services, expect roughly $15-30/month in additional CloudWatch costs. For strategies to keep these costs in check, see our post on [reducing CloudWatch costs](https://oneuptime.com/blog/post/reduce-cloudwatch-costs/view).
+For a cluster with 50 tasks across 5 services, expect roughly $15-30/month in additional CloudWatch costs. For strategies to keep these costs in check, see our post on [reducing CloudWatch costs](https://oneuptime.com/blog/post/2026-02-12-reduce-cloudwatch-costs/view).
 
 ## Wrapping Up
 

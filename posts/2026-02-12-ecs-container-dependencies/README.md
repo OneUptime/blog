@@ -332,4 +332,4 @@ metrics-agent (START) --> app
 
 **Wrong condition**: Using `START` when you should use `HEALTHY` means your app might start before the sidecar is actually ready. Always use `HEALTHY` for sidecars that need to be fully initialized.
 
-Container dependencies keep your multi-container tasks running smoothly. Take the time to define them properly, especially for tasks with init containers and proxy sidecars. For more on structuring ECS task definitions, check out our post on [ECS task IAM roles](https://oneuptime.com/blog/post/configure-ecs-task-iam-roles/view) to make sure each container has the right permissions.
+Container dependencies keep your multi-container tasks running smoothly. Take the time to define them properly, especially for tasks with init containers and proxy sidecars. For more on structuring ECS task definitions, check out our post on [ECS task IAM roles](https://oneuptime.com/blog/post/2026-02-12-configure-ecs-task-iam-roles/view) to make sure each container has the right permissions.

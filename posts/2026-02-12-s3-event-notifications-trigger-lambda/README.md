@@ -365,7 +365,7 @@ aws lambda update-function-configuration \
     --dead-letter-config TargetArn=arn:aws:sqs:us-east-1:123456789012:s3-events-dlq
 ```
 
-For alternative notification targets like SQS and SNS, see our guide on [S3 event notifications to SQS and SNS](https://oneuptime.com/blog/post/s3-event-notifications-sqs-sns/view).
+For alternative notification targets like SQS and SNS, see our guide on [S3 event notifications to SQS and SNS](https://oneuptime.com/blog/post/2026-02-12-s3-event-notifications-sqs-sns/view).
 
 ## Common Pitfalls
 

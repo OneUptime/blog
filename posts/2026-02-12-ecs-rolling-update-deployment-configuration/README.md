@@ -211,7 +211,7 @@ Pair your rolling update configuration with the deployment circuit breaker. If E
 }
 ```
 
-For more on circuit breakers, check out our guide on [ECS deployment circuit breakers](https://oneuptime.com/blog/post/deployment-circuit-breaker-ecs/view).
+For more on circuit breakers, check out our guide on [ECS deployment circuit breakers](https://oneuptime.com/blog/post/2026-02-12-deployment-circuit-breaker-ecs/view).
 
 ## Monitoring Deployments
 
@@ -221,7 +221,7 @@ You should monitor your deployments to catch issues early. Watch for these Cloud
 - **CPUUtilization** and **MemoryUtilization** - Spikes during deployment can indicate resource pressure
 - **HealthyHostCount** on the ALB target group - Should never drop to zero
 
-Check our detailed guide on [monitoring ECS tasks with CloudWatch](https://oneuptime.com/blog/post/monitor-ecs-tasks-cloudwatch-metrics/view) for setting up proper alerting.
+Check our detailed guide on [monitoring ECS tasks with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-tasks-cloudwatch-metrics/view) for setting up proper alerting.
 
 ## Choosing the Right Configuration
 

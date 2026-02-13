@@ -333,7 +333,7 @@ for job in response['TrainingJobSummaries']:
             print(f"{job['TrainingJobName']}: {savings:.0f}% savings")
 ```
 
-**Combine with other cost strategies** - Spot training pairs well with [SageMaker Automatic Model Tuning](https://oneuptime.com/blog/post/sagemaker-automatic-model-tuning-hyperparameter-optimization/view). Use spot instances for all the individual training jobs in your hyperparameter search to multiply the savings.
+**Combine with other cost strategies** - Spot training pairs well with [SageMaker Automatic Model Tuning](https://oneuptime.com/blog/post/2026-02-12-sagemaker-automatic-model-tuning-hyperparameter-optimization/view). Use spot instances for all the individual training jobs in your hyperparameter search to multiply the savings.
 
 ## When NOT to Use Spot Training
 

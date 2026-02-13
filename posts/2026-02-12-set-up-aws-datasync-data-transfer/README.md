@@ -231,6 +231,6 @@ Common issues to watch for:
 - **Permissions**: The DataSync agent needs read access to the source. The IAM role needs write access to the destination.
 - **File count limits**: DataSync can handle hundreds of millions of files, but very deep directory structures can slow down scanning.
 
-For keeping tabs on your DataSync transfer health alongside the rest of your infrastructure, you might want to look at [centralized monitoring solutions](https://oneuptime.com/blog/post/use-aws-backup-centralized-backup-management/view) that can aggregate alerts from multiple services.
+For keeping tabs on your DataSync transfer health alongside the rest of your infrastructure, you might want to look at [centralized monitoring solutions](https://oneuptime.com/blog/post/2026-02-12-use-aws-backup-centralized-backup-management/view) that can aggregate alerts from multiple services.
 
 DataSync is one of those services that, once configured, tends to just work. Set it up, schedule it, and let it handle the tedious parts of data transfer while you focus on more interesting problems.

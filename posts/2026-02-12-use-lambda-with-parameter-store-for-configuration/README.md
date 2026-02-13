@@ -25,7 +25,7 @@ Both store key-value pairs, but they serve different purposes:
 | Throughput | 40 TPS standard, higher with advanced | 10,000 TPS |
 | Best for | Config values, feature flags | Passwords, API keys, certificates |
 
-Use Parameter Store for configuration. Use Secrets Manager for actual secrets. For secrets management, see our guide on [using Lambda with Secrets Manager](https://oneuptime.com/blog/post/use-lambda-with-secrets-manager-for-secure-credentials/view).
+Use Parameter Store for configuration. Use Secrets Manager for actual secrets. For secrets management, see our guide on [using Lambda with Secrets Manager](https://oneuptime.com/blog/post/2026-02-12-use-lambda-with-secrets-manager-for-secure-credentials/view).
 
 ## Creating Parameters
 

@@ -257,7 +257,7 @@ ping -c 10 10.0.1.15  # Target in AWS VPC
 sudo ip link set tunnel1 up
 ```
 
-For more on the basic VPN setup, see [setting up a site-to-site VPN connection](https://oneuptime.com/blog/post/set-up-site-to-site-vpn-connection/view). If you need more bandwidth than VPN can provide, look into [AWS Direct Connect](https://oneuptime.com/blog/post/set-up-aws-direct-connect-dedicated-connectivity/view).
+For more on the basic VPN setup, see [setting up a site-to-site VPN connection](https://oneuptime.com/blog/post/2026-02-12-set-up-site-to-site-vpn-connection/view). If you need more bandwidth than VPN can provide, look into [AWS Direct Connect](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-direct-connect-dedicated-connectivity/view).
 
 ## Wrapping Up
 

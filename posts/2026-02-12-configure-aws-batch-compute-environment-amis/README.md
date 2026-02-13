@@ -46,7 +46,7 @@ aws batch create-compute-environment \
   --state ENABLED
 ```
 
-For GPU workloads, see our detailed guide on [configuring AWS Batch for GPU workloads](https://oneuptime.com/blog/post/configure-aws-batch-for-gpu-workloads/view).
+For GPU workloads, see our detailed guide on [configuring AWS Batch for GPU workloads](https://oneuptime.com/blog/post/2026-02-12-configure-aws-batch-for-gpu-workloads/view).
 
 ## When You Need a Custom AMI
 

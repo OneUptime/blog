@@ -432,4 +432,4 @@ For most applications, costs are lower than comparable Google Maps pricing, espe
 
 Amplify Geo makes it straightforward to add maps and location features to your application. The integration with Amazon Location Service means you get enterprise-grade mapping without the complexity of managing map infrastructure. The MapLibre GL rendering engine is open-source and performant.
 
-For other real-time features to combine with your map, check out [Amplify PubSub for real-time data](https://oneuptime.com/blog/post/use-amplify-pubsub-for-real-time-data/view). And for backend infrastructure, see [setting up Amplify backend with CDK](https://oneuptime.com/blog/post/set-up-amplify-backend-with-cdk/view).
+For other real-time features to combine with your map, check out [Amplify PubSub for real-time data](https://oneuptime.com/blog/post/2026-02-12-use-amplify-pubsub-for-real-time-data/view). And for backend infrastructure, see [setting up Amplify backend with CDK](https://oneuptime.com/blog/post/2026-02-12-set-up-amplify-backend-with-cdk/view).

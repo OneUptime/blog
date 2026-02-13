@@ -533,4 +533,4 @@ PostgreSQL streaming replication combined with PgBouncer connection pooling crea
 
 Start with a simple primary-replica setup, verify replication works correctly, then add PgBouncer for connection management. As your application grows, scale replicas horizontally for read capacity and tune PgBouncer settings for your specific workload patterns.
 
-For more PostgreSQL deployment patterns, see https://oneuptime.com/blog/post/postgresql-backup-testing/view for backup verification strategies.
+For more PostgreSQL deployment patterns, see https://oneuptime.com/blog/post/2026-01-21-postgresql-backup-testing/view for backup verification strategies.

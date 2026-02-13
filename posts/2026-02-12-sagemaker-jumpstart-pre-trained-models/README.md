@@ -307,7 +307,7 @@ predictor = small_model.deploy(
 )
 ```
 
-For larger models, consider the inference options we covered in our [SageMaker inference comparison](https://oneuptime.com/blog/post/sagemaker-real-time-vs-batch-vs-async-inference/view).
+For larger models, consider the inference options we covered in our [SageMaker inference comparison](https://oneuptime.com/blog/post/2026-02-12-sagemaker-real-time-vs-batch-vs-async-inference/view).
 
 ## Cleaning Up
 
@@ -331,4 +331,4 @@ for endpoint in response['Endpoints']:
 
 ## Wrapping Up
 
-JumpStart is the fastest way to get a working ML model on SageMaker. Whether you need a foundation model for text generation, a pre-trained vision model for image classification, or a complete solution template for a business problem, JumpStart has you covered. Start with a pre-trained model, test it against your requirements, and fine-tune if you need better performance. It's a much faster iteration cycle than building from scratch. For production deployments, combine JumpStart models with [Model Registry](https://oneuptime.com/blog/post/sagemaker-model-registry/view) for versioning and [Model Monitor](https://oneuptime.com/blog/post/sagemaker-model-monitor-drift-detection/view) for ongoing quality checks.
+JumpStart is the fastest way to get a working ML model on SageMaker. Whether you need a foundation model for text generation, a pre-trained vision model for image classification, or a complete solution template for a business problem, JumpStart has you covered. Start with a pre-trained model, test it against your requirements, and fine-tune if you need better performance. It's a much faster iteration cycle than building from scratch. For production deployments, combine JumpStart models with [Model Registry](https://oneuptime.com/blog/post/2026-02-12-sagemaker-model-registry/view) for versioning and [Model Monitor](https://oneuptime.com/blog/post/2026-02-12-sagemaker-model-monitor-drift-detection/view) for ongoing quality checks.

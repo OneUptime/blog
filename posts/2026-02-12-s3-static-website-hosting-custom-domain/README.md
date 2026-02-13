@@ -16,7 +16,7 @@ Before you start, you'll need:
 
 1. A registered domain name
 2. Access to your DNS provider (Route 53 or external)
-3. An S3 bucket configured for static website hosting (see our guide on [hosting a static website on S3](https://oneuptime.com/blog/post/host-static-website-s3/view))
+3. An S3 bucket configured for static website hosting (see our guide on [hosting a static website on S3](https://oneuptime.com/blog/post/2026-02-12-host-static-website-s3/view))
 
 ## The Bucket Naming Rule
 
@@ -328,7 +328,7 @@ S3 website endpoints only support HTTP. For HTTPS (which you absolutely should h
 - Gzip/Brotli compression
 - Cache invalidation
 
-For the complete HTTPS setup, see our guide on [setting up S3 with CloudFront for a CDN-backed static site](https://oneuptime.com/blog/post/s3-cloudfront-cdn-backed-static-site/view).
+For the complete HTTPS setup, see our guide on [setting up S3 with CloudFront for a CDN-backed static site](https://oneuptime.com/blog/post/2026-02-12-s3-cloudfront-cdn-backed-static-site/view).
 
 ## Troubleshooting
 

@@ -349,10 +349,10 @@ Here are some things I've learned from running lots of training jobs on SageMake
 
 - **Tag everything** - Use tags on training jobs so you can track costs by project and team
 - **Start small** - Test your training script on a small instance with a subset of data before scaling up
-- **Use managed spot training** - You can save up to 90% on training costs by using spot instances (see our post on [reducing SageMaker costs with spot instances](https://oneuptime.com/blog/post/reduce-sagemaker-training-costs-spot-instances/view))
+- **Use managed spot training** - You can save up to 90% on training costs by using spot instances (see our post on [reducing SageMaker costs with spot instances](https://oneuptime.com/blog/post/2026-02-12-reduce-sagemaker-training-costs-spot-instances/view))
 - **Set max_run limits** - Always set a maximum training time to avoid runaway jobs
 - **Version your data** - Keep training data versioned in S3 so you can reproduce results
 
 ## Wrapping Up
 
-SageMaker takes the infrastructure headaches out of model training. Whether you're using built-in algorithms for quick experiments or bringing your own training scripts for custom models, the workflow stays consistent: prepare data, configure an estimator, call fit, get your model. The real power comes when you combine training with SageMaker's other features like [experiment tracking](https://oneuptime.com/blog/post/sagemaker-experiments-tracking/view) and [model registry](https://oneuptime.com/blog/post/sagemaker-model-registry/view) to build a proper MLOps workflow.
+SageMaker takes the infrastructure headaches out of model training. Whether you're using built-in algorithms for quick experiments or bringing your own training scripts for custom models, the workflow stays consistent: prepare data, configure an estimator, call fit, get your model. The real power comes when you combine training with SageMaker's other features like [experiment tracking](https://oneuptime.com/blog/post/2026-02-12-sagemaker-experiments-tracking/view) and [model registry](https://oneuptime.com/blog/post/2026-02-12-sagemaker-model-registry/view) to build a proper MLOps workflow.

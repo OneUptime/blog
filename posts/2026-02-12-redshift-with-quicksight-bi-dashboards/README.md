@@ -260,4 +260,4 @@ aws quicksight describe-account-settings \
     --aws-account-id 123456789012
 ```
 
-The combination of Redshift's data warehouse capabilities and QuickSight's visualization engine gives you a fully managed BI stack. For monitoring how your Redshift cluster is performing under these dashboard workloads, consider setting up proper [query performance tracking](https://oneuptime.com/blog/post/optimize-redshift-distribution-and-sort-keys/view) alongside your BI deployment.
+The combination of Redshift's data warehouse capabilities and QuickSight's visualization engine gives you a fully managed BI stack. For monitoring how your Redshift cluster is performing under these dashboard workloads, consider setting up proper [query performance tracking](https://oneuptime.com/blog/post/2026-02-12-optimize-redshift-distribution-and-sort-keys/view) alongside your BI deployment.

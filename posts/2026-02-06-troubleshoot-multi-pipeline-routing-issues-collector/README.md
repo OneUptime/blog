@@ -946,9 +946,9 @@ When routing issues occur, work through this checklist:
 
 For more OpenTelemetry Collector troubleshooting guidance:
 
-- [How to Fix Collector Slow Startup in Kubernetes](https://oneuptime.com/blog/post/fix-collector-slow-startup-kubernetes/view)
-- [How to Debug Collector Receiver Connection Drops](https://oneuptime.com/blog/post/debug-collector-receiver-connection-drops/view)
-- [How to Monitor Collector Queue Depth and Backpressure](https://oneuptime.com/blog/post/monitor-collector-queue-depth-backpressure/view)
-- [How to Fix Collector Exporter Timeout Errors](https://oneuptime.com/blog/post/fix-collector-exporter-timeout-errors/view)
+- [How to Fix Collector Slow Startup in Kubernetes](https://oneuptime.com/blog/post/2026-02-06-fix-collector-slow-startup-kubernetes/view)
+- [How to Debug Collector Receiver Connection Drops](https://oneuptime.com/blog/post/2026-02-06-debug-collector-receiver-connection-drops/view)
+- [How to Monitor Collector Queue Depth and Backpressure](https://oneuptime.com/blog/post/2026-02-06-monitor-collector-queue-depth-backpressure/view)
+- [How to Fix Collector Exporter Timeout Errors](https://oneuptime.com/blog/post/2026-02-06-fix-collector-exporter-timeout-errors/view)
 
 Multi-pipeline routing enables sophisticated telemetry processing but requires careful configuration. By understanding routing mechanisms, using comprehensive logging, and systematically testing configurations, you can build reliable routing that sends data exactly where it needs to go.

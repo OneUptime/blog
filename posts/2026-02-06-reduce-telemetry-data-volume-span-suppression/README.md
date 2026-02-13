@@ -645,8 +645,8 @@ processors:
 ## Related Resources
 
 For more telemetry optimization strategies:
-- https://oneuptime.com/blog/post/cut-observability-costs-opentelemetry-filtering-sampling/view
-- https://oneuptime.com/blog/post/handle-high-cardinality-metrics-opentelemetry/view
-- https://oneuptime.com/blog/post/probabilistic-sampling-opentelemetry-cost-control/view
+- https://oneuptime.com/blog/post/2026-02-06-cut-observability-costs-opentelemetry-filtering-sampling/view
+- https://oneuptime.com/blog/post/2026-02-06-handle-high-cardinality-metrics-opentelemetry/view
+- https://oneuptime.com/blog/post/2026-02-06-probabilistic-sampling-opentelemetry-cost-control/view
 
 Span suppression is a powerful technique for reducing telemetry costs while maintaining observability. By intelligently removing noisy spans, you can cut trace volume by 50-70% without losing the ability to debug issues. The key is understanding which spans provide value and which are just noise.

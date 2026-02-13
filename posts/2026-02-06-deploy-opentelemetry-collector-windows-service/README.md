@@ -372,7 +372,7 @@ When deploying the OpenTelemetry Collector in production Windows environments:
 7. **Backup configurations** before making changes
 8. **Use secure credential storage** for API keys and certificates
 
-For more advanced configurations, explore building custom Collector distributions at https://oneuptime.com/blog/post/build-custom-opentelemetry-collector-distribution-ocb/view.
+For more advanced configurations, explore building custom Collector distributions at https://oneuptime.com/blog/post/2026-02-06-build-custom-opentelemetry-collector-distribution-ocb/view.
 
 ## Conclusion
 

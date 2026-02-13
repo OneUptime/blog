@@ -401,4 +401,4 @@ aws cloudtrail lookup-events \
 
 **Document your policies.** Use the `Sid` field to explain what each statement does. Future you will be grateful.
 
-For the broader VPC networking picture, check out our guide on [AWS PrivateLink for private API access](https://oneuptime.com/blog/post/aws-privatelink-private-api-access/view). Monitor your endpoint performance and data transfer with [OneUptime](https://oneuptime.com) to catch issues before they impact your applications.
+For the broader VPC networking picture, check out our guide on [AWS PrivateLink for private API access](https://oneuptime.com/blog/post/2026-02-12-aws-privatelink-private-api-access/view). Monitor your endpoint performance and data transfer with [OneUptime](https://oneuptime.com) to catch issues before they impact your applications.

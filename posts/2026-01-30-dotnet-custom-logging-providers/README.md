@@ -1014,5 +1014,5 @@ Custom logging providers give you complete control over where your logs go and h
 *Need centralized log management with full-text search and alerting? [OneUptime](https://oneuptime.com) provides log aggregation, metric collection, and distributed tracing in one platform.*
 
 **Related Reading:**
-- [How to Set Up OpenTelemetry in ASP.NET Core](https://oneuptime.com/blog/post/aspnet-core-opentelemetry/view) - Add distributed tracing to your .NET applications
+- [How to Set Up OpenTelemetry in ASP.NET Core](https://oneuptime.com/blog/post/2025-12-23-aspnet-core-opentelemetry/view) - Add distributed tracing to your .NET applications
 - [How to Configure Health Checks in ASP.NET Core](https://oneuptime.com/blog/post/2026-01-30-aspnet-custom-health-checks/view) - Monitor your application health

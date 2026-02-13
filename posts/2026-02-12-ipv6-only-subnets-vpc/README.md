@@ -308,4 +308,4 @@ The primary cost benefit is eliminating public IPv4 addresses. As of 2024, AWS c
 
 Additionally, IPv6-only subnets can reduce NAT gateway costs since IPv6 traffic to the internet goes through the egress-only internet gateway (free) rather than a NAT gateway ($0.045/hour + data processing fees).
 
-For more on VPC networking, see our guide on [VPC IP Address Manager](https://oneuptime.com/blog/post/vpc-ip-address-manager-ipam/view).
+For more on VPC networking, see our guide on [VPC IP Address Manager](https://oneuptime.com/blog/post/2026-02-12-vpc-ip-address-manager-ipam/view).

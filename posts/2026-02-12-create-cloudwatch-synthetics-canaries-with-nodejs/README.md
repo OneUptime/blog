@@ -456,7 +456,7 @@ For sensitive secrets, store them in Secrets Manager and fetch them in your cana
 
 **Monitor canary costs**: Each canary run costs money (Lambda invocation + S3 storage). A canary running every minute costs more than one running every 5 minutes. Choose the frequency based on how quickly you need to detect issues.
 
-For monitoring your API endpoints more broadly, see our guide on [monitoring API endpoints with CloudWatch Synthetics](https://oneuptime.com/blog/post/monitor-api-endpoints-with-cloudwatch-synthetics/view).
+For monitoring your API endpoints more broadly, see our guide on [monitoring API endpoints with CloudWatch Synthetics](https://oneuptime.com/blog/post/2026-02-12-monitor-api-endpoints-with-cloudwatch-synthetics/view).
 
 ## Wrapping Up
 

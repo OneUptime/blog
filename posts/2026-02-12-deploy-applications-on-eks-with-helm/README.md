@@ -37,7 +37,7 @@ Verify the installation:
 helm version
 ```
 
-Make sure kubectl is configured for your EKS cluster. Helm uses the same kubeconfig. If you need help with that, see our [kubectl configuration guide](https://oneuptime.com/blog/post/configure-kubectl-for-eks/view).
+Make sure kubectl is configured for your EKS cluster. Helm uses the same kubeconfig. If you need help with that, see our [kubectl configuration guide](https://oneuptime.com/blog/post/2026-02-12-configure-kubectl-for-eks/view).
 
 ## Using Helm Repositories
 
@@ -319,6 +319,6 @@ helm push my-app-0.1.0.tgz oci://123456789012.dkr.ecr.us-west-2.amazonaws.com/he
 
 ## Helm with GitOps
 
-Helm works well with GitOps tools like [ArgoCD](https://oneuptime.com/blog/post/set-up-argocd-for-gitops-on-eks/view) and [Flux](https://oneuptime.com/blog/post/set-up-flux-for-gitops-on-eks/view). Both can install and manage Helm releases declaratively from a Git repository, giving you version-controlled, auditable deployments.
+Helm works well with GitOps tools like [ArgoCD](https://oneuptime.com/blog/post/2026-02-12-set-up-argocd-for-gitops-on-eks/view) and [Flux](https://oneuptime.com/blog/post/2026-02-12-set-up-flux-for-gitops-on-eks/view). Both can install and manage Helm releases declaratively from a Git repository, giving you version-controlled, auditable deployments.
 
 Helm isn't perfect - the templating syntax can feel clunky, and debugging template errors is sometimes painful. But it's the closest thing Kubernetes has to a package manager, and once you're comfortable with it, deploying applications on EKS becomes significantly more manageable.

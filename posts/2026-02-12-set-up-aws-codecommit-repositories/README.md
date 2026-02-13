@@ -306,4 +306,4 @@ aws codecommit list-branches --repository-name my-application
 aws codecommit delete-repository --repository-name old-unused-repo
 ```
 
-CodeCommit is a solid choice when you want simple, secure Git hosting that plays nicely with the rest of your AWS infrastructure. It's not trying to compete with GitHub on features - it's focused on being a reliable, private Git remote with IAM-based access control. For setting up CI/CD triggers from your CodeCommit repos, check out our guide on [CodeCommit triggers and notifications](https://oneuptime.com/blog/post/set-up-codecommit-triggers-and-notifications/view).
+CodeCommit is a solid choice when you want simple, secure Git hosting that plays nicely with the rest of your AWS infrastructure. It's not trying to compete with GitHub on features - it's focused on being a reliable, private Git remote with IAM-based access control. For setting up CI/CD triggers from your CodeCommit repos, check out our guide on [CodeCommit triggers and notifications](https://oneuptime.com/blog/post/2026-02-12-set-up-codecommit-triggers-and-notifications/view).

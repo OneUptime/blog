@@ -450,4 +450,4 @@ kubectl patch deployment webapp --type='json' -p='[
 
 Minimize separate set commands to reduce rollout overhead.
 
-kubectl set commands provide quick, targeted updates without YAML wrangling. Use them for image updates, environment changes, and resource adjustments in development and emergency production scenarios. For complex changes, prefer declarative YAML management, but keep set in your toolkit for rapid modifications. Learn more about deployment management at https://oneuptime.com/blog/post/kubectl-rollout-deployment-management/view.
+kubectl set commands provide quick, targeted updates without YAML wrangling. Use them for image updates, environment changes, and resource adjustments in development and emergency production scenarios. For complex changes, prefer declarative YAML management, but keep set in your toolkit for rapid modifications. Learn more about deployment management at https://oneuptime.com/blog/post/2026-01-25-kubectl-rollout-deployment-management/view.

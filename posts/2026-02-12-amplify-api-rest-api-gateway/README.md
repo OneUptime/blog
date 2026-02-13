@@ -509,7 +509,7 @@ exports.handler = withMiddleware(async (event) => {
 });
 ```
 
-For securing these APIs with Cognito tokens, see [integrating Cognito with API Gateway for authorization](https://oneuptime.com/blog/post/cognito-api-gateway-authorization/view). And for the broader Amplify ecosystem, check out [getting started with AWS Amplify](https://oneuptime.com/blog/post/aws-amplify-getting-started/view).
+For securing these APIs with Cognito tokens, see [integrating Cognito with API Gateway for authorization](https://oneuptime.com/blog/post/2026-02-12-cognito-api-gateway-authorization/view). And for the broader Amplify ecosystem, check out [getting started with AWS Amplify](https://oneuptime.com/blog/post/2026-02-12-aws-amplify-getting-started/view).
 
 ## Wrapping Up
 

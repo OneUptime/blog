@@ -379,4 +379,4 @@ For dynamic date handling, use a Lambda function as the first step to calculate 
 
 Step Functions turns individual Glue jobs into reliable, observable ETL pipelines. The native `.sync` integration means you do not need Lambda functions just to poll job status. Parallel states let independent transforms run simultaneously. And the error handling gives you confidence that failures are caught and communicated.
 
-For pipelines that need to process millions of files, combine Step Functions with [Distributed Map](https://oneuptime.com/blog/post/use-step-functions-distributed-map-for-large-scale-processing/view) to parallelize at massive scale.
+For pipelines that need to process millions of files, combine Step Functions with [Distributed Map](https://oneuptime.com/blog/post/2026-02-12-use-step-functions-distributed-map-for-large-scale-processing/view) to parallelize at massive scale.

@@ -364,7 +364,7 @@ aws cloudfront create-response-headers-policy \
     }'
 ```
 
-For additional CloudFront security features, see our guide on [setting up CloudFront field-level encryption](https://oneuptime.com/blog/post/set-up-cloudfront-field-level-encryption/view).
+For additional CloudFront security features, see our guide on [setting up CloudFront field-level encryption](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudfront-field-level-encryption/view).
 
 ## Conclusion
 

@@ -514,4 +514,4 @@ Follow these guidelines for production rewrite configurations:
 
 The CoreDNS rewrite plugin transforms how your applications interact with DNS without requiring code changes. By strategically rewriting queries and responses, you can integrate legacy systems, implement sophisticated routing patterns, and maintain flexibility as your infrastructure evolves.
 
-For more DNS configuration patterns, see our guides on [CoreDNS forward zones](https://oneuptime.com/blog/post/coredns-custom-forward-zones/view) and [custom DNS resolvers](https://oneuptime.com/blog/post/custom-dns-resolvers-pod-dnsconfig/view).
+For more DNS configuration patterns, see our guides on [CoreDNS forward zones](https://oneuptime.com/blog/post/2026-02-09-coredns-custom-forward-zones/view) and [custom DNS resolvers](https://oneuptime.com/blog/post/2026-02-09-custom-dns-resolvers-pod-dnsconfig/view).

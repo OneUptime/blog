@@ -286,7 +286,7 @@ aws sns set-subscription-attributes \
   --attribute-value '{"eventType": ["ORDER_PLACED", "ORDER_CANCELLED"]}'
 ```
 
-Filter policies reduce noise for consumers and avoid wasting Lambda invocations on irrelevant messages. For more on event filtering, check out our guide on [configuring Lambda event source mapping filters](https://oneuptime.com/blog/post/configure-lambda-event-source-mapping-filters/view).
+Filter policies reduce noise for consumers and avoid wasting Lambda invocations on irrelevant messages. For more on event filtering, check out our guide on [configuring Lambda event source mapping filters](https://oneuptime.com/blog/post/2026-02-12-configure-lambda-event-source-mapping-filters/view).
 
 ## FIFO Fan-Out
 

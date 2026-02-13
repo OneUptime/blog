@@ -230,4 +230,4 @@ kubectl get pods -o json | jq -r '.items[] | select(.status.phase=="Running") | 
 
 For complex filtering and transformation, jq wins. For quick field extraction, JSONPath suffices.
 
-JSONPath expressions transform kubectl from a basic viewer into a precise query tool. Master the syntax and you'll extract exactly the data you need without parsing full resource dumps. Check out https://oneuptime.com/blog/post/kubectl-custom-columns-output-format/view for another approach to custom output formatting.
+JSONPath expressions transform kubectl from a basic viewer into a precise query tool. Master the syntax and you'll extract exactly the data you need without parsing full resource dumps. Check out https://oneuptime.com/blog/post/2026-02-09-kubectl-custom-columns-output-format/view for another approach to custom output formatting.

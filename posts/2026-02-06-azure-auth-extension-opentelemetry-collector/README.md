@@ -531,4 +531,4 @@ service:
 
 The Azure Auth extension simplifies authentication between your OpenTelemetry Collector and Azure services. By supporting multiple authentication methods and handling token lifecycle automatically, it enables secure and reliable telemetry export to Azure Monitor and other Microsoft cloud services.
 
-For related authentication topics, see guides on [Google Client Auth](https://oneuptime.com/blog/post/google-client-auth-extension-opentelemetry-collector/view) and [OpAMP extension for remote management](https://oneuptime.com/blog/post/opamp-extension-remote-collector-management/view).
+For related authentication topics, see guides on [Google Client Auth](https://oneuptime.com/blog/post/2026-02-06-google-client-auth-extension-opentelemetry-collector/view) and [OpAMP extension for remote management](https://oneuptime.com/blog/post/2026-02-06-opamp-extension-remote-collector-management/view).

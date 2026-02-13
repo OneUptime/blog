@@ -276,7 +276,7 @@ resource "aws_route53_traffic_policy_instance" "main" {
 
 Traffic Flow policies cost $50 per month per policy record. That's per domain name you apply the policy to, not per endpoint. If you use the same policy for `app.example.com` and `api.example.com`, that's $100/month.
 
-This pricing makes Traffic Flow cost-effective for important domains but less practical for hundreds of records. For simpler geographic routing without bias control, regular geolocation routing (see https://oneuptime.com/blog/post/route-53-geolocation-routing-policy/view) is free beyond standard query charges.
+This pricing makes Traffic Flow cost-effective for important domains but less practical for hundreds of records. For simpler geographic routing without bias control, regular geolocation routing (see https://oneuptime.com/blog/post/2026-02-12-route-53-geolocation-routing-policy/view) is free beyond standard query charges.
 
 ## Versioning and Rollback
 

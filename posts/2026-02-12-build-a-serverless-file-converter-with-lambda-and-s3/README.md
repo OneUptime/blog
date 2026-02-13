@@ -355,4 +355,4 @@ def handler(event, context):
 
 A serverless file converter with Lambda and S3 is one of the most practical event-driven architectures you can build. It handles the common case efficiently (small to medium files via Lambda), scales automatically with upload volume, and costs nothing when nobody is uploading. Add ECS Fargate for large files and DynamoDB for status tracking, and you have a production-ready file processing pipeline.
 
-For a specific implementation of image processing, check out our guide on [building a serverless thumbnail generator with Lambda](https://oneuptime.com/blog/post/build-a-serverless-thumbnail-generator-with-lambda/view).
+For a specific implementation of image processing, check out our guide on [building a serverless thumbnail generator with Lambda](https://oneuptime.com/blog/post/2026-02-12-build-a-serverless-thumbnail-generator-with-lambda/view).

@@ -10,7 +10,7 @@ Description: Learn how to configure AWS CLI with SSO profiles using IAM Identity
 
 Long-term IAM access keys are a security liability. They sit in plaintext files on your laptop, they get committed to git repositories, they get shared in Slack messages. AWS IAM Identity Center (formerly AWS SSO) offers a better approach: you authenticate through your identity provider (Okta, Azure AD, Google Workspace, etc.), and the CLI gets short-lived credentials automatically. No access keys to manage, rotate, or accidentally leak.
 
-If your organization uses IAM Identity Center (and if you're on [Control Tower](https://oneuptime.com/blog/post/aws-control-tower-landing-zones/view), you already have it), setting up SSO for the CLI is one of the best security improvements you can make.
+If your organization uses IAM Identity Center (and if you're on [Control Tower](https://oneuptime.com/blog/post/2026-02-12-aws-control-tower-landing-zones/view), you already have it), setting up SSO for the CLI is one of the best security improvements you can make.
 
 ## How SSO CLI Authentication Works
 

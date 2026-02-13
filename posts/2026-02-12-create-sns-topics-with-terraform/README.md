@@ -297,7 +297,7 @@ graph LR
 
 Each subscriber processes the message independently. If the analytics service goes down, orders still get processed and emails still get sent.
 
-For setting up the SQS queues in this pattern, check out our post on [creating SQS queues with Terraform](https://oneuptime.com/blog/post/create-sqs-queues-with-terraform/view).
+For setting up the SQS queues in this pattern, check out our post on [creating SQS queues with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-sqs-queues-with-terraform/view).
 
 ## Wrapping Up
 

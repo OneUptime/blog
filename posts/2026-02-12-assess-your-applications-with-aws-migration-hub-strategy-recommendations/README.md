@@ -43,7 +43,7 @@ Strategy Recommendations requires discovery data. You can feed it from:
 - Manual import via CSV
 - Third-party tools integrated with Migration Hub
 
-If you have not set up discovery yet, check out our guide on [using the AWS Application Discovery Service](https://oneuptime.com/blog/post/use-the-aws-application-discovery-service/view).
+If you have not set up discovery yet, check out our guide on [using the AWS Application Discovery Service](https://oneuptime.com/blog/post/2026-02-12-use-the-aws-application-discovery-service/view).
 
 ## Setting Up the Strategy Recommendations Collector
 
@@ -288,11 +288,11 @@ mgh.notify_migration_task_state(
 )
 ```
 
-This ties directly into the broader migration tracking workflow in Migration Hub. See our guide on [planning an AWS migration with Migration Hub](https://oneuptime.com/blog/post/plan-an-aws-migration-with-the-aws-migration-hub/view) for the full picture.
+This ties directly into the broader migration tracking workflow in Migration Hub. See our guide on [planning an AWS migration with Migration Hub](https://oneuptime.com/blog/post/2026-02-12-plan-an-aws-migration-with-the-aws-migration-hub/view) for the full picture.
 
 ## Monitoring During and After Migration
 
-As you execute each strategy, monitoring is essential. You need to know that migrated workloads are performing at least as well as they did on-premises. Set up CloudWatch dashboards for each migrated application and compare metrics against your baseline. For a unified view across your migration portfolio, [OneUptime](https://oneuptime.com/blog/post/migrate-from-on-premises-to-aws-step-by-step/view) can track application health across both environments during the transition.
+As you execute each strategy, monitoring is essential. You need to know that migrated workloads are performing at least as well as they did on-premises. Set up CloudWatch dashboards for each migrated application and compare metrics against your baseline. For a unified view across your migration portfolio, [OneUptime](https://oneuptime.com/blog/post/2026-02-12-migrate-from-on-premises-to-aws-step-by-step/view) can track application health across both environments during the transition.
 
 ## Wrapping Up
 

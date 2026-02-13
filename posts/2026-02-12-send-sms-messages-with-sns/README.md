@@ -330,4 +330,4 @@ aws sns set-sms-attributes \
 
 The default limit is $1.00 per month, which only covers about 155 US messages. You'll need to increase this for any real workload, and for high volumes you may need to request a limit increase through AWS Support.
 
-For integrating SMS alerts with your monitoring stack, see [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/use-sns-with-cloudwatch-alarms/view). SNS SMS combined with CloudWatch gives you a solid on-call alerting system.
+For integrating SMS alerts with your monitoring stack, see [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-use-sns-with-cloudwatch-alarms/view). SNS SMS combined with CloudWatch gives you a solid on-call alerting system.

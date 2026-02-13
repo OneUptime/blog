@@ -377,4 +377,4 @@ npm test
 
 AWS CDK bridges the gap between traditional infrastructure-as-code templates and real software engineering. You get the full power of a programming language - types, abstractions, loops, tests - while still producing CloudFormation under the hood. For teams that are comfortable with TypeScript (or Python, Java, etc.), CDK is a significant productivity boost over writing raw CloudFormation YAML.
 
-For other IaC approaches, compare this with our posts on [Terraform for EC2](https://oneuptime.com/blog/post/create-ec2-instance-terraform/view) and [CloudFormation for EC2](https://oneuptime.com/blog/post/automate-ec2-provisioning-cloudformation/view).
+For other IaC approaches, compare this with our posts on [Terraform for EC2](https://oneuptime.com/blog/post/2026-02-12-create-ec2-instance-terraform/view) and [CloudFormation for EC2](https://oneuptime.com/blog/post/2026-02-12-automate-ec2-provisioning-cloudformation/view).

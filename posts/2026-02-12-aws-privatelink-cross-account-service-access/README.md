@@ -314,7 +314,7 @@ Cost                     Per hour + per GB     Per GB only
 Use case                 Service marketplace   Full network connectivity
 ```
 
-Use PrivateLink when you want to expose a specific service. Use VPC peering when you need full network connectivity between VPCs. For broader guidance on private service access, see [accessing AWS services privately using VPC endpoints](https://oneuptime.com/blog/post/access-aws-services-privately-vpc-endpoints/view).
+Use PrivateLink when you want to expose a specific service. Use VPC peering when you need full network connectivity between VPCs. For broader guidance on private service access, see [accessing AWS services privately using VPC endpoints](https://oneuptime.com/blog/post/2026-02-12-access-aws-services-privately-vpc-endpoints/view).
 
 ## Wrapping Up
 

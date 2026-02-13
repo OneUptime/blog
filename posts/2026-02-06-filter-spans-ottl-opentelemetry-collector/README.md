@@ -623,8 +623,8 @@ Combine these patterns based on your specific requirements.
 
 For more information on telemetry processing and OTTL:
 
-- [How to Write OTTL Statements for the Transform Processor](https://oneuptime.com/blog/post/ottl-statements-transform-processor-opentelemetry-collector/view)
-- [How to Configure the Remote Tap Processor](https://oneuptime.com/blog/post/remote-tap-processor-opentelemetry-collector/view)
-- [How to Configure the Unroll Processor](https://oneuptime.com/blog/post/unroll-processor-opentelemetry-collector/view)
+- [How to Write OTTL Statements for the Transform Processor](https://oneuptime.com/blog/post/2026-02-06-ottl-statements-transform-processor-opentelemetry-collector/view)
+- [How to Configure the Remote Tap Processor](https://oneuptime.com/blog/post/2026-02-06-remote-tap-processor-opentelemetry-collector/view)
+- [How to Configure the Unroll Processor](https://oneuptime.com/blog/post/2026-02-06-unroll-processor-opentelemetry-collector/view)
 
 Filtering spans with OTTL expressions provides powerful control over telemetry volume and costs while preserving observability insights. Start with simple filters for obvious noise like health checks, then add sophisticated logic based on attributes, duration, and status. Always keep error traces, consider multi-stage filtering with sampling, and monitor filter effectiveness to ensure important data is retained. Test filter configurations thoroughly before production deployment, and review rules regularly as application patterns evolve. Strategic filtering reduces costs, improves performance, and focuses observability efforts on data that matters.

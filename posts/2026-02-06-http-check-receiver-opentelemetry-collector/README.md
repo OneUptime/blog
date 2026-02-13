@@ -782,8 +782,8 @@ Once metrics flow into OneUptime, you can:
 
 For more information on OpenTelemetry Collector receivers and monitoring:
 
-- [OpenTelemetry Collector: What It Is, When You Need It, and When You Don't](https://oneuptime.com/blog/post/what-is-opentelemetry-collector-and-why-use-one/view)
-- [How to Configure the SSH Check Receiver in the OpenTelemetry Collector](https://oneuptime.com/blog/post/ssh-check-receiver-opentelemetry-collector/view)
+- [OpenTelemetry Collector: What It Is, When You Need It, and When You Don't](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
+- [How to Configure the SSH Check Receiver in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-ssh-check-receiver-opentelemetry-collector/view)
 - [How to Monitor IP Addresses with OneUptime](https://oneuptime.com/blog/post/2025-10-27-monitor-ip-addresses-with-oneuptime/view)
 - [How to Monitor Service Ports with OneUptime](https://oneuptime.com/blog/post/2025-10-27-monitor-service-ports-with-oneuptime/view)
 

@@ -170,7 +170,7 @@ Reading Parquet is dramatically faster than reading CSV or JSON:
 | JSON | 5-10x slower | High |
 | CSV | 3-5x slower | Medium |
 
-If your source is CSV or JSON, consider a one-time conversion job to produce Parquet. All subsequent jobs will be faster. See our guide on [column formats for Athena](https://oneuptime.com/blog/post/optimize-athena-queries-with-column-formats-parquet-orc/view) - the same principles apply to Glue.
+If your source is CSV or JSON, consider a one-time conversion job to produce Parquet. All subsequent jobs will be faster. See our guide on [column formats for Athena](https://oneuptime.com/blog/post/2026-02-12-optimize-athena-queries-with-column-formats-parquet-orc/view) - the same principles apply to Glue.
 
 ## Optimizing Joins
 
@@ -351,7 +351,7 @@ Before running your optimized job, go through this checklist:
 5. Are shuffle partitions set appropriately?
 6. Are small tables being broadcast for joins?
 7. Is output file count reasonable (not too many small files)?
-8. Are you using [job bookmarks](https://oneuptime.com/blog/post/use-glue-job-bookmarks-for-incremental-data-processing/view) to avoid reprocessing?
+8. Are you using [job bookmarks](https://oneuptime.com/blog/post/2026-02-12-use-glue-job-bookmarks-for-incremental-data-processing/view) to avoid reprocessing?
 
 For monitoring your Glue jobs alongside the rest of your infrastructure, tools like [OneUptime](https://oneuptime.com) can provide end-to-end visibility across your data pipeline.
 

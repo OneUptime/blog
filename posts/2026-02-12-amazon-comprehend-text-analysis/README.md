@@ -76,7 +76,7 @@ analyze_sentiment("Absolutely love this service! Best experience I have had in y
 analyze_sentiment("The item arrived damaged and customer support was unhelpful.")
 ```
 
-For a deeper dive into sentiment analysis use cases, see our guide on [Amazon Comprehend for sentiment analysis](https://oneuptime.com/blog/post/amazon-comprehend-sentiment-analysis/view).
+For a deeper dive into sentiment analysis use cases, see our guide on [Amazon Comprehend for sentiment analysis](https://oneuptime.com/blog/post/2026-02-12-amazon-comprehend-sentiment-analysis/view).
 
 ## Entity Recognition
 
@@ -306,7 +306,7 @@ reaching a new all-time high of $175 per share.
 
 ## Practical Use Cases
 
-Comprehend works great for automated content moderation, customer feedback analysis, document classification, and extracting structured data from unstructured text. If you need to go beyond the built-in capabilities with custom categories, check out [Amazon Comprehend custom classification](https://oneuptime.com/blog/post/amazon-comprehend-custom-classification/view).
+Comprehend works great for automated content moderation, customer feedback analysis, document classification, and extracting structured data from unstructured text. If you need to go beyond the built-in capabilities with custom categories, check out [Amazon Comprehend custom classification](https://oneuptime.com/blog/post/2026-02-12-amazon-comprehend-custom-classification/view).
 
 For monitoring the health and performance of your text analysis pipelines, having proper observability across your AWS services is key. See our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view) for a solid setup.
 

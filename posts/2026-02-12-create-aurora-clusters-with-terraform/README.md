@@ -298,7 +298,7 @@ resource "aws_rds_cluster" "primary" {
 }
 ```
 
-For managing infrastructure across multiple regions, check out our guide on [managing multiple AWS regions in Terraform](https://oneuptime.com/blog/post/manage-multiple-aws-regions-terraform/view).
+For managing infrastructure across multiple regions, check out our guide on [managing multiple AWS regions in Terraform](https://oneuptime.com/blog/post/2026-02-12-manage-multiple-aws-regions-terraform/view).
 
 ## Outputs
 

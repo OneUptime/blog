@@ -33,7 +33,7 @@ flowchart TD
 
 Before setting up the Cluster Autoscaler, you'll need:
 
-- An EKS cluster with managed node groups (see our [cluster creation guide](https://oneuptime.com/blog/post/create-eks-cluster-with-eksctl/view))
+- An EKS cluster with managed node groups (see our [cluster creation guide](https://oneuptime.com/blog/post/2026-02-12-create-eks-cluster-with-eksctl/view))
 - kubectl configured for your cluster
 - Node groups with Auto Scaling Groups that have appropriate min/max settings
 
@@ -91,7 +91,7 @@ eksctl create iamserviceaccount \
   --override-existing-serviceaccounts
 ```
 
-For more details on IRSA, check out our [IRSA setup guide](https://oneuptime.com/blog/post/set-up-iam-roles-for-eks-service-accounts-irsa/view).
+For more details on IRSA, check out our [IRSA setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-iam-roles-for-eks-service-accounts-irsa/view).
 
 ## Step 3: Deploy the Cluster Autoscaler
 
@@ -256,13 +256,13 @@ Watch the autoscaler logs to see it detect the pending pods and scale up your no
 
 ## Cluster Autoscaler vs. Karpenter
 
-The Cluster Autoscaler has been the standard for years, but AWS now recommends [Karpenter](https://oneuptime.com/blog/post/use-karpenter-for-eks-node-provisioning/view) for new clusters. Karpenter is generally faster at provisioning nodes and more flexible with instance type selection. However, the Cluster Autoscaler is still a solid choice - it's battle-tested, well-documented, and works with any Kubernetes cluster, not just EKS.
+The Cluster Autoscaler has been the standard for years, but AWS now recommends [Karpenter](https://oneuptime.com/blog/post/2026-02-12-use-karpenter-for-eks-node-provisioning/view) for new clusters. Karpenter is generally faster at provisioning nodes and more flexible with instance type selection. However, the Cluster Autoscaler is still a solid choice - it's battle-tested, well-documented, and works with any Kubernetes cluster, not just EKS.
 
 If you're setting up a new cluster from scratch, consider Karpenter. If you have existing infrastructure built around Auto Scaling Groups, the Cluster Autoscaler is the simpler path.
 
 ## Monitoring the Autoscaler
 
-You should monitor the autoscaler to make sure it's working correctly. It exposes Prometheus metrics that you can scrape with your [monitoring stack](https://oneuptime.com/blog/post/set-up-prometheus-and-grafana-on-eks/view):
+You should monitor the autoscaler to make sure it's working correctly. It exposes Prometheus metrics that you can scrape with your [monitoring stack](https://oneuptime.com/blog/post/2026-02-12-set-up-prometheus-and-grafana-on-eks/view):
 
 ```bash
 # Check autoscaler status via the configmap it updates

@@ -259,4 +259,4 @@ ARC makes DR testing low-risk. You can:
 3. Verify the application works from the secondary region.
 4. Fail back to the primary.
 
-Build this into your operational calendar. Monthly DR drills with ARC take minutes instead of hours. For more on building resilient architectures, check out our guide on [Route 53 traffic flow](https://oneuptime.com/blog/post/route-53-traffic-flow-complex-routing/view).
+Build this into your operational calendar. Monthly DR drills with ARC take minutes instead of hours. For more on building resilient architectures, check out our guide on [Route 53 traffic flow](https://oneuptime.com/blog/post/2026-02-12-route-53-traffic-flow-complex-routing/view).

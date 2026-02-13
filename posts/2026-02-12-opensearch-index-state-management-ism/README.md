@@ -335,4 +335,4 @@ curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_ism/retr
 
 **Test policies on non-production first.** ISM operations like shrink and force merge can temporarily impact cluster performance.
 
-ISM is essential for any OpenSearch deployment handling time-series data. For setting up alerts on the data flowing through these managed indexes, see [OpenSearch alerting](https://oneuptime.com/blog/post/opensearch-alerting/view).
+ISM is essential for any OpenSearch deployment handling time-series data. For setting up alerts on the data flowing through these managed indexes, see [OpenSearch alerting](https://oneuptime.com/blog/post/2026-02-12-opensearch-alerting/view).

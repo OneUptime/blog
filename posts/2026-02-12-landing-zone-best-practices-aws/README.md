@@ -397,4 +397,4 @@ If you already have a multi-account setup, you can enroll existing accounts into
 
 The most important thing is to start. Every week you operate without a proper landing zone is a week where accounts are created without security baselines, where logs aren't centralized, and where governance is manual and inconsistent.
 
-For the multi-account strategy that your landing zone supports, see [multi-account strategy on AWS](https://oneuptime.com/blog/post/multi-account-strategy-aws/view). For securing the workloads that run on your landing zone, check out [defense in depth on AWS](https://oneuptime.com/blog/post/defense-in-depth-aws/view).
+For the multi-account strategy that your landing zone supports, see [multi-account strategy on AWS](https://oneuptime.com/blog/post/2026-02-12-multi-account-strategy-aws/view). For securing the workloads that run on your landing zone, check out [defense in depth on AWS](https://oneuptime.com/blog/post/2026-02-12-defense-in-depth-aws/view).

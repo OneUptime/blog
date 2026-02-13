@@ -304,7 +304,7 @@ jobs:
 
 ### Using OIDC Instead of Access Keys
 
-For better security, use OIDC federation so your CI/CD platform doesn't need long-lived AWS credentials. Check out our guide on [configuring AWS provider authentication](https://oneuptime.com/blog/post/configure-aws-provider-authentication-in-terraform/view) for the full OIDC setup.
+For better security, use OIDC federation so your CI/CD platform doesn't need long-lived AWS credentials. Check out our guide on [configuring AWS provider authentication](https://oneuptime.com/blog/post/2026-02-12-configure-aws-provider-authentication-in-terraform/view) for the full OIDC setup.
 
 ## Chained Assume Role
 
@@ -354,4 +354,4 @@ aws sts assume-role \
 
 Cross-account assume role is the standard pattern for multi-account Terraform deployments. Set up roles in each target account with appropriate permissions, configure trust policies to control who can assume them, and use provider configuration to switch between accounts. Combined with OIDC federation for CI/CD, you get a setup with no long-lived credentials and granular access control.
 
-For managing the state across these accounts, see our guide on [Terraform state with S3 backend](https://oneuptime.com/blog/post/terraform-state-with-s3-backend-and-dynamodb-locking/view).
+For managing the state across these accounts, see our guide on [Terraform state with S3 backend](https://oneuptime.com/blog/post/2026-02-12-terraform-state-with-s3-backend-and-dynamodb-locking/view).

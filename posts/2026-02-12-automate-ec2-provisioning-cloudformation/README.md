@@ -390,7 +390,7 @@ aws cloudformation wait stack-delete-complete --stack-name staging-ec2
 
 If you want to keep certain resources when a stack is deleted, add a `DeletionPolicy: Retain` to those resources in your template.
 
-For more infrastructure-as-code approaches, check out our posts on [creating EC2 instances with Terraform](https://oneuptime.com/blog/post/create-ec2-instance-terraform/view) and [using AWS CDK](https://oneuptime.com/blog/post/create-ec2-instances-aws-cdk/view).
+For more infrastructure-as-code approaches, check out our posts on [creating EC2 instances with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-ec2-instance-terraform/view) and [using AWS CDK](https://oneuptime.com/blog/post/2026-02-12-create-ec2-instances-aws-cdk/view).
 
 ## Wrapping Up
 

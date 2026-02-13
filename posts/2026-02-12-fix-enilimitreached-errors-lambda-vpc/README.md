@@ -199,4 +199,4 @@ def lambda_handler(event, context):
 7. Check other services consuming ENIs
 8. Set up monitoring for ENI usage
 
-The `ENILimitReached` error is solvable with a combination of cleanup and quota management. With Hyperplane ENIs, you need far fewer than before, but in busy accounts the limit can still be reached. Keep an eye on your usage and you'll avoid surprises. For related networking issues, check out our guide on [fixing subnet address exhaustion](https://oneuptime.com/blog/post/fix-subnet-insufficient-free-addresses-errors/view).
+The `ENILimitReached` error is solvable with a combination of cleanup and quota management. With Hyperplane ENIs, you need far fewer than before, but in busy accounts the limit can still be reached. Keep an eye on your usage and you'll avoid surprises. For related networking issues, check out our guide on [fixing subnet address exhaustion](https://oneuptime.com/blog/post/2026-02-12-fix-subnet-insufficient-free-addresses-errors/view).

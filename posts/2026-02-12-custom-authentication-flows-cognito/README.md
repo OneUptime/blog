@@ -287,7 +287,7 @@ for func in define-auth create-auth verify-auth; do
 done
 ```
 
-For infrastructure-as-code approaches, see the guides on [setting up Cognito with Terraform](https://oneuptime.com/blog/post/cognito-terraform/view) or [Cognito with CDK](https://oneuptime.com/blog/post/cognito-cdk/view).
+For infrastructure-as-code approaches, see the guides on [setting up Cognito with Terraform](https://oneuptime.com/blog/post/2026-02-12-cognito-terraform/view) or [Cognito with CDK](https://oneuptime.com/blog/post/2026-02-12-cognito-cdk/view).
 
 ## Important Considerations
 

@@ -255,7 +255,7 @@ resource "aws_network_acl_association" "web" {
 
 ## Troubleshooting Tips
 
-When traffic isn't flowing and you suspect the NACL, use VPC Flow Logs to confirm. Flow logs show you whether traffic was accepted or rejected, which helps narrow down whether it's the NACL or a security group causing the problem. Check out our guide on enabling flow logs at https://oneuptime.com/blog/post/enable-and-analyze-vpc-flow-logs/view.
+When traffic isn't flowing and you suspect the NACL, use VPC Flow Logs to confirm. Flow logs show you whether traffic was accepted or rejected, which helps narrow down whether it's the NACL or a security group causing the problem. Check out our guide on enabling flow logs at https://oneuptime.com/blog/post/2026-02-12-enable-and-analyze-vpc-flow-logs/view.
 
 Common mistakes to watch for:
 

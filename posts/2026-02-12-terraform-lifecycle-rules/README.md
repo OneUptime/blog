@@ -69,7 +69,7 @@ resource "aws_acm_certificate" "main" {
 }
 ```
 
-For more on ACM certificates, see our post on [managing ACM certificates with Terraform](https://oneuptime.com/blog/post/manage-aws-acm-certificates-with-terraform/view).
+For more on ACM certificates, see our post on [managing ACM certificates with Terraform](https://oneuptime.com/blog/post/2026-02-12-manage-aws-acm-certificates-with-terraform/view).
 
 ### When it Doesn't Work
 
@@ -300,7 +300,7 @@ resource "aws_db_instance" "production" {
 }
 ```
 
-For more on validation and assertions, see our post on [Terraform check blocks for infrastructure assertions](https://oneuptime.com/blog/post/terraform-check-blocks-infrastructure-assertions/view).
+For more on validation and assertions, see our post on [Terraform check blocks for infrastructure assertions](https://oneuptime.com/blog/post/2026-02-12-terraform-check-blocks-infrastructure-assertions/view).
 
 ## Wrapping Up
 

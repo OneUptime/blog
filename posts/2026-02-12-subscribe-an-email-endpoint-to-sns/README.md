@@ -307,4 +307,4 @@ Email subscriptions have some limitations to be aware of:
 - **Delivery isn't guaranteed**: Email delivery depends on the recipient's mail server. Some messages may end up in spam folders.
 - **Rate limits**: SNS throttles email delivery to prevent abuse.
 
-For alerting, email subscriptions work great combined with [CloudWatch alarms and SNS](https://oneuptime.com/blog/post/use-sns-with-cloudwatch-alarms/view). For more sophisticated notification workflows, consider subscribing a [Lambda function](https://oneuptime.com/blog/post/subscribe-a-lambda-function-to-sns/view) that can format and route messages through SES.
+For alerting, email subscriptions work great combined with [CloudWatch alarms and SNS](https://oneuptime.com/blog/post/2026-02-12-use-sns-with-cloudwatch-alarms/view). For more sophisticated notification workflows, consider subscribing a [Lambda function](https://oneuptime.com/blog/post/2026-02-12-subscribe-a-lambda-function-to-sns/view) that can format and route messages through SES.

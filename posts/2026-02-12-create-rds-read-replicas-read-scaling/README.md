@@ -244,7 +244,7 @@ def get_read_engine():
     return next(engine_cycle)
 ```
 
-Alternatively, use [RDS Proxy](https://oneuptime.com/blog/post/setup-rds-proxy-connection-pooling/view) with reader endpoints for automatic load balancing.
+Alternatively, use [RDS Proxy](https://oneuptime.com/blog/post/2026-02-12-setup-rds-proxy-connection-pooling/view) with reader endpoints for automatic load balancing.
 
 ## Scaling Replicas with Different Sizes
 

@@ -338,4 +338,4 @@ For production, start with `ERROR` and switch to `ALL` temporarily when debuggin
 
 Express Workflows are one of those AWS features that can dramatically reduce costs if you are in the right use case. Short-duration, high-volume event processing is their sweet spot. The trade-off is losing exactly-once semantics and built-in execution history, but for most event processing pipelines, those trade-offs are perfectly acceptable.
 
-For longer-running orchestrations, stick with Standard Workflows. For large-scale batch processing, combine Express Workflows with [Distributed Map](https://oneuptime.com/blog/post/use-step-functions-distributed-map-for-large-scale-processing/view) for the best of both worlds.
+For longer-running orchestrations, stick with Standard Workflows. For large-scale batch processing, combine Express Workflows with [Distributed Map](https://oneuptime.com/blog/post/2026-02-12-use-step-functions-distributed-map-for-large-scale-processing/view) for the best of both worlds.

@@ -232,7 +232,7 @@ Common BGP problems and their fixes:
 
 3. **Asymmetric routing** - If you have multiple VPN connections, AWS may send return traffic through a different tunnel. Use AS path prepending or MED to control path selection.
 
-For deeper network analysis, consider using [VPC Flow Logs](https://oneuptime.com/blog/post/monitor-network-performance-with-vpc-flow-logs/view) to see what traffic is actually traversing the VPN. You can also use [Reachability Analyzer](https://oneuptime.com/blog/post/use-reachability-analyzer-for-network-troubleshooting/view) to verify that your VPC configuration allows traffic to reach the VPN gateway.
+For deeper network analysis, consider using [VPC Flow Logs](https://oneuptime.com/blog/post/2026-02-12-monitor-network-performance-with-vpc-flow-logs/view) to see what traffic is actually traversing the VPN. You can also use [Reachability Analyzer](https://oneuptime.com/blog/post/2026-02-12-use-reachability-analyzer-for-network-troubleshooting/view) to verify that your VPC configuration allows traffic to reach the VPN gateway.
 
 ## Summary
 

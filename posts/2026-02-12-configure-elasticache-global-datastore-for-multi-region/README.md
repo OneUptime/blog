@@ -286,4 +286,4 @@ The biggest cost driver is the cross-Region data transfer. For write-heavy workl
 
 ElastiCache Global Datastore gives you multi-Region Redis with minimal effort. Local reads are fast, replication lag is typically sub-second, and failover to a secondary Region takes minutes. The main consideration is handling writes, since they must go to the primary Region. For read-heavy caching workloads serving a global user base, Global Datastore is one of the simplest ways to improve performance and add disaster recovery capability.
 
-For more on ElastiCache, see our guides on [setting up ElastiCache Serverless](https://oneuptime.com/blog/post/set-up-elasticache-serverless/view) and [configuring Redis data tiering](https://oneuptime.com/blog/post/configure-elasticache-redis-data-tiering/view).
+For more on ElastiCache, see our guides on [setting up ElastiCache Serverless](https://oneuptime.com/blog/post/2026-02-12-set-up-elasticache-serverless/view) and [configuring Redis data tiering](https://oneuptime.com/blog/post/2026-02-12-configure-elasticache-redis-data-tiering/view).

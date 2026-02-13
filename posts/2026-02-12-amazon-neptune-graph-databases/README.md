@@ -18,7 +18,7 @@ If you've ever tried running Neo4j or JanusGraph on your own EC2 instances, you 
 
 Neptune supports two query languages - Gremlin (for property graphs) and SPARQL (for RDF graphs). You don't have to pick one at cluster creation time, but your data model will naturally lean toward one or the other. If you're building application features like "friends of friends" or "products similar to X," Gremlin is typically the better fit. If you're working with ontologies and linked data, SPARQL is your go-to.
 
-For more on querying Neptune with these languages, check out our posts on [querying with Gremlin](https://oneuptime.com/blog/post/query-neptune-gremlin/view) and [querying with SPARQL](https://oneuptime.com/blog/post/query-neptune-sparql/view).
+For more on querying Neptune with these languages, check out our posts on [querying with Gremlin](https://oneuptime.com/blog/post/2026-02-12-query-neptune-gremlin/view) and [querying with SPARQL](https://oneuptime.com/blog/post/2026-02-12-query-neptune-sparql/view).
 
 ## Prerequisites
 

@@ -703,6 +703,6 @@ For comprehensive service monitoring, check out [OneUptime's monitoring platform
 
 ## Related Resources
 
-- [How to Set Up Cross-Cluster Service Discovery](https://oneuptime.com/blog/post/kubernetes-cross-cluster-service-discovery/view)
+- [How to Set Up Cross-Cluster Service Discovery](https://oneuptime.com/blog/post/2026-01-19-kubernetes-cross-cluster-service-discovery/view)
 - [How to Configure Service Mesh with Istio](https://oneuptime.com/blog/post/kubernetes-istio-service-mesh/view)
-- [How to Set Up Network Policies](https://oneuptime.com/blog/post/kubernetes-pod-communication-across-namespaces/view)
+- [How to Set Up Network Policies](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-communication-across-namespaces/view)

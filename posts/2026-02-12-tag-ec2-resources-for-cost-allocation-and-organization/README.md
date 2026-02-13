@@ -297,7 +297,7 @@ aws ec2 describe-instances \
   --output text | sort | uniq -c | sort -rn
 ```
 
-For continuous monitoring of your EC2 fleet, combine tagging with [CloudWatch detailed monitoring](https://oneuptime.com/blog/post/monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) to get per-instance metrics that you can slice by tag dimensions.
+For continuous monitoring of your EC2 fleet, combine tagging with [CloudWatch detailed monitoring](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) to get per-instance metrics that you can slice by tag dimensions.
 
 ## Common Mistakes
 

@@ -264,7 +264,7 @@ resource "aws_cloudwatch_event_target" "sns" {
 
 ## Deployment Timeouts
 
-ECS services have a deployment timeout. If a deployment can't reach a steady state within this window, it will either keep trying or trigger a rollback (if you have the circuit breaker enabled - see our post on [deployment circuit breakers](https://oneuptime.com/blog/post/deployment-circuit-breaker-ecs/view)).
+ECS services have a deployment timeout. If a deployment can't reach a steady state within this window, it will either keep trying or trigger a rollback (if you have the circuit breaker enabled - see our post on [deployment circuit breakers](https://oneuptime.com/blog/post/2026-02-12-deployment-circuit-breaker-ecs/view)).
 
 The default timeout is controlled by the health check grace period.
 

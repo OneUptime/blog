@@ -374,7 +374,7 @@ flowchart TD
 | Retention expired | Set a longer retention period |
 | Lambda in VPC | Add VPC endpoint for CloudWatch Logs service |
 
-For issues with the CloudWatch agent not sending metrics (which often accompanies log issues), see our guide on [troubleshooting the CloudWatch agent](https://oneuptime.com/blog/post/troubleshoot-cloudwatch-agent-not-sending-metrics/view).
+For issues with the CloudWatch agent not sending metrics (which often accompanies log issues), see our guide on [troubleshooting the CloudWatch agent](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-cloudwatch-agent-not-sending-metrics/view).
 
 ## Wrapping Up
 

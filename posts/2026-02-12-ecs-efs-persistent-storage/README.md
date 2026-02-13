@@ -345,7 +345,7 @@ For configuration files or shared assets that don't change at runtime, mount EFS
 
 **Permission denied on file operations**: Verify the POSIX user ID in the access point matches what your container runs as. Check the IAM policy on the task role.
 
-**Slow file operations**: EFS has higher latency than local disk. For workloads that need fast random I/O, consider caching frequently accessed files locally or using EBS volumes instead (see our post on [ECS with EBS volumes](https://oneuptime.com/blog/post/ecs-ebs-volumes/view)).
+**Slow file operations**: EFS has higher latency than local disk. For workloads that need fast random I/O, consider caching frequently accessed files locally or using EBS volumes instead (see our post on [ECS with EBS volumes](https://oneuptime.com/blog/post/2026-02-12-ecs-ebs-volumes/view)).
 
 **File locks and contention**: EFS supports NFS file locking, but be careful with write-heavy workloads from multiple tasks. Use application-level locking or write to separate directories per task when possible.
 

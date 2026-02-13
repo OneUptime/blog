@@ -276,4 +276,4 @@ Please run 'cdk bootstrap'.
 
 Bootstrap is the foundation of your CDK deployment setup. Get it right once, and you won't think about it again - until you add a new account or region. Use custom execution policies to limit what CDK can do, set up cross-account trust for multi-account deployments, and keep the bootstrap version up to date.
 
-For what comes after bootstrap, check out our guides on [synthesizing and diffing changes](https://oneuptime.com/blog/post/synthesize-and-diff-cdk-changes-before-deployment/view) and [troubleshooting deployment failures](https://oneuptime.com/blog/post/troubleshoot-cdk-deployment-failures/view).
+For what comes after bootstrap, check out our guides on [synthesizing and diffing changes](https://oneuptime.com/blog/post/2026-02-12-synthesize-and-diff-cdk-changes-before-deployment/view) and [troubleshooting deployment failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-cdk-deployment-failures/view).

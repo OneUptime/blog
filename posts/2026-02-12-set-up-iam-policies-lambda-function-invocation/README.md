@@ -349,7 +349,7 @@ resource "aws_lambda_permission" "apigw" {
 1. **One role per function** - Don't share execution roles between functions. Each function should have exactly the permissions it needs.
 2. **Scope resource ARNs** - Use specific table names, bucket names, and secret IDs instead of wildcards.
 3. **Use source ARN conditions** - When granting invoke permissions, always specify which source can trigger the function.
-4. **Audit with Access Analyzer** - Use [Access Analyzer](https://oneuptime.com/blog/post/generate-iam-policies-access-activity-access-analyzer/view) to find overprivileged execution roles.
+4. **Audit with Access Analyzer** - Use [Access Analyzer](https://oneuptime.com/blog/post/2026-02-12-generate-iam-policies-access-activity-access-analyzer/view) to find overprivileged execution roles.
 5. **Use Powertools for logging** - Lambda Powertools includes structured logging that helps you trace permission issues.
 
 Lambda's dual permission model - execution roles and invocation permissions - gives you fine-grained control over both what functions can do and who can trigger them. Take advantage of both to build secure serverless applications.

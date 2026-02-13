@@ -354,7 +354,7 @@ Spot Instances aren't appropriate for:
 - Instances that take > 10 minutes to become productive (long boot times)
 - Workloads that absolutely cannot tolerate any interruption
 
-For those workloads, use [Reserved Instances](https://oneuptime.com/blog/post/reduce-ec2-costs-reserved-instances/view) or [Savings Plans](https://oneuptime.com/blog/post/reduce-ec2-costs-savings-plans/view) instead.
+For those workloads, use [Reserved Instances](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-reserved-instances/view) or [Savings Plans](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-savings-plans/view) instead.
 
 ## Wrapping Up
 

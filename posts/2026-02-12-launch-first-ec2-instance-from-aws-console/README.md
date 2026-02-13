@@ -58,7 +58,7 @@ t3.micro
 └────── Family (t = burstable, m = general purpose, c = compute optimized)
 ```
 
-For more details on picking the right instance type, check out our post on [choosing the right EC2 instance type](https://oneuptime.com/blog/post/choose-right-ec2-instance-type-for-your-workload/view).
+For more details on picking the right instance type, check out our post on [choosing the right EC2 instance type](https://oneuptime.com/blog/post/2026-02-12-choose-right-ec2-instance-type-for-your-workload/view).
 
 ### Configure a Key Pair
 
@@ -87,7 +87,7 @@ The wizard creates a new security group by default. Make sure it allows:
 - **RDP (port 3389)** from your IP address - for Windows instances
 - **HTTP (port 80)** if you plan to run a web server
 
-Don't set the source to "0.0.0.0/0" (anywhere) for SSH. Restrict it to "My IP" to limit access to your current IP address. You can read more about this in our guide on [setting up security groups](https://oneuptime.com/blog/post/set-up-security-groups-for-ec2-instances/view).
+Don't set the source to "0.0.0.0/0" (anywhere) for SSH. Restrict it to "My IP" to limit access to your current IP address. You can read more about this in our guide on [setting up security groups](https://oneuptime.com/blog/post/2026-02-12-set-up-security-groups-for-ec2-instances/view).
 
 ### Configure Storage
 
@@ -97,7 +97,7 @@ Leave the volume type as gp3 - it's the newest general purpose SSD type and offe
 
 ### Advanced Details (Optional)
 
-You can skip this section for your first instance. But it's worth knowing that this is where you'd add user data scripts to automatically configure your instance on launch. Check out our post on [EC2 user data scripts](https://oneuptime.com/blog/post/use-ec2-user-data-scripts-for-instance-bootstrapping/view) when you're ready for that.
+You can skip this section for your first instance. But it's worth knowing that this is where you'd add user data scripts to automatically configure your instance on launch. Check out our post on [EC2 user data scripts](https://oneuptime.com/blog/post/2026-02-12-use-ec2-user-data-scripts-for-instance-bootstrapping/view) when you're ready for that.
 
 ## Step 3: Review and Launch
 
@@ -176,7 +176,7 @@ EC2 instances cost money when they're running, even on free tier (after the firs
 
 Stopping an instance keeps the EBS volume (which still incurs charges), while terminating removes everything. For a test instance, termination is the cleanest option.
 
-For more on managing instance lifecycle, see our guide on [stopping, starting, and terminating EC2 instances](https://oneuptime.com/blog/post/stop-start-and-terminate-ec2-instances/view).
+For more on managing instance lifecycle, see our guide on [stopping, starting, and terminating EC2 instances](https://oneuptime.com/blog/post/2026-02-12-stop-start-and-terminate-ec2-instances/view).
 
 ## What's Next
 

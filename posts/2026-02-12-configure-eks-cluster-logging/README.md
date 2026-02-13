@@ -289,8 +289,8 @@ aws logs create-export-task \
 
 ## Alternative: Container Insights
 
-If you want a more managed experience with less configuration, [Container Insights](https://oneuptime.com/blog/post/set-up-container-insights-for-eks/view) provides a pre-built solution that includes both logging and metrics. It's easier to set up but gives you less control over the log pipeline.
+If you want a more managed experience with less configuration, [Container Insights](https://oneuptime.com/blog/post/2026-02-12-set-up-container-insights-for-eks/view) provides a pre-built solution that includes both logging and metrics. It's easier to set up but gives you less control over the log pipeline.
 
-For a more comprehensive monitoring setup, consider adding [Prometheus and Grafana](https://oneuptime.com/blog/post/set-up-prometheus-and-grafana-on-eks/view) alongside your logging stack.
+For a more comprehensive monitoring setup, consider adding [Prometheus and Grafana](https://oneuptime.com/blog/post/2026-02-12-set-up-prometheus-and-grafana-on-eks/view) alongside your logging stack.
 
 Good logging practices pay off when you're troubleshooting at 3 AM. Invest the time to set it up properly now, and future-you will be grateful.

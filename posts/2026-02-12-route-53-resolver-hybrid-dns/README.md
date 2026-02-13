@@ -222,7 +222,7 @@ aws route53resolver create-resolver-query-log-config \
   --creator-request-id "logging-$(date +%s)"
 ```
 
-For more on DNS logging, see our guide on [Route 53 query logging for DNS diagnostics](https://oneuptime.com/blog/post/route-53-query-logging-dns-diagnostics/view).
+For more on DNS logging, see our guide on [Route 53 query logging for DNS diagnostics](https://oneuptime.com/blog/post/2026-02-12-route-53-query-logging-dns-diagnostics/view).
 
 ## Cost Considerations
 

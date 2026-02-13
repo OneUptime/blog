@@ -203,7 +203,7 @@ aws lambda update-function-configuration \
   --architectures arm64
 ```
 
-This is a free performance win for most workloads. See our guide on [using Graviton instances for cost-effective compute](https://oneuptime.com/blog/post/use-graviton-instances-for-cost-effective-compute/view) for more on ARM-based savings.
+This is a free performance win for most workloads. See our guide on [using Graviton instances for cost-effective compute](https://oneuptime.com/blog/post/2026-02-12-use-graviton-instances-for-cost-effective-compute/view) for more on ARM-based savings.
 
 ## Set Appropriate Timeouts
 
@@ -296,4 +296,4 @@ analyze_lambda_costs()
 
 Lambda cost optimization comes down to three levers: memory allocation, execution duration, and invocation count. The power tuning tool is your best friend for finding the right memory setting. Beyond that, focus on connection reuse, parallel processing, appropriate timeouts, and ARM64 architecture. These changes typically reduce Lambda costs by 30-60% without any functional changes to your application.
 
-For a broader view of your AWS spending, check out our post on [automating cost optimization with Lambda and CloudWatch](https://oneuptime.com/blog/post/automate-cost-optimization-with-lambda-and-cloudwatch/view).
+For a broader view of your AWS spending, check out our post on [automating cost optimization with Lambda and CloudWatch](https://oneuptime.com/blog/post/2026-02-12-automate-cost-optimization-with-lambda-and-cloudwatch/view).

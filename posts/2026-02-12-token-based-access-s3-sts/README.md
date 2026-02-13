@@ -373,7 +373,7 @@ The role policy uses session tags to restrict each user to their own prefix:
 
 **Validate on the server side.** Pre-signed URLs are great for direct uploads, but always validate the uploaded content server-side afterward.
 
-**Log everything.** Enable S3 access logging and CloudTrail to audit who accessed what. See our [VPC endpoint policies guide](https://oneuptime.com/blog/post/vpc-endpoint-policies-s3-dynamodb/view) for restricting S3 access to your VPC.
+**Log everything.** Enable S3 access logging and CloudTrail to audit who accessed what. See our [VPC endpoint policies guide](https://oneuptime.com/blog/post/2026-02-12-vpc-endpoint-policies-s3-dynamodb/view) for restricting S3 access to your VPC.
 
 **Monitor credential usage.** Unusual patterns of STS calls or S3 access from temporary credentials could indicate compromise. Use [OneUptime](https://oneuptime.com) to monitor these patterns.
 

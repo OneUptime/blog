@@ -86,7 +86,7 @@ aws ec2 describe-spot-price-history \
 
 If your team works 10 hours a day on weekdays, your dev instances are idle for 78% of the month. Scheduling them to stop automatically is easy money saved.
 
-We have a detailed guide on [scheduling EC2 start/stop](https://oneuptime.com/blog/post/schedule-ec2-start-stop-save-costs/view), but here's the quick version using a simple cron approach with EventBridge and Lambda:
+We have a detailed guide on [scheduling EC2 start/stop](https://oneuptime.com/blog/post/2026-02-12-schedule-ec2-start-stop-save-costs/view), but here's the quick version using a simple cron approach with EventBridge and Lambda:
 
 ```python
 # Quick Lambda function to stop tagged dev instances
@@ -130,7 +130,7 @@ aws ec2 run-instances \
 
 A t4g.medium costs about $24/month compared to $30 for a t3.medium. That's a 20% savings just from switching architectures.
 
-For more on Graviton instances, check out our guide on [using AWS Graviton instances for cost savings](https://oneuptime.com/blog/post/aws-graviton-arm-ec2-cost-savings/view).
+For more on Graviton instances, check out our guide on [using AWS Graviton instances for cost savings](https://oneuptime.com/blog/post/2026-02-12-aws-graviton-arm-ec2-cost-savings/view).
 
 ## Optimize Storage Costs
 

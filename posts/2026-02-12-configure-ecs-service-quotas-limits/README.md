@@ -217,7 +217,7 @@ Task definitions have their own set of hard limits that you cannot change.
 
 **Containers per task**: Maximum 10 containers per task definition. If you need more, consider splitting into multiple tasks.
 
-**Environment variables per container**: Maximum 100 environment variables. Use Secrets Manager or Parameter Store for configuration-heavy applications. See our guide on [using Parameter Store with ECS](https://oneuptime.com/blog/post/ecs-parameter-store-configuration/view).
+**Environment variables per container**: Maximum 100 environment variables. Use Secrets Manager or Parameter Store for configuration-heavy applications. See our guide on [using Parameter Store with ECS](https://oneuptime.com/blog/post/2026-02-12-ecs-parameter-store-configuration/view).
 
 **Task definition size**: The JSON payload cannot exceed 64KB. This limit is rarely hit unless you have many containers with extensive environment variable lists.
 
@@ -281,4 +281,4 @@ Request increases proactively - do not wait until your deployment fails at 2 AM 
 
 ECS quotas exist to protect both you and AWS from runaway resource consumption, but they can trip you up if you are not paying attention. The key is visibility - know your limits, monitor your usage, and request increases before you need them. Set up automated quota checking as part of your operational runbook, and you will never be caught off guard by a limit again.
 
-For more on scaling ECS, see our guide on [ECS service auto scaling](https://oneuptime.com/blog/post/ecs-service-auto-scaling/view).
+For more on scaling ECS, see our guide on [ECS service auto scaling](https://oneuptime.com/blog/post/2026-02-12-ecs-service-auto-scaling/view).

@@ -368,4 +368,4 @@ aws iot list-thing-principals --thing-name sensor-001
 
 Choose your provisioning method based on scale: single-thing for prototypes, JITP for moderate deployments with your own CA, and fleet provisioning for mass production. Each method builds on the same core concepts - things, certificates, and policies - but automates different parts of the registration process.
 
-For next steps, see our guides on [IoT Core certificate-based authentication](https://oneuptime.com/blog/post/iot-core-certificate-based-authentication/view) and [creating IoT Core policies for device permissions](https://oneuptime.com/blog/post/iot-core-policies-device-permissions/view).
+For next steps, see our guides on [IoT Core certificate-based authentication](https://oneuptime.com/blog/post/2026-02-12-iot-core-certificate-based-authentication/view) and [creating IoT Core policies for device permissions](https://oneuptime.com/blog/post/2026-02-12-iot-core-policies-device-permissions/view).

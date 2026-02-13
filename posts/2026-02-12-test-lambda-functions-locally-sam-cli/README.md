@@ -372,7 +372,7 @@ SAM builds and includes the layer during `sam local invoke`.
 
 ## Combining with Unit Tests
 
-SAM local testing is for integration-style testing. Combine it with proper unit tests for comprehensive coverage. For unit testing strategies, see our post on [writing unit tests for Lambda functions](https://oneuptime.com/blog/post/write-unit-tests-lambda-functions/view).
+SAM local testing is for integration-style testing. Combine it with proper unit tests for comprehensive coverage. For unit testing strategies, see our post on [writing unit tests for Lambda functions](https://oneuptime.com/blog/post/2026-02-12-write-unit-tests-lambda-functions/view).
 
 A good testing pyramid for Lambda:
 1. **Unit tests** - test business logic without AWS SDK calls (fastest)

@@ -456,4 +456,4 @@ graph TD
 
 IoT TwinMaker gives you the orchestration layer to build digital twins without reinventing the data plumbing. Define your physical world as entities and components, connect them to your existing data sources through data connectors, and visualize everything in 3D scenes or Grafana dashboards. Start simple - model a single room or machine - and expand from there. The entity hierarchy and component model scale to thousands of connected things.
 
-For getting IoT data into TwinMaker, see our guides on [setting up AWS IoT Core for device connectivity](https://oneuptime.com/blog/post/set-up-aws-iot-core-for-device-connectivity/view) and [routing IoT messages to DynamoDB](https://oneuptime.com/blog/post/iot-core-rules-engine-route-messages-dynamodb/view).
+For getting IoT data into TwinMaker, see our guides on [setting up AWS IoT Core for device connectivity](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-iot-core-for-device-connectivity/view) and [routing IoT messages to DynamoDB](https://oneuptime.com/blog/post/2026-02-12-iot-core-rules-engine-route-messages-dynamodb/view).

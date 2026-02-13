@@ -240,7 +240,7 @@ Use EFS when you need:
 - Simple file-based storage
 - Dynamic storage that grows automatically
 
-For more on EFS, check out our post on [ECS with EFS for persistent storage](https://oneuptime.com/blog/post/ecs-efs-persistent-storage/view).
+For more on EFS, check out our post on [ECS with EFS for persistent storage](https://oneuptime.com/blog/post/2026-02-12-ecs-efs-persistent-storage/view).
 
 ## Docker Volumes on EC2
 

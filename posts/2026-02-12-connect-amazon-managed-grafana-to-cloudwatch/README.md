@@ -18,7 +18,7 @@ This guide covers connecting Managed Grafana to CloudWatch, writing CloudWatch q
 
 You need:
 
-- An Amazon Managed Grafana workspace (see our guide on [setting up Amazon Managed Grafana](https://oneuptime.com/blog/post/set-up-amazon-managed-grafana/view))
+- An Amazon Managed Grafana workspace (see our guide on [setting up Amazon Managed Grafana](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-managed-grafana/view))
 - CloudWatch metrics being collected (this happens automatically for most AWS services)
 - Appropriate IAM permissions for the Grafana workspace role
 

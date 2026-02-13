@@ -212,7 +212,7 @@ Before deploying a migrated stack, always verify with `cdk diff`.
 cdk diff
 ```
 
-If `cdk diff` shows resource replacements, something's wrong - usually a logical ID mismatch. Fix it before deploying. For more on this workflow, see our guide on [synthesizing and diffing CDK changes](https://oneuptime.com/blog/post/synthesize-and-diff-cdk-changes-before-deployment/view).
+If `cdk diff` shows resource replacements, something's wrong - usually a logical ID mismatch. Fix it before deploying. For more on this workflow, see our guide on [synthesizing and diffing CDK changes](https://oneuptime.com/blog/post/2026-02-12-synthesize-and-diff-cdk-changes-before-deployment/view).
 
 ## Common Pitfalls
 
@@ -230,4 +230,4 @@ aws cloudformation describe-stack-drift-detection-status --stack-drift-detection
 
 Migrating from CloudFormation to CDK isn't an overnight project, but it doesn't have to be a big-bang migration either. Start by wrapping existing templates with `CfnInclude`, build new features in CDK, and gradually migrate existing stacks when it makes sense. The goal is to end up with maintainable, type-safe infrastructure code - and you'll get there faster by taking it one stack at a time.
 
-For a solid CDK foundation, make sure your account is properly set up with [CDK bootstrap](https://oneuptime.com/blog/post/use-cdk-bootstrap-for-account-preparation/view), and consider using [CDK Nag](https://oneuptime.com/blog/post/use-cdk-nag-for-security-best-practice-checks/view) to catch security issues as you migrate.
+For a solid CDK foundation, make sure your account is properly set up with [CDK bootstrap](https://oneuptime.com/blog/post/2026-02-12-use-cdk-bootstrap-for-account-preparation/view), and consider using [CDK Nag](https://oneuptime.com/blog/post/2026-02-12-use-cdk-nag-for-security-best-practice-checks/view) to catch security issues as you migrate.

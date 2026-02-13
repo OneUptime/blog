@@ -261,13 +261,13 @@ When things go wrong with sidecars, here's what to check:
 - **Health check timing** - If your sidecar has a health check and the main app depends on it being healthy, make sure the `startPeriod` is long enough for the sidecar to initialize.
 - **Logs** - If your log router sidecar itself fails, you'll lose the log pipeline. Consider sending the log router's own logs to `awslogs` driver as a fallback.
 
-For more on debugging container issues in ECS, check out our guide on [troubleshooting ECS task failures](https://oneuptime.com/blog/post/troubleshoot-ecs-task-failures/view).
+For more on debugging container issues in ECS, check out our guide on [troubleshooting ECS task failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-ecs-task-failures/view).
 
 ## Monitoring Sidecars
 
 You should monitor your sidecars just like any other container. Set up CloudWatch alarms on sidecar-specific metrics, track their CPU and memory usage, and make sure they're not silently failing.
 
-If you're using Container Insights, you'll get per-container metrics automatically. That means you can see whether your Fluent Bit sidecar is consuming more memory over time, which could indicate a log buffering issue. For more details, see our post on [monitoring ECS with Container Insights](https://oneuptime.com/blog/post/monitor-ecs-container-insights/view).
+If you're using Container Insights, you'll get per-container metrics automatically. That means you can see whether your Fluent Bit sidecar is consuming more memory over time, which could indicate a log buffering issue. For more details, see our post on [monitoring ECS with Container Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-container-insights/view).
 
 ## Wrapping Up
 

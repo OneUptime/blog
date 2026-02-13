@@ -264,7 +264,7 @@ new cdk.CfnOutput(this, 'NameServers', {
 });
 ```
 
-For SSL certificates to use with your domains, check out [creating ACM certificates with CDK](https://oneuptime.com/blog/post/acm-certificates-cdk/view). If you're setting up CloudFront distributions that need DNS records, see [CloudFront distributions with CDK](https://oneuptime.com/blog/post/cloudfront-distributions-cdk/view).
+For SSL certificates to use with your domains, check out [creating ACM certificates with CDK](https://oneuptime.com/blog/post/2026-02-12-acm-certificates-cdk/view). If you're setting up CloudFront distributions that need DNS records, see [CloudFront distributions with CDK](https://oneuptime.com/blog/post/2026-02-12-cloudfront-distributions-cdk/view).
 
 ## Wrapping Up
 

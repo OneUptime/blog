@@ -263,7 +263,7 @@ When you hit a CORS error, here's a systematic approach to debug it:
 
 If the OPTIONS request is returning 403, you probably don't have the OPTIONS method configured in API Gateway. If it's returning 500, your Lambda function might be crashing when it receives the OPTIONS request.
 
-For deeper debugging with CloudWatch, check out our post on [debugging Lambda functions with CloudWatch Logs](https://oneuptime.com/blog/post/debug-lambda-functions-cloudwatch-logs/view).
+For deeper debugging with CloudWatch, check out our post on [debugging Lambda functions with CloudWatch Logs](https://oneuptime.com/blog/post/2026-02-12-debug-lambda-functions-cloudwatch-logs/view).
 
 ## A Complete CORS Middleware Pattern
 

@@ -10,7 +10,7 @@ Description: Learn how to set up Amazon CloudWatch Container Insights on EKS for
 
 CloudWatch Container Insights gives you a pre-built monitoring dashboard for your EKS cluster without the overhead of managing your own Prometheus stack. It collects metrics at the cluster, node, pod, and container level - CPU usage, memory, disk I/O, network traffic - and ships everything to CloudWatch where you can build dashboards, set alarms, and run queries.
 
-It's not as flexible as a full [Prometheus and Grafana](https://oneuptime.com/blog/post/set-up-prometheus-and-grafana-on-eks/view) setup, but it's much simpler to configure and maintain. For many teams, especially those already invested in the AWS ecosystem, it's the right choice.
+It's not as flexible as a full [Prometheus and Grafana](https://oneuptime.com/blog/post/2026-02-12-set-up-prometheus-and-grafana-on-eks/view) setup, but it's much simpler to configure and maintain. For many teams, especially those already invested in the AWS ecosystem, it's the right choice.
 
 ## What Container Insights Collects
 
@@ -27,7 +27,7 @@ You'll need:
 
 - An EKS cluster with nodes running
 - kubectl configured for your cluster
-- An OIDC provider set up for IRSA (see our [IRSA guide](https://oneuptime.com/blog/post/set-up-iam-roles-for-eks-service-accounts-irsa/view))
+- An OIDC provider set up for IRSA (see our [IRSA guide](https://oneuptime.com/blog/post/2026-02-12-set-up-iam-roles-for-eks-service-accounts-irsa/view))
 
 ## Method 1: Using the EKS Add-on (Recommended)
 
@@ -275,7 +275,7 @@ Container Insights isn't free. You pay for CloudWatch metrics (custom metrics pr
 - Reduce the `metrics_collection_interval` to collect less frequently
 - Set log retention policies to avoid storing data indefinitely
 - Filter out noisy or low-value log streams in Fluent Bit
-- Consider using [Prometheus](https://oneuptime.com/blog/post/set-up-prometheus-and-grafana-on-eks/view) for metrics if costs become prohibitive
+- Consider using [Prometheus](https://oneuptime.com/blog/post/2026-02-12-set-up-prometheus-and-grafana-on-eks/view) for metrics if costs become prohibitive
 
 ```bash
 # Set log retention for Container Insights logs
@@ -284,7 +284,7 @@ aws logs put-retention-policy \
   --retention-in-days 14
 ```
 
-For a deeper dive into cost optimization, see our guide on [monitoring EKS costs](https://oneuptime.com/blog/post/monitor-eks-costs-and-optimize-spending/view).
+For a deeper dive into cost optimization, see our guide on [monitoring EKS costs](https://oneuptime.com/blog/post/2026-02-12-monitor-eks-costs-and-optimize-spending/view).
 
 ## Verifying Data Collection
 

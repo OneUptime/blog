@@ -372,7 +372,7 @@ When using the debug exporter for troubleshooting, follow these practices:
 
 **Create temporary pipelines**: When troubleshooting, create separate debug pipelines alongside production pipelines to avoid impacting production data flow.
 
-**Combine with internal metrics**: Use the debug exporter together with collector internal metrics for comprehensive troubleshooting. Learn more about internal logs at https://oneuptime.com/blog/post/read-interpret-collector-internal-logs/view.
+**Combine with internal metrics**: Use the debug exporter together with collector internal metrics for comprehensive troubleshooting. Learn more about internal logs at https://oneuptime.com/blog/post/2026-02-06-read-interpret-collector-internal-logs/view.
 
 ## Troubleshooting Common Issues
 
@@ -433,10 +433,10 @@ service:
       address: 0.0.0.0:8888
 ```
 
-This configuration combines the debug exporter with zPages and pprof extensions for comprehensive troubleshooting. You can correlate debug output with live metrics and performance profiles. For more on these tools, see https://oneuptime.com/blog/post/zpages-live-debugging-collector/view and https://oneuptime.com/blog/post/profile-collector-pprof-extension/view.
+This configuration combines the debug exporter with zPages and pprof extensions for comprehensive troubleshooting. You can correlate debug output with live metrics and performance profiles. For more on these tools, see https://oneuptime.com/blog/post/2026-02-06-zpages-live-debugging-collector/view and https://oneuptime.com/blog/post/2026-02-06-profile-collector-pprof-extension/view.
 
 ## Conclusion
 
 The OpenTelemetry Debug Exporter is a fundamental troubleshooting tool for collector pipelines. It provides visibility into data flow, helps validate processor configurations, and enables comparison between different pipeline stages. By understanding verbosity levels, sampling options, and integration with other troubleshooting tools, you can efficiently diagnose and resolve collector pipeline issues.
 
-For issues related to collector startup or memory problems, refer to https://oneuptime.com/blog/post/troubleshoot-collector-startup-failures/view and https://oneuptime.com/blog/post/troubleshoot-memory-issues-oom-kills-collector/view respectively.
+For issues related to collector startup or memory problems, refer to https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-startup-failures/view and https://oneuptime.com/blog/post/2026-02-06-troubleshoot-memory-issues-oom-kills-collector/view respectively.

@@ -31,7 +31,7 @@ For the other direction, DataStore subscribes to AppSync mutations and pulls rem
 
 ## Setting It Up
 
-You need an Amplify project with a GraphQL API already configured. If you haven't done that yet, check out our post on [using Amplify API with AppSync](https://oneuptime.com/blog/post/amplify-api-graphql-appsync/view).
+You need an Amplify project with a GraphQL API already configured. If you haven't done that yet, check out our post on [using Amplify API with AppSync](https://oneuptime.com/blog/post/2026-02-12-amplify-api-graphql-appsync/view).
 
 The schema for DataStore is the same GraphQL schema you'd use for the API:
 

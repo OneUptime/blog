@@ -262,7 +262,7 @@ aws ecs describe-container-instances \
   --query 'containerInstances[].{Id:ec2InstanceId,Status:status,Agent:agentConnected,Tasks:runningTasksCount}'
 ```
 
-For comprehensive monitoring, check our guide on [monitoring ECS tasks with CloudWatch metrics](https://oneuptime.com/blog/post/monitor-ecs-tasks-cloudwatch-metrics/view).
+For comprehensive monitoring, check our guide on [monitoring ECS tasks with CloudWatch metrics](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-tasks-cloudwatch-metrics/view).
 
 ## Managing Multiple External Instances
 
@@ -313,4 +313,4 @@ It is not ideal for:
 
 ECS Anywhere brings the familiar ECS programming model to your on-premises infrastructure. While it has limitations compared to running in AWS (no VPC networking, no ALB integration, no Fargate), it provides a consistent way to manage containers across hybrid environments. The setup process is straightforward - create a cluster, generate an activation, run the installer on your servers, and start deploying tasks.
 
-For related topics, see our guide on [deploying Docker containers to ECS on EC2](https://oneuptime.com/blog/post/deploy-docker-ecs-ec2/view).
+For related topics, see our guide on [deploying Docker containers to ECS on EC2](https://oneuptime.com/blog/post/2026-02-12-deploy-docker-ecs-ec2/view).

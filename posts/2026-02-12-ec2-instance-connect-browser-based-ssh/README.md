@@ -315,7 +315,7 @@ This gives you full visibility into SSH access without having to manage SSH key 
 | Session Manager | None | CloudTrail + logs | Yes | Yes |
 | Bastion Host | Manual | Limited | Yes | No |
 
-Instance Connect is great when you need actual SSH access (for SCP, port forwarding, or tools that require SSH). For command-only access, [Session Manager](https://oneuptime.com/blog/post/session-manager-ec2-access-without-ssh/view) is another excellent option that doesn't even require port 22 to be open.
+Instance Connect is great when you need actual SSH access (for SCP, port forwarding, or tools that require SSH). For command-only access, [Session Manager](https://oneuptime.com/blog/post/2026-02-12-session-manager-ec2-access-without-ssh/view) is another excellent option that doesn't even require port 22 to be open.
 
 ## Summary
 

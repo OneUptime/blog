@@ -263,7 +263,7 @@ While this post focuses on the stopping state, instances can get stuck in other 
 | shutting-down | 1-3 minutes | Contact AWS support |
 | terminated | Visible for ~1 hour | Normal, will disappear |
 
-For launch-related issues, see [troubleshooting EC2 instance launch failures](https://oneuptime.com/blog/post/troubleshoot-ec2-instance-launch-failures/view).
+For launch-related issues, see [troubleshooting EC2 instance launch failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-ec2-instance-launch-failures/view).
 
 ## Recovery After Force Stop
 

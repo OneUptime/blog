@@ -98,7 +98,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions "arn:aws:automate:us-east-1:ec2:recover"
 ```
 
-For a full setup guide, see [EC2 auto recovery for instance health](https://oneuptime.com/blog/post/set-up-ec2-auto-recovery-for-instance-health/view).
+For a full setup guide, see [EC2 auto recovery for instance health](https://oneuptime.com/blog/post/2026-02-12-set-up-ec2-auto-recovery-for-instance-health/view).
 
 ## Instance Status Check Failures
 
@@ -171,7 +171,7 @@ aws ec2 modify-instance-attribute \
 aws ec2 start-instances --instance-ids i-0abc123
 ```
 
-**Prevention**: Monitor memory with the CloudWatch agent and set alarms before it hits 100%. See [CloudWatch alarms for CPU and memory](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view).
+**Prevention**: Monitor memory with the CloudWatch agent and set alarms before it hits 100%. See [CloudWatch alarms for CPU and memory](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view).
 
 ### Disk Full
 
@@ -293,7 +293,7 @@ aws cloudwatch put-metric-alarm \
 
 ## Preventing Future Failures
 
-1. **Monitor memory and disk**: Most instance status check failures come from resource exhaustion. Install the [CloudWatch agent](https://oneuptime.com/blog/post/install-and-configure-the-cloudwatch-agent-on-ec2/view) and set alarms before resources run out.
+1. **Monitor memory and disk**: Most instance status check failures come from resource exhaustion. Install the [CloudWatch agent](https://oneuptime.com/blog/post/2026-02-12-install-and-configure-the-cloudwatch-agent-on-ec2/view) and set alarms before resources run out.
 
 2. **Use Auto Scaling**: If an instance is irrecoverably broken, Auto Scaling can terminate it and launch a replacement.
 

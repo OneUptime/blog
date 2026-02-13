@@ -335,7 +335,7 @@ resource "aws_cognito_user_pool_client" "app" {
 }
 ```
 
-For more on customizing the sign-in experience, check out [customizing the Cognito hosted UI](https://oneuptime.com/blog/post/customize-cognito-hosted-ui/view).
+For more on customizing the sign-in experience, check out [customizing the Cognito hosted UI](https://oneuptime.com/blog/post/2026-02-12-customize-cognito-hosted-ui/view).
 
 ## Summary
 

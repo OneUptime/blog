@@ -524,4 +524,4 @@ Follow these guidelines for federation:
 
 DNS federation enables sophisticated multi-cluster architectures in Kubernetes. By implementing CoreDNS federation with proper naming conventions and monitoring, you create a unified service discovery layer that spans multiple clusters and regions, enabling truly distributed applications.
 
-For related multi-cluster topics, explore our guides on [CoreDNS forward zones](https://oneuptime.com/blog/post/coredns-custom-forward-zones/view) and [cross-cluster networking](https://oneuptime.com/blog/post/cross-cluster-dns-resolution/view).
+For related multi-cluster topics, explore our guides on [CoreDNS forward zones](https://oneuptime.com/blog/post/2026-02-09-coredns-custom-forward-zones/view) and [cross-cluster networking](https://oneuptime.com/blog/post/2026-02-09-cross-cluster-dns-resolution/view).

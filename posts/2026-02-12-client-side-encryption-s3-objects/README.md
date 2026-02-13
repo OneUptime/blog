@@ -19,7 +19,7 @@ Client-side encryption adds complexity, so it's not always the right choice. Her
 - **Multi-cloud storage** where you want consistent encryption regardless of provider
 - **Sensitive PII or financial data** where you want defense in depth beyond server-side encryption
 
-If server-side encryption meets your requirements, it's simpler. See our posts on [SSE-S3](https://oneuptime.com/blog/post/server-side-encryption-s3-managed-keys-sse-s3/view) and [SSE-KMS](https://oneuptime.com/blog/post/server-side-encryption-aws-kms-sse-kms/view) first.
+If server-side encryption meets your requirements, it's simpler. See our posts on [SSE-S3](https://oneuptime.com/blog/post/2026-02-12-server-side-encryption-s3-managed-keys-sse-s3/view) and [SSE-KMS](https://oneuptime.com/blog/post/2026-02-12-server-side-encryption-aws-kms-sse-kms/view) first.
 
 ## Option 1: Client-Side Encryption with KMS-Managed Keys
 

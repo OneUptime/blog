@@ -341,7 +341,7 @@ Common use cases for triggers:
 - **Pre token generation**: Add custom claims based on user attributes
 - **Custom message**: Localize or brand verification emails
 
-For setting up the Lambda functions, see our post on [creating Lambda functions with Terraform](https://oneuptime.com/blog/post/create-lambda-functions-with-terraform/view).
+For setting up the Lambda functions, see our post on [creating Lambda functions with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-lambda-functions-with-terraform/view).
 
 ## Resource Server (Custom Scopes)
 

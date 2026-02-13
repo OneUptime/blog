@@ -298,4 +298,4 @@ aws ec2 create-tags \
 5. Pipe output to `jq` for complex JSON processing
 6. Use `--query` to filter results before they hit your terminal
 
-CloudShell turns the AWS Console into a power tool. With your scripts saved and aliases configured, you can do in seconds what would take minutes clicking through the console UI. For initial setup tips, see our guide on [setting up CloudShell](https://oneuptime.com/blog/post/setup-aws-cloudshell-quick-command-line-access/view).
+CloudShell turns the AWS Console into a power tool. With your scripts saved and aliases configured, you can do in seconds what would take minutes clicking through the console UI. For initial setup tips, see our guide on [setting up CloudShell](https://oneuptime.com/blog/post/2026-02-12-setup-aws-cloudshell-quick-command-line-access/view).

@@ -379,4 +379,4 @@ aws elbv2 delete-rule --rule-arn arn:aws:...
 
 ## Summary
 
-Path-based routing turns a single ALB into a powerful request router for microservices architectures. Route different URL paths to different backend services, each with their own scaling, health checks, and deployment lifecycle. Combine path routing with weighted target groups for canary deployments, and use fixed responses to block sensitive paths. For even more granular routing, look into [host-based routing](https://oneuptime.com/blog/post/host-based-routing-application-load-balancer/view) to route based on domain names in addition to paths.
+Path-based routing turns a single ALB into a powerful request router for microservices architectures. Route different URL paths to different backend services, each with their own scaling, health checks, and deployment lifecycle. Combine path routing with weighted target groups for canary deployments, and use fixed responses to block sensitive paths. For even more granular routing, look into [host-based routing](https://oneuptime.com/blog/post/2026-02-12-host-based-routing-application-load-balancer/view) to route based on domain names in addition to paths.

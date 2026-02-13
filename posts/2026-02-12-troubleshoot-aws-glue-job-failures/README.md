@@ -284,7 +284,7 @@ Don't wait for jobs to fail. Set up proactive monitoring. Track these CloudWatch
 - `glue.driver.aggregate.numFailedTasks` - Are tasks failing and being retried?
 - `glue.ALL.jvm.heap.usage` - Is memory creeping up over time?
 
-If you're using OneUptime for monitoring your infrastructure, you can set up alerts on these metrics and get notified before a job actually fails. For more on monitoring AWS data pipelines, check out [configuring Kinesis monitoring](https://oneuptime.com/blog/post/configure-amazon-kinesis-data-streams/view).
+If you're using OneUptime for monitoring your infrastructure, you can set up alerts on these metrics and get notified before a job actually fails. For more on monitoring AWS data pipelines, check out [configuring Kinesis monitoring](https://oneuptime.com/blog/post/2026-02-12-configure-amazon-kinesis-data-streams/view).
 
 ## Quick Diagnosis Checklist
 

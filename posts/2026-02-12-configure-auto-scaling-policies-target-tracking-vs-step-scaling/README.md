@@ -53,7 +53,7 @@ aws autoscaling create-auto-scaling-group \
     --health-check-grace-period 300
 ```
 
-For details on launch templates, see our guide on [using launch templates for EC2 instances](https://oneuptime.com/blog/post/use-launch-templates-for-ec2-instances/view).
+For details on launch templates, see our guide on [using launch templates for EC2 instances](https://oneuptime.com/blog/post/2026-02-12-use-launch-templates-for-ec2-instances/view).
 
 ## Target Tracking Scaling
 

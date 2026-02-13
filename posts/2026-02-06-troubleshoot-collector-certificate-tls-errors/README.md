@@ -798,10 +798,10 @@ exit 0
 
 ## Related Resources
 
-- [How to Fix Collector Connection Refused on OTLP Ports](https://oneuptime.com/blog/post/fix-collector-connection-refused-otlp-ports/view)
-- [How to Troubleshoot Collector Pipeline Blocked Errors](https://oneuptime.com/blog/post/troubleshoot-collector-pipeline-blocked-errors/view)
-- [How to Debug Collector File Permissions Issues on Linux](https://oneuptime.com/blog/post/debug-collector-file-permissions-linux/view)
-- [How to Fix Invalid Configuration Errors in Collector](https://oneuptime.com/blog/post/fix-invalid-configuration-errors-collector/view)
+- [How to Fix Collector Connection Refused on OTLP Ports](https://oneuptime.com/blog/post/2026-02-06-fix-collector-connection-refused-otlp-ports/view)
+- [How to Troubleshoot Collector Pipeline Blocked Errors](https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-pipeline-blocked-errors/view)
+- [How to Debug Collector File Permissions Issues on Linux](https://oneuptime.com/blog/post/2026-02-06-debug-collector-file-permissions-linux/view)
+- [How to Fix Invalid Configuration Errors in Collector](https://oneuptime.com/blog/post/2026-02-06-fix-invalid-configuration-errors-collector/view)
 
 ---
 

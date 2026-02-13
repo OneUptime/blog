@@ -48,7 +48,7 @@ aws batch create-compute-environment \
   --state ENABLED
 ```
 
-For a detailed breakdown of GPU configuration, see our guide on [configuring AWS Batch for GPU workloads](https://oneuptime.com/blog/post/configure-aws-batch-for-gpu-workloads/view).
+For a detailed breakdown of GPU configuration, see our guide on [configuring AWS Batch for GPU workloads](https://oneuptime.com/blog/post/2026-02-12-configure-aws-batch-for-gpu-workloads/view).
 
 ## Step 2: Build a Training Container
 
@@ -278,7 +278,7 @@ response = batch.submit_job(
 print(f"Submitted sweep: {response['jobId']}")
 ```
 
-For more on array jobs, see [using AWS Batch array jobs for parallel processing](https://oneuptime.com/blog/post/use-aws-batch-array-jobs-for-parallel-processing/view).
+For more on array jobs, see [using AWS Batch array jobs for parallel processing](https://oneuptime.com/blog/post/2026-02-12-use-aws-batch-array-jobs-for-parallel-processing/view).
 
 ## Step 6: Aggregate Results
 
@@ -311,7 +311,7 @@ print(df[['model_name', 'learning_rate', 'batch_size', 'val_accuracy', 'train_lo
 
 ML training can get expensive. Here are ways to cut costs with Batch:
 
-- **Use Spot Instances** for hyperparameter sweeps where individual experiments can be restarted. See [using Batch with Spot Instances](https://oneuptime.com/blog/post/use-aws-batch-with-spot-instances-for-cost-savings/view).
+- **Use Spot Instances** for hyperparameter sweeps where individual experiments can be restarted. See [using Batch with Spot Instances](https://oneuptime.com/blog/post/2026-02-12-use-aws-batch-with-spot-instances-for-cost-savings/view).
 - **Right-size GPU instances** - Do not use a p3.8xlarge (4x V100) if your model fits on one GPU.
 - **Set minvCpus to 0** so instances are terminated when no jobs are running.
 - **Use mixed-precision training** (FP16/BF16) to train faster and use less GPU memory, potentially allowing smaller instances.

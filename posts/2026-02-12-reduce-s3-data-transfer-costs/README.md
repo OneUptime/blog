@@ -212,7 +212,7 @@ aws cloudwatch put-metric-alarm \
   --dimensions Name=BucketName,Value=my-bucket Name=FilterId,Value=AllMetrics
 ```
 
-For a comprehensive monitoring approach, consider setting up anomaly detection on your AWS costs. You can learn more about that in our post on [setting up anomaly detection for AWS costs](https://oneuptime.com/blog/post/set-up-anomaly-detection-for-aws-costs/view).
+For a comprehensive monitoring approach, consider setting up anomaly detection on your AWS costs. You can learn more about that in our post on [setting up anomaly detection for AWS costs](https://oneuptime.com/blog/post/2026-02-12-set-up-anomaly-detection-for-aws-costs/view).
 
 ## Audit Your Bucket Access Patterns
 
@@ -249,4 +249,4 @@ Here's a prioritized list of actions, ranked by typical impact:
 
 The biggest mistake teams make is treating S3 data transfer as an unavoidable cost. In reality, with a few targeted changes, you can typically cut these charges by 40-70%. Start with VPC endpoints and CloudFront since they offer the best return on effort, then work through the rest of the list based on your specific usage patterns.
 
-If you're also looking at your broader AWS cost picture, check out our guide on [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/create-a-cost-optimization-strategy-for-aws/view) for a more comprehensive approach.
+If you're also looking at your broader AWS cost picture, check out our guide on [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/2026-02-12-create-a-cost-optimization-strategy-for-aws/view) for a more comprehensive approach.

@@ -302,7 +302,7 @@ print(f"Deleted experiment: {experiment_name}")
 
 ## Integrating with Model Registry
 
-Once you find the best experiment run, promote it to the [Model Registry](https://oneuptime.com/blog/post/sagemaker-model-registry/view) for production tracking.
+Once you find the best experiment run, promote it to the [Model Registry](https://oneuptime.com/blog/post/2026-02-12-sagemaker-model-registry/view) for production tracking.
 
 ```python
 # After identifying the best run, register the model
@@ -334,4 +334,4 @@ if best_model_data:
 
 ## Wrapping Up
 
-Experiment tracking might seem like overhead when you're just trying to get a model working, but it pays off enormously once you have more than a handful of runs to compare. SageMaker Experiments integrates directly into the training workflow, so there's minimal extra effort to log everything. Combined with [SageMaker Debugger](https://oneuptime.com/blog/post/sagemaker-debugger-training-insights/view) for deeper training insights and [automatic model tuning](https://oneuptime.com/blog/post/sagemaker-automatic-model-tuning-hyperparameter-optimization/view) for systematic hyperparameter search, you've got a solid experimentation platform.
+Experiment tracking might seem like overhead when you're just trying to get a model working, but it pays off enormously once you have more than a handful of runs to compare. SageMaker Experiments integrates directly into the training workflow, so there's minimal extra effort to log everything. Combined with [SageMaker Debugger](https://oneuptime.com/blog/post/2026-02-12-sagemaker-debugger-training-insights/view) for deeper training insights and [automatic model tuning](https://oneuptime.com/blog/post/2026-02-12-sagemaker-automatic-model-tuning-hyperparameter-optimization/view) for systematic hyperparameter search, you've got a solid experimentation platform.

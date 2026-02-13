@@ -316,4 +316,4 @@ aws cloudwatch put-metric-alarm \
 
 The Instance Scheduler is one of those rare AWS solutions that pays for itself immediately. The Lambda and DynamoDB costs are negligible - we're talking a few cents per month - while the EC2 savings can be thousands. If you've got non-production instances running around the clock, this should be near the top of your cost optimization list.
 
-For more ways to keep your AWS costs under control, check out how [monitoring your infrastructure](https://oneuptime.com/blog/post/benchmark-ec2-instance-performance/view) can help identify over-provisioned resources.
+For more ways to keep your AWS costs under control, check out how [monitoring your infrastructure](https://oneuptime.com/blog/post/2026-02-12-benchmark-ec2-instance-performance/view) can help identify over-provisioned resources.

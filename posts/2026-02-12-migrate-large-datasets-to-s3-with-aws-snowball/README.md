@@ -316,7 +316,7 @@ Snowball pricing includes:
 
 For a single Snowball 80TB device, expect around $300 for the service fee. Compare this to the cost of provisioning a Direct Connect or paying for months of saturated internet bandwidth.
 
-For monitoring the data once it lands in S3, you can set up [OneUptime](https://oneuptime.com/blog/post/migrate-from-on-premises-to-aws-step-by-step/view) to track access patterns and storage costs from day one.
+For monitoring the data once it lands in S3, you can set up [OneUptime](https://oneuptime.com/blog/post/2026-02-12-migrate-from-on-premises-to-aws-step-by-step/view) to track access patterns and storage costs from day one.
 
 ## Wrapping Up
 

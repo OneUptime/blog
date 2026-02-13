@@ -466,7 +466,7 @@ const styles = StyleSheet.create({
 });
 ```
 
-For more on working with Cognito tokens on the server side, see [decoding and validating Cognito JWT tokens](https://oneuptime.com/blog/post/decode-validate-cognito-jwt-tokens/view). For token lifecycle management, check out [handling Cognito token refresh in applications](https://oneuptime.com/blog/post/cognito-token-refresh-applications/view).
+For more on working with Cognito tokens on the server side, see [decoding and validating Cognito JWT tokens](https://oneuptime.com/blog/post/2026-02-12-decode-validate-cognito-jwt-tokens/view). For token lifecycle management, check out [handling Cognito token refresh in applications](https://oneuptime.com/blog/post/2026-02-12-cognito-token-refresh-applications/view).
 
 ## Wrapping Up
 

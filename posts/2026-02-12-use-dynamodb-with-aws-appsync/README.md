@@ -384,6 +384,6 @@ const subscription = client.graphql({
 
 ## Monitoring Your AppSync API
 
-Don't forget to set up monitoring. AppSync publishes metrics to CloudWatch, and you should watch for errors, latency spikes, and throttling. For a broader monitoring strategy, see our guide on [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/monitor-dynamodb-with-cloudwatch-alarms/view).
+Don't forget to set up monitoring. AppSync publishes metrics to CloudWatch, and you should watch for errors, latency spikes, and throttling. For a broader monitoring strategy, see our guide on [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-monitor-dynamodb-with-cloudwatch-alarms/view).
 
 The combination of AppSync and DynamoDB gives you a serverless, scalable GraphQL API with real-time capabilities and zero server management. Start with the JS resolvers - they're much easier to work with than VTL - and use CDK to keep your infrastructure reproducible.

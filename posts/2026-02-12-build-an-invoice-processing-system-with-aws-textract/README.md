@@ -373,7 +373,7 @@ def handler(event, context):
 
 ## Monitoring Invoice Processing
 
-Accounts payable is a critical business function. If invoices stop processing, vendors do not get paid and relationships suffer. Monitor the pipeline end-to-end: upload-to-extraction time, extraction confidence scores, human review queue depth, and processing success rates. [OneUptime](https://oneuptime.com/blog/post/build-a-resume-cv-parser-with-aws-textract-and-lambda/view) can track the health of each processing stage and alert you to slowdowns.
+Accounts payable is a critical business function. If invoices stop processing, vendors do not get paid and relationships suffer. Monitor the pipeline end-to-end: upload-to-extraction time, extraction confidence scores, human review queue depth, and processing success rates. [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-resume-cv-parser-with-aws-textract-and-lambda/view) can track the health of each processing stage and alert you to slowdowns.
 
 ## Wrapping Up
 

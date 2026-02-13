@@ -340,7 +340,7 @@ Multi-region keys aren't always the right choice:
 - If you need different key material in different regions (for regulatory reasons), use separate keys
 - If you're only doing cross-region backups and can tolerate a brief DR setup time, standard keys with manual re-encryption might be simpler
 
-For managing the key policies on your multi-region keys, see our guide on [KMS key policies](https://oneuptime.com/blog/post/kms-key-policies-access-control/view).
+For managing the key policies on your multi-region keys, see our guide on [KMS key policies](https://oneuptime.com/blog/post/2026-02-12-kms-key-policies-access-control/view).
 
 ## Wrapping Up
 

@@ -343,11 +343,11 @@ aws logs describe-log-groups \
   --region eu-west-1
 ```
 
-For centralized logging strategies, see our post on [debugging Lambda with CloudWatch Logs](https://oneuptime.com/blog/post/debug-lambda-functions-cloudwatch-logs/view).
+For centralized logging strategies, see our post on [debugging Lambda with CloudWatch Logs](https://oneuptime.com/blog/post/2026-02-12-debug-lambda-functions-cloudwatch-logs/view).
 
 ## Lambda@Edge vs. CloudFront Functions
 
-CloudFront Functions are a lighter-weight alternative. Check our dedicated comparison post on [CloudFront Functions vs Lambda@Edge](https://oneuptime.com/blog/post/cloudfront-functions-vs-lambda-edge/view) for a detailed breakdown of when to use which.
+CloudFront Functions are a lighter-weight alternative. Check our dedicated comparison post on [CloudFront Functions vs Lambda@Edge](https://oneuptime.com/blog/post/2026-02-12-cloudfront-functions-vs-lambda-edge/view) for a detailed breakdown of when to use which.
 
 The quick rule: use CloudFront Functions for simple, fast operations (header manipulation, URL rewrites, redirects) and Lambda@Edge for anything more complex (authentication, A/B testing, origin selection).
 

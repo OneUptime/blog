@@ -367,7 +367,7 @@ Insights notifications go to EventBridge, where you can route them to SNS, Lambd
 
 **Review groups when your architecture changes.** New services need to be added to team-based groups. Deprecated services should be removed to keep the groups clean.
 
-For related configuration, check out [X-Ray sampling rules](https://oneuptime.com/blog/post/xray-sampling-rules/view) and [analyzing traces for performance bottlenecks](https://oneuptime.com/blog/post/xray-traces-performance-bottlenecks/view).
+For related configuration, check out [X-Ray sampling rules](https://oneuptime.com/blog/post/2026-02-12-xray-sampling-rules/view) and [analyzing traces for performance bottlenecks](https://oneuptime.com/blog/post/2026-02-12-xray-traces-performance-bottlenecks/view).
 
 ## Wrapping Up
 

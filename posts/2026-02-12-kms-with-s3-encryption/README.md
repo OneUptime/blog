@@ -305,7 +305,7 @@ A few things to keep in mind:
 - **Use regional keys.** If your bucket is in us-east-1, use a key in us-east-1. Cross-region KMS calls add latency.
 - **Consider SSE-S3 for non-sensitive data.** Not everything needs KMS encryption. Use it where you need audit trails and access control.
 
-For more on managing your KMS keys, see our guide on [creating and managing CMKs](https://oneuptime.com/blog/post/create-manage-kms-customer-managed-keys/view). And if you're looking at encryption for other services, check out [KMS with EBS](https://oneuptime.com/blog/post/kms-with-ebs-volume-encryption/view) and [KMS with RDS](https://oneuptime.com/blog/post/kms-with-rds-database-encryption/view).
+For more on managing your KMS keys, see our guide on [creating and managing CMKs](https://oneuptime.com/blog/post/2026-02-12-create-manage-kms-customer-managed-keys/view). And if you're looking at encryption for other services, check out [KMS with EBS](https://oneuptime.com/blog/post/2026-02-12-kms-with-ebs-volume-encryption/view) and [KMS with RDS](https://oneuptime.com/blog/post/2026-02-12-kms-with-rds-database-encryption/view).
 
 ## Wrapping Up
 

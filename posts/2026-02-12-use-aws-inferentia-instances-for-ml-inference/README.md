@@ -258,7 +258,7 @@ Use Inf2 when:
 - You are running large language models
 - You need better support for dynamic input shapes
 
-For a deeper look at Inf2, see our guide on [setting up EC2 Inf2 instances for ML inference](https://oneuptime.com/blog/post/set-up-amazon-ec2-inf2-instances-for-ml-inference/view).
+For a deeper look at Inf2, see our guide on [setting up EC2 Inf2 instances for ML inference](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-ec2-inf2-instances-for-ml-inference/view).
 
 ## Deployment with SageMaker
 

@@ -444,4 +444,4 @@ output "vpc_id" {
 
 Variables are your inputs, locals are your computations, and outputs are your exports. Keep variables focused on what callers need to provide, use locals to keep your resource blocks clean and avoid repetition, and output everything other modules or humans might need. This three-layer pattern scales well from simple configurations to complex multi-module setups.
 
-For more on structuring Terraform projects, see our guides on [Terraform modules](https://oneuptime.com/blog/post/terraform-modules-for-reusable-aws-infrastructure/view) and [dynamic blocks](https://oneuptime.com/blog/post/terraform-dynamic-blocks-for-repeated-configuration/view).
+For more on structuring Terraform projects, see our guides on [Terraform modules](https://oneuptime.com/blog/post/2026-02-12-terraform-modules-for-reusable-aws-infrastructure/view) and [dynamic blocks](https://oneuptime.com/blog/post/2026-02-12-terraform-dynamic-blocks-for-repeated-configuration/view).

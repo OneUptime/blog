@@ -331,4 +331,4 @@ The simulator tells you exactly which policy statement resulted in the allow or 
 
 ## Wrapping Up
 
-Fine-grained S3 access control is about layering the right conditions. Start with the principle of least privilege, add conditions for your security requirements, and use deny policies for hard guardrails. For more on S3 security practices, check out our guide on [S3 bucket ownership controls](https://oneuptime.com/blog/post/s3-bucket-ownership-controls/view). And remember to monitor your policies with a tool like [OneUptime](https://oneuptime.com) to catch misconfigurations before they become security incidents.
+Fine-grained S3 access control is about layering the right conditions. Start with the principle of least privilege, add conditions for your security requirements, and use deny policies for hard guardrails. For more on S3 security practices, check out our guide on [S3 bucket ownership controls](https://oneuptime.com/blog/post/2026-02-12-s3-bucket-ownership-controls/view). And remember to monitor your policies with a tool like [OneUptime](https://oneuptime.com) to catch misconfigurations before they become security incidents.

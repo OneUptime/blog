@@ -215,7 +215,7 @@ aws ecr get-login-password --region us-east-1 | \
 docker pull 111111111111.dkr.ecr.us-east-1.amazonaws.com/my-app:v1.2.3
 ```
 
-This requires both a repository policy in the source account and IAM permissions in your account. See our post on [ECR cross-account image sharing](https://oneuptime.com/blog/post/ecr-cross-account-image-sharing/view) for the full setup.
+This requires both a repository policy in the source account and IAM permissions in your account. See our post on [ECR cross-account image sharing](https://oneuptime.com/blog/post/2026-02-12-ecr-cross-account-image-sharing/view) for the full setup.
 
 ## Troubleshooting Authentication Issues
 
@@ -324,4 +324,4 @@ else
 fi
 ```
 
-Authentication is the gateway to everything else you do with ECR. For development, install the credential helper and never think about it again. For CI/CD, use OIDC federation or IAM roles. And for quick one-off tasks, the CLI command gets the job done. For the next step after authentication, see our post on [pushing Docker images to ECR from CI/CD](https://oneuptime.com/blog/post/push-docker-images-ecr-cicd/view).
+Authentication is the gateway to everything else you do with ECR. For development, install the credential helper and never think about it again. For CI/CD, use OIDC federation or IAM roles. And for quick one-off tasks, the CLI command gets the job done. For the next step after authentication, see our post on [pushing Docker images to ECR from CI/CD](https://oneuptime.com/blog/post/2026-02-12-push-docker-images-ecr-cicd/view).

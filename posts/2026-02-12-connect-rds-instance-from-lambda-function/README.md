@@ -206,7 +206,7 @@ Benefits of RDS Proxy with Lambda:
 - Supports IAM authentication (no database passwords needed)
 - Reduces database CPU from connection overhead
 
-See our detailed guide on [setting up RDS Proxy](https://oneuptime.com/blog/post/setup-rds-proxy-connection-pooling/view) and [using RDS Proxy with Lambda](https://oneuptime.com/blog/post/use-rds-proxy-with-lambda-functions/view).
+See our detailed guide on [setting up RDS Proxy](https://oneuptime.com/blog/post/2026-02-12-setup-rds-proxy-connection-pooling/view) and [using RDS Proxy with Lambda](https://oneuptime.com/blog/post/2026-02-12-use-rds-proxy-with-lambda-functions/view).
 
 Here's a quick setup.
 

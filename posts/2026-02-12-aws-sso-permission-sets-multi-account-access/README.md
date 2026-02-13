@@ -243,7 +243,7 @@ After working with permission sets across large organizations, here are the patt
 
 **Use naming conventions.** Prefix permission sets by team or function: `SRE-AdminAccess`, `Dev-ReadOnly`, `Security-AuditAccess`. This makes them much easier to manage at scale.
 
-**Monitor with CloudTrail.** Every SSO login and role assumption is logged. Set up alerts for unusual access patterns, especially in production accounts. Check out our guide on [cross-account CloudTrail aggregation](https://oneuptime.com/blog/post/cross-account-cloudtrail-aggregation/view) for centralized audit logging.
+**Monitor with CloudTrail.** Every SSO login and role assumption is logged. Set up alerts for unusual access patterns, especially in production accounts. Check out our guide on [cross-account CloudTrail aggregation](https://oneuptime.com/blog/post/2026-02-12-cross-account-cloudtrail-aggregation/view) for centralized audit logging.
 
 ## Troubleshooting
 

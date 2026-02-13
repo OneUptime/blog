@@ -175,7 +175,7 @@ Instead, NIST recommends:
 - No expiration unless there's evidence of compromise
 - Checking passwords against known breached password lists
 
-However, most compliance frameworks (SOC 2, PCI DSS) still require password rotation. So you'll need to balance NIST best practices with your compliance requirements. If you're required to have expiration, set it to 90 days and pair it with MFA enforcement. Check out our guide on [enforcing MFA for IAM users](https://oneuptime.com/blog/post/enable-enforce-mfa-iam-users/view) for the full MFA setup.
+However, most compliance frameworks (SOC 2, PCI DSS) still require password rotation. So you'll need to balance NIST best practices with your compliance requirements. If you're required to have expiration, set it to 90 days and pair it with MFA enforcement. Check out our guide on [enforcing MFA for IAM users](https://oneuptime.com/blog/post/2026-02-12-enable-enforce-mfa-iam-users/view) for the full MFA setup.
 
 ## Monitoring Password Policy Compliance
 
@@ -325,6 +325,6 @@ For most organizations, I'd recommend following the CIS AWS Foundations Benchmar
 
 ## Moving Beyond Passwords
 
-Honestly, the best password policy is one you don't need. If you move to [IAM Identity Center (SSO)](https://oneuptime.com/blog/post/set-up-aws-iam-identity-center-sso/view) with federation from your identity provider, your users authenticate through your corporate IdP. Password policies are managed centrally in Active Directory, Okta, or Google Workspace rather than in each AWS account.
+Honestly, the best password policy is one you don't need. If you move to [IAM Identity Center (SSO)](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-iam-identity-center-sso/view) with federation from your identity provider, your users authenticate through your corporate IdP. Password policies are managed centrally in Active Directory, Okta, or Google Workspace rather than in each AWS account.
 
 That said, you'll always need IAM users for some things - break-glass accounts, service accounts, or small teams without an IdP. For those cases, a strong password policy is essential.

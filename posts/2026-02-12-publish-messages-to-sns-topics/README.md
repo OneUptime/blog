@@ -348,4 +348,4 @@ def publish_with_retry(topic_arn, message, max_retries=3):
     raise Exception(f'Failed to publish after {max_retries} attempts')
 ```
 
-For integrating SNS with CloudWatch alarms for automated alerting, see [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/use-sns-with-cloudwatch-alarms/view). And if you need ordered message delivery, check out [FIFO topics for ordered messaging](https://oneuptime.com/blog/post/use-sns-fifo-topics-for-ordered-messaging/view).
+For integrating SNS with CloudWatch alarms for automated alerting, see [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-use-sns-with-cloudwatch-alarms/view). And if you need ordered message delivery, check out [FIFO topics for ordered messaging](https://oneuptime.com/blog/post/2026-02-12-use-sns-fifo-topics-for-ordered-messaging/view).

@@ -303,4 +303,4 @@ Based on hundreds of reviews, these are the most common high-risk findings and t
 
 The Well-Architected Review isn't about achieving a perfect score - it's about understanding your risks and making intentional decisions about which ones to accept and which to fix. Some findings are quick wins you can address in a day. Others are multi-quarter projects that need planning and investment.
 
-Start with your most critical workload, run the review, and create an improvement plan. Track progress with milestones, and make the review a regular part of your engineering cadence. For more focused resilience assessment, check out our guide on [AWS Resilience Hub](https://oneuptime.com/blog/post/set-up-aws-resilience-hub-for-application-resilience/view).
+Start with your most critical workload, run the review, and create an improvement plan. Track progress with milestones, and make the review a regular part of your engineering cadence. For more focused resilience assessment, check out our guide on [AWS Resilience Hub](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-resilience-hub-for-application-resilience/view).

@@ -339,4 +339,4 @@ When should you use access points instead of bucket policies?
 
 Access points don't replace bucket policies entirely - they complement them. The bucket policy delegates to access points, and each access point has focused, manageable permissions. It's a cleaner architecture that scales as your data sharing needs grow.
 
-For related S3 security topics, check our guides on [bucket policies](https://oneuptime.com/blog/post/set-up-s3-bucket-policies-access-control/view) and [blocking public access](https://oneuptime.com/blog/post/block-public-access-on-s3-buckets/view).
+For related S3 security topics, check our guides on [bucket policies](https://oneuptime.com/blog/post/2026-02-12-set-up-s3-bucket-policies-access-control/view) and [blocking public access](https://oneuptime.com/blog/post/2026-02-12-block-public-access-on-s3-buckets/view).

@@ -787,9 +787,9 @@ groups:
 
 For comprehensive collector troubleshooting:
 
-- [How to Fix Collector Slow Startup in Kubernetes](https://oneuptime.com/blog/post/fix-collector-slow-startup-kubernetes/view)
-- [How to Debug Collector Receiver Connection Drops](https://oneuptime.com/blog/post/debug-collector-receiver-connection-drops/view)
-- [How to Monitor Collector Queue Depth and Backpressure](https://oneuptime.com/blog/post/monitor-collector-queue-depth-backpressure/view)
-- [How to Troubleshoot Multi-Pipeline Routing Issues in the Collector](https://oneuptime.com/blog/post/troubleshoot-multi-pipeline-routing-issues-collector/view)
+- [How to Fix Collector Slow Startup in Kubernetes](https://oneuptime.com/blog/post/2026-02-06-fix-collector-slow-startup-kubernetes/view)
+- [How to Debug Collector Receiver Connection Drops](https://oneuptime.com/blog/post/2026-02-06-debug-collector-receiver-connection-drops/view)
+- [How to Monitor Collector Queue Depth and Backpressure](https://oneuptime.com/blog/post/2026-02-06-monitor-collector-queue-depth-backpressure/view)
+- [How to Troubleshoot Multi-Pipeline Routing Issues in the Collector](https://oneuptime.com/blog/post/2026-02-06-troubleshoot-multi-pipeline-routing-issues-collector/view)
 
 Exporter timeout errors stem from various sources: slow backend processing, network latency, DNS issues, TLS overhead, or resource constraints. By measuring actual export duration, identifying bottlenecks, and configuring appropriate timeouts with retry logic, you can build resilient telemetry pipelines that handle real-world conditions reliably.

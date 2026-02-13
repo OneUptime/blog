@@ -136,7 +136,7 @@ Pay attention to these fio output metrics:
 - **BW (bandwidth)** - Throughput in MB/s or GB/s
 - **lat (latency)** - Average and percentile latencies (p99 matters most)
 
-If you're comparing EBS volume types, check out our guide on [io2 Block Express volumes](https://oneuptime.com/blog/post/io2-block-express-ebs-volumes-high-performance-storage/view) for high-performance storage options.
+If you're comparing EBS volume types, check out our guide on [io2 Block Express volumes](https://oneuptime.com/blog/post/2026-02-12-io2-block-express-ebs-volumes-high-performance-storage/view) for high-performance storage options.
 
 ## Network Benchmarking
 

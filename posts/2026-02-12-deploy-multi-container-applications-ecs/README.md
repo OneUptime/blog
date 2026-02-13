@@ -270,7 +270,7 @@ For service-to-service communication, you have several options:
 3. **ECS Service Connect** - ECS's newer service mesh-like feature
 4. **App Mesh** - Full service mesh with Envoy proxies
 
-For most applications, Cloud Map DNS is sufficient. It's simple, reliable, and doesn't add overhead. See our guide on [ECS Service Connect](https://oneuptime.com/blog/post/ecs-service-connect-service-to-service-communication/view) for the more advanced option.
+For most applications, Cloud Map DNS is sufficient. It's simple, reliable, and doesn't add overhead. See our guide on [ECS Service Connect](https://oneuptime.com/blog/post/2026-02-12-ecs-service-connect-service-to-service-communication/view) for the more advanced option.
 
 ## Managing Configuration Across Services
 
@@ -315,4 +315,4 @@ Use CodePipeline or your CI/CD tool to orchestrate this sequence, with health ch
 
 Multi-container applications on ECS are about choosing the right granularity for your task definitions and the right communication patterns between services. Put tightly coupled containers in the same task, keep independently scalable services separate, and use service discovery to connect everything together.
 
-Start simple - one service with maybe a log router sidecar - and expand as your architecture grows. The patterns covered here scale well from a handful of services to dozens. For infrastructure-as-code approaches to managing these deployments, check out our guides on [ECS with CloudFormation](https://oneuptime.com/blog/post/ecs-with-cloudformation/view) and [ECS with AWS CDK](https://oneuptime.com/blog/post/ecs-with-aws-cdk/view).
+Start simple - one service with maybe a log router sidecar - and expand as your architecture grows. The patterns covered here scale well from a handful of services to dozens. For infrastructure-as-code approaches to managing these deployments, check out our guides on [ECS with CloudFormation](https://oneuptime.com/blog/post/2026-02-12-ecs-with-cloudformation/view) and [ECS with AWS CDK](https://oneuptime.com/blog/post/2026-02-12-ecs-with-aws-cdk/view).

@@ -551,4 +551,4 @@ For monitoring your Kubernetes network health, check out [OneUptime's infrastruc
 
 - [How to Configure CoreDNS](https://oneuptime.com/blog/post/kubernetes-coredns-configuration/view)
 - [How to Set Up Ingress with NGINX](https://oneuptime.com/blog/post/kubernetes-ingress-nginx-controller/view)
-- [How to Implement Network Policies](https://oneuptime.com/blog/post/kubernetes-network-policies-security/view)
+- [How to Implement Network Policies](https://oneuptime.com/blog/post/2026-01-24-kubernetes-network-policies-security/view)

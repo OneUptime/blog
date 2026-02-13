@@ -550,4 +550,4 @@ Implement these best practices for production cache configuration:
 
 Proper CoreDNS cache configuration dramatically improves DNS performance in Kubernetes. By tuning TTL values, implementing negative caching, and enabling prefetching, you reduce latency and server load while maintaining fresh data. Combined with monitoring and alerting, you create a robust DNS infrastructure that scales with your cluster.
 
-For additional DNS optimizations, explore our guides on [CoreDNS autopath plugin](https://oneuptime.com/blog/post/coredns-autopath-plugin-latency/view) and [NodeLocal DNSCache](https://oneuptime.com/blog/post/nodelocal-dnscache-improve-latency/view).
+For additional DNS optimizations, explore our guides on [CoreDNS autopath plugin](https://oneuptime.com/blog/post/2026-02-09-coredns-autopath-plugin-latency/view) and [NodeLocal DNSCache](https://oneuptime.com/blog/post/2026-02-09-nodelocal-dnscache-improve-latency/view).

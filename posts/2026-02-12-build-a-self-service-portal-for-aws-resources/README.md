@@ -376,7 +376,7 @@ def handler(event, context):
 
 ## Monitoring and Audit
 
-Track everything. Every provisioning request, approval, and teardown should be logged. For operational monitoring of the portal itself - uptime, API response times, Lambda error rates - you can integrate with [OneUptime](https://oneuptime.com/blog/post/build-a-cost-dashboard-for-aws-multi-account/view) to make sure developers always have access to the portal when they need it.
+Track everything. Every provisioning request, approval, and teardown should be logged. For operational monitoring of the portal itself - uptime, API response times, Lambda error rates - you can integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-cost-dashboard-for-aws-multi-account/view) to make sure developers always have access to the portal when they need it.
 
 CloudTrail will capture all Service Catalog API calls, giving you a full audit trail of who provisioned what and when.
 

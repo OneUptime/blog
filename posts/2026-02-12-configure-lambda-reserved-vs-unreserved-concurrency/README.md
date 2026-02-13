@@ -211,7 +211,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts
 ```
 
-For a full monitoring dashboard setup, see our guide on [setting up Amazon Managed Grafana](https://oneuptime.com/blog/post/set-up-amazon-managed-grafana/view).
+For a full monitoring dashboard setup, see our guide on [setting up Amazon Managed Grafana](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-managed-grafana/view).
 
 ## Common Mistakes
 

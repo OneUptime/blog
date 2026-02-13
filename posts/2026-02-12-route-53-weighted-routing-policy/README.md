@@ -144,7 +144,7 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
-For more details on setting up health checks, see https://oneuptime.com/blog/post/route-53-health-checks/view.
+For more details on setting up health checks, see https://oneuptime.com/blog/post/2026-02-12-route-53-health-checks/view.
 
 ## Sending All Traffic to One Endpoint
 

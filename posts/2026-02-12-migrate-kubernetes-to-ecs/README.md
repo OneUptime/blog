@@ -298,7 +298,7 @@ aws servicediscovery create-private-dns-namespace \
   --vpc vpc-abc123
 ```
 
-For more on ECS service discovery, see our guide on [ECS Service Discovery with Cloud Map](https://oneuptime.com/blog/post/ecs-service-discovery-cloud-map/view).
+For more on ECS service discovery, see our guide on [ECS Service Discovery with Cloud Map](https://oneuptime.com/blog/post/2026-02-12-ecs-service-discovery-cloud-map/view).
 
 ### Phase 4: Parallel Run and Cutover
 
@@ -326,4 +326,4 @@ Some Kubernetes features do not have direct ECS equivalents:
 
 Migrating from Kubernetes to ECS is primarily a concept-mapping exercise. Most Kubernetes resources have clear ECS equivalents, and the migration can be done incrementally, service by service. The biggest win is the reduction in operational overhead - no more cluster upgrades, etcd maintenance, or control plane debugging. Start with a non-critical service, prove the pattern, then migrate the rest.
 
-For more on ECS fundamentals, see our guides on [creating your first ECS cluster](https://oneuptime.com/blog/post/first-ecs-cluster/view) and [ECS task definitions](https://oneuptime.com/blog/post/ecs-task-definition/view).
+For more on ECS fundamentals, see our guides on [creating your first ECS cluster](https://oneuptime.com/blog/post/2026-02-12-first-ecs-cluster/view) and [ECS task definitions](https://oneuptime.com/blog/post/2026-02-12-ecs-task-definition/view).

@@ -716,6 +716,6 @@ The combination of GCE SD with proper relabeling transforms Prometheus from a st
 
 **Related Reading:**
 
-- [SRE Metrics to Track](https://oneuptime.com/blog/post/sre-metrics-to-track/view)
-- [Monitoring vs Observability in SRE](https://oneuptime.com/blog/post/monitoring-vs-observability-sre/view)
-- [What is OpenTelemetry Collector and Why Use One](https://oneuptime.com/blog/post/what-is-opentelemetry-collector-and-why-use-one/view)
+- [SRE Metrics to Track](https://oneuptime.com/blog/post/2025-11-28-sre-metrics-to-track/view)
+- [Monitoring vs Observability in SRE](https://oneuptime.com/blog/post/2025-11-28-monitoring-vs-observability-sre/view)
+- [What is OpenTelemetry Collector and Why Use One](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)

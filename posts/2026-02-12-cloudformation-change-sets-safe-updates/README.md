@@ -310,4 +310,4 @@ echo "To cancel:  aws cloudformation delete-change-set --stack-name $STACK_NAME 
 
 **Clean up old change sets.** Unexecuted change sets stick around. Delete them when you're done to keep things tidy.
 
-Change sets are one of the most important CloudFormation features for production safety. Combined with [drift detection](https://oneuptime.com/blog/post/detect-fix-cloudformation-drift/view) and [update rollback handling](https://oneuptime.com/blog/post/cloudformation-stack-update-rollbacks/view), they give you a solid safety net for infrastructure updates.
+Change sets are one of the most important CloudFormation features for production safety. Combined with [drift detection](https://oneuptime.com/blog/post/2026-02-12-detect-fix-cloudformation-drift/view) and [update rollback handling](https://oneuptime.com/blog/post/2026-02-12-cloudformation-stack-update-rollbacks/view), they give you a solid safety net for infrastructure updates.

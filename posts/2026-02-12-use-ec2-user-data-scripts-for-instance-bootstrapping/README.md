@@ -291,7 +291,7 @@ Verify the user data was received correctly:
 curl http://169.254.169.254/latest/user-data
 ```
 
-For more on instance metadata, see our guide on [accessing EC2 instance metadata](https://oneuptime.com/blog/post/access-ec2-instance-metadata-from-within-instance/view).
+For more on instance metadata, see our guide on [accessing EC2 instance metadata](https://oneuptime.com/blog/post/2026-02-12-access-ec2-instance-metadata-from-within-instance/view).
 
 ### View from the Console
 
@@ -338,7 +338,7 @@ chmod +x /var/lib/cloud/scripts/per-boot/my-script.sh
 
 ## User Data in Launch Templates
 
-For Auto Scaling groups, put your user data in a [launch template](https://oneuptime.com/blog/post/use-launch-templates-for-ec2-instances/view). This way, every instance launched by the ASG gets the same bootstrapping:
+For Auto Scaling groups, put your user data in a [launch template](https://oneuptime.com/blog/post/2026-02-12-use-launch-templates-for-ec2-instances/view). This way, every instance launched by the ASG gets the same bootstrapping:
 
 ```bash
 # Create a launch template with user data

@@ -936,7 +936,7 @@ exporters:
   - gomod: go.opentelemetry.io/collector/exporter/loggingexporter v0.95.0
 ```
 
-For details on building custom distributions, see https://oneuptime.com/blog/post/build-custom-opentelemetry-collector-distribution-ocb/view.
+For details on building custom distributions, see https://oneuptime.com/blog/post/2026-02-06-build-custom-opentelemetry-collector-distribution-ocb/view.
 
 ## Configure the Collector
 
@@ -1113,6 +1113,6 @@ Investigate:
 Building custom exporters for the OpenTelemetry Collector enables you to send telemetry data to any backend system or storage service. By implementing the exporter interface and using the exporterhelper utilities, you can create production-ready exporters with built-in retry logic, queueing, and timeout handling. Combined with custom receivers, processors, and extensions, custom exporters complete your telemetry pipeline customization.
 
 For related topics, see:
-- https://oneuptime.com/blog/post/build-custom-receiver-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/build-custom-processor-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/build-custom-extension-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-processor-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-extension-opentelemetry-collector/view

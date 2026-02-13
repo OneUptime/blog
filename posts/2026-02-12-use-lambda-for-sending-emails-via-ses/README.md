@@ -362,7 +362,7 @@ async function sendWithRetry(command, maxRetries = 3) {
 }
 ```
 
-For more on error handling patterns, see our post on [handling errors in Lambda functions gracefully](https://oneuptime.com/blog/post/handle-errors-in-lambda-functions-gracefully/view).
+For more on error handling patterns, see our post on [handling errors in Lambda functions gracefully](https://oneuptime.com/blog/post/2026-02-12-handle-errors-in-lambda-functions-gracefully/view).
 
 ## Wrapping Up
 

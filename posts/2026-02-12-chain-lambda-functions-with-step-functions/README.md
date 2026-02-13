@@ -355,7 +355,7 @@ aws stepfunctions list-executions \
   --max-results 10
 ```
 
-For deeper Lambda monitoring within these workflows, check out [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/monitor-lambda-function-performance-with-cloudwatch/view).
+For deeper Lambda monitoring within these workflows, check out [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-lambda-function-performance-with-cloudwatch/view).
 
 ## Wrapping Up
 

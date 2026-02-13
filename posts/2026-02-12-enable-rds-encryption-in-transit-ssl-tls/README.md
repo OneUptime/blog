@@ -247,6 +247,6 @@ Using connection pooling significantly reduces the impact since the TLS handshak
 
 Keep an eye on your connections to make sure everything is encrypted. For PostgreSQL, you can query `pg_stat_ssl` to see which connections are using SSL and which aren't. For MySQL, check `performance_schema` or the `SHOW STATUS` output.
 
-For broader monitoring of your RDS instances, including connection metrics and performance, check out our guide on [monitoring RDS with Performance Insights](https://oneuptime.com/blog/post/monitor-rds-with-performance-insights/view).
+For broader monitoring of your RDS instances, including connection metrics and performance, check out our guide on [monitoring RDS with Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view).
 
 Enabling SSL/TLS on RDS is one of those things that's relatively easy to set up but easy to forget about. Make it part of your standard database provisioning process, enforce it at the parameter group level, and test that unencrypted connections are actually blocked. Your security team will thank you.

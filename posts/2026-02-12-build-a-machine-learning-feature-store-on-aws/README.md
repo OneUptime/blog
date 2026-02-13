@@ -382,7 +382,7 @@ Monitor these metrics:
 - Feature computation pipeline success rate
 - Data quality (null rates, distribution drift)
 
-For comprehensive monitoring, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/build-a-metrics-collection-system-on-aws/view).
+For comprehensive monitoring, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-metrics-collection-system-on-aws/view).
 
 ## Cost Optimization
 

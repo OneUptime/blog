@@ -271,7 +271,7 @@ A few things that catch people off guard:
 3. **Not enabling key rotation.** Automatic rotation is free and creates new key material annually while keeping old material for decryption.
 4. **Ignoring cross-account access.** If other accounts need your key, you must add them to both the key policy and set up IAM policies in their account.
 
-For more on key rotation, check out our guide on [enabling KMS key rotation](https://oneuptime.com/blog/post/enable-kms-key-rotation/view). And if you're using KMS with specific services, we've got guides for [S3 encryption](https://oneuptime.com/blog/post/kms-with-s3-encryption/view), [EBS encryption](https://oneuptime.com/blog/post/kms-with-ebs-volume-encryption/view), and [RDS encryption](https://oneuptime.com/blog/post/kms-with-rds-database-encryption/view).
+For more on key rotation, check out our guide on [enabling KMS key rotation](https://oneuptime.com/blog/post/2026-02-12-enable-kms-key-rotation/view). And if you're using KMS with specific services, we've got guides for [S3 encryption](https://oneuptime.com/blog/post/2026-02-12-kms-with-s3-encryption/view), [EBS encryption](https://oneuptime.com/blog/post/2026-02-12-kms-with-ebs-volume-encryption/view), and [RDS encryption](https://oneuptime.com/blog/post/2026-02-12-kms-with-rds-database-encryption/view).
 
 ## Wrapping Up
 

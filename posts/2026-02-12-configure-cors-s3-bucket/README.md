@@ -142,7 +142,7 @@ If you're using presigned POST or presigned PUT URLs for direct uploads from the
 ]
 ```
 
-For details on presigned uploads, check out our posts on [presigned URLs](https://oneuptime.com/blog/post/generate-presigned-urls-temporary-s3-access/view) and [presigned POST requests](https://oneuptime.com/blog/post/generate-presigned-post-requests-s3-uploads/view).
+For details on presigned uploads, check out our posts on [presigned URLs](https://oneuptime.com/blog/post/2026-02-12-generate-presigned-urls-temporary-s3-access/view) and [presigned POST requests](https://oneuptime.com/blog/post/2026-02-12-generate-presigned-post-requests-s3-uploads/view).
 
 ## Step 4: CORS for Development
 

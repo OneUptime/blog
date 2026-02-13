@@ -205,7 +205,7 @@ aws s3 cp logs-2025-01.tar.gz \
 
 4. **Use Glacier Instant Retrieval for data accessed roughly once per quarter.** It's cheaper than Standard-IA and gives millisecond access.
 
-5. **Consider S3 Intelligent-Tiering** if your access patterns are unpredictable. It automatically moves data between tiers. See our guide on [S3 Intelligent-Tiering](https://oneuptime.com/blog/post/s3-intelligent-tiering-optimize-storage-costs/view).
+5. **Consider S3 Intelligent-Tiering** if your access patterns are unpredictable. It automatically moves data between tiers. See our guide on [S3 Intelligent-Tiering](https://oneuptime.com/blog/post/2026-02-12-s3-intelligent-tiering-optimize-storage-costs/view).
 
 ## Verifying Object Storage Class
 
@@ -229,7 +229,7 @@ aws s3api list-objects-v2 \
 
 Objects in Glacier Flexible Retrieval and Deep Archive can't be accessed directly - you need to initiate a restore first. The object stays in Glacier but a temporary copy is made available in Standard storage.
 
-For a complete guide on restoring objects, see our post on [restoring objects from S3 Glacier and Glacier Deep Archive](https://oneuptime.com/blog/post/restore-objects-s3-glacier-deep-archive/view).
+For a complete guide on restoring objects, see our post on [restoring objects from S3 Glacier and Glacier Deep Archive](https://oneuptime.com/blog/post/2026-02-12-restore-objects-s3-glacier-deep-archive/view).
 
 Quick restore example:
 
@@ -249,7 +249,7 @@ If you're using Glacier for regulatory compliance, combine it with:
 - **S3 Versioning** to maintain a complete history of changes
 - **S3 Access Logging** to create an audit trail
 
-For details on Object Lock, see our guide on [configuring S3 Object Lock for WORM compliance](https://oneuptime.com/blog/post/configure-s3-object-lock-worm-compliance/view).
+For details on Object Lock, see our guide on [configuring S3 Object Lock for WORM compliance](https://oneuptime.com/blog/post/2026-02-12-configure-s3-object-lock-worm-compliance/view).
 
 ## Wrapping Up
 

@@ -280,7 +280,7 @@ new cdk.CfnOutput(this, 'AlertTopicArn', {
 });
 ```
 
-For a deeper dive into how these topics integrate with monitoring, see our guide on [creating CloudWatch alarms with CDK](https://oneuptime.com/blog/post/cloudwatch-alarms-cdk/view). And if you're building queue-based architectures, check out [creating SQS queues with CDK](https://oneuptime.com/blog/post/sqs-queues-cdk/view).
+For a deeper dive into how these topics integrate with monitoring, see our guide on [creating CloudWatch alarms with CDK](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-cdk/view). And if you're building queue-based architectures, check out [creating SQS queues with CDK](https://oneuptime.com/blog/post/2026-02-12-sqs-queues-cdk/view).
 
 ## Wrapping Up
 

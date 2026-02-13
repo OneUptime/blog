@@ -176,7 +176,7 @@ nslookup kubernetes.default.svc.cluster.local
 kubectl get pods -n kube-system -l k8s-app=kube-dns
 ```
 
-For [DNS resolution troubleshooting](https://oneuptime.com/blog/post/troubleshoot-eks-dns-resolution-issues/view), we have a dedicated guide.
+For [DNS resolution troubleshooting](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-eks-dns-resolution-issues/view), we have a dedicated guide.
 
 ## Step 6: Check the Container Runtime
 
@@ -197,7 +197,7 @@ sudo crictl ps
 
 ### Scenario: Node NotReady After Cluster Upgrade
 
-After [upgrading your cluster](https://oneuptime.com/blog/post/upgrade-eks-cluster-versions/view), nodes running the old AMI might have compatibility issues.
+After [upgrading your cluster](https://oneuptime.com/blog/post/2026-02-12-upgrade-eks-cluster-versions/view), nodes running the old AMI might have compatibility issues.
 
 ```bash
 # Check the node's kubelet version vs. cluster version

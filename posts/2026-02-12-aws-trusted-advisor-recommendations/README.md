@@ -188,7 +188,7 @@ aws events put-rule \
   }'
 ```
 
-Route these to SNS, Lambda, or Systems Manager OpsCenter for tracking. If you're using OpsCenter, you can automatically create OpsItems from Trusted Advisor findings - see our post on [OpsCenter for operational issues](https://oneuptime.com/blog/post/systems-manager-opscenter-operational-issues/view).
+Route these to SNS, Lambda, or Systems Manager OpsCenter for tracking. If you're using OpsCenter, you can automatically create OpsItems from Trusted Advisor findings - see our post on [OpsCenter for operational issues](https://oneuptime.com/blog/post/2026-02-12-systems-manager-opscenter-operational-issues/view).
 
 ## Setting Up Weekly Reports
 

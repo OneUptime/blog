@@ -197,7 +197,7 @@ aws ssm update-ops-item \
   }]'
 ```
 
-For a deeper dive on building automation runbooks that pair well with OpsCenter, see our post on [Systems Manager Automation for runbooks](https://oneuptime.com/blog/post/systems-manager-automation-runbooks/view).
+For a deeper dive on building automation runbooks that pair well with OpsCenter, see our post on [Systems Manager Automation for runbooks](https://oneuptime.com/blog/post/2026-02-12-systems-manager-automation-runbooks/view).
 
 ## Using OpsCenter with Explorer
 

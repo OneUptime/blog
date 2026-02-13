@@ -398,4 +398,4 @@ sam deploy --guided
 - **Enable HTTPS.** Use ACM (AWS Certificate Manager) for free SSL certificates with ALB or CloudFront.
 - **Monitor your application.** Set up CloudWatch alarms for error rates, latency, and resource utilization.
 
-For monitoring your deployed Express app, having proper observability in place is critical. Check out the OneUptime blog for more on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/manage-ec2-instances-boto3/view). And if you're deploying a Django app instead, see the [Django deployment guide](https://oneuptime.com/blog/post/deploy-django-app-aws/view).
+For monitoring your deployed Express app, having proper observability in place is critical. Check out the OneUptime blog for more on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-12-manage-ec2-instances-boto3/view). And if you're deploying a Django app instead, see the [Django deployment guide](https://oneuptime.com/blog/post/2026-02-12-deploy-django-app-aws/view).

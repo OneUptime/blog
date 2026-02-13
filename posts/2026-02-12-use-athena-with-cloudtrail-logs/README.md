@@ -354,9 +354,9 @@ CloudTrail logs can get large. A busy account might generate gigabytes of log da
 1. **Always filter on partition columns** (account, region, year, month, day)
 2. **Filter on eventSource and eventName early** to narrow results
 3. **Use LIMIT** when exploring data
-4. **Consider converting to Parquet** for frequently queried log data (see [optimizing with column formats](https://oneuptime.com/blog/post/optimize-athena-queries-with-column-formats-parquet-orc/view))
+4. **Consider converting to Parquet** for frequently queried log data (see [optimizing with column formats](https://oneuptime.com/blog/post/2026-02-12-optimize-athena-queries-with-column-formats-parquet-orc/view))
 
-For even better cost management on Athena, check our dedicated guide on [reducing Athena query costs](https://oneuptime.com/blog/post/reduce-athena-query-costs/view).
+For even better cost management on Athena, check our dedicated guide on [reducing Athena query costs](https://oneuptime.com/blog/post/2026-02-12-reduce-athena-query-costs/view).
 
 ## Automating Security Queries
 
@@ -402,4 +402,4 @@ Combine this with a Lambda function triggered by a CloudWatch Events schedule fo
 
 Athena and CloudTrail together give you a powerful security and audit tool. The key is using partition projection so you never have to manage partitions manually, and always filtering on date partitions to control query costs. Build a library of your most-used queries and automate the critical ones for continuous security monitoring.
 
-For comprehensive operational monitoring beyond log analysis, check out [Amazon DevOps Guru for operational insights](https://oneuptime.com/blog/post/use-amazon-devops-guru-for-operational-insights/view).
+For comprehensive operational monitoring beyond log analysis, check out [Amazon DevOps Guru for operational insights](https://oneuptime.com/blog/post/2026-02-12-use-amazon-devops-guru-for-operational-insights/view).

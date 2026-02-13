@@ -303,7 +303,7 @@ For better performance:
 
 ## When to Use Athena Instead
 
-CloudWatch Logs Insights is great for ad-hoc queries and recent data. But if you need to analyze months of historical data or run very complex queries, consider using Athena with flow logs stored in S3. See our guide on [analyzing VPC Flow Logs with Athena](https://oneuptime.com/blog/post/analyze-vpc-flow-logs-athena/view) for that approach.
+CloudWatch Logs Insights is great for ad-hoc queries and recent data. But if you need to analyze months of historical data or run very complex queries, consider using Athena with flow logs stored in S3. See our guide on [analyzing VPC Flow Logs with Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-vpc-flow-logs-athena/view) for that approach.
 
 ## Wrapping Up
 

@@ -1524,5 +1524,5 @@ By implementing robust rate limiting, you protect your infrastructure, provide a
 *Need to monitor your rate limiting in production? [OneUptime](https://oneuptime.com) provides comprehensive API monitoring with alerting for rate limit spikes and anomalies.*
 
 **Related Reading:**
-- [How to Build REST APIs with Express.js](https://oneuptime.com/blog/post/create-rest-apis-expressjs)
-- [How to Implement Rate Limiting in FastAPI](https://oneuptime.com/blog/post/fastapi-rate-limiting)
+- [How to Build REST APIs with Express.js](https://oneuptime.com/blog/post/2026-01-25-create-rest-apis-expressjs)
+- [How to Implement Rate Limiting in FastAPI](https://oneuptime.com/blog/post/2025-01-06-fastapi-rate-limiting)

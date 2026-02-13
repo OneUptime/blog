@@ -44,7 +44,7 @@ resource "aws_iam_role_policy_attachment" "lambda_logs" {
 }
 ```
 
-For more on IAM roles and policies, check out our guide on [creating IAM roles with Terraform](https://oneuptime.com/blog/post/create-iam-roles-policies-with-terraform/view).
+For more on IAM roles and policies, check out our guide on [creating IAM roles with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-iam-roles-policies-with-terraform/view).
 
 ## Packaging Your Code
 
@@ -146,7 +146,7 @@ resource "aws_lambda_function" "with_secrets" {
 }
 ```
 
-For managing secrets properly, see our post on [creating Secrets Manager secrets with Terraform](https://oneuptime.com/blog/post/create-secrets-manager-secrets-with-terraform/view).
+For managing secrets properly, see our post on [creating Secrets Manager secrets with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-secrets-manager-secrets-with-terraform/view).
 
 ## Lambda Layers
 

@@ -421,7 +421,7 @@ def validate_config(config):
 
 ## Monitoring Configuration Health
 
-Configuration errors are some of the hardest bugs to track down. Monitor for missing parameters, expired secrets, and config drift between environments. Use [OneUptime](https://oneuptime.com/blog/post/build-a-feature-flag-system-with-aws-appconfig/view) alongside CloudWatch to get alerts when configuration changes cause unexpected behavior in your applications.
+Configuration errors are some of the hardest bugs to track down. Monitor for missing parameters, expired secrets, and config drift between environments. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-feature-flag-system-with-aws-appconfig/view) alongside CloudWatch to get alerts when configuration changes cause unexpected behavior in your applications.
 
 ## Wrapping Up
 

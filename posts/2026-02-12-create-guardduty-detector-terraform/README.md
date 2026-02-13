@@ -344,7 +344,7 @@ resource "aws_lambda_permission" "allow_eventbridge" {
 }
 ```
 
-For setting up the notification pipeline using EventBridge, see our guide on [EventBridge rules with Terraform](https://oneuptime.com/blog/post/create-eventbridge-rules-terraform/view).
+For setting up the notification pipeline using EventBridge, see our guide on [EventBridge rules with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-eventbridge-rules-terraform/view).
 
 ## Cost Considerations
 

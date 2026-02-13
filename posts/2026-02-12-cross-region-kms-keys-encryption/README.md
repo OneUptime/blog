@@ -371,4 +371,4 @@ This is crucial for disaster recovery scenarios.
 
 **Monitor across regions.** Track encryption and decryption operations in every region. Feed metrics into [OneUptime](https://oneuptime.com) for a unified view of your encryption operations.
 
-For hardware-backed key management, check out our guide on [CloudHSM](https://oneuptime.com/blog/post/cloudhsm-hardware-key-management/view). And for securing data in transit, see our post on [TLS 1.3 on AWS Load Balancers](https://oneuptime.com/blog/post/configure-tls-1-3-aws-load-balancers/view).
+For hardware-backed key management, check out our guide on [CloudHSM](https://oneuptime.com/blog/post/2026-02-12-cloudhsm-hardware-key-management/view). And for securing data in transit, see our post on [TLS 1.3 on AWS Load Balancers](https://oneuptime.com/blog/post/2026-02-12-configure-tls-1-3-aws-load-balancers/view).

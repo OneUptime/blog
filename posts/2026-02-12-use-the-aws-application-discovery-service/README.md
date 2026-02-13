@@ -293,7 +293,7 @@ for server in response['configurations']:
 Discovery Service data flows automatically into Migration Hub when both are configured in the same home region. You can then use Migration Hub to:
 
 - Group servers into application groups
-- Get strategy recommendations (see our guide on [strategy recommendations](https://oneuptime.com/blog/post/assess-your-applications-with-aws-migration-hub-strategy-recommendations/view))
+- Get strategy recommendations (see our guide on [strategy recommendations](https://oneuptime.com/blog/post/2026-02-12-assess-your-applications-with-aws-migration-hub-strategy-recommendations/view))
 - Track migration progress
 
 ## Data Retention and Privacy

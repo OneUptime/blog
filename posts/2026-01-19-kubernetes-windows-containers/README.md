@@ -746,6 +746,6 @@ For monitoring your Windows workloads in Kubernetes, check out [OneUptime's cont
 
 ## Related Resources
 
-- [How to Configure Node Affinity](https://oneuptime.com/blog/post/kubernetes-node-affinity-anti-affinity/view)
-- [How to Configure Taints and Tolerations](https://oneuptime.com/blog/post/kubernetes-taints-tolerations-scheduling/view)
-- [How to Set Up Prometheus Monitoring](https://oneuptime.com/blog/post/kubernetes-prometheus-servicemonitor/view)
+- [How to Configure Node Affinity](https://oneuptime.com/blog/post/2026-01-19-kubernetes-node-affinity-anti-affinity/view)
+- [How to Configure Taints and Tolerations](https://oneuptime.com/blog/post/2026-01-19-kubernetes-taints-tolerations-scheduling/view)
+- [How to Set Up Prometheus Monitoring](https://oneuptime.com/blog/post/2026-01-19-kubernetes-prometheus-servicemonitor/view)

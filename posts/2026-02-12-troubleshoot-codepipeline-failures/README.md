@@ -162,7 +162,7 @@ aws deploy get-deployment \
   --query 'deploymentInfo.{status:status,error:errorInformation}'
 ```
 
-For detailed CodeDeploy debugging, see our guide on [handling CodeDeploy deployment failures](https://oneuptime.com/blog/post/codedeploy-deployment-failures/view).
+For detailed CodeDeploy debugging, see our guide on [handling CodeDeploy deployment failures](https://oneuptime.com/blog/post/2026-02-12-codedeploy-deployment-failures/view).
 
 ### CloudFormation Failures
 
@@ -207,7 +207,7 @@ aws ecs list-tasks \
 
 Approvals time out after 7 days by default. If your pipeline keeps timing out:
 
-1. Set up proper notifications so approvers know when action is needed (see our guide on [CodePipeline notifications](https://oneuptime.com/blog/post/codepipeline-notifications/view))
+1. Set up proper notifications so approvers know when action is needed (see our guide on [CodePipeline notifications](https://oneuptime.com/blog/post/2026-02-12-codepipeline-notifications/view))
 2. Consider whether you really need the approval gate
 3. Automate approval for non-production environments
 
@@ -279,8 +279,8 @@ aws codepipeline retry-stage-execution \
 
 The best debugging is the debugging you don't have to do:
 
-- Set up [pipeline notifications](https://oneuptime.com/blog/post/codepipeline-notifications/view) so you catch failures immediately
-- Use [manual approvals](https://oneuptime.com/blog/post/codepipeline-manual-approval/view) before production
+- Set up [pipeline notifications](https://oneuptime.com/blog/post/2026-02-12-codepipeline-notifications/view) so you catch failures immediately
+- Use [manual approvals](https://oneuptime.com/blog/post/2026-02-12-codepipeline-manual-approval/view) before production
 - Monitor your pipeline's success rate over time
 - Use [OneUptime](https://oneuptime.com) to correlate pipeline events with application health, so you know when a deployment caused a problem
 

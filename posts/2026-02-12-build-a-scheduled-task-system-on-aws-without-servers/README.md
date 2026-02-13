@@ -388,7 +388,7 @@ def publish_task_metric(task_type, status, duration):
     )
 ```
 
-For a centralized view of all your scheduled tasks - whether they ran, how long they took, and whether they succeeded - consider using [OneUptime](https://oneuptime.com/blog/post/build-a-dead-letter-queue-processing-system-on-aws/view) to set up uptime monitors and alerting for your critical background jobs.
+For a centralized view of all your scheduled tasks - whether they ran, how long they took, and whether they succeeded - consider using [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-dead-letter-queue-processing-system-on-aws/view) to set up uptime monitors and alerting for your critical background jobs.
 
 ## Wrapping Up
 

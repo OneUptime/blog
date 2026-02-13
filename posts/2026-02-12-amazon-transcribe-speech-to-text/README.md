@@ -402,6 +402,6 @@ transcript = pipeline.process(
 )
 ```
 
-For meeting-specific transcription with features like action item detection, see our guide on [Amazon Transcribe for meeting transcription](https://oneuptime.com/blog/post/amazon-transcribe-meeting-transcription/view). For healthcare applications with medical terminology support, check out [Amazon Transcribe Medical](https://oneuptime.com/blog/post/amazon-transcribe-medical-healthcare/view).
+For meeting-specific transcription with features like action item detection, see our guide on [Amazon Transcribe for meeting transcription](https://oneuptime.com/blog/post/2026-02-12-amazon-transcribe-meeting-transcription/view). For healthcare applications with medical terminology support, check out [Amazon Transcribe Medical](https://oneuptime.com/blog/post/2026-02-12-amazon-transcribe-medical-healthcare/view).
 
 Amazon Transcribe handles the most common speech-to-text needs well out of the box, and custom vocabularies fill in the gaps for domain-specific terminology. Start with batch transcription to validate quality, then move to streaming when you need real-time results.

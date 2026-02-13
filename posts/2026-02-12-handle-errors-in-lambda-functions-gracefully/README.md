@@ -163,7 +163,7 @@ const data = await withRetry(
 );
 ```
 
-For a deep dive on retry patterns, check out our post on [implementing retry logic in Lambda functions](https://oneuptime.com/blog/post/implement-retry-logic-in-lambda-functions/view).
+For a deep dive on retry patterns, check out our post on [implementing retry logic in Lambda functions](https://oneuptime.com/blog/post/2026-02-12-implement-retry-logic-in-lambda-functions/view).
 
 ## Dead Letter Queues
 

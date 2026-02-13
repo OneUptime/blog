@@ -367,4 +367,4 @@ aws lambda update-function-configuration \
 
 Lambda gives you unlimited flexibility for processing IoT messages. Use it when you need custom logic that goes beyond simple store-and-forward. Design your Lambda functions to be fast, idempotent, and error-tolerant. Always configure error actions on your rules and DLQs on your functions so no messages get silently dropped.
 
-For simpler routing patterns, see our guides on [routing messages to S3](https://oneuptime.com/blog/post/iot-core-rules-engine-route-messages-s3/view) and [routing messages to DynamoDB](https://oneuptime.com/blog/post/iot-core-rules-engine-route-messages-dynamodb/view).
+For simpler routing patterns, see our guides on [routing messages to S3](https://oneuptime.com/blog/post/2026-02-12-iot-core-rules-engine-route-messages-s3/view) and [routing messages to DynamoDB](https://oneuptime.com/blog/post/2026-02-12-iot-core-rules-engine-route-messages-dynamodb/view).

@@ -14,7 +14,7 @@ This guide covers everything from spinning up a cluster to optimizing your queri
 
 ## Provisioned vs. Serverless
 
-Redshift comes in two flavors. **Provisioned clusters** give you dedicated compute nodes that you manage and pay for by the hour. **Redshift Serverless** automatically provisions and scales compute for you, and you pay per query. If you're just getting started or have unpredictable workloads, [Redshift Serverless](https://oneuptime.com/blog/post/redshift-serverless/view) is the easier path. For predictable, heavy workloads, provisioned clusters are more cost-effective.
+Redshift comes in two flavors. **Provisioned clusters** give you dedicated compute nodes that you manage and pay for by the hour. **Redshift Serverless** automatically provisions and scales compute for you, and you pay per query. If you're just getting started or have unpredictable workloads, [Redshift Serverless](https://oneuptime.com/blog/post/2026-02-12-redshift-serverless/view) is the easier path. For predictable, heavy workloads, provisioned clusters are more cost-effective.
 
 We'll focus on provisioned clusters here, but most of the SQL and design concepts apply to both.
 
@@ -208,7 +208,7 @@ SORTKEY (order_date);
 
 ## Loading Data
 
-The most efficient way to load data into Redshift is from S3 using the COPY command. For a detailed walkthrough, check out our [guide to loading data from S3](https://oneuptime.com/blog/post/load-data-redshift-s3/view).
+The most efficient way to load data into Redshift is from S3 using the COPY command. For a detailed walkthrough, check out our [guide to loading data from S3](https://oneuptime.com/blog/post/2026-02-12-load-data-redshift-s3/view).
 
 ```sql
 -- Load data from compressed CSV files in S3

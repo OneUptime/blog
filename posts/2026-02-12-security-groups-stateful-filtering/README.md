@@ -254,6 +254,6 @@ aws ec2 authorize-security-group-ingress \
 
 ## Monitoring Security Group Changes
 
-Any change to a security group is a potential security event. Use CloudTrail to track changes and set up alerts for modifications. For a comparison of how security groups differ from NACLs, see https://oneuptime.com/blog/post/security-groups-vs-network-acls/view.
+Any change to a security group is a potential security event. Use CloudTrail to track changes and set up alerts for modifications. For a comparison of how security groups differ from NACLs, see https://oneuptime.com/blog/post/2026-02-12-security-groups-vs-network-acls/view.
 
 Security groups are your bread and butter for AWS network security. Use security group references over CIDR blocks whenever possible, keep rules minimal, and layer them with NACLs for defense in depth. And don't forget to monitor for unauthorized changes - a single overly permissive rule can undo all your careful planning.

@@ -404,4 +404,4 @@ A multi-account strategy is an investment that pays off quickly. You get better 
 
 Start with the basic structure: management, security, log archive, and workload accounts. Then expand as your organization grows. The OUs and SCPs can be adjusted over time, but the foundational separation is hard to retrofit later.
 
-For implementing your landing zone, see our guide on [landing zone best practices on AWS](https://oneuptime.com/blog/post/landing-zone-best-practices-aws/view). For cost management, check out [cost governance best practices on AWS](https://oneuptime.com/blog/post/cost-governance-best-practices-aws/view).
+For implementing your landing zone, see our guide on [landing zone best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-landing-zone-best-practices-aws/view). For cost management, check out [cost governance best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-cost-governance-best-practices-aws/view).

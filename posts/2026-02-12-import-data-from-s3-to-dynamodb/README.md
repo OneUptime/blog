@@ -210,7 +210,7 @@ aws s3 cp users-export.csv.gz s3://my-data-bucket/exports/users/
 
 **Monitor your imports**: Whichever approach you use, keep an eye on CloudWatch metrics. For Lambda-based imports, watch for throttling on the DynamoDB side. For the native import, check the import job status periodically.
 
-For more on DynamoDB monitoring, check out our guide on [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/monitor-dynamodb-with-cloudwatch-alarms/view).
+For more on DynamoDB monitoring, check out our guide on [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-monitor-dynamodb-with-cloudwatch-alarms/view).
 
 ## Which Method Should You Pick?
 

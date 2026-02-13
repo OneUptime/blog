@@ -289,8 +289,8 @@ SES can receive emails up to 40 MB in size (including attachments and encoding).
 
 ## Auto-Forwarding Emails
 
-A common use case is receiving emails at a custom domain and forwarding them to another address. You can do this with a Lambda function that uses SES to resend the email. For the sending side, check out our guide on [integrating SES with Python applications](https://oneuptime.com/blog/post/integrate-ses-with-python-boto3-applications/view).
+A common use case is receiving emails at a custom domain and forwarding them to another address. You can do this with a Lambda function that uses SES to resend the email. For the sending side, check out our guide on [integrating SES with Python applications](https://oneuptime.com/blog/post/2026-02-12-integrate-ses-with-python-boto3-applications/view).
 
 ## Summary
 
-SES email receiving turns your AWS account into a programmable email server. You set up DNS, create receipt rules, and process emails with Lambda. It's especially powerful when combined with other AWS services - store in S3, process with Lambda, notify with SNS, and use the data in DynamoDB. The key is planning your receipt rules carefully and always keeping spam scanning enabled. For processing the emails after receiving them, see our guide on [using SES with Lambda for email processing](https://oneuptime.com/blog/post/use-ses-with-lambda-for-email-processing/view).
+SES email receiving turns your AWS account into a programmable email server. You set up DNS, create receipt rules, and process emails with Lambda. It's especially powerful when combined with other AWS services - store in S3, process with Lambda, notify with SNS, and use the data in DynamoDB. The key is planning your receipt rules carefully and always keeping spam scanning enabled. For processing the emails after receiving them, see our guide on [using SES with Lambda for email processing](https://oneuptime.com/blog/post/2026-02-12-use-ses-with-lambda-for-email-processing/view).

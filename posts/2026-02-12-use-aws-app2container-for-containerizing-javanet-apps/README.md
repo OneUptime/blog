@@ -398,7 +398,7 @@ This creates a CodePipeline that automatically builds and deploys new versions w
 
 ## Monitoring After Deployment
 
-After deploying your containerized application, set up monitoring to ensure it performs as well as or better than the original. CloudWatch Container Insights provides out-of-the-box metrics for ECS. For comprehensive application monitoring including uptime, performance, and incident management, [OneUptime](https://oneuptime.com/blog/post/containerize-legacy-applications-for-aws/view) provides end-to-end visibility.
+After deploying your containerized application, set up monitoring to ensure it performs as well as or better than the original. CloudWatch Container Insights provides out-of-the-box metrics for ECS. For comprehensive application monitoring including uptime, performance, and incident management, [OneUptime](https://oneuptime.com/blog/post/2026-02-12-containerize-legacy-applications-for-aws/view) provides end-to-end visibility.
 
 ## Wrapping Up
 

@@ -298,7 +298,7 @@ curl https://your-api-id.execute-api.us-east-1.amazonaws.com/prod/users
 
 **CORS preflight fails**: OPTIONS requests shouldn't require authorization. Make sure your CORS configuration sends OPTIONS requests through without the authorizer.
 
-For a broader look at integrating Cognito with API Gateway, see [integrating Cognito with API Gateway for authorization](https://oneuptime.com/blog/post/cognito-api-gateway-authorization/view). And for understanding how the tokens themselves work, check out [decoding and validating Cognito JWT tokens](https://oneuptime.com/blog/post/decode-validate-cognito-jwt-tokens/view).
+For a broader look at integrating Cognito with API Gateway, see [integrating Cognito with API Gateway for authorization](https://oneuptime.com/blog/post/2026-02-12-cognito-api-gateway-authorization/view). And for understanding how the tokens themselves work, check out [decoding and validating Cognito JWT tokens](https://oneuptime.com/blog/post/2026-02-12-decode-validate-cognito-jwt-tokens/view).
 
 ## Wrapping Up
 

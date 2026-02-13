@@ -335,7 +335,7 @@ Not everything should be scheduled. Here's a guide:
 | NAT Gateways (dev VPC) | Consider | Can't stop, but can delete/recreate |
 | Load Balancers (dev) | Consider | Can't stop, but can delete/recreate |
 
-For ElastiCache scheduling strategies, check out our guide on [reducing ElastiCache costs](https://oneuptime.com/blog/post/reduce-elasticache-costs/view).
+For ElastiCache scheduling strategies, check out our guide on [reducing ElastiCache costs](https://oneuptime.com/blog/post/2026-02-12-reduce-elasticache-costs/view).
 
 ## Key Takeaways
 

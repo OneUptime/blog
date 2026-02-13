@@ -48,7 +48,7 @@ curl -s http://localhost:8888/metrics | grep "otelcol_receiver_accepted_spans"
 # otelcol_receiver_accepted_spans{receiver="otlp",service_instance_id="...",transport="grpc"} 12543
 
 # If zero, the problem is receiving data, not exporting
-# See: https://oneuptime.com/blog/post/troubleshoot-collector-not-receiving-data/view
+# See: https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-not-receiving-data/view
 ```
 
 ### Step 2: Check Exporter Metrics
@@ -519,7 +519,7 @@ service:
   extensions: [file_storage]
 ```
 
-See the full guide: https://oneuptime.com/blog/post/persistent-queue-storage-collector-reliability/view
+See the full guide: https://oneuptime.com/blog/post/2026-02-06-persistent-queue-storage-collector-reliability/view
 
 **Solution 3: Optimize batch size**
 
@@ -985,7 +985,7 @@ groups:
 Troubleshooting exporter issues requires checking multiple components: backend connectivity, authentication, TLS configuration, queue capacity, and data format compatibility. Use the collector's metrics and logs to identify the specific failure point, then apply targeted solutions. Always monitor key export metrics in production to catch issues before they cause significant data loss.
 
 For more troubleshooting guides, see related posts:
-- https://oneuptime.com/blog/post/troubleshoot-collector-not-receiving-data/view
-- https://oneuptime.com/blog/post/troubleshoot-configuration-yaml-errors-collector/view
-- https://oneuptime.com/blog/post/persistent-queue-storage-collector-reliability/view
-- https://oneuptime.com/blog/post/right-size-cpu-memory-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-not-receiving-data/view
+- https://oneuptime.com/blog/post/2026-02-06-troubleshoot-configuration-yaml-errors-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-persistent-queue-storage-collector-reliability/view
+- https://oneuptime.com/blog/post/2026-02-06-right-size-cpu-memory-opentelemetry-collector/view

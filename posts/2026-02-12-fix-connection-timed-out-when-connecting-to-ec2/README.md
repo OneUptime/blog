@@ -218,7 +218,7 @@ aws ec2 describe-instance-status \
   --output table
 ```
 
-If either status check is failing, see our guide on [fixing EC2 instance status check failures](https://oneuptime.com/blog/post/fix-ec2-instance-status-check-failed/view).
+If either status check is failing, see our guide on [fixing EC2 instance status check failures](https://oneuptime.com/blog/post/2026-02-12-fix-ec2-instance-status-check-failed/view).
 
 ## Fix 8: VPN or Corporate Network Blocking
 

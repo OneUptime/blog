@@ -328,7 +328,7 @@ Kendra is not cheap. Developer Edition starts around $800/month and Enterprise E
 - `DocumentsIndexed` - Total documents in the index
 - `DataSourceSyncJobsSucceeded/Failed` - Sync job health
 
-For your overall AWS monitoring needs, including Kendra and every other service, consider a unified observability platform. Check out how [Amazon DevOps Guru can surface operational insights](https://oneuptime.com/blog/post/use-amazon-devops-guru-for-operational-insights/view) across your infrastructure.
+For your overall AWS monitoring needs, including Kendra and every other service, consider a unified observability platform. Check out how [Amazon DevOps Guru can surface operational insights](https://oneuptime.com/blog/post/2026-02-12-use-amazon-devops-guru-for-operational-insights/view) across your infrastructure.
 
 ## Architecture Overview
 

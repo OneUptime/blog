@@ -394,4 +394,4 @@ This adds rate limiting specifically for the registration endpoint:
 
 **Monitor disposable email domains.** While the `AttributeEmailDomainHigh` rule catches unusual patterns, consider also maintaining your own blocklist of known disposable email services.
 
-For login-side protection, also set up [WAF Account Takeover Prevention](https://oneuptime.com/blog/post/aws-waf-account-takeover-prevention/view) and [WAF Bot Control](https://oneuptime.com/blog/post/aws-waf-bot-control/view). Track your fraud prevention metrics alongside application health using [OneUptime](https://oneuptime.com).
+For login-side protection, also set up [WAF Account Takeover Prevention](https://oneuptime.com/blog/post/2026-02-12-aws-waf-account-takeover-prevention/view) and [WAF Bot Control](https://oneuptime.com/blog/post/2026-02-12-aws-waf-bot-control/view). Track your fraud prevention metrics alongside application health using [OneUptime](https://oneuptime.com).

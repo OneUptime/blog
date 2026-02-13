@@ -262,6 +262,6 @@ Hardware MFA is most important for:
 - Users with access to billing and cost management
 - Anyone who handles sensitive data (PII, financial records, healthcare data)
 
-For regular developers who primarily use roles via [IAM Identity Center](https://oneuptime.com/blog/post/set-up-aws-iam-identity-center-sso/view), virtual MFA through the SSO portal is usually sufficient. Reserve hardware tokens for the accounts where compromise would be catastrophic.
+For regular developers who primarily use roles via [IAM Identity Center](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-iam-identity-center-sso/view), virtual MFA through the SSO portal is usually sufficient. Reserve hardware tokens for the accounts where compromise would be catastrophic.
 
-Hardware MFA is a small investment that dramatically reduces your attack surface. If you haven't set it up for your root account yet, that should be your next task. Check out our guide on [enforcing MFA for all IAM users](https://oneuptime.com/blog/post/enable-enforce-mfa-iam-users/view) for the policy side of things.
+Hardware MFA is a small investment that dramatically reduces your attack surface. If you haven't set it up for your root account yet, that should be your next task. Check out our guide on [enforcing MFA for all IAM users](https://oneuptime.com/blog/post/2026-02-12-enable-enforce-mfa-iam-users/view) for the policy side of things.

@@ -409,4 +409,4 @@ Use dynamic blocks when:
 
 Dynamic blocks turn data into configuration. Define your rules, policies, or settings as variables, and let dynamic blocks generate the repetitive HCL for you. They're especially powerful in modules where callers need to customize nested block counts. Just don't overuse them - readability matters more than DRY-ness for simple cases.
 
-For more Terraform patterns, check out our guides on [local values and variables](https://oneuptime.com/blog/post/terraform-local-values-and-variables/view) and [reusable modules](https://oneuptime.com/blog/post/terraform-modules-for-reusable-aws-infrastructure/view).
+For more Terraform patterns, check out our guides on [local values and variables](https://oneuptime.com/blog/post/2026-02-12-terraform-local-values-and-variables/view) and [reusable modules](https://oneuptime.com/blog/post/2026-02-12-terraform-modules-for-reusable-aws-infrastructure/view).

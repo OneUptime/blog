@@ -177,7 +177,7 @@ resource "aws_cloudfront_distribution" "website_custom" {
 }
 ```
 
-For a detailed guide on certificate management, see our post on [managing ACM certificates with Terraform](https://oneuptime.com/blog/post/manage-aws-acm-certificates-with-terraform/view).
+For a detailed guide on certificate management, see our post on [managing ACM certificates with Terraform](https://oneuptime.com/blog/post/2026-02-12-manage-aws-acm-certificates-with-terraform/view).
 
 ## CloudFront with API Origin
 

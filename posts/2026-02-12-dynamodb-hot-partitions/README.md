@@ -114,7 +114,7 @@ Partition key: userId  -> millions of unique values
 GSI with status as partition key for status-based queries
 ```
 
-If you need to query by status, create a GSI rather than using status as the primary partition key. For more on key selection, see our post on [choosing the right partition key](https://oneuptime.com/blog/post/dynamodb-partition-key/view).
+If you need to query by status, create a GSI rather than using status as the primary partition key. For more on key selection, see our post on [choosing the right partition key](https://oneuptime.com/blog/post/2026-02-12-dynamodb-partition-key/view).
 
 ## Fix 2: Write Sharding
 
@@ -160,7 +160,7 @@ async function getGlobalCounter(counterName) {
 }
 ```
 
-Writes are 10x more distributed. Reads are 10x more work. This trade-off is usually worth it when writes are the bottleneck. For a deeper dive, check out our post on [DynamoDB write sharding](https://oneuptime.com/blog/post/dynamodb-write-sharding/view).
+Writes are 10x more distributed. Reads are 10x more work. This trade-off is usually worth it when writes are the bottleneck. For a deeper dive, check out our post on [DynamoDB write sharding](https://oneuptime.com/blog/post/2026-02-12-dynamodb-write-sharding/view).
 
 ## Fix 3: Caching
 

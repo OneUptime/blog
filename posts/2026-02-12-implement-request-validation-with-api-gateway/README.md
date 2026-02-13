@@ -299,7 +299,7 @@ exports.handler = async (event) => {
 };
 ```
 
-For monitoring validation errors and API health, take a look at our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/build-logging-and-monitoring-stack-on-aws/view).
+For monitoring validation errors and API health, take a look at our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view).
 
 ## Summary
 

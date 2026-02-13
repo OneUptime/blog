@@ -162,10 +162,10 @@ For most modern architectures, there are better alternatives to EIPs:
 
 **Use a Load Balancer** - If you're running a web service, put it behind an ALB or NLB. The load balancer handles the public IP, and you can scale instances behind it without worrying about IP addresses. DNS points to the load balancer, not individual instances.
 
-**Use Route 53 with health checks** - For DNS-based failover, Route 53 health checks can automatically switch DNS to a healthy endpoint. See our guide on Route 53 health checks at https://oneuptime.com/blog/post/route-53-health-checks/view.
+**Use Route 53 with health checks** - For DNS-based failover, Route 53 health checks can automatically switch DNS to a healthy endpoint. See our guide on Route 53 health checks at https://oneuptime.com/blog/post/2026-02-12-route-53-health-checks/view.
 
 **Use AWS Global Accelerator** - If you need static IPs for your application, Global Accelerator gives you two static anycast IPs that route to your backends. It's more resilient than a single EIP.
 
 **Use IPv6** - IPv6 addresses on instances are static by default and don't have the scarcity problems of IPv4. If your clients support IPv6, this is worth considering.
 
-EIPs still have their place - NAT gateways need them, some legacy integrations require whitelisted IPs, and some regulatory requirements mandate static addressing. But reach for an EIP as a last resort rather than a first choice. For more on managing EIP lifecycle, see https://oneuptime.com/blog/post/release-and-recover-elastic-ip-addresses/view.
+EIPs still have their place - NAT gateways need them, some legacy integrations require whitelisted IPs, and some regulatory requirements mandate static addressing. But reach for an EIP as a last resort rather than a first choice. For more on managing EIP lifecycle, see https://oneuptime.com/blog/post/2026-02-12-release-and-recover-elastic-ip-addresses/view.

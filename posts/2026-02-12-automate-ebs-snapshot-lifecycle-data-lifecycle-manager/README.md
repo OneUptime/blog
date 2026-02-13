@@ -367,7 +367,7 @@ Both services handle EBS snapshots, so when should you use which?
 
 Use DLM when you only need EBS snapshot management. Use AWS Backup when you need a unified backup solution across multiple AWS services, or when you need compliance features.
 
-For more on AWS Backup, check out our post on [backing up EC2 instances with AWS Backup](https://oneuptime.com/blog/post/back-up-ec2-aws-backup/view).
+For more on AWS Backup, check out our post on [backing up EC2 instances with AWS Backup](https://oneuptime.com/blog/post/2026-02-12-back-up-ec2-aws-backup/view).
 
 For monitoring your backup health and snapshot status, see our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
 

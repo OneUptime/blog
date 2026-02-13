@@ -303,4 +303,4 @@ topic.addSubscription(
 - **Enable raw message delivery** if you don't need the SNS metadata envelope.
 - **Set up monitoring** for failed deliveries - check the `NumberOfNotificationsFailed` metric in CloudWatch.
 
-For more on SNS delivery monitoring, see [configuring SNS message delivery policies](https://oneuptime.com/blog/post/configure-sns-message-delivery-policies/view) and [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/use-sns-with-cloudwatch-alarms/view).
+For more on SNS delivery monitoring, see [configuring SNS message delivery policies](https://oneuptime.com/blog/post/2026-02-12-configure-sns-message-delivery-policies/view) and [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-use-sns-with-cloudwatch-alarms/view).

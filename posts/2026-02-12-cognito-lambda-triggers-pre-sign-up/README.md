@@ -363,7 +363,7 @@ throw new Error('DynamoDB query failed: ValidationException');
 throw new Error('Lambda execution error at line 45');
 ```
 
-For the trigger that fires after sign-up confirmation, see [Cognito Lambda triggers for post confirmation](https://oneuptime.com/blog/post/cognito-lambda-triggers-post-confirmation/view).
+For the trigger that fires after sign-up confirmation, see [Cognito Lambda triggers for post confirmation](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-post-confirmation/view).
 
 ## Summary
 

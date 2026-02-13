@@ -211,4 +211,4 @@ aws cloudwatch put-metric-alarm \
 7. Size subnets appropriately for the workload type
 8. Set up monitoring for IP usage
 
-Running out of subnet addresses is a capacity planning issue. The fix in the short term is cleanup and redistribution. In the long term, it's about designing your VPC with room to grow. For more VPC troubleshooting, check out our post on [Lambda ENI limits](https://oneuptime.com/blog/post/fix-enilimitreached-errors-lambda-vpc/view).
+Running out of subnet addresses is a capacity planning issue. The fix in the short term is cleanup and redistribution. In the long term, it's about designing your VPC with room to grow. For more VPC troubleshooting, check out our post on [Lambda ENI limits](https://oneuptime.com/blog/post/2026-02-12-fix-enilimitreached-errors-lambda-vpc/view).

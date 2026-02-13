@@ -261,7 +261,7 @@ def write_audit_entry(change_event):
 
 ### Syncing to Elasticsearch
 
-Another popular pattern is keeping a search index in sync with your primary data store. For more on event-driven data synchronization, check out our post on [implementing the outbox pattern with DynamoDB Streams](https://oneuptime.com/blog/post/implement-outbox-pattern-with-dynamodb-streams/view).
+Another popular pattern is keeping a search index in sync with your primary data store. For more on event-driven data synchronization, check out our post on [implementing the outbox pattern with DynamoDB Streams](https://oneuptime.com/blog/post/2026-02-12-implement-outbox-pattern-with-dynamodb-streams/view).
 
 ## Handling Failures and Retries
 

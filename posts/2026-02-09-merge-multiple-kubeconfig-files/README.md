@@ -493,4 +493,4 @@ Follow these guidelines:
 6. Keep source files until verification complete
 7. Document which configs were merged
 
-Merging kubeconfig files centralizes cluster access into a single configuration. Use kubectl config view with --flatten to combine configs, rename conflicts before merging, and validate afterwards. A unified config eliminates file switching and simplifies multi-cluster management. For more config management techniques, see https://oneuptime.com/blog/post/kubectl-config-manage-kubeconfig-contexts/view.
+Merging kubeconfig files centralizes cluster access into a single configuration. Use kubectl config view with --flatten to combine configs, rename conflicts before merging, and validate afterwards. A unified config eliminates file switching and simplifies multi-cluster management. For more config management techniques, see https://oneuptime.com/blog/post/2026-02-09-kubectl-config-manage-kubeconfig-contexts/view.

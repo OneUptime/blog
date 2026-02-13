@@ -187,7 +187,7 @@ For a 500 GB database, expect around $12-15/month for the snapshot storage in th
 
 ## Monitoring Your Snapshot Copies
 
-You'll want to know if a snapshot copy fails. Set up a CloudWatch alarm or use [OneUptime monitoring](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view) to track the status of your cross-region copies. You can also use EventBridge to catch copy failure events and send notifications through SNS.
+You'll want to know if a snapshot copy fails. Set up a CloudWatch alarm or use [OneUptime monitoring](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view) to track the status of your cross-region copies. You can also use EventBridge to catch copy failure events and send notifications through SNS.
 
 ## Common Issues
 

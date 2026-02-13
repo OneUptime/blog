@@ -398,4 +398,4 @@ CloudFormation stack updates can fail for many reasons - resource limits, permis
 
 However, if a stack gets stuck in `UPDATE_ROLLBACK_FAILED`, you'll need to manually fix it. Keep an eye on stack events and consider using [OneUptime](https://oneuptime.com) to monitor your infrastructure health after deployments.
 
-For general pipeline debugging, see our guide on [troubleshooting CodePipeline failures](https://oneuptime.com/blog/post/troubleshoot-codepipeline-failures/view).
+For general pipeline debugging, see our guide on [troubleshooting CodePipeline failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-codepipeline-failures/view).

@@ -617,6 +617,6 @@ For monitoring node health and scheduling, check out [OneUptime's Kubernetes mon
 
 ## Related Resources
 
-- [How to Configure Node Affinity](https://oneuptime.com/blog/post/kubernetes-node-affinity-anti-affinity/view)
-- [How to Drain Nodes for Maintenance](https://oneuptime.com/blog/post/kubernetes-drain-cordon-node-maintenance/view)
-- [How to Manage Pod Evictions](https://oneuptime.com/blog/post/kubernetes-pod-evictions-resource-pressure/view)
+- [How to Configure Node Affinity](https://oneuptime.com/blog/post/2026-01-19-kubernetes-node-affinity-anti-affinity/view)
+- [How to Drain Nodes for Maintenance](https://oneuptime.com/blog/post/2026-01-19-kubernetes-drain-cordon-node-maintenance/view)
+- [How to Manage Pod Evictions](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-evictions-resource-pressure/view)

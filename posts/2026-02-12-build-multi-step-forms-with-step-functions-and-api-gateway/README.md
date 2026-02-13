@@ -382,7 +382,7 @@ Step Functions Standard Workflows charge per state transition. For a 4-step form
 
 If cost is a concern, consider Step Functions Express Workflows for forms that must be completed in a single session (under 5 minutes).
 
-For monitoring your form workflow, check out our guide on [monitoring API endpoints with CloudWatch Synthetics](https://oneuptime.com/blog/post/monitor-api-endpoints-with-cloudwatch-synthetics/view).
+For monitoring your form workflow, check out our guide on [monitoring API endpoints with CloudWatch Synthetics](https://oneuptime.com/blog/post/2026-02-12-monitor-api-endpoints-with-cloudwatch-synthetics/view).
 
 ## Wrapping Up
 

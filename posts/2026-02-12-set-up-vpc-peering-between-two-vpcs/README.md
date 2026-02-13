@@ -237,9 +237,9 @@ aws ec2 describe-route-tables \
 
 VPC peering works great for a few connections, but it doesn't scale well. With N VPCs, you need N*(N-1)/2 peering connections for full mesh connectivity. Ten VPCs means 45 peering connections. That's a management nightmare.
 
-If you have more than a handful of VPCs, consider using a [transit gateway for multi-VPC connectivity](https://oneuptime.com/blog/post/aws-transit-gateway-multi-vpc-connectivity/view) instead. It acts as a central hub and reduces the number of connections from O(n^2) to O(n).
+If you have more than a handful of VPCs, consider using a [transit gateway for multi-VPC connectivity](https://oneuptime.com/blog/post/2026-02-12-aws-transit-gateway-multi-vpc-connectivity/view) instead. It acts as a central hub and reduces the number of connections from O(n^2) to O(n).
 
-For cross-account peering, see [setting up VPC peering across AWS accounts](https://oneuptime.com/blog/post/set-up-vpc-peering-across-aws-accounts/view).
+For cross-account peering, see [setting up VPC peering across AWS accounts](https://oneuptime.com/blog/post/2026-02-12-set-up-vpc-peering-across-aws-accounts/view).
 
 ## Wrapping Up
 

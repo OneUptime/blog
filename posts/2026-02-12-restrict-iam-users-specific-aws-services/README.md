@@ -333,11 +333,11 @@ aws accessanalyzer start-policy-generation \
   }'
 ```
 
-See our detailed guide on [generating IAM policies from access activity](https://oneuptime.com/blog/post/generate-iam-policies-access-activity-access-analyzer/view) for the full process.
+See our detailed guide on [generating IAM policies from access activity](https://oneuptime.com/blog/post/2026-02-12-generate-iam-policies-access-activity-access-analyzer/view) for the full process.
 
 ## Combining Service and Region Restrictions
 
-For maximum security, combine service restrictions with [region restrictions](https://oneuptime.com/blog/post/restrict-iam-users-specific-aws-regions/view):
+For maximum security, combine service restrictions with [region restrictions](https://oneuptime.com/blog/post/2026-02-12-restrict-iam-users-specific-aws-regions/view):
 
 ```json
 {

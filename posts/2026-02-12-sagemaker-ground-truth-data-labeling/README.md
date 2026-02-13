@@ -350,4 +350,4 @@ Good labels mean good models. Here are some quality control strategies:
 
 ## Wrapping Up
 
-SageMaker Ground Truth takes the operational burden out of data labeling while maintaining quality through multi-annotator consensus and automated labeling. The active learning component is particularly powerful - it can dramatically reduce the amount of human labeling needed, which saves both time and money. Once you have high-quality labels, feed them into your [SageMaker training pipeline](https://oneuptime.com/blog/post/train-machine-learning-model-sagemaker/view) for model development.
+SageMaker Ground Truth takes the operational burden out of data labeling while maintaining quality through multi-annotator consensus and automated labeling. The active learning component is particularly powerful - it can dramatically reduce the amount of human labeling needed, which saves both time and money. Once you have high-quality labels, feed them into your [SageMaker training pipeline](https://oneuptime.com/blog/post/2026-02-12-train-machine-learning-model-sagemaker/view) for model development.

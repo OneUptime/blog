@@ -14,7 +14,7 @@ The process is similar to the Linux installation but with Windows-specific paths
 
 ## Prerequisites
 
-Same as Linux - you need an IAM role with the `CloudWatchAgentServerPolicy` attached to your EC2 instance. If you've already set this up for Linux instances, the same role works for Windows too. If not, see the IAM setup in our [Linux installation guide](https://oneuptime.com/blog/post/install-cloudwatch-agent-ec2-linux/view).
+Same as Linux - you need an IAM role with the `CloudWatchAgentServerPolicy` attached to your EC2 instance. If you've already set this up for Linux instances, the same role works for Windows too. If not, see the IAM setup in our [Linux installation guide](https://oneuptime.com/blog/post/2026-02-12-install-cloudwatch-agent-ec2-linux/view).
 
 ## Installation Method 1: Using Systems Manager
 
@@ -321,4 +321,4 @@ Read-S3Object -BucketName "my-config-bucket" -Key "cw-agent-windows.json" -File 
 
 ## Wrapping Up
 
-Installing the CloudWatch Agent on Windows gives you the same depth of visibility you get on Linux - memory, disk, process metrics, plus Windows-specific features like Performance Counters and Event Log collection. The config format is slightly different to accommodate Windows conventions, but the principles are the same. For advanced configuration options, see our posts on [configuring custom metrics](https://oneuptime.com/blog/post/configure-cloudwatch-agent-custom-metrics/view) and [collecting memory and disk metrics](https://oneuptime.com/blog/post/collect-memory-disk-metrics-cloudwatch-agent/view).
+Installing the CloudWatch Agent on Windows gives you the same depth of visibility you get on Linux - memory, disk, process metrics, plus Windows-specific features like Performance Counters and Event Log collection. The config format is slightly different to accommodate Windows conventions, but the principles are the same. For advanced configuration options, see our posts on [configuring custom metrics](https://oneuptime.com/blog/post/2026-02-12-configure-cloudwatch-agent-custom-metrics/view) and [collecting memory and disk metrics](https://oneuptime.com/blog/post/2026-02-12-collect-memory-disk-metrics-cloudwatch-agent/view).

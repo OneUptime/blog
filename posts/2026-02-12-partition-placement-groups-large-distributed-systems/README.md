@@ -301,7 +301,7 @@ for partition in $(seq 1 7); do
 done
 ```
 
-For automated partition-aware monitoring and alerting, you can integrate with [OneUptime's monitoring](https://oneuptime.com/blog/post/configure-health-checks-ec2-load-balancer/view) to track the health of each partition and trigger alerts when partition availability drops.
+For automated partition-aware monitoring and alerting, you can integrate with [OneUptime's monitoring](https://oneuptime.com/blog/post/2026-02-12-configure-health-checks-ec2-load-balancer/view) to track the health of each partition and trigger alerts when partition availability drops.
 
 ## Summary
 

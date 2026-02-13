@@ -43,7 +43,7 @@ aws route53 get-hosted-zone \
 
 ## Delegating Your Domain
 
-After creating the hosted zone, you need to update your domain registrar to use Route 53's name servers. If your domain is registered with Route 53 (see https://oneuptime.com/blog/post/register-domain-with-route-53/view), this happens automatically. Otherwise, log into your registrar and replace the existing name servers with the four Route 53 name servers.
+After creating the hosted zone, you need to update your domain registrar to use Route 53's name servers. If your domain is registered with Route 53 (see https://oneuptime.com/blog/post/2026-02-12-register-domain-with-route-53/view), this happens automatically. Otherwise, log into your registrar and replace the existing name servers with the four Route 53 name servers.
 
 This delegation change can take up to 48 hours to propagate, though it usually happens within a few hours. During the transition period, some DNS resolvers will use the old name servers and some will use the new ones.
 
@@ -120,7 +120,7 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
-For AWS resources like ALBs, CloudFront distributions, and S3 buckets, use Alias records instead of CNAMEs. Alias records are free (no per-query charges), work at the zone apex (example.com without www), and respond with the target's actual IP. For a comparison, see https://oneuptime.com/blog/post/route-53-alias-records-vs-cname/view.
+For AWS resources like ALBs, CloudFront distributions, and S3 buckets, use Alias records instead of CNAMEs. Alias records are free (no per-query charges), work at the zone apex (example.com without www), and respond with the target's actual IP. For a comparison, see https://oneuptime.com/blog/post/2026-02-12-route-53-alias-records-vs-cname/view.
 
 ```bash
 # Add an Alias record pointing to an ALB

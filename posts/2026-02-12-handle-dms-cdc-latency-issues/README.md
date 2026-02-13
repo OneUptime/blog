@@ -298,7 +298,7 @@ Resources:
         - !Ref CriticalTopic
 ```
 
-For comprehensive DMS monitoring beyond just latency, check out our guide on [monitoring DMS replication tasks](https://oneuptime.com/blog/post/monitor-dms-replication-tasks/view).
+For comprehensive DMS monitoring beyond just latency, check out our guide on [monitoring DMS replication tasks](https://oneuptime.com/blog/post/2026-02-12-monitor-dms-replication-tasks/view).
 
 ## Wrapping Up
 

@@ -393,7 +393,7 @@ The Metrics Start Time processor adds minimal latency but does consume memory pr
 
 For more information on metrics processing in the OpenTelemetry Collector:
 
-- [How to Configure the Lookup Processor](https://oneuptime.com/blog/post/lookup-processor-opentelemetry-collector/view)
-- [How to Write OTTL Statements for the Transform Processor](https://oneuptime.com/blog/post/ottl-statements-transform-processor-opentelemetry-collector/view)
+- [How to Configure the Lookup Processor](https://oneuptime.com/blog/post/2026-02-06-lookup-processor-opentelemetry-collector/view)
+- [How to Write OTTL Statements for the Transform Processor](https://oneuptime.com/blog/post/2026-02-06-ottl-statements-transform-processor-opentelemetry-collector/view)
 
 The Metrics Start Time processor is essential for maintaining accurate cumulative metrics in production OpenTelemetry deployments. By preserving start times across collector restarts and configuration changes, it ensures rate calculations remain accurate and historical analysis stays meaningful. Configure state persistence for production use, monitor memory consumption with high-cardinality metrics, and position the processor early in your pipeline for best results.

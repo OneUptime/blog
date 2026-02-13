@@ -215,7 +215,7 @@ aws service-quotas list-service-quota-increase-requests-in-template \
   --output table
 ```
 
-This is especially useful for organizations that regularly create new AWS accounts for teams or projects. See our guide on [setting up AWS Organizations consolidated billing](https://oneuptime.com/blog/post/set-up-aws-organizations-consolidated-billing/view) for more on multi-account management.
+This is especially useful for organizations that regularly create new AWS accounts for teams or projects. See our guide on [setting up AWS Organizations consolidated billing](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-organizations-consolidated-billing/view) for more on multi-account management.
 
 ## Tips for Faster Approvals
 
@@ -281,4 +281,4 @@ aws support create-case \
 
 ## Key Takeaways
 
-Quota increases are a routine part of AWS operations, but they need to be managed proactively. Request increases before you need them, use templates for new accounts, and monitor your usage against limits continuously. The requests themselves are straightforward - the key is not being caught off guard. For monitoring your quotas, check out our guide on [setting up AWS service quotas and limits](https://oneuptime.com/blog/post/set-up-aws-service-quotas-and-limits/view).
+Quota increases are a routine part of AWS operations, but they need to be managed proactively. Request increases before you need them, use templates for new accounts, and monitor your usage against limits continuously. The requests themselves are straightforward - the key is not being caught off guard. For monitoring your quotas, check out our guide on [setting up AWS service quotas and limits](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-service-quotas-and-limits/view).

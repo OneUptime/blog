@@ -271,4 +271,4 @@ Aurora Limitless automatically rebalances data as shards are added or removed.
 
 Aurora Limitless Database brings horizontal scaling to Aurora PostgreSQL without requiring you to build sharding into your application. By choosing the right shard keys, collocating related tables, and using reference tables for lookup data, you can scale write throughput and storage far beyond the limits of a single Aurora cluster. The key is careful data modeling upfront - get the shard key right, and everything else falls into place.
 
-For more on Aurora, see our guides on [Aurora I/O-Optimized for predictable pricing](https://oneuptime.com/blog/post/use-aurora-io-optimized-for-predictable-pricing/view) and [Aurora Zero-ETL integration with Redshift](https://oneuptime.com/blog/post/use-aurora-zero-etl-integration-with-redshift/view).
+For more on Aurora, see our guides on [Aurora I/O-Optimized for predictable pricing](https://oneuptime.com/blog/post/2026-02-12-use-aurora-io-optimized-for-predictable-pricing/view) and [Aurora Zero-ETL integration with Redshift](https://oneuptime.com/blog/post/2026-02-12-use-aurora-zero-etl-integration-with-redshift/view).

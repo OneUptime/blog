@@ -337,4 +337,4 @@ pipeline = DocumentPipeline()
 result = pipeline.process('my-documents', 'inbox/document.pdf')
 ```
 
-Textract is the foundation for intelligent document processing on AWS. For more advanced table and form extraction techniques, check out our guide on [extracting tables and forms with Textract](https://oneuptime.com/blog/post/extract-tables-forms-amazon-textract/view). And for building complete IDP workflows, see [Amazon Textract with intelligent document processing](https://oneuptime.com/blog/post/amazon-textract-intelligent-document-processing/view).
+Textract is the foundation for intelligent document processing on AWS. For more advanced table and form extraction techniques, check out our guide on [extracting tables and forms with Textract](https://oneuptime.com/blog/post/2026-02-12-extract-tables-forms-amazon-textract/view). And for building complete IDP workflows, see [Amazon Textract with intelligent document processing](https://oneuptime.com/blog/post/2026-02-12-amazon-textract-intelligent-document-processing/view).

@@ -436,4 +436,4 @@ Data protection is a discipline that spans your entire architecture. Classify yo
 
 The cost of prevention is always less than the cost of a breach. Invest the time to get data protection right from the start.
 
-For related topics, see [encryption everywhere on AWS](https://oneuptime.com/blog/post/encryption-everywhere-aws/view) and [database security best practices on AWS](https://oneuptime.com/blog/post/database-security-best-practices-aws/view).
+For related topics, see [encryption everywhere on AWS](https://oneuptime.com/blog/post/2026-02-12-encryption-everywhere-aws/view) and [database security best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-database-security-best-practices-aws/view).

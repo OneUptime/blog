@@ -111,7 +111,7 @@ resource "aws_cloudfront_distribution" "cdn" {
 }
 ```
 
-For more on certificate management, see our post on [managing ACM certificates with Terraform](https://oneuptime.com/blog/post/manage-aws-acm-certificates-with-terraform/view).
+For more on certificate management, see our post on [managing ACM certificates with Terraform](https://oneuptime.com/blog/post/2026-02-12-manage-aws-acm-certificates-with-terraform/view).
 
 ### Multi-Region S3 Replication
 

@@ -316,4 +316,4 @@ For RDS Proxy, these metrics are available in CloudWatch under the `AWS/RDSProxy
 
 Connection pooling is not optional for production applications on AWS. RDS Proxy is the best choice for Lambda-based architectures. Application-level pooling works great for container-based services. PgBouncer sidecars offer fine-grained control for Kubernetes deployments. Whichever approach you pick, size your pools conservatively and monitor connection usage to avoid surprises.
 
-For more on database architecture decisions, check out our [Amazon database service comparison guide](https://oneuptime.com/blog/post/compare-amazon-database-service-options-decision-guide/view).
+For more on database architecture decisions, check out our [Amazon database service comparison guide](https://oneuptime.com/blog/post/2026-02-12-compare-amazon-database-service-options-decision-guide/view).

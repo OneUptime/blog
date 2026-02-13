@@ -395,4 +395,4 @@ aws memorydb create-cluster \
 
 ## Wrapping Up
 
-MemoryDB for Redis changes the game by making Redis a viable primary database, not just a cache. The durable transaction log means your writes are safe across AZ failures, and you still get microsecond read latency. Use it when you need Redis as a system of record, and stick with ElastiCache when you just need a cache. For a detailed feature and cost comparison, check out the guide on [comparing MemoryDB vs ElastiCache](https://oneuptime.com/blog/post/compare-memorydb-vs-elasticache/view).
+MemoryDB for Redis changes the game by making Redis a viable primary database, not just a cache. The durable transaction log means your writes are safe across AZ failures, and you still get microsecond read latency. Use it when you need Redis as a system of record, and stick with ElastiCache when you just need a cache. For a detailed feature and cost comparison, check out the guide on [comparing MemoryDB vs ElastiCache](https://oneuptime.com/blog/post/2026-02-12-compare-memorydb-vs-elasticache/view).

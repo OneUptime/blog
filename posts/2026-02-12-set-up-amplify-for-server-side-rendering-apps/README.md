@@ -188,7 +188,7 @@ Check that pages using `getServerSideProps` or Server Components render correctl
 
 ## Monitoring Your SSR App
 
-Once deployed, you will want to monitor your SSR performance. Amplify integrates with CloudWatch, giving you access to Lambda invocation metrics, error rates, and duration. For a more thorough setup, check out our guide on [monitoring Amplify hosting with CloudWatch](https://oneuptime.com/blog/post/monitor-amplify-hosting-with-cloudwatch/view).
+Once deployed, you will want to monitor your SSR performance. Amplify integrates with CloudWatch, giving you access to Lambda invocation metrics, error rates, and duration. For a more thorough setup, check out our guide on [monitoring Amplify hosting with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-amplify-hosting-with-cloudwatch/view).
 
 You can also set up custom alarms for Lambda cold starts, which are the primary source of latency in SSR deployments. Cold starts typically add 200-500ms to the first request after an idle period.
 

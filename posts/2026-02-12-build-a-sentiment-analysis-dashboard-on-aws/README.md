@@ -370,7 +370,7 @@ def analyze_targeted_sentiment(text):
 
 ## Monitoring the Sentiment Pipeline
 
-If your sentiment analysis pipeline goes down, you lose real-time visibility into customer health. Monitor Kinesis shard utilization, Lambda processing errors, and Comprehend API throttling. Track the end-to-end latency from feedback submission to dashboard update. [OneUptime](https://oneuptime.com/blog/post/build-a-content-moderation-system-on-aws/view) can centralize monitoring for all the services in the pipeline.
+If your sentiment analysis pipeline goes down, you lose real-time visibility into customer health. Monitor Kinesis shard utilization, Lambda processing errors, and Comprehend API throttling. Track the end-to-end latency from feedback submission to dashboard update. [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-content-moderation-system-on-aws/view) can centralize monitoring for all the services in the pipeline.
 
 ## Wrapping Up
 

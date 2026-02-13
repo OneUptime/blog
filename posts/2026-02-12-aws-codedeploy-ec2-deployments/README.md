@@ -214,7 +214,7 @@ hooks:
       runas: root
 ```
 
-For a deeper look at AppSpec files, check out our guide on [creating CodeDeploy AppSpec files](https://oneuptime.com/blog/post/codedeploy-appspec-files/view).
+For a deeper look at AppSpec files, check out our guide on [creating CodeDeploy AppSpec files](https://oneuptime.com/blog/post/2026-02-12-codedeploy-appspec-files/view).
 
 ## Step 6: Bundle and Deploy
 
@@ -273,6 +273,6 @@ A few things that trip people up:
 
 ## What's Next
 
-Once you've got basic EC2 deployments working, consider integrating CodeDeploy into a full CI/CD pipeline with [CodePipeline and GitHub](https://oneuptime.com/blog/post/codepipeline-github-source/view). You can also scale things up by using CodeDeploy with [Auto Scaling Groups](https://oneuptime.com/blog/post/codedeploy-auto-scaling-groups/view) so new instances automatically get your latest code.
+Once you've got basic EC2 deployments working, consider integrating CodeDeploy into a full CI/CD pipeline with [CodePipeline and GitHub](https://oneuptime.com/blog/post/2026-02-12-codepipeline-github-source/view). You can also scale things up by using CodeDeploy with [Auto Scaling Groups](https://oneuptime.com/blog/post/2026-02-12-codedeploy-auto-scaling-groups/view) so new instances automatically get your latest code.
 
 For monitoring your deployments and catching issues early, consider setting up alerts with a tool like [OneUptime](https://oneuptime.com) to track deployment health alongside your application metrics.

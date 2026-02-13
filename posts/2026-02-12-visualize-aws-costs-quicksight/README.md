@@ -16,7 +16,7 @@ Let's set up QuickSight for cost visualization from scratch.
 
 Before starting, you need:
 
-1. **CUR configured with Athena integration**: If you haven't done this yet, follow our guide on [setting up CUR](https://oneuptime.com/blog/post/setup-aws-cost-usage-reports-cur/view) and [analyzing CUR with Athena](https://oneuptime.com/blog/post/analyze-aws-cost-usage-reports-athena/view).
+1. **CUR configured with Athena integration**: If you haven't done this yet, follow our guide on [setting up CUR](https://oneuptime.com/blog/post/2026-02-12-setup-aws-cost-usage-reports-cur/view) and [analyzing CUR with Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-aws-cost-usage-reports-athena/view).
 2. **QuickSight account**: Sign up for QuickSight Enterprise Edition (required for row-level security and some advanced features).
 
 ## Setting Up QuickSight

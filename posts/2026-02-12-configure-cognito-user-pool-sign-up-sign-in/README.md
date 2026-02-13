@@ -338,7 +338,7 @@ resource "aws_cognito_user_pool" "main" {
 }
 ```
 
-For details on Lambda triggers, check out [using Cognito Lambda triggers for pre sign-up](https://oneuptime.com/blog/post/cognito-lambda-triggers-pre-sign-up/view).
+For details on Lambda triggers, check out [using Cognito Lambda triggers for pre sign-up](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-pre-sign-up/view).
 
 ## Rate Limiting
 

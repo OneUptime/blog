@@ -268,7 +268,7 @@ torchrun \
   train.py
 ```
 
-For more on distributed training with Trainium, see our detailed guide on [using AWS Trainium instances for model training](https://oneuptime.com/blog/post/use-aws-trainium-instances-for-model-training/view).
+For more on distributed training with Trainium, see our detailed guide on [using AWS Trainium instances for model training](https://oneuptime.com/blog/post/2026-02-12-use-aws-trainium-instances-for-model-training/view).
 
 ## IAM Role Configuration
 

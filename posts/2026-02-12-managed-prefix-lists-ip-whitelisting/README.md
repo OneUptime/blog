@@ -401,4 +401,4 @@ done
 
 **Automate where possible.** For any IP range that changes regularly (CI/CD services, CDN providers), set up automated sync rather than relying on manual updates.
 
-For more on security group management strategies, check out our post on [prefix lists for security group management](https://oneuptime.com/blog/post/prefix-lists-security-group-management/view).
+For more on security group management strategies, check out our post on [prefix lists for security group management](https://oneuptime.com/blog/post/2026-02-12-prefix-lists-security-group-management/view).

@@ -363,4 +363,4 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a get-con
 
 In 90% of cases, CloudWatch agent issues come down to one of three things: IAM permissions, configuration mistakes, or network connectivity. Work through the steps in order - verify the agent is running, check the logs, confirm IAM, validate the config, and test network access. The agent logs almost always contain the answer; you just have to read them.
 
-If you're also missing log data alongside metrics, check out our guide on [troubleshooting missing CloudWatch Logs](https://oneuptime.com/blog/post/troubleshoot-missing-cloudwatch-logs/view).
+If you're also missing log data alongside metrics, check out our guide on [troubleshooting missing CloudWatch Logs](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-missing-cloudwatch-logs/view).

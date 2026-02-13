@@ -287,4 +287,4 @@ aws lightsail delete-instance-snapshot \
 4. Static IP not working after restore? Remember to reassign it to the new instance
 5. Application not working after restore? Check that all services are running
 
-Snapshots are your most important safety mechanism on Lightsail. Set up automatic snapshots on day one and never skip manual snapshots before changes. For the complete Lightsail setup, start with our guide on [setting up Lightsail for web applications](https://oneuptime.com/blog/post/setup-amazon-lightsail-simple-web-applications/view).
+Snapshots are your most important safety mechanism on Lightsail. Set up automatic snapshots on day one and never skip manual snapshots before changes. For the complete Lightsail setup, start with our guide on [setting up Lightsail for web applications](https://oneuptime.com/blog/post/2026-02-12-setup-amazon-lightsail-simple-web-applications/view).

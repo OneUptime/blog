@@ -283,7 +283,7 @@ aws cloudwatch get-metric-statistics \
   --statistics Maximum
 ```
 
-If iterator age is growing, your Lambda can't keep up. Increase the parallelization factor, increase batch size, optimize your function, or add more shards to the stream. For more on monitoring data pipelines, check out our post on [configuring Kinesis Data Streams](https://oneuptime.com/blog/post/configure-amazon-kinesis-data-streams/view).
+If iterator age is growing, your Lambda can't keep up. Increase the parallelization factor, increase batch size, optimize your function, or add more shards to the stream. For more on monitoring data pipelines, check out our post on [configuring Kinesis Data Streams](https://oneuptime.com/blog/post/2026-02-12-configure-amazon-kinesis-data-streams/view).
 
 ## Common Pitfalls
 

@@ -321,7 +321,7 @@ resource "aws_grafana_role_association" "admin" {
 
 **Use stat panels for current values.** Single-value stat panels with sparklines are great for at-a-glance monitoring.
 
-For the Terraform approach to CloudWatch-native dashboards, see our guide on [CloudWatch dashboards with Terraform](https://oneuptime.com/blog/post/cloudwatch-dashboards-terraform/view).
+For the Terraform approach to CloudWatch-native dashboards, see our guide on [CloudWatch dashboards with Terraform](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-dashboards-terraform/view).
 
 ## Wrapping Up
 

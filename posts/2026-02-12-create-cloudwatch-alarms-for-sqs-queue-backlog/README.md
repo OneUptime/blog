@@ -256,4 +256,4 @@ There is no universal threshold that works for every queue. Consider these facto
 
 ## Wrapping Up
 
-SQS queue backlog alarms are essential for any message-driven architecture. Start with queue depth and message age alarms, then add consumer health and growth rate alarms as you mature. For alarms on other AWS services, see our posts on [CloudWatch alarms for Lambda error rates](https://oneuptime.com/blog/post/create-cloudwatch-alarms-for-lambda-error-rates/view) and [CloudWatch alarms for ECS service health](https://oneuptime.com/blog/post/create-cloudwatch-alarms-for-ecs-service-health/view).
+SQS queue backlog alarms are essential for any message-driven architecture. Start with queue depth and message age alarms, then add consumer health and growth rate alarms as you mature. For alarms on other AWS services, see our posts on [CloudWatch alarms for Lambda error rates](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-for-lambda-error-rates/view) and [CloudWatch alarms for ECS service health](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-for-ecs-service-health/view).

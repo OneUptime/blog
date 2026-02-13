@@ -522,7 +522,7 @@ Run validation before starting the collector:
 
 **Naming Conventions**: Use consistent prefixes like `OTEL_` or `COLLECTOR_` for all collector-related variables.
 
-For dynamic configuration changes without restarts, explore the [file provider for dynamic collector configuration](https://oneuptime.com/blog/post/file-provider-dynamic-collector-configuration/view) or [HTTP provider for remote configuration](https://oneuptime.com/blog/post/http-provider-remote-collector-configuration/view).
+For dynamic configuration changes without restarts, explore the [file provider for dynamic collector configuration](https://oneuptime.com/blog/post/2026-02-06-file-provider-dynamic-collector-configuration/view) or [HTTP provider for remote configuration](https://oneuptime.com/blog/post/2026-02-06-http-provider-remote-collector-configuration/view).
 
 ## Conclusion
 

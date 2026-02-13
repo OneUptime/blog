@@ -229,6 +229,6 @@ flowchart TD
 
 In practice, most teams that just need isolation go with Dedicated Instances because they're simpler. Teams with licensing requirements or enough workloads to fill hosts go with Dedicated Hosts.
 
-If you're running workloads that need careful cost management alongside dedicated hardware, consider pairing this with [AWS Compute Optimizer](https://oneuptime.com/blog/post/use-aws-compute-optimizer-to-right-size-ec2-instances/view) to make sure you're using the right instance sizes. And if you need to understand how Dedicated Hosts work specifically for licensing, check out the companion post on [using EC2 Dedicated Hosts for licensing compliance](https://oneuptime.com/blog/post/use-ec2-dedicated-hosts-for-licensing-compliance/view).
+If you're running workloads that need careful cost management alongside dedicated hardware, consider pairing this with [AWS Compute Optimizer](https://oneuptime.com/blog/post/2026-02-12-use-aws-compute-optimizer-to-right-size-ec2-instances/view) to make sure you're using the right instance sizes. And if you need to understand how Dedicated Hosts work specifically for licensing, check out the companion post on [using EC2 Dedicated Hosts for licensing compliance](https://oneuptime.com/blog/post/2026-02-12-use-ec2-dedicated-hosts-for-licensing-compliance/view).
 
 Both options give you the isolation you need. The question is how much control and visibility you need on top of that.

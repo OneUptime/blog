@@ -245,7 +245,7 @@ aws ses verify-email-identity \
 ```
 
 **Can't send to unverified addresses:**
-You're in the sandbox. Either verify each recipient or [request production access](https://oneuptime.com/blog/post/move-amazon-ses-out-of-sandbox/view).
+You're in the sandbox. Either verify each recipient or [request production access](https://oneuptime.com/blog/post/2026-02-12-move-amazon-ses-out-of-sandbox/view).
 
 **"Email address is not verified" error when domain is verified:**
 If both a domain and an email address at that domain are verified, SES uses the more specific identity (the email). If the email verification failed or expired, it can cause issues. Delete the email identity and rely on the domain verification instead:

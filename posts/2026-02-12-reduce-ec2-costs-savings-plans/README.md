@@ -255,13 +255,13 @@ Savings Plans are generally the better choice for new commitments. Here's why:
 - **Simpler**: No marketplace to deal with, no modification workflows.
 - **Similar savings**: EC2 Instance SPs offer comparable discounts to RIs.
 
-Reserved Instances still make sense if you already have them (they can coexist with Savings Plans) or if you need capacity reservations (which only Standard RIs provide). See our guide on [Reserved Instances](https://oneuptime.com/blog/post/reduce-ec2-costs-reserved-instances/view) for more details.
+Reserved Instances still make sense if you already have them (they can coexist with Savings Plans) or if you need capacity reservations (which only Standard RIs provide). See our guide on [Reserved Instances](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-reserved-instances/view) for more details.
 
 ## Step-by-Step Purchase Strategy
 
 Here's a practical approach for your first Savings Plan purchase:
 
-1. **Right-size first**: Downsize over-provisioned instances before committing. See [right-sizing EC2](https://oneuptime.com/blog/post/reduce-ec2-costs-right-sizing/view).
+1. **Right-size first**: Downsize over-provisioned instances before committing. See [right-sizing EC2](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-right-sizing/view).
 2. **Analyze 30 days of usage**: Use the scripts above to find your baseline.
 3. **Start conservative**: Commit to the 10th percentile of hourly spend.
 4. **Choose Compute SP**: Unless you're very certain about instance families.
@@ -271,4 +271,4 @@ Here's a practical approach for your first Savings Plan purchase:
 
 ## Wrapping Up
 
-Savings Plans are the easiest way to reduce EC2 costs without changing how you run your workloads. Calculate your baseline hourly spend, start with a conservative commitment, and monitor utilization. The key is committing to usage you're confident about - your steady-state baseline - and leaving peak usage on On-Demand. Combine Savings Plans with [right-sizing](https://oneuptime.com/blog/post/reduce-ec2-costs-right-sizing/view) and [Spot Instances](https://oneuptime.com/blog/post/reduce-ec2-costs-spot-instances/view) for maximum savings.
+Savings Plans are the easiest way to reduce EC2 costs without changing how you run your workloads. Calculate your baseline hourly spend, start with a conservative commitment, and monitor utilization. The key is committing to usage you're confident about - your steady-state baseline - and leaving peak usage on On-Demand. Combine Savings Plans with [right-sizing](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-right-sizing/view) and [Spot Instances](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-spot-instances/view) for maximum savings.

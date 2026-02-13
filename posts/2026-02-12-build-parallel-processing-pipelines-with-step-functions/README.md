@@ -383,8 +383,8 @@ Add retry logic inside the Map processor to handle transient failures:
 
 1. **Right-size MaxConcurrency** - Match it to what your downstream systems can handle, not what Step Functions can do
 2. **Keep Lambda payloads small** - Step Functions has a 256KB payload limit per state. For large data, pass S3 references instead
-3. **Use Express Workflows for high-volume maps** - If each map iteration is under 5 minutes and you have thousands of items, consider [Express Workflows](https://oneuptime.com/blog/post/use-step-functions-express-workflows-for-high-volume-events/view)
-4. **For massive datasets, use Distributed Map** - When your array has millions of items, check out our guide on [Step Functions Distributed Map](https://oneuptime.com/blog/post/use-step-functions-distributed-map-for-large-scale-processing/view)
+3. **Use Express Workflows for high-volume maps** - If each map iteration is under 5 minutes and you have thousands of items, consider [Express Workflows](https://oneuptime.com/blog/post/2026-02-12-use-step-functions-express-workflows-for-high-volume-events/view)
+4. **For massive datasets, use Distributed Map** - When your array has millions of items, check out our guide on [Step Functions Distributed Map](https://oneuptime.com/blog/post/2026-02-12-use-step-functions-distributed-map-for-large-scale-processing/view)
 
 ## Wrapping Up
 

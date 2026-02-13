@@ -273,4 +273,4 @@ cloudwatch.put_metric_alarm(
 )
 ```
 
-The bottom line: don't default to the most expensive model. Profile your tasks, measure quality across different models, and route accordingly. Most workloads can run on mid-tier models with no noticeable quality drop, saving 60-80% on inference costs. For bulk workloads, [batch inference](https://oneuptime.com/blog/post/amazon-bedrock-batch-inference/view) cuts that cost in half again.
+The bottom line: don't default to the most expensive model. Profile your tasks, measure quality across different models, and route accordingly. Most workloads can run on mid-tier models with no noticeable quality drop, saving 60-80% on inference costs. For bulk workloads, [batch inference](https://oneuptime.com/blog/post/2026-02-12-amazon-bedrock-batch-inference/view) cuts that cost in half again.

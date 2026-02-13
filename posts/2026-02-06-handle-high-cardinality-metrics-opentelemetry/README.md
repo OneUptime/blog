@@ -314,8 +314,8 @@ This configuration maintained full observability for system health while elimina
 ## Related Resources
 
 For more information on optimizing OpenTelemetry costs, see:
-- https://oneuptime.com/blog/post/delta-temporality-manage-cardinality-explosions/view
-- https://oneuptime.com/blog/post/cut-observability-costs-opentelemetry-filtering-sampling/view
-- https://oneuptime.com/blog/post/probabilistic-sampling-opentelemetry-cost-control/view
+- https://oneuptime.com/blog/post/2026-02-06-delta-temporality-manage-cardinality-explosions/view
+- https://oneuptime.com/blog/post/2026-02-06-cut-observability-costs-opentelemetry-filtering-sampling/view
+- https://oneuptime.com/blog/post/2026-02-06-probabilistic-sampling-opentelemetry-cost-control/view
 
 High-cardinality metrics are manageable with the right strategies. By implementing attribute filtering, aggregation, and sampling, you can maintain observability while keeping costs under control. The key is to be intentional about what you measure and how you aggregate it.

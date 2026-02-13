@@ -370,7 +370,7 @@ Metrics Math works in dashboard widgets too:
 }
 ```
 
-For more on Metrics Math, see our guide on [CloudWatch Metrics Math expressions](https://oneuptime.com/blog/post/cloudwatch-metrics-math-expressions/view).
+For more on Metrics Math, see our guide on [CloudWatch Metrics Math expressions](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-metrics-math-expressions/view).
 
 ## Dynamic Dashboards with Template Variables
 
@@ -485,7 +485,7 @@ module "dashboard" {
 
 **Keep dashboards focused.** One dashboard per service or application layer. A dashboard that shows everything shows nothing useful.
 
-For the alarm definitions that complement these dashboards, see our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/cloudwatch-alarms-terraform/view).
+For the alarm definitions that complement these dashboards, see our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-terraform/view).
 
 ## Wrapping Up
 

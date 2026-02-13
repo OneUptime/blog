@@ -264,6 +264,6 @@ Second, validate inputs in your Lambda functions. The agent might pass unexpecte
 
 Third, set reasonable session timeouts. Long-running sessions consume resources, and most conversations don't need to stay active for hours.
 
-Finally, test edge cases thoroughly. What happens when an API call fails? What if the user asks something completely outside the agent's scope? Build guardrails for these scenarios - and speaking of guardrails, you might want to look into [Amazon Bedrock Guardrails](https://oneuptime.com/blog/post/amazon-bedrock-guardrails-safe-ai/view) for content filtering and safety controls.
+Finally, test edge cases thoroughly. What happens when an API call fails? What if the user asks something completely outside the agent's scope? Build guardrails for these scenarios - and speaking of guardrails, you might want to look into [Amazon Bedrock Guardrails](https://oneuptime.com/blog/post/2026-02-12-amazon-bedrock-guardrails-safe-ai/view) for content filtering and safety controls.
 
 Bedrock Agents are a solid way to bridge the gap between conversational AI and actual task execution. The setup takes some work, but once it's running, you've got an autonomous system that can handle real workflows without constant human intervention.

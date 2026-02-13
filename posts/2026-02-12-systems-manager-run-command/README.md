@@ -38,7 +38,7 @@ Each target instance needs:
 - An IAM instance profile with `AmazonSSMManagedInstanceCore` attached
 - Outbound connectivity to Systems Manager endpoints (internet or VPC endpoints)
 
-See our guide on [Session Manager setup](https://oneuptime.com/blog/post/systems-manager-session-manager/view) for detailed IAM and agent configuration.
+See our guide on [Session Manager setup](https://oneuptime.com/blog/post/2026-02-12-systems-manager-session-manager/view) for detailed IAM and agent configuration.
 
 ## Running Your First Command
 
@@ -233,7 +233,7 @@ aws ssm send-command \
   --comment "Check available security patches"
 ```
 
-For full patch management, see our guide on [Systems Manager Patch Manager](https://oneuptime.com/blog/post/systems-manager-patch-manager/view).
+For full patch management, see our guide on [Systems Manager Patch Manager](https://oneuptime.com/blog/post/2026-02-12-systems-manager-patch-manager/view).
 
 ## Built-in SSM Documents
 
@@ -365,4 +365,4 @@ aws ssm send-command \
 
 Track Run Command usage and failures with CloudWatch. For comprehensive operational visibility, [OneUptime](https://oneuptime.com) can help you monitor command execution across your fleet and alert when automated maintenance tasks fail.
 
-For automated patching workflows, check our guide on [Systems Manager Patch Manager](https://oneuptime.com/blog/post/systems-manager-patch-manager/view).
+For automated patching workflows, check our guide on [Systems Manager Patch Manager](https://oneuptime.com/blog/post/2026-02-12-systems-manager-patch-manager/view).

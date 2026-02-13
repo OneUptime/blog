@@ -820,6 +820,6 @@ service:
 
 The OTLP gRPC exporter is the cornerstone of OpenTelemetry observability pipelines, providing reliable, efficient transmission of telemetry data to backends. By properly configuring TLS, authentication, compression, retry logic, and queuing, you can build robust telemetry pipelines that handle production workloads reliably.
 
-Combined with processors like [transform](https://oneuptime.com/blog/post/transform-log-bodies-ottl-opentelemetry-collector/view), [batch](https://opentelemetry.io/docs/collector/configuration/#processors), and resource detection, the OTLP exporter enables comprehensive observability solutions that scale from development to production.
+Combined with processors like [transform](https://oneuptime.com/blog/post/2026-02-06-transform-log-bodies-ottl-opentelemetry-collector/view), [batch](https://opentelemetry.io/docs/collector/configuration/#processors), and resource detection, the OTLP exporter enables comprehensive observability solutions that scale from development to production.
 
 For more information on the OTLP exporter and OpenTelemetry Collector configuration, refer to the [OpenTelemetry Collector documentation](https://opentelemetry.io/docs/collector/configuration/) and [OTLP specification](https://opentelemetry.io/docs/specs/otlp/).

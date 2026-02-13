@@ -313,7 +313,7 @@ aws batch describe-jobs --jobs $LOAD_JOB_ID \
   --query 'jobs[0].{Status:status,Reason:statusReason,StartedAt:startedAt,StoppedAt:stoppedAt}'
 ```
 
-For full pipeline visibility, see our guide on [monitoring AWS Batch jobs with CloudWatch](https://oneuptime.com/blog/post/monitor-aws-batch-jobs-with-cloudwatch/view).
+For full pipeline visibility, see our guide on [monitoring AWS Batch jobs with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-aws-batch-jobs-with-cloudwatch/view).
 
 ## Wrapping Up
 

@@ -329,6 +329,6 @@ If you're just getting started, don't enable all 300+ rules at once. Start with 
 6. **IAM_USER_MFA_ENABLED** - Basic user security
 7. **VPC_DEFAULT_SECURITY_GROUP_CLOSED** - Prevents accidental exposure
 
-Get these running, address the non-compliant resources, then expand to more rules. For a structured approach, check out [AWS Config conformance packs](https://oneuptime.com/blog/post/aws-config-conformance-packs/view) which bundle rules together for specific compliance frameworks like CIS or PCI DSS.
+Get these running, address the non-compliant resources, then expand to more rules. For a structured approach, check out [AWS Config conformance packs](https://oneuptime.com/blog/post/2026-02-12-aws-config-conformance-packs/view) which bundle rules together for specific compliance frameworks like CIS or PCI DSS.
 
-When you need rules that don't exist as managed rules, you'll need to [write custom Config rules](https://oneuptime.com/blog/post/create-custom-aws-config-rules/view). And to automatically fix non-compliant resources, look into [Config remediation actions](https://oneuptime.com/blog/post/remediate-non-compliant-resources-aws-config/view).
+When you need rules that don't exist as managed rules, you'll need to [write custom Config rules](https://oneuptime.com/blog/post/2026-02-12-create-custom-aws-config-rules/view). And to automatically fix non-compliant resources, look into [Config remediation actions](https://oneuptime.com/blog/post/2026-02-12-remediate-non-compliant-resources-aws-config/view).

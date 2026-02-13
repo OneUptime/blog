@@ -251,7 +251,7 @@ Resources:
 
 Remove any `DependsOn` that duplicates an existing reference dependency. Less `DependsOn` means fewer chances for accidental cycles.
 
-For tracking issues like these in your infrastructure deployments, having [proper monitoring](https://oneuptime.com/blog/post/fix-cloudformation-create-failed-stack-errors/view) in place helps you catch template problems early.
+For tracking issues like these in your infrastructure deployments, having [proper monitoring](https://oneuptime.com/blog/post/2026-02-12-fix-cloudformation-create-failed-stack-errors/view) in place helps you catch template problems early.
 
 ## Summary
 

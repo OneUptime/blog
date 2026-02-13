@@ -323,4 +323,4 @@ fallback_llm = ChatBedrock(
 resilient_llm = llm.with_fallbacks([fallback_llm])
 ```
 
-The combination of LangChain and Bedrock gives you a flexible, production-ready foundation for AI applications. Start with simple chains, add complexity as needed, and leverage LangChain's ecosystem of integrations when you need to connect to other services. For building a full chatbot experience, check out our guide on [building a chatbot with Amazon Bedrock](https://oneuptime.com/blog/post/build-chatbot-amazon-bedrock/view).
+The combination of LangChain and Bedrock gives you a flexible, production-ready foundation for AI applications. Start with simple chains, add complexity as needed, and leverage LangChain's ecosystem of integrations when you need to connect to other services. For building a full chatbot experience, check out our guide on [building a chatbot with Amazon Bedrock](https://oneuptime.com/blog/post/2026-02-12-build-chatbot-amazon-bedrock/view).

@@ -301,7 +301,7 @@ This creates new backing key material immediately while preserving the old mater
 4. **Monitor with Config rules.** Catch any keys that were created without rotation enabled.
 5. **Document your manual rotation process.** For asymmetric keys, make sure the process is repeatable and tested.
 
-For the full picture on managing your KMS keys, check out our guide on [creating and managing CMKs](https://oneuptime.com/blog/post/create-manage-kms-customer-managed-keys/view) and [key policies](https://oneuptime.com/blog/post/kms-key-policies-access-control/view).
+For the full picture on managing your KMS keys, check out our guide on [creating and managing CMKs](https://oneuptime.com/blog/post/2026-02-12-create-manage-kms-customer-managed-keys/view) and [key policies](https://oneuptime.com/blog/post/2026-02-12-kms-key-policies-access-control/view).
 
 ## Wrapping Up
 

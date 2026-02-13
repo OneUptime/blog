@@ -116,7 +116,7 @@ aws iam put-role-policy \
   --policy-document file:///tmp/s3-policy.json
 ```
 
-Remember: `ListBucket` uses the bucket ARN without `/*`, while `GetObject`/`PutObject` use the bucket ARN with `/*`. This trips people up constantly. See our [S3 403 errors guide](https://oneuptime.com/blog/post/fix-s3-403-access-denied-errors/view) for more on this.
+Remember: `ListBucket` uses the bucket ARN without `/*`, while `GetObject`/`PutObject` use the bucket ARN with `/*`. This trips people up constantly. See our [S3 403 errors guide](https://oneuptime.com/blog/post/2026-02-12-fix-s3-403-access-denied-errors/view) for more on this.
 
 ### SQS Access
 

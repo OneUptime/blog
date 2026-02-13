@@ -276,7 +276,7 @@ Amazon Translate charges per character. For a chat application, messages tend to
 
 API Gateway WebSocket connections are billed per connection minute plus per message. Lambda costs are based on invocations and duration. DynamoDB on-demand pricing means you only pay for what you use.
 
-For monitoring your costs and application health, consider setting up observability from day one. Tools like [OneUptime](https://oneuptime.com/blog/post/build-an-anomaly-detection-system-on-aws/view) can help you catch issues before they become expensive problems.
+For monitoring your costs and application health, consider setting up observability from day one. Tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-an-anomaly-detection-system-on-aws/view) can help you catch issues before they become expensive problems.
 
 ## Scaling the System
 

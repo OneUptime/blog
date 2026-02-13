@@ -192,7 +192,7 @@ Resources:
 
 ## Adding Custom Metric Widgets
 
-If you're publishing custom metrics (covered in our [custom metrics guide](https://oneuptime.com/blog/post/publish-custom-cloudwatch-metrics/view)), you can add them to dashboards the same way:
+If you're publishing custom metrics (covered in our [custom metrics guide](https://oneuptime.com/blog/post/2026-02-12-publish-custom-cloudwatch-metrics/view)), you can add them to dashboards the same way:
 
 ```json
 {
@@ -285,4 +285,4 @@ CloudWatch dashboards auto-refresh at configurable intervals (10 seconds, 1 minu
 
 ## Wrapping Up
 
-A well-designed CloudWatch dashboard turns raw metrics into actionable information. Start with the most critical health indicators, layer in performance and business metrics, and iterate as you learn what's actually useful. For more on the widgets and variables you can use, check out our guide on [CloudWatch dashboard widgets and variables](https://oneuptime.com/blog/post/cloudwatch-dashboard-widgets-variables/view). And if you need to share dashboards across teams in different accounts, take a look at [sharing CloudWatch dashboards across accounts](https://oneuptime.com/blog/post/share-cloudwatch-dashboards-across-accounts/view).
+A well-designed CloudWatch dashboard turns raw metrics into actionable information. Start with the most critical health indicators, layer in performance and business metrics, and iterate as you learn what's actually useful. For more on the widgets and variables you can use, check out our guide on [CloudWatch dashboard widgets and variables](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-dashboard-widgets-variables/view). And if you need to share dashboards across teams in different accounts, take a look at [sharing CloudWatch dashboards across accounts](https://oneuptime.com/blog/post/2026-02-12-share-cloudwatch-dashboards-across-accounts/view).

@@ -845,4 +845,4 @@ service:
 
 The Windows Event Log Receiver provides comprehensive visibility into Windows system activity. By collecting and processing events from system, application, and security channels, you can monitor system health, detect security threats, troubleshoot application issues, and maintain compliance. Combined with transform processors, you can extract structured data and create actionable alerts for your Windows infrastructure.
 
-For more on log processing, see our guides on [transform processor](https://oneuptime.com/blog/post/transform-processor-opentelemetry-collector/view) and [filter processor](https://oneuptime.com/blog/post/filter-processor-opentelemetry-collector/view).
+For more on log processing, see our guides on [transform processor](https://oneuptime.com/blog/post/2026-02-06-transform-processor-opentelemetry-collector/view) and [filter processor](https://oneuptime.com/blog/post/2026-02-06-filter-processor-opentelemetry-collector/view).

@@ -40,7 +40,7 @@ graph TD
 ## Prerequisites
 
 You'll need:
-- An activated Storage Gateway configured as either CACHED or STORED type (see [setting up Storage Gateway](https://oneuptime.com/blog/post/set-up-aws-storage-gateway-hybrid-storage/view))
+- An activated Storage Gateway configured as either CACHED or STORED type (see [setting up Storage Gateway](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-storage-gateway-hybrid-storage/view))
 - Local disks assigned for cache (cached mode) or both cache and upload buffer (both modes)
 - iSCSI initiator software on your client machines
 - Network connectivity between clients and the gateway VM

@@ -360,7 +360,7 @@ The OpenSearch client is API-compatible with the Elasticsearch client for most o
 
 ## Monitoring Your OpenSearch Domain
 
-OpenSearch publishes metrics to CloudWatch. For comprehensive search infrastructure monitoring, check out [OneUptime](https://oneuptime.com/blog/post/build-a-custom-search-engine-with-amazon-opensearch/view) for deeper insights into search performance and availability.
+OpenSearch publishes metrics to CloudWatch. For comprehensive search infrastructure monitoring, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-custom-search-engine-with-amazon-opensearch/view) for deeper insights into search performance and availability.
 
 ## Wrapping Up
 

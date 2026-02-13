@@ -300,7 +300,7 @@ aws organizations attach-policy \
 
 Use the IAM Policy Simulator or actually try the restricted actions to verify the SCP works as expected. Then gradually roll it out to OUs.
 
-For understanding how SCPs interact with IAM policies and permission boundaries, see our guide on [setting up IAM permission boundaries](https://oneuptime.com/blog/post/set-up-iam-permission-boundaries/view).
+For understanding how SCPs interact with IAM policies and permission boundaries, see our guide on [setting up IAM permission boundaries](https://oneuptime.com/blog/post/2026-02-12-set-up-iam-permission-boundaries/view).
 
 ## Wrapping Up
 

@@ -259,7 +259,7 @@ exporters:
 4. **Use memory limits**: Always configure `memory_limiter` processor
 5. **Document decisions**: Record why you chose specific values for your team
 
-For high-scale deployments, consider implementing tail-based sampling to reduce data volume instead of simply increasing message sizes. You can learn more about sampling strategies in our guide on [consistent probability sampling](https://oneuptime.com/blog/post/consistent-probability-sampling-predictable-overhead/view).
+For high-scale deployments, consider implementing tail-based sampling to reduce data volume instead of simply increasing message sizes. You can learn more about sampling strategies in our guide on [consistent probability sampling](https://oneuptime.com/blog/post/2026-02-06-consistent-probability-sampling-predictable-overhead/view).
 
 ## Troubleshooting Common Issues
 
@@ -270,6 +270,6 @@ For high-scale deployments, consider implementing tail-based sampling to reduce 
 - **Solution**: Reduce `max_concurrent_streams` or implement `memory_limiter` processor
 
 **Problem**: High latency with large messages
-- **Solution**: Consider reducing batch sizes or implementing [compression](https://oneuptime.com/blog/post/reduce-network-bandwidth-opentelemetry-compression/view)
+- **Solution**: Consider reducing batch sizes or implementing [compression](https://oneuptime.com/blog/post/2026-02-06-reduce-network-bandwidth-opentelemetry-compression/view)
 
 By properly configuring `max_recv_msg_size_mib`, you ensure that your OpenTelemetry pipeline can handle high-volume telemetry without data loss, maintaining complete observability across your infrastructure.

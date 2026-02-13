@@ -39,7 +39,7 @@ Calculate your total cost of ownership (TCO) for on-premises vs. AWS using the A
 
 ### Discover Your Environment
 
-Use AWS Application Discovery Service to inventory your environment. For details, see our guide on [using the AWS Application Discovery Service](https://oneuptime.com/blog/post/use-the-aws-application-discovery-service/view).
+Use AWS Application Discovery Service to inventory your environment. For details, see our guide on [using the AWS Application Discovery Service](https://oneuptime.com/blog/post/2026-02-12-use-the-aws-application-discovery-service/view).
 
 ```python
 # Start discovery to inventory your environment
@@ -57,7 +57,7 @@ Let discovery run for at least two weeks to capture meaningful performance data 
 
 ### Assess Migration Strategies
 
-For each application, determine the right migration strategy. Use [Migration Hub Strategy Recommendations](https://oneuptime.com/blog/post/assess-your-applications-with-aws-migration-hub-strategy-recommendations/view) for data-driven guidance.
+For each application, determine the right migration strategy. Use [Migration Hub Strategy Recommendations](https://oneuptime.com/blog/post/2026-02-12-assess-your-applications-with-aws-migration-hub-strategy-recommendations/view) for data-driven guidance.
 
 The most common strategies for an initial migration:
 - **Rehost (70-80% of workloads)**: Fastest path, move as-is
@@ -187,7 +187,7 @@ gantt
 
 ### Execute Server Migrations with MGN
 
-For each server in the wave, follow the [MGN migration process](https://oneuptime.com/blog/post/migrate-vms-to-aws-with-aws-application-migration-service-mgn/view):
+For each server in the wave, follow the [MGN migration process](https://oneuptime.com/blog/post/2026-02-12-migrate-vms-to-aws-with-aws-application-migration-service-mgn/view):
 
 ```python
 # Batch install MGN agents and track progress
@@ -216,7 +216,7 @@ print(f"Still replicating: {len(still_replicating)}")
 
 ### Execute Database Migrations with DMS
 
-For databases, use [AWS DMS](https://oneuptime.com/blog/post/migrate-databases-to-aws-with-dms/view) for continuous replication:
+For databases, use [AWS DMS](https://oneuptime.com/blog/post/2026-02-12-migrate-databases-to-aws-with-dms/view) for continuous replication:
 
 ```python
 # Monitor all active DMS tasks

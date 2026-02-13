@@ -277,7 +277,7 @@ Training is the biggest cost for most users. A few tips to keep costs reasonable
 
 Set up monitoring for the entire forecasting pipeline. You want to know if an import job fails, if training accuracy degrades, or if the forecast endpoint is throwing errors. CloudWatch Events can trigger notifications for state changes in Forecast resources.
 
-For a unified view of your prediction pipeline and the applications that depend on it, check out how to set up [comprehensive monitoring with AWS services](https://oneuptime.com/blog/post/set-up-amazon-athena-for-querying-s3-data/view).
+For a unified view of your prediction pipeline and the applications that depend on it, check out how to set up [comprehensive monitoring with AWS services](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-athena-for-querying-s3-data/view).
 
 ## Wrapping Up
 

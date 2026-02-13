@@ -244,4 +244,4 @@ A good approach is to consolidate related rules into fewer policies and only dep
 
 AWS Firewall Manager takes the pain out of managing security at scale. Instead of hoping every team in every account follows the rules, you can define policies centrally and have them enforced automatically. Start with audit-only policies, get comfortable with the findings, and then gradually enable auto-remediation.
 
-If you're also monitoring your infrastructure, consider pairing Firewall Manager with a comprehensive monitoring solution. For more on securing your AWS environment, check out our post on [VPC Flow Logs](https://oneuptime.com/blog/post/enable-configure-vpc-flow-logs/view) and [network ACLs](https://oneuptime.com/blog/post/network-acls-subnet-level-security/view).
+If you're also monitoring your infrastructure, consider pairing Firewall Manager with a comprehensive monitoring solution. For more on securing your AWS environment, check out our post on [VPC Flow Logs](https://oneuptime.com/blog/post/2026-02-12-enable-configure-vpc-flow-logs/view) and [network ACLs](https://oneuptime.com/blog/post/2026-02-12-network-acls-subnet-level-security/view).

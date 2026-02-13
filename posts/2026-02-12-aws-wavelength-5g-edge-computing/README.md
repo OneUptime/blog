@@ -255,7 +255,7 @@ aws cloudwatch get-metric-statistics \
   --statistics "Average"
 ```
 
-For end-to-end monitoring of your edge deployment across multiple Wavelength Zones and your parent region, [OneUptime](https://oneuptime.com/blog/post/aws-local-zones-low-latency-applications/view) can provide unified visibility.
+For end-to-end monitoring of your edge deployment across multiple Wavelength Zones and your parent region, [OneUptime](https://oneuptime.com/blog/post/2026-02-12-aws-local-zones-low-latency-applications/view) can provide unified visibility.
 
 ## Wavelength vs. Local Zones
 

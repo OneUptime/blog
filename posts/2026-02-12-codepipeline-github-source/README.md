@@ -352,7 +352,7 @@ aws codepipeline get-pipeline-execution \
   --pipeline-execution-id abc-123-def
 ```
 
-For setting up notifications when pipelines fail or succeed, check out our guide on [CodePipeline notifications](https://oneuptime.com/blog/post/codepipeline-notifications/view).
+For setting up notifications when pipelines fail or succeed, check out our guide on [CodePipeline notifications](https://oneuptime.com/blog/post/2026-02-12-codepipeline-notifications/view).
 
 ## Troubleshooting
 
@@ -365,4 +365,4 @@ If your pipeline doesn't trigger on pushes:
 
 If the source stage fails, it's almost always a connection or permission issue. The CodeStar Connection needs to be authorized for the specific repository you're pulling from.
 
-For more advanced pipeline configurations, check our guides on [adding manual approval steps](https://oneuptime.com/blog/post/codepipeline-manual-approval/view) and [cross-account deployments](https://oneuptime.com/blog/post/cross-account-codepipeline/view). And for comprehensive CI/CD monitoring, [OneUptime](https://oneuptime.com) can help you track pipeline execution times, failure rates, and deployment frequency across all your projects.
+For more advanced pipeline configurations, check our guides on [adding manual approval steps](https://oneuptime.com/blog/post/2026-02-12-codepipeline-manual-approval/view) and [cross-account deployments](https://oneuptime.com/blog/post/2026-02-12-cross-account-codepipeline/view). And for comprehensive CI/CD monitoring, [OneUptime](https://oneuptime.com) can help you track pipeline execution times, failure rates, and deployment frequency across all your projects.

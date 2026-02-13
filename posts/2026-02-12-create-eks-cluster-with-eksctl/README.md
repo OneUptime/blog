@@ -182,7 +182,7 @@ iam:
         autoScaler: true
 ```
 
-For more details on setting up IRSA, check out our guide on [IAM Roles for EKS Service Accounts](https://oneuptime.com/blog/post/set-up-iam-roles-for-eks-service-accounts-irsa/view).
+For more details on setting up IRSA, check out our guide on [IAM Roles for EKS Service Accounts](https://oneuptime.com/blog/post/2026-02-12-set-up-iam-roles-for-eks-service-accounts-irsa/view).
 
 ## Verifying Your Cluster
 
@@ -244,6 +244,6 @@ This tears down everything - the nodes, the control plane, the VPC, all of it. J
 
 ## What's Next
 
-Creating the cluster is really just the beginning. You'll want to set up [kubectl access](https://oneuptime.com/blog/post/configure-kubectl-for-eks/view), configure the [Cluster Autoscaler](https://oneuptime.com/blog/post/configure-eks-cluster-autoscaler/view), and set up proper [monitoring with Prometheus and Grafana](https://oneuptime.com/blog/post/set-up-prometheus-and-grafana-on-eks/view).
+Creating the cluster is really just the beginning. You'll want to set up [kubectl access](https://oneuptime.com/blog/post/2026-02-12-configure-kubectl-for-eks/view), configure the [Cluster Autoscaler](https://oneuptime.com/blog/post/2026-02-12-configure-eks-cluster-autoscaler/view), and set up proper [monitoring with Prometheus and Grafana](https://oneuptime.com/blog/post/2026-02-12-set-up-prometheus-and-grafana-on-eks/view).
 
 eksctl is genuinely one of the best tools in the EKS ecosystem. It takes what used to be a painful, error-prone process and makes it repeatable and version-controllable. Once you've got your cluster config file dialed in, spinning up identical environments becomes trivial.

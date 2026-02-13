@@ -544,4 +544,4 @@ Percona XtraDB Cluster provides true multi-master MySQL replication with synchro
 
 Start with a three-node cluster, configure automated backups, and test failover scenarios. As your workload grows, scale to five nodes for better availability and performance. The multi-master architecture eliminates write bottlenecks while maintaining data consistency through synchronous replication.
 
-For more database management strategies, see https://oneuptime.com/blog/post/postgresql-vs-mysql/view for database comparison insights.
+For more database management strategies, see https://oneuptime.com/blog/post/2026-01-21-postgresql-vs-mysql/view for database comparison insights.

@@ -234,7 +234,7 @@ PR previews cost money for every build minute and, for SSR apps, for Lambda invo
 
 ## Integration with Branch Deployments
 
-PR previews complement [branch-based deployments](https://oneuptime.com/blog/post/configure-amplify-branch-based-deployments/view). Use branch deployments for long-lived environments (staging, QA) and PR previews for short-lived review environments. Together, they give you complete coverage of your Git workflow.
+PR previews complement [branch-based deployments](https://oneuptime.com/blog/post/2026-02-12-configure-amplify-branch-based-deployments/view). Use branch deployments for long-lived environments (staging, QA) and PR previews for short-lived review environments. Together, they give you complete coverage of your Git workflow.
 
 ## Wrapping Up
 

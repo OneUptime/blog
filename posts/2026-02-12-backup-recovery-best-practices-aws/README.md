@@ -390,4 +390,4 @@ Having backups is half the battle. You also need documented recovery procedures 
 
 For each critical workload, document the following: what gets backed up, where the backups are stored, who has access to restore, the step-by-step restore procedure, and the expected recovery time. Keep this documentation up to date and accessible even if AWS is down - printing a copy isn't paranoid when your entire infrastructure is in the cloud.
 
-For a broader view of disaster preparedness, take a look at our posts on [data protection best practices on AWS](https://oneuptime.com/blog/post/data-protection-best-practices-aws/view) and [multi-account strategy on AWS](https://oneuptime.com/blog/post/multi-account-strategy-aws/view), which covers isolating your backup accounts from production.
+For a broader view of disaster preparedness, take a look at our posts on [data protection best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-data-protection-best-practices-aws/view) and [multi-account strategy on AWS](https://oneuptime.com/blog/post/2026-02-12-multi-account-strategy-aws/view), which covers isolating your backup accounts from production.

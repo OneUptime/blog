@@ -282,4 +282,4 @@ A few things I've learned the hard way:
 
 Health check failures are one of the top causes of ECS deployment issues and service instability. Understanding the difference between container health checks and target group health checks, and configuring both correctly, will save you hours of debugging.
 
-Start with generous timeouts and start periods, then tighten them as you learn your application's behavior. And always test your health checks locally before deploying to production. For related deployment troubleshooting, check out our guide on [troubleshooting ECS service deployment issues](https://oneuptime.com/blog/post/troubleshoot-ecs-service-deployment-issues/view).
+Start with generous timeouts and start periods, then tighten them as you learn your application's behavior. And always test your health checks locally before deploying to production. For related deployment troubleshooting, check out our guide on [troubleshooting ECS service deployment issues](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-ecs-service-deployment-issues/view).

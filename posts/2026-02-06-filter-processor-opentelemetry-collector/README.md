@@ -844,6 +844,6 @@ Combine filtering with sampling, attribute processing, and resource detection fo
 
 **Related Reading:**
 
-- [How to Configure the Attributes Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/attributes-processor-opentelemetry-collector/view)
-- [How to Configure the Transform Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/transform-processor-opentelemetry-collector/view)
+- [How to Configure the Attributes Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-attributes-processor-opentelemetry-collector/view)
+- [How to Configure the Transform Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-transform-processor-opentelemetry-collector/view)
 - [How to reduce noise in OpenTelemetry?](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view)

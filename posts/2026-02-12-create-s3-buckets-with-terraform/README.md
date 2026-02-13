@@ -96,7 +96,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "my_bucket_encrypt
 }
 ```
 
-If you want to use a custom KMS key, check out our post on [creating KMS keys with Terraform](https://oneuptime.com/blog/post/create-kms-keys-with-terraform/view).
+If you want to use a custom KMS key, check out our post on [creating KMS keys with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-kms-keys-with-terraform/view).
 
 ## Blocking Public Access
 

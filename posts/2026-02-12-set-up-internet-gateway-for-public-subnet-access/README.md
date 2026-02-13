@@ -252,7 +252,7 @@ aws ec2 describe-instances \
 
 Nine times out of ten, the problem is either a missing route table association or a missing public IP address.
 
-For the full VPC setup guide including subnets and NAT gateways, see [creating a VPC from scratch](https://oneuptime.com/blog/post/create-vpc-from-scratch-in-aws/view). For private subnet internet access without exposing resources publicly, see [setting up a NAT gateway](https://oneuptime.com/blog/post/set-up-nat-gateway-for-private-subnet-internet-access/view).
+For the full VPC setup guide including subnets and NAT gateways, see [creating a VPC from scratch](https://oneuptime.com/blog/post/2026-02-12-create-vpc-from-scratch-in-aws/view). For private subnet internet access without exposing resources publicly, see [setting up a NAT gateway](https://oneuptime.com/blog/post/2026-02-12-set-up-nat-gateway-for-private-subnet-internet-access/view).
 
 ## Wrapping Up
 

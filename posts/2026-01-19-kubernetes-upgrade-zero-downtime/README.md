@@ -556,6 +556,6 @@ For monitoring your cluster health during upgrades, check out [OneUptime's Kuber
 
 ## Related Resources
 
-- [How to Drain and Cordon Nodes for Maintenance](https://oneuptime.com/blog/post/kubernetes-drain-cordon-node-maintenance/view)
-- [How to Set Up Pod Disruption Budgets](https://oneuptime.com/blog/post/kubernetes-resource-quotas-limit-ranges/view)
-- [How to Backup and Restore with Velero](https://oneuptime.com/blog/post/kubernetes-velero-backup-restore/view)
+- [How to Drain and Cordon Nodes for Maintenance](https://oneuptime.com/blog/post/2026-01-19-kubernetes-drain-cordon-node-maintenance/view)
+- [How to Set Up Pod Disruption Budgets](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-quotas-limit-ranges/view)
+- [How to Backup and Restore with Velero](https://oneuptime.com/blog/post/2026-01-19-kubernetes-velero-backup-restore/view)

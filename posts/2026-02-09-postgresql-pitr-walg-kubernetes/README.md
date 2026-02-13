@@ -509,4 +509,4 @@ WAL-G provides production-grade point-in-time recovery for PostgreSQL on Kuberne
 
 Implement automated base backups, configure continuous WAL archiving, and regularly test your recovery procedures. With proper PITR setup, you can confidently recover from any data disaster with minimal data loss.
 
-For more backup strategies, see https://oneuptime.com/blog/post/postgresql-pg-dump-backup/view for alternative backup approaches.
+For more backup strategies, see https://oneuptime.com/blog/post/2026-01-21-postgresql-pg-dump-backup/view for alternative backup approaches.

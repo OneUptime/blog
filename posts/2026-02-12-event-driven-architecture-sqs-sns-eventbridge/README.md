@@ -325,7 +325,7 @@ In an event-driven system, you need a clear strategy for handling failures at ea
 
 **SQS**: Messages that can't be processed after the max receive count go to the queue's DLQ. Monitor your DLQs actively.
 
-For monitoring this entire pipeline, check out our guide on [monitoring SNS with CloudWatch](https://oneuptime.com/blog/post/monitor-sns-cloudwatch/view).
+For monitoring this entire pipeline, check out our guide on [monitoring SNS with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-sns-cloudwatch/view).
 
 ## Wrapping Up
 

@@ -422,7 +422,7 @@ PipelineFailureRule:
         Id: PipelineFailureAlert
 ```
 
-For more on Lambda monitoring, see [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/monitor-lambda-function-performance-with-cloudwatch/view).
+For more on Lambda monitoring, see [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-lambda-function-performance-with-cloudwatch/view).
 
 ## Wrapping Up
 

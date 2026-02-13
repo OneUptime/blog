@@ -312,7 +312,7 @@ Keep the DMS task running and the source database available for a rollback perio
 
 ## Monitoring Your Migrated Database
 
-After migration, set up CloudWatch alarms for your new RDS or Aurora instance. Monitor CPU, memory, IOPS, replication lag (if using read replicas), and connection counts. For comprehensive database monitoring that covers both performance and availability, check out [OneUptime](https://oneuptime.com/blog/post/migrate-from-on-premises-to-aws-step-by-step/view) for full-stack observability.
+After migration, set up CloudWatch alarms for your new RDS or Aurora instance. Monitor CPU, memory, IOPS, replication lag (if using read replicas), and connection counts. For comprehensive database monitoring that covers both performance and availability, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-12-migrate-from-on-premises-to-aws-step-by-step/view) for full-stack observability.
 
 ## Wrapping Up
 

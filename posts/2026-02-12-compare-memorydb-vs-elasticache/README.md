@@ -296,4 +296,4 @@ Use MemoryDB for real-time operations and periodically export data to S3 for ana
 
 The choice between ElastiCache and MemoryDB comes down to one question: is Redis your cache or your database? If it's a cache, use ElastiCache - it's cheaper and faster for writes. If it's a database (or if you can't afford to lose data), use MemoryDB - it's durable, secure by default, and can simplify your architecture by eliminating the need for a separate database.
 
-For more on working with these services, check out the guides on [connecting to ElastiCache Redis from an application](https://oneuptime.com/blog/post/connect-to-elasticache-redis-from-an-application/view) and [using Amazon MemoryDB for Redis](https://oneuptime.com/blog/post/amazon-memorydb-for-redis/view).
+For more on working with these services, check out the guides on [connecting to ElastiCache Redis from an application](https://oneuptime.com/blog/post/2026-02-12-connect-to-elasticache-redis-from-an-application/view) and [using Amazon MemoryDB for Redis](https://oneuptime.com/blog/post/2026-02-12-amazon-memorydb-for-redis/view).

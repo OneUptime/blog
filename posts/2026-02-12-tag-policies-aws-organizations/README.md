@@ -369,4 +369,4 @@ aws ce update-cost-allocation-tags-status \
 
 Once activated, these tags appear in your AWS Cost Explorer and billing reports. You can filter and group costs by any of these tag values, giving you accurate cost attribution per team, project, or environment.
 
-Tag policies are a foundational governance mechanism that complements [Service Control Policies](https://oneuptime.com/blog/post/aws-organizations-service-control-policies/view). Together they give you both permission guardrails and resource management standards across your entire organization.
+Tag policies are a foundational governance mechanism that complements [Service Control Policies](https://oneuptime.com/blog/post/2026-02-12-aws-organizations-service-control-policies/view). Together they give you both permission guardrails and resource management standards across your entire organization.

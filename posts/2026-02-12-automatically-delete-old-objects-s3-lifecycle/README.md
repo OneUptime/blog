@@ -185,7 +185,7 @@ Breaking this down:
 - **expire-noncurrent-versions**: Permanently deletes non-current versions after 90 days, keeping the 3 most recent
 - **cleanup-delete-markers**: Removes orphaned delete markers (where all versions have been deleted)
 
-The `NewerNoncurrentVersions` parameter is key for versioned buckets. It ensures you always have a few recent versions available for [recovery](https://oneuptime.com/blog/post/recover-deleted-objects-versioned-s3-bucket/view) while still cleaning up the old ones.
+The `NewerNoncurrentVersions` parameter is key for versioned buckets. It ensures you always have a few recent versions available for [recovery](https://oneuptime.com/blog/post/2026-02-12-recover-deleted-objects-versioned-s3-bucket/view) while still cleaning up the old ones.
 
 ## Cleaning Up Incomplete Multipart Uploads
 
@@ -224,7 +224,7 @@ aws s3api list-multipart-uploads \
 
 ## Combining Transitions and Expirations
 
-The most cost-effective approach combines [storage class transitions](https://oneuptime.com/blog/post/s3-lifecycle-rules-transition-storage-classes/view) with eventual expiration.
+The most cost-effective approach combines [storage class transitions](https://oneuptime.com/blog/post/2026-02-12-s3-lifecycle-rules-transition-storage-classes/view) with eventual expiration.
 
 Create a complete lifecycle with transitions and expiration:
 

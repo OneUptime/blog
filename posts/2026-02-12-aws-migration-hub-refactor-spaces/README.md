@@ -8,7 +8,7 @@ Description: Learn how to use AWS Migration Hub Refactor Spaces to manage increm
 
 ---
 
-Breaking apart a monolith is messy. You've got the old system, the new microservices you're building, and somehow you need to route traffic between them while keeping everything working. AWS Migration Hub Refactor Spaces was built specifically for this problem. It gives you a managed environment for incrementally refactoring applications, handling the routing, networking, and service discovery that makes the [strangler fig pattern](https://oneuptime.com/blog/post/strangler-fig-pattern-aws-migration/view) work in practice.
+Breaking apart a monolith is messy. You've got the old system, the new microservices you're building, and somehow you need to route traffic between them while keeping everything working. AWS Migration Hub Refactor Spaces was built specifically for this problem. It gives you a managed environment for incrementally refactoring applications, handling the routing, networking, and service discovery that makes the [strangler fig pattern](https://oneuptime.com/blog/post/2026-02-12-strangler-fig-pattern-aws-migration/view) work in practice.
 
 Think of it as a purpose-built tool for what people used to cobble together with API Gateway, ALB routing rules, and a lot of manual configuration.
 

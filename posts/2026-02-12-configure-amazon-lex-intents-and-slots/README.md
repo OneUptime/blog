@@ -10,7 +10,7 @@ Description: A detailed guide to configuring intents, slots, and utterances in A
 
 Getting a chatbot to understand what users actually want comes down to how well you configure your intents and slots. These are the building blocks of any Amazon Lex bot, and getting them right is the difference between a bot that's helpful and one that constantly says "Sorry, I didn't understand that."
 
-This guide dives deep into intent and slot configuration in Amazon Lex V2. If you're just getting started with Lex, check out our [introductory guide to building chatbots with Amazon Lex](https://oneuptime.com/blog/post/build-chatbot-with-amazon-lex/view) first.
+This guide dives deep into intent and slot configuration in Amazon Lex V2. If you're just getting started with Lex, check out our [introductory guide to building chatbots with Amazon Lex](https://oneuptime.com/blog/post/2026-02-12-build-chatbot-with-amazon-lex/view) first.
 
 ## Understanding Intents
 
@@ -265,10 +265,10 @@ After configuring your intents and slots, build the bot and test thoroughly. Pay
 3. **Is the conversation flow natural?** Walk through the full flow as if you were a real user.
 4. **What happens with unexpected input?** Type something completely unrelated and make sure the fallback intent handles it gracefully.
 
-Check your CloudWatch metrics to monitor intent match rates over time. A `MissedUtteranceCount` that keeps climbing means you need more utterance examples. For comprehensive monitoring across all your AWS services, take a look at [Amazon DevOps Guru for operational insights](https://oneuptime.com/blog/post/use-amazon-devops-guru-for-operational-insights/view).
+Check your CloudWatch metrics to monitor intent match rates over time. A `MissedUtteranceCount` that keeps climbing means you need more utterance examples. For comprehensive monitoring across all your AWS services, take a look at [Amazon DevOps Guru for operational insights](https://oneuptime.com/blog/post/2026-02-12-use-amazon-devops-guru-for-operational-insights/view).
 
 ## Wrapping Up
 
 Good intent and slot configuration is the backbone of a useful chatbot. Spend time getting your utterances diverse, your slot types precise, and your conversation flow logical. The NLU model is only as good as the training data you give it.
 
-Once your intents and slots are solid, the next step is connecting fulfillment logic. Head over to our guide on [integrating Lex with Lambda for fulfillment](https://oneuptime.com/blog/post/integrate-amazon-lex-with-lambda-for-fulfillment/view) to make your bot actually do things.
+Once your intents and slots are solid, the next step is connecting fulfillment logic. Head over to our guide on [integrating Lex with Lambda for fulfillment](https://oneuptime.com/blog/post/2026-02-12-integrate-amazon-lex-with-lambda-for-fulfillment/view) to make your bot actually do things.

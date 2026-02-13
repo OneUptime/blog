@@ -263,7 +263,7 @@ Cloud9 itself is free - you only pay for the underlying EC2 instance and EBS sto
 - 30 GB EBS storage adds about $3/month
 - With auto-stop, idle developers cost nothing beyond storage
 
-For teams that need more power, consider using spot instances for non-critical development environments. For IDE alternatives that do not tie to a specific cloud, check out our guide on [setting up AWS Application Composer for visual design](https://oneuptime.com/blog/post/set-up-aws-application-composer-for-visual-design/view), which provides another browser-based AWS development experience.
+For teams that need more power, consider using spot instances for non-critical development environments. For IDE alternatives that do not tie to a specific cloud, check out our guide on [setting up AWS Application Composer for visual design](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-application-composer-for-visual-design/view), which provides another browser-based AWS development experience.
 
 ## Wrapping Up
 

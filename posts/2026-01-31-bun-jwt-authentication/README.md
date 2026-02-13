@@ -1395,5 +1395,5 @@ With Bun's excellent performance and native TypeScript support, implementing the
 *Need to monitor your authentication system? [OneUptime](https://oneuptime.com) provides comprehensive observability for tracking authentication failures, suspicious activity patterns, and token-related issues across your infrastructure.*
 
 **Related Reading:**
-- [How to Handle JWT Authentication Securely in Python](https://oneuptime.com/blog/post/python-jwt-authentication)
-- [How to Build WebSocket Servers with Bun](https://oneuptime.com/blog/post/bun-websocket-servers)
+- [How to Handle JWT Authentication Securely in Python](https://oneuptime.com/blog/post/2025-01-06-python-jwt-authentication)
+- [How to Build WebSocket Servers with Bun](https://oneuptime.com/blog/post/2026-01-31-bun-websocket-servers)

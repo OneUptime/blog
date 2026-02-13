@@ -32,7 +32,7 @@ Destinations shine in event-driven architectures where you need to chain workflo
 - **Error handling**: Route failures to an SQS queue for manual review or automated retry logic.
 - **Fan-out patterns**: Trigger different downstream processes based on success or failure.
 
-If you're building monitoring around your Lambda functions, check out our guide on [Lambda extensions for monitoring](https://oneuptime.com/blog/post/lambda-extensions-monitoring/view) for complementary strategies.
+If you're building monitoring around your Lambda functions, check out our guide on [Lambda extensions for monitoring](https://oneuptime.com/blog/post/2026-02-12-lambda-extensions-monitoring/view) for complementary strategies.
 
 ## Setting Up Destinations with the AWS Console
 
@@ -202,7 +202,7 @@ This is a question that comes up a lot. Here's the breakdown:
 - You have existing infrastructure built around DLQs
 - You need the DLQ behavior for Step Functions integration
 
-You can actually use both simultaneously. The DLQ catches failures at the Lambda service level (before your code runs), while Destinations handle the results after execution. For more on DLQ configuration, see our post on [configuring Dead Letter Queues for Lambda](https://oneuptime.com/blog/post/configure-dead-letter-queues-lambda-functions/view).
+You can actually use both simultaneously. The DLQ catches failures at the Lambda service level (before your code runs), while Destinations handle the results after execution. For more on DLQ configuration, see our post on [configuring Dead Letter Queues for Lambda](https://oneuptime.com/blog/post/2026-02-12-configure-dead-letter-queues-lambda-functions/view).
 
 ## Common Pitfalls
 
@@ -218,7 +218,7 @@ You can actually use both simultaneously. The DLQ catches failures at the Lambda
 
 Testing destinations locally is tricky because it's a service-level feature. You can't really simulate it with SAM CLI. The best approach is to write your Lambda handler to return structured responses, test the handler logic locally, and then test the destination routing in a dev environment.
 
-If you want to learn more about local testing strategies, our guide on [testing Lambda functions locally with SAM CLI](https://oneuptime.com/blog/post/test-lambda-functions-locally-sam-cli/view) covers the fundamentals.
+If you want to learn more about local testing strategies, our guide on [testing Lambda functions locally with SAM CLI](https://oneuptime.com/blog/post/2026-02-12-test-lambda-functions-locally-sam-cli/view) covers the fundamentals.
 
 ## Monitoring Destinations
 
@@ -227,7 +227,7 @@ You should monitor your destination deliveries to make sure messages aren't gett
 - `DestinationDeliveryFailures` - number of times Lambda couldn't deliver to the destination
 - `AsyncEventsDropped` - events dropped because they exceeded the max event age
 
-Set up CloudWatch alarms on these metrics. If `DestinationDeliveryFailures` starts climbing, it usually means an IAM permission issue or the destination service is throttling you. For more on CloudWatch-based monitoring, check out [debugging Lambda functions with CloudWatch Logs](https://oneuptime.com/blog/post/debug-lambda-functions-cloudwatch-logs/view).
+Set up CloudWatch alarms on these metrics. If `DestinationDeliveryFailures` starts climbing, it usually means an IAM permission issue or the destination service is throttling you. For more on CloudWatch-based monitoring, check out [debugging Lambda functions with CloudWatch Logs](https://oneuptime.com/blog/post/2026-02-12-debug-lambda-functions-cloudwatch-logs/view).
 
 ## Wrapping Up
 

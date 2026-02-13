@@ -14,7 +14,7 @@ There are two main approaches to alerting on CloudTrail events: CloudWatch metri
 
 ## Approach 1: CloudWatch Metric Filters
 
-This approach requires [CloudTrail integrated with CloudWatch Logs](https://oneuptime.com/blog/post/integrate-cloudtrail-cloudwatch-logs/view). Metric filters parse the JSON events as they arrive and increment a CloudWatch metric when a pattern matches. You then create alarms on those metrics.
+This approach requires [CloudTrail integrated with CloudWatch Logs](https://oneuptime.com/blog/post/2026-02-12-integrate-cloudtrail-cloudwatch-logs/view). Metric filters parse the JSON events as they arrive and increment a CloudWatch metric when a pattern matches. You then create alarms on those metrics.
 
 ### The CIS Benchmark Alerts
 
@@ -302,4 +302,4 @@ The biggest risk with security alerting is getting so many alerts that you stop 
 - Route critical alerts to PagerDuty or similar, and informational ones to a Slack channel
 - Review and prune your alerts quarterly
 
-For a broader view of security findings across your accounts, check out [AWS Security Hub](https://oneuptime.com/blog/post/enable-aws-security-hub/view), which aggregates alerts from CloudTrail, GuardDuty, and other sources into a single dashboard.
+For a broader view of security findings across your accounts, check out [AWS Security Hub](https://oneuptime.com/blog/post/2026-02-12-enable-aws-security-hub/view), which aggregates alerts from CloudTrail, GuardDuty, and other sources into a single dashboard.

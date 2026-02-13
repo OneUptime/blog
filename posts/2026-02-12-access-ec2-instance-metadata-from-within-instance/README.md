@@ -120,7 +120,7 @@ curl -H "X-aws-ec2-metadata-token: $TOKEN" \
     http://169.254.169.254/latest/meta-data/instance-id
 ```
 
-For detailed information on IMDSv2, see our guide on [using IMDSv2 for secure metadata access](https://oneuptime.com/blog/post/use-imdsv2-for-secure-instance-metadata-access/view).
+For detailed information on IMDSv2, see our guide on [using IMDSv2 for secure metadata access](https://oneuptime.com/blog/post/2026-02-12-use-imdsv2-for-secure-instance-metadata-access/view).
 
 ## Accessing IAM Role Credentials
 
@@ -160,7 +160,7 @@ The user data script you provided at launch time is also available:
 curl http://169.254.169.254/latest/user-data
 ```
 
-This is useful for scripts that need to reference their own configuration or for debugging. Learn more about user data in our guide on [EC2 user data scripts](https://oneuptime.com/blog/post/use-ec2-user-data-scripts-for-instance-bootstrapping/view).
+This is useful for scripts that need to reference their own configuration or for debugging. Learn more about user data in our guide on [EC2 user data scripts](https://oneuptime.com/blog/post/2026-02-12-use-ec2-user-data-scripts-for-instance-bootstrapping/view).
 
 ## Dynamic Data
 

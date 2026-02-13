@@ -386,4 +386,4 @@ Also monitor duration. If thumbnails start taking longer than expected, it might
 
 A serverless thumbnail generator is one of the most practical Lambda applications you can build. It processes images only when needed, scales automatically with upload volume, and costs pennies for most workloads. The combination of S3 events, Lambda for processing, and CloudFront for delivery gives you a production-ready image pipeline with minimal operational overhead.
 
-For a more general file conversion pipeline that handles multiple formats, see our guide on [building a serverless file converter with Lambda and S3](https://oneuptime.com/blog/post/build-a-serverless-file-converter-with-lambda-and-s3/view).
+For a more general file conversion pipeline that handles multiple formats, see our guide on [building a serverless file converter with Lambda and S3](https://oneuptime.com/blog/post/2026-02-12-build-a-serverless-file-converter-with-lambda-and-s3/view).

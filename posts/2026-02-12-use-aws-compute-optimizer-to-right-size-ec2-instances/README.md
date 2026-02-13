@@ -251,7 +251,7 @@ aws cloudwatch get-metric-statistics \
 
 If CPU or memory regularly exceeds 80% after resizing, you may have gone too aggressive and should bump up one size.
 
-For comprehensive instance monitoring, make sure you've got the [CloudWatch agent installed](https://oneuptime.com/blog/post/install-and-configure-the-cloudwatch-agent-on-ec2/view) so you can track memory usage alongside the standard metrics.
+For comprehensive instance monitoring, make sure you've got the [CloudWatch agent installed](https://oneuptime.com/blog/post/2026-02-12-install-and-configure-the-cloudwatch-agent-on-ec2/view) so you can track memory usage alongside the standard metrics.
 
 ## Automating Right-Sizing Reviews
 

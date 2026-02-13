@@ -288,8 +288,8 @@ Keep an eye on the Lambda function's own metrics to make sure the pipeline is he
 - **Throttles**: If you're hitting concurrency limits, request a limit increase.
 - **Iterator age**: In the CloudWatch subscription metrics, check how far behind the streaming is.
 
-You can set up alarms on these metrics to get notified of pipeline issues. See our [CloudWatch dashboards guide](https://oneuptime.com/blog/post/create-cloudwatch-dashboards-application-monitoring/view) for creating a pipeline health dashboard.
+You can set up alarms on these metrics to get notified of pipeline issues. See our [CloudWatch dashboards guide](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-dashboards-application-monitoring/view) for creating a pipeline health dashboard.
 
 ## Wrapping Up
 
-Streaming CloudWatch Logs to OpenSearch gives you the best of both worlds: CloudWatch for ingestion and real-time monitoring, OpenSearch for deep analysis and visualization. The setup involves a Lambda function, a subscription filter, and some index management, but once it's running, you get powerful log search and analytics capabilities. For an alternative approach using Kinesis Firehose, check out our post on [streaming CloudWatch Logs to Lambda](https://oneuptime.com/blog/post/stream-cloudwatch-logs-lambda-processing/view).
+Streaming CloudWatch Logs to OpenSearch gives you the best of both worlds: CloudWatch for ingestion and real-time monitoring, OpenSearch for deep analysis and visualization. The setup involves a Lambda function, a subscription filter, and some index management, but once it's running, you get powerful log search and analytics capabilities. For an alternative approach using Kinesis Firehose, check out our post on [streaming CloudWatch Logs to Lambda](https://oneuptime.com/blog/post/2026-02-12-stream-cloudwatch-logs-lambda-processing/view).

@@ -307,7 +307,7 @@ Conditions:
     - !Condition IsUSRegion
 ```
 
-Keep it readable though. If your conditions are getting deeply nested, you might be better off splitting into separate templates using [nested stacks](https://oneuptime.com/blog/post/cloudformation-nested-stacks/view).
+Keep it readable though. If your conditions are getting deeply nested, you might be better off splitting into separate templates using [nested stacks](https://oneuptime.com/blog/post/2026-02-12-cloudformation-nested-stacks/view).
 
 ## Best Practices
 
@@ -317,7 +317,7 @@ Keep it readable though. If your conditions are getting deeply nested, you might
 
 **Test both paths.** Deploy the template with conditions evaluating to both true and false. It's easy to miss a broken reference that only manifests when a condition flips.
 
-**Combine with mappings.** Use [mappings](https://oneuptime.com/blog/post/cloudformation-mappings-region-specific-values/view) for property values and conditions for resource existence. They complement each other well.
+**Combine with mappings.** Use [mappings](https://oneuptime.com/blog/post/2026-02-12-cloudformation-mappings-region-specific-values/view) for property values and conditions for resource existence. They complement each other well.
 
 **Document the behavior.** Add a comment or description explaining what each condition controls. Someone reading the template months from now needs to understand the logic.
 

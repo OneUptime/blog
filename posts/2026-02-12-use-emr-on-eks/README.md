@@ -328,6 +328,6 @@ Apply it with kubectl.
 kubectl apply -f resource-quota.yaml
 ```
 
-This ensures your Spark workloads can't starve your other applications. For more on running Spark efficiently, check out our post on [running Apache Spark jobs on Amazon EMR](https://oneuptime.com/blog/post/run-apache-spark-jobs-on-amazon-emr/view).
+This ensures your Spark workloads can't starve your other applications. For more on running Spark efficiently, check out our post on [running Apache Spark jobs on Amazon EMR](https://oneuptime.com/blog/post/2026-02-12-run-apache-spark-jobs-on-amazon-emr/view).
 
 EMR on EKS is a great fit if you're already running Kubernetes and want to consolidate your data processing onto the same infrastructure. The setup takes some effort, but once it's running, you get the best of both worlds - managed Spark with Kubernetes flexibility.

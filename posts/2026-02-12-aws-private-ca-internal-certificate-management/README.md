@@ -335,4 +335,4 @@ aws acm-pca create-certificate-authority \
 
 **Monitor certificate expiration.** Expired certificates cause outages. Use [OneUptime](https://oneuptime.com) to track certificate expiration dates across your entire infrastructure.
 
-For TLS configuration on AWS services, check out our guide on [configuring TLS 1.3 on load balancers](https://oneuptime.com/blog/post/configure-tls-1-3-aws-load-balancers/view).
+For TLS configuration on AWS services, check out our guide on [configuring TLS 1.3 on load balancers](https://oneuptime.com/blog/post/2026-02-12-configure-tls-1-3-aws-load-balancers/view).

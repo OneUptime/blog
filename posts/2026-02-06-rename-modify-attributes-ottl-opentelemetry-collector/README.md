@@ -505,7 +505,7 @@ processors:
 
 5. **Document Your Mappings**: Keep a record of attribute name mappings for troubleshooting.
 
-6. **Test Thoroughly**: Use the [OTTL Playground](https://oneuptime.com/blog/post/ottl-playground-test-opentelemetry-collector/view) to test transformations before deployment.
+6. **Test Thoroughly**: Use the [OTTL Playground](https://oneuptime.com/blog/post/2026-02-06-ottl-playground-test-opentelemetry-collector/view) to test transformations before deployment.
 
 7. **Consider Cardinality**: Be cautious when creating new attributes from high-cardinality values (like timestamps or IDs).
 
@@ -531,6 +531,6 @@ processors:
 
 Renaming and modifying attributes with OTTL in the OpenTelemetry Collector is essential for maintaining clean, consistent telemetry data. Whether you're migrating to semantic conventions, normalizing data from multiple sources, or enriching telemetry with computed values, the transform processor provides the flexibility you need.
 
-Combined with other OTTL capabilities like [log body transformation](https://oneuptime.com/blog/post/transform-log-bodies-ottl-opentelemetry-collector/view), [JSON parsing](https://oneuptime.com/blog/post/parse-json-logs-ottl-opentelemetry-collector/view), and [conditional logic](https://oneuptime.com/blog/post/conditional-logic-ottl-opentelemetry-collector/view), you can build comprehensive telemetry pipelines that ensure your data is well-structured and ready for analysis.
+Combined with other OTTL capabilities like [log body transformation](https://oneuptime.com/blog/post/2026-02-06-transform-log-bodies-ottl-opentelemetry-collector/view), [JSON parsing](https://oneuptime.com/blog/post/2026-02-06-parse-json-logs-ottl-opentelemetry-collector/view), and [conditional logic](https://oneuptime.com/blog/post/2026-02-06-conditional-logic-ottl-opentelemetry-collector/view), you can build comprehensive telemetry pipelines that ensure your data is well-structured and ready for analysis.
 
 For more information on attributes and OTTL, refer to the [OpenTelemetry Collector documentation](https://opentelemetry.io/docs/collector/transforming-telemetry/).

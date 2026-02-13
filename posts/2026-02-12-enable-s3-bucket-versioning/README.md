@@ -139,7 +139,7 @@ aws s3api list-object-versions \
     --output table
 ```
 
-To "undelete" an object, you remove the delete marker. We cover this in detail in our guide on [recovering deleted objects from versioned buckets](https://oneuptime.com/blog/post/recover-deleted-objects-versioned-s3-bucket/view).
+To "undelete" an object, you remove the delete marker. We cover this in detail in our guide on [recovering deleted objects from versioned buckets](https://oneuptime.com/blog/post/2026-02-12-recover-deleted-objects-versioned-s3-bucket/view).
 
 ## Permanently Deleting a Specific Version
 
@@ -258,7 +258,7 @@ With MFA Delete enabled, even if someone compromises your credentials, they can'
 
 ## Versioning with Replication
 
-Versioning is required for S3 replication. If you're setting up [same-region replication](https://oneuptime.com/blog/post/set-up-s3-same-region-replication/view) or cross-region replication, both source and destination buckets must have versioning enabled.
+Versioning is required for S3 replication. If you're setting up [same-region replication](https://oneuptime.com/blog/post/2026-02-12-set-up-s3-same-region-replication/view) or cross-region replication, both source and destination buckets must have versioning enabled.
 
 ## Best Practices
 

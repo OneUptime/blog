@@ -269,4 +269,4 @@ Don't wait for a disaster to figure out your restore process. Create a runbook t
 
 Then schedule quarterly restore drills where you actually restore production data to a test environment. You'll catch configuration issues, permission problems, and knowledge gaps before they matter.
 
-For comprehensive backup management including creating the plans that generate these recovery points, see our guide on [creating backup plans with AWS Backup](https://oneuptime.com/blog/post/create-backup-plans-aws-backup/view).
+For comprehensive backup management including creating the plans that generate these recovery points, see our guide on [creating backup plans with AWS Backup](https://oneuptime.com/blog/post/2026-02-12-create-backup-plans-aws-backup/view).

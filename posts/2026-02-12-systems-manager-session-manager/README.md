@@ -329,4 +329,4 @@ aws ssm describe-sessions --state History \
 
 Session logs (when configured) capture every command typed and every output produced. This is invaluable for security audits and incident investigation.
 
-For comprehensive monitoring of your infrastructure access patterns and security events, [OneUptime](https://oneuptime.com) can aggregate Systems Manager session data alongside application metrics. Also check our guide on [Systems Manager Run Command](https://oneuptime.com/blog/post/systems-manager-run-command/view) for running commands across multiple instances without interactive sessions.
+For comprehensive monitoring of your infrastructure access patterns and security events, [OneUptime](https://oneuptime.com) can aggregate Systems Manager session data alongside application metrics. Also check our guide on [Systems Manager Run Command](https://oneuptime.com/blog/post/2026-02-12-systems-manager-run-command/view) for running commands across multiple instances without interactive sessions.

@@ -248,7 +248,7 @@ aws ec2 describe-vpc-endpoints \
   --output table
 ```
 
-For detailed reference on specific endpoint types, see [setting up VPC gateway endpoints for S3 and DynamoDB](https://oneuptime.com/blog/post/set-up-vpc-gateway-endpoints-s3-dynamodb/view) and [setting up VPC interface endpoints](https://oneuptime.com/blog/post/set-up-vpc-interface-endpoints-privatelink/view).
+For detailed reference on specific endpoint types, see [setting up VPC gateway endpoints for S3 and DynamoDB](https://oneuptime.com/blog/post/2026-02-12-set-up-vpc-gateway-endpoints-s3-dynamodb/view) and [setting up VPC interface endpoints](https://oneuptime.com/blog/post/2026-02-12-set-up-vpc-interface-endpoints-privatelink/view).
 
 ## Wrapping Up
 

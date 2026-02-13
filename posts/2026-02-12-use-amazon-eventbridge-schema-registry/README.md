@@ -21,7 +21,7 @@ The Schema Registry is a component of Amazon EventBridge that stores JSON Schema
 
 You can also create custom registries to organize schemas by team, domain, or application. Each schema in a registry can have multiple versions, giving you a history of how event structures evolve.
 
-If you are new to schema discovery, check out our guide on [setting up EventBridge Schema Discovery](https://oneuptime.com/blog/post/set-up-amazon-eventbridge-schema-discovery/view) first.
+If you are new to schema discovery, check out our guide on [setting up EventBridge Schema Discovery](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-eventbridge-schema-discovery/view) first.
 
 ## Prerequisites
 

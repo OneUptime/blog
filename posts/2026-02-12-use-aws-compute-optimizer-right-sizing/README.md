@@ -304,7 +304,7 @@ This gives better recommendations for workloads with variable usage patterns.
 
 ## Acting on Recommendations
 
-Getting recommendations is the easy part. Acting on them requires a process. For a practical guide on implementing right-sizing changes, see our post on [reducing EC2 costs with right-sizing](https://oneuptime.com/blog/post/reduce-ec2-costs-right-sizing/view). For other cost reduction strategies, check out our guides on [Savings Plans](https://oneuptime.com/blog/post/reduce-ec2-costs-savings-plans/view) and [Spot Instances](https://oneuptime.com/blog/post/reduce-ec2-costs-spot-instances/view).
+Getting recommendations is the easy part. Acting on them requires a process. For a practical guide on implementing right-sizing changes, see our post on [reducing EC2 costs with right-sizing](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-right-sizing/view). For other cost reduction strategies, check out our guides on [Savings Plans](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-savings-plans/view) and [Spot Instances](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-spot-instances/view).
 
 ## Wrapping Up
 

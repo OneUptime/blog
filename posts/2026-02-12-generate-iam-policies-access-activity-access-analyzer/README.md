@@ -20,7 +20,7 @@ Before you can generate policies with Access Analyzer, you need:
 - CloudTrail enabled and logging API calls (we'll cover this briefly)
 - At least 90 days of CloudTrail data for meaningful policy generation
 
-If you haven't set up CloudTrail yet, check out our guide on [enabling AWS CloudTrail for API auditing](https://oneuptime.com/blog/post/enable-aws-cloudtrail-api-auditing/view).
+If you haven't set up CloudTrail yet, check out our guide on [enabling AWS CloudTrail for API auditing](https://oneuptime.com/blog/post/2026-02-12-enable-aws-cloudtrail-api-auditing/view).
 
 ## How Access Analyzer Policy Generation Works
 
@@ -297,6 +297,6 @@ def lambda_handler(event, context):
 
 ## Monitoring After Applying
 
-After applying a tighter policy, keep an eye on access denied errors. You can set up a CloudWatch alarm or use [OneUptime](https://oneuptime.com/blog/post/enable-aws-cloudtrail-api-auditing/view) to monitor for these events and get alerted before users are impacted.
+After applying a tighter policy, keep an eye on access denied errors. You can set up a CloudWatch alarm or use [OneUptime](https://oneuptime.com/blog/post/2026-02-12-enable-aws-cloudtrail-api-auditing/view) to monitor for these events and get alerted before users are impacted.
 
 Access Analyzer policy generation is one of the most practical ways to move toward least-privilege access. It takes the guesswork out of policy writing and gives you a solid starting point based on real usage data. Combined with regular reviews and automated monitoring, it forms a strong foundation for your IAM security posture.

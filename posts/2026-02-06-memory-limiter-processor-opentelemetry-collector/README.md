@@ -718,6 +718,6 @@ Monitor refused telemetry metrics continuously. Zero refusals indicates healthy 
 
 **Related Reading:**
 
-- [How to Configure the Batch Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/batch-processor-opentelemetry-collector/view)
-- [How to Configure the Filter Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/filter-processor-opentelemetry-collector/view)
+- [How to Configure the Batch Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-batch-processor-opentelemetry-collector/view)
+- [How to Configure the Filter Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-filter-processor-opentelemetry-collector/view)
 - [What is OpenTelemetry Collector and why use one?](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)

@@ -770,7 +770,7 @@ Always test transformations thoroughly before production deployment, and monitor
 
 **Related Reading:**
 
-- [How to Configure the Resource Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/resource-processor-opentelemetry-collector/view)
-- [How to Configure the Filter Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/filter-processor-opentelemetry-collector/view)
+- [How to Configure the Resource Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-resource-processor-opentelemetry-collector/view)
+- [How to Configure the Filter Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-filter-processor-opentelemetry-collector/view)
 - [How to reduce noise in OpenTelemetry?](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view)
 - [Keep PII out of observability telemetry](https://oneuptime.com/blog/post/2025-11-13-keep-pii-out-of-observability-telemetry/view)

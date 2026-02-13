@@ -375,7 +375,7 @@ DNS validation typically takes 5-30 minutes depending on DNS propagation. A few 
 - Make sure Route 53 is the authoritative nameserver for your domain
 - If you're transferring a domain, wait for DNS delegation to fully propagate before requesting certificates
 
-For the full picture on ACM certificate management, see our guide on [requesting and managing ACM certificates](https://oneuptime.com/blog/post/request-manage-ssl-tls-certificates-acm/view).
+For the full picture on ACM certificate management, see our guide on [requesting and managing ACM certificates](https://oneuptime.com/blog/post/2026-02-12-request-manage-ssl-tls-certificates-acm/view).
 
 ## Wrapping Up
 

@@ -471,4 +471,4 @@ Dynamic configuration with AppConfig eliminates the "redeploy to change a settin
 
 Start by identifying the settings you change most frequently. Those are your candidates for moving to AppConfig. Database timeouts, log levels, and rate limits are good first choices. Once you're comfortable with the workflow, expand to cover more of your application's configuration.
 
-For feature-flag-specific usage, see our guide on [setting up AppConfig for feature flags](https://oneuptime.com/blog/post/set-up-aws-appconfig-for-feature-flags/view).
+For feature-flag-specific usage, see our guide on [setting up AppConfig for feature flags](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-appconfig-for-feature-flags/view).

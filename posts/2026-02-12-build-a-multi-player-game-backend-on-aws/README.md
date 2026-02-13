@@ -394,7 +394,7 @@ Never trust the client. Every action must be validated server-side, and the serv
 - **Matchmaking**: Scale the match processor Lambda concurrency based on queue depth.
 - **State updates**: For games with very frequent updates (60 times per second), consider using GameLift instead of Lambda for the game loop.
 
-For monitoring your game backend, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/build-a-metrics-collection-system-on-aws/view).
+For monitoring your game backend, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-metrics-collection-system-on-aws/view).
 
 ## Wrapping Up
 

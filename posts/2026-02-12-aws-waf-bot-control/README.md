@@ -336,6 +336,6 @@ aws wafv2 put-logging-configuration \
 
 **Monitor your CAPTCHA solve rates.** Very low solve rates might mean legitimate users are struggling. Very high rates might mean bots are solving them.
 
-**Combine with rate limiting.** Bot Control identifies bots. Rate limiting prevents abuse from anything, bot or human. Use both. See our [WAF Account Takeover Prevention](https://oneuptime.com/blog/post/aws-waf-account-takeover-prevention/view) guide for protecting login pages specifically.
+**Combine with rate limiting.** Bot Control identifies bots. Rate limiting prevents abuse from anything, bot or human. Use both. See our [WAF Account Takeover Prevention](https://oneuptime.com/blog/post/2026-02-12-aws-waf-account-takeover-prevention/view) guide for protecting login pages specifically.
 
 Feed your WAF metrics into [OneUptime](https://oneuptime.com) for unified monitoring of both bot traffic and application performance.

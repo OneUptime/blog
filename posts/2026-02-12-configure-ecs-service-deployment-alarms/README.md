@@ -323,4 +323,4 @@ The `rolloutState` will show `IN_PROGRESS`, `COMPLETED`, or `FAILED`. If a deplo
 
 Deployment alarms close the gap between "the container started" and "the application is actually working correctly." By connecting CloudWatch alarms to your ECS deployment process, you get automatic rollbacks when your application's actual behavior degrades, not just when containers crash. Combined with the deployment circuit breaker, this gives you a robust safety net for every deployment.
 
-For more on ECS deployment strategies, see our guides on [rolling deployments for ECS](https://oneuptime.com/blog/post/rolling-deployments-ecs/view) and [ECS blue/green deployments with CodeDeploy](https://oneuptime.com/blog/post/ecs-blue-green-deployments-codedeploy/view).
+For more on ECS deployment strategies, see our guides on [rolling deployments for ECS](https://oneuptime.com/blog/post/2026-02-12-rolling-deployments-ecs/view) and [ECS blue/green deployments with CodeDeploy](https://oneuptime.com/blog/post/2026-02-12-ecs-blue-green-deployments-codedeploy/view).

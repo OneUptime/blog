@@ -14,7 +14,7 @@ The CloudWatch Agent solves this. Once installed, it reports memory, disk, swap,
 
 ## Installing the Agent
 
-If you haven't installed the CloudWatch Agent yet, check our guides for [Linux](https://oneuptime.com/blog/post/install-cloudwatch-agent-ec2-linux/view) and [Windows](https://oneuptime.com/blog/post/install-cloudwatch-agent-ec2-windows/view). This post assumes the agent is installed and you need to configure it for memory and disk collection.
+If you haven't installed the CloudWatch Agent yet, check our guides for [Linux](https://oneuptime.com/blog/post/2026-02-12-install-cloudwatch-agent-ec2-linux/view) and [Windows](https://oneuptime.com/blog/post/2026-02-12-install-cloudwatch-agent-ec2-windows/view). This post assumes the agent is installed and you need to configure it for memory and disk collection.
 
 ## Memory Metrics Configuration (Linux)
 
@@ -325,4 +325,4 @@ These are starting-point thresholds - adjust based on your workload:
 
 ## Wrapping Up
 
-Memory and disk metrics are the most commonly missing pieces in EC2 monitoring. Without them, you're flying blind on two of the most important resources. Install the agent, configure the right metrics, set up alarms with sensible thresholds, and add the metrics to your dashboards. It takes 30 minutes to set up and can save you hours of downtime investigation. For more advanced metric collection, check out our post on [configuring the CloudWatch Agent for custom metrics](https://oneuptime.com/blog/post/configure-cloudwatch-agent-custom-metrics/view).
+Memory and disk metrics are the most commonly missing pieces in EC2 monitoring. Without them, you're flying blind on two of the most important resources. Install the agent, configure the right metrics, set up alarms with sensible thresholds, and add the metrics to your dashboards. It takes 30 minutes to set up and can save you hours of downtime investigation. For more advanced metric collection, check out our post on [configuring the CloudWatch Agent for custom metrics](https://oneuptime.com/blog/post/2026-02-12-configure-cloudwatch-agent-custom-metrics/view).

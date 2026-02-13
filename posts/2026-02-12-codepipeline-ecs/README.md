@@ -33,7 +33,7 @@ Before starting, make sure you have:
 - An Application Load Balancer with two target groups
 - CodeDeploy application and deployment group for ECS
 
-If you haven't set up CodeDeploy for ECS yet, check our guide on [setting up CodeDeploy for ECS deployments](https://oneuptime.com/blog/post/codedeploy-ecs-deployments/view).
+If you haven't set up CodeDeploy for ECS yet, check our guide on [setting up CodeDeploy for ECS deployments](https://oneuptime.com/blog/post/2026-02-12-codedeploy-ecs-deployments/view).
 
 ## Step 1: Create the Dockerfile and Application
 
@@ -316,7 +316,7 @@ For a more robust setup, add a staging deployment before production:
 }
 ```
 
-Add a manual approval stage between staging and production. See our guide on [adding manual approval steps](https://oneuptime.com/blog/post/codepipeline-manual-approval/view) for details.
+Add a manual approval stage between staging and production. See our guide on [adding manual approval steps](https://oneuptime.com/blog/post/2026-02-12-codepipeline-manual-approval/view) for details.
 
 ## Troubleshooting
 

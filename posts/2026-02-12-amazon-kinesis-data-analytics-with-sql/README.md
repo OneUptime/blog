@@ -322,6 +322,6 @@ Watch these CloudWatch metrics:
 - **MillisBehindLatest** - How far behind the application is
 - **OutputBytes** - Data flowing to destinations
 
-If MillisBehindLatest is growing, your SQL queries can't keep up with the input volume. Simplify your queries or increase the Kinesis Processing Units (KPUs). For a more code-native approach to streaming analytics, check out our guide on [Kinesis Data Analytics with Apache Flink](https://oneuptime.com/blog/post/amazon-kinesis-data-analytics-with-apache-flink/view).
+If MillisBehindLatest is growing, your SQL queries can't keep up with the input volume. Simplify your queries or increase the Kinesis Processing Units (KPUs). For a more code-native approach to streaming analytics, check out our guide on [Kinesis Data Analytics with Apache Flink](https://oneuptime.com/blog/post/2026-02-12-amazon-kinesis-data-analytics-with-apache-flink/view).
 
 Streaming SQL is one of the fastest ways to get real-time insights from your data. You don't need to learn a new framework or programming language - if you know SQL, you can build streaming analytics applications in minutes.

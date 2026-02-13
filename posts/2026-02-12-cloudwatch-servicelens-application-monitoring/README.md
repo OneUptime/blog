@@ -153,7 +153,7 @@ You can click on any node to see:
 
 ServiceLens lets you filter the service map by time range, which is invaluable during incident investigation. Say you got paged at 3:00 AM - you can set the time range to 2:45 AM - 3:15 AM and see exactly what the service map looked like during that window.
 
-You can also filter by X-Ray groups if you've set those up. This is handy when you have multiple applications sharing the same AWS account. Check out our guide on [X-Ray groups for filtering traces](https://oneuptime.com/blog/post/xray-groups-filtering-traces/view) for more details.
+You can also filter by X-Ray groups if you've set those up. This is handy when you have multiple applications sharing the same AWS account. Check out our guide on [X-Ray groups for filtering traces](https://oneuptime.com/blog/post/2026-02-12-xray-groups-filtering-traces/view) for more details.
 
 ## Drilling Into Traces
 
@@ -275,7 +275,7 @@ If you're running containers on ECS or EKS, ServiceLens works great but needs th
 }
 ```
 
-For EKS, you can deploy the X-Ray daemon as a DaemonSet or use the AWS Distro for OpenTelemetry (ADOT) collector. Either approach will feed data into ServiceLens. We cover EKS monitoring in depth in our [Container Insights for EKS](https://oneuptime.com/blog/post/cloudwatch-container-insights-eks/view) guide.
+For EKS, you can deploy the X-Ray daemon as a DaemonSet or use the AWS Distro for OpenTelemetry (ADOT) collector. Either approach will feed data into ServiceLens. We cover EKS monitoring in depth in our [Container Insights for EKS](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-container-insights-eks/view) guide.
 
 ## Setting Up Alarms from ServiceLens
 
@@ -304,7 +304,7 @@ aws cloudwatch put-metric-alarm \
 
 **Set up log groups correctly.** Each service should log to its own CloudWatch Logs group with a clear naming convention like `/app/service-name/environment`. This makes the log correlation in ServiceLens much cleaner.
 
-**Combine with Application Insights.** ServiceLens shows you the real-time view, while [Application Insights](https://oneuptime.com/blog/post/cloudwatch-application-insights/view) handles anomaly detection. Together, they cover both proactive and reactive monitoring.
+**Combine with Application Insights.** ServiceLens shows you the real-time view, while [Application Insights](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-application-insights/view) handles anomaly detection. Together, they cover both proactive and reactive monitoring.
 
 ## Wrapping Up
 

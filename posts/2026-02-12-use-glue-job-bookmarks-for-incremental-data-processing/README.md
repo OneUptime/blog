@@ -293,7 +293,7 @@ def publish_metrics(job_name, records_processed, run_duration):
 
 ## Bookmarks in Workflows
 
-When using bookmarks within [Glue Workflows](https://oneuptime.com/blog/post/schedule-glue-etl-jobs-with-workflows/view), each job in the workflow maintains its own bookmark independently. This means:
+When using bookmarks within [Glue Workflows](https://oneuptime.com/blog/post/2026-02-12-schedule-glue-etl-jobs-with-workflows/view), each job in the workflow maintains its own bookmark independently. This means:
 
 - Job A's bookmark tracks its own source
 - Job B's bookmark tracks its own source
@@ -320,7 +320,7 @@ This is exactly what you want for multi-stage pipelines. The first job picks up 
 5. **Monitor bookmark progress** with custom CloudWatch metrics
 6. **Test with `job-bookmark-pause`** before going to production
 
-For more on building efficient Glue jobs, check out our guide on [configuring Glue ETL jobs for performance](https://oneuptime.com/blog/post/configure-glue-etl-jobs-for-performance/view).
+For more on building efficient Glue jobs, check out our guide on [configuring Glue ETL jobs for performance](https://oneuptime.com/blog/post/2026-02-12-configure-glue-etl-jobs-for-performance/view).
 
 ## Wrapping Up
 

@@ -33,7 +33,7 @@ You'll need:
 3. Security groups that allow NFS traffic between Lambda and EFS
 4. NAT Gateway or VPC endpoints if your Lambda needs internet access or AWS service access
 
-If you haven't created an EFS file system yet, check out [creating an Amazon EFS file system](https://oneuptime.com/blog/post/amazon-efs-file-system/view).
+If you haven't created an EFS file system yet, check out [creating an Amazon EFS file system](https://oneuptime.com/blog/post/2026-02-12-amazon-efs-file-system/view).
 
 ## Setting Up the Security Group
 

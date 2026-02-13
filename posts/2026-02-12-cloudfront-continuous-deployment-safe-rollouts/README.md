@@ -309,4 +309,4 @@ Continuous deployment is particularly valuable for:
 
 The key benefit is reducing the blast radius of CDN configuration changes from "every user globally" to "a small percentage of users." Combined with monitoring, this gives you a safety net that traditional CloudFront updates simply don't provide.
 
-For more on optimizing your CloudFront setup, check out [Origin Shield configuration](https://oneuptime.com/blog/post/cloudfront-origin-shield-cache-optimization/view).
+For more on optimizing your CloudFront setup, check out [Origin Shield configuration](https://oneuptime.com/blog/post/2026-02-12-cloudfront-origin-shield-cache-optimization/view).

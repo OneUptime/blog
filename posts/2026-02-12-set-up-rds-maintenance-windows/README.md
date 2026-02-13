@@ -142,7 +142,7 @@ The `--opt-in-type` options are:
 
 ## Setting Up Maintenance Notifications
 
-You definitely want to know when maintenance is happening. Set up [event notifications](https://oneuptime.com/blog/post/enable-rds-event-notifications-via-sns/view) for maintenance events:
+You definitely want to know when maintenance is happening. Set up [event notifications](https://oneuptime.com/blog/post/2026-02-12-enable-rds-event-notifications-via-sns/view) for maintenance events:
 
 ```bash
 # Subscribe to maintenance events
@@ -177,7 +177,7 @@ aws rds modify-db-instance \
   --apply-immediately
 ```
 
-For production, I'd recommend enabling auto minor version upgrades. Minor versions contain security fixes and bug patches that you generally want. For major version upgrades, you always want manual control - see our guide on [upgrading RDS engine versions](https://oneuptime.com/blog/post/upgrade-rds-engine-versions/view).
+For production, I'd recommend enabling auto minor version upgrades. Minor versions contain security fixes and bug patches that you generally want. For major version upgrades, you always want manual control - see our guide on [upgrading RDS engine versions](https://oneuptime.com/blog/post/2026-02-12-upgrade-rds-engine-versions/view).
 
 ## Coordinating Maintenance Across Multiple Instances
 
@@ -210,6 +210,6 @@ Here's a checklist to minimize the impact of maintenance:
 4. **Implement connection retry logic**: Your application should handle brief disconnections gracefully
 5. **Stagger related instances**: Don't patch everything at once
 6. **Keep a recent backup**: Schedule backups before the maintenance window
-7. **Monitor after maintenance**: Check [Performance Insights](https://oneuptime.com/blog/post/monitor-rds-with-performance-insights/view) after maintenance to verify everything is running normally
+7. **Monitor after maintenance**: Check [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view) after maintenance to verify everything is running normally
 
 Maintenance windows are a small configuration detail that makes a big difference in operational predictability. Spend five minutes setting them up properly and you'll avoid surprises when AWS needs to apply the next round of patches.

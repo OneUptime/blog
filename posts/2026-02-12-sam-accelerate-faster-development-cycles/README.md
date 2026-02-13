@@ -178,7 +178,7 @@ sam build
 sam deploy --stack-name my-app-staging --no-confirm-changeset
 ```
 
-For more on production deployment strategies, check out [deploying SAM applications with CI/CD pipelines](https://oneuptime.com/blog/post/deploy-sam-applications-with-cicd-pipelines/view).
+For more on production deployment strategies, check out [deploying SAM applications with CI/CD pipelines](https://oneuptime.com/blog/post/2026-02-12-deploy-sam-applications-with-cicd-pipelines/view).
 
 ## Logs and Debugging
 

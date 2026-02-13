@@ -258,7 +258,7 @@ url = s3.generate_presigned_url(
 
 ### Use Conditions to Limit Upload Size
 
-For more control over uploads, use presigned POST instead of presigned PUT. See our post on [generating presigned POST requests for S3 uploads](https://oneuptime.com/blog/post/generate-presigned-post-requests-s3-uploads/view) for details.
+For more control over uploads, use presigned POST instead of presigned PUT. See our post on [generating presigned POST requests for S3 uploads](https://oneuptime.com/blog/post/2026-02-12-generate-presigned-post-requests-s3-uploads/view) for details.
 
 ## Maximum Expiration Time
 

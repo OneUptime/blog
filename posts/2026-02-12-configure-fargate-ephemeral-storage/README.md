@@ -304,4 +304,4 @@ You can also combine both. Use EFS for persistent data and ephemeral storage for
 
 Fargate ephemeral storage is straightforward to configure and solves a real problem for storage-intensive workloads. Just set the `ephemeralStorage` field in your task definition and you're done. The key is to monitor usage, clean up temporary files, and right-size your allocation to balance performance and cost.
 
-For workloads that need persistent storage, combine ephemeral storage with EFS. And for everything else, the default 20 GB is usually plenty. For more on ECS task configuration, see our guide on [deploying multi-container applications on ECS](https://oneuptime.com/blog/post/deploy-multi-container-applications-ecs/view).
+For workloads that need persistent storage, combine ephemeral storage with EFS. And for everything else, the default 20 GB is usually plenty. For more on ECS task configuration, see our guide on [deploying multi-container applications on ECS](https://oneuptime.com/blog/post/2026-02-12-deploy-multi-container-applications-ecs/view).

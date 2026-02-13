@@ -407,4 +407,4 @@ Cost governance works when it's embedded in your culture, not bolted on as an af
 
 The goal isn't to minimize spending. It's to maximize the value you get from every dollar spent on AWS.
 
-For related governance topics, see [multi-account strategy on AWS](https://oneuptime.com/blog/post/multi-account-strategy-aws/view) and [compliance automation on AWS](https://oneuptime.com/blog/post/compliance-automation-aws/view).
+For related governance topics, see [multi-account strategy on AWS](https://oneuptime.com/blog/post/2026-02-12-multi-account-strategy-aws/view) and [compliance automation on AWS](https://oneuptime.com/blog/post/2026-02-12-compliance-automation-aws/view).

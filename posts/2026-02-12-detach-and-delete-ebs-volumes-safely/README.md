@@ -41,7 +41,7 @@ aws ec2 create-snapshot \
     --tag-specifications 'ResourceType=snapshot,Tags=[{Key=Name,Value=pre-delete-backup},{Key=SourceVolume,Value=vol-0123456789abcdef0}]'
 ```
 
-Snapshots are incremental and relatively cheap. It's much better to have a snapshot you don't need than to need one you don't have. For more on snapshots, see our guide on [creating EBS snapshots for backup](https://oneuptime.com/blog/post/create-ebs-snapshots-for-backup/view).
+Snapshots are incremental and relatively cheap. It's much better to have a snapshot you don't need than to need one you don't have. For more on snapshots, see our guide on [creating EBS snapshots for backup](https://oneuptime.com/blog/post/2026-02-12-create-ebs-snapshots-for-backup/view).
 
 ### Verify It's Not a Root Volume
 

@@ -236,7 +236,7 @@ aws ce get-cost-and-usage \
   }'
 ```
 
-For a comprehensive monitoring setup, see our guide on [setting up anomaly detection for AWS costs](https://oneuptime.com/blog/post/set-up-anomaly-detection-for-aws-costs/view).
+For a comprehensive monitoring setup, see our guide on [setting up anomaly detection for AWS costs](https://oneuptime.com/blog/post/2026-02-12-set-up-anomaly-detection-for-aws-costs/view).
 
 ## Summary
 
@@ -249,4 +249,4 @@ The hierarchy of inter-VPC cost optimization is:
 5. **Cache across VPC boundaries** - Reduce repeated transfers
 6. **Use Transit Gateway only when you need the management benefits** - It's more expensive per GB but simpler at scale
 
-Start by understanding where your inter-VPC traffic is flowing, then apply these optimizations in order of impact. For related strategies, check out our posts on [reducing NAT Gateway data transfer costs](https://oneuptime.com/blog/post/reduce-nat-gateway-data-transfer-costs/view) and [reducing data transfer costs between AWS regions](https://oneuptime.com/blog/post/reduce-data-transfer-costs-between-aws-regions/view).
+Start by understanding where your inter-VPC traffic is flowing, then apply these optimizations in order of impact. For related strategies, check out our posts on [reducing NAT Gateway data transfer costs](https://oneuptime.com/blog/post/2026-02-12-reduce-nat-gateway-data-transfer-costs/view) and [reducing data transfer costs between AWS regions](https://oneuptime.com/blog/post/2026-02-12-reduce-data-transfer-costs-between-aws-regions/view).

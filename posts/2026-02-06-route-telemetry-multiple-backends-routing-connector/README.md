@@ -598,7 +598,7 @@ When implementing routing connector patterns, consider these best practices:
 
 For more OpenTelemetry Collector routing patterns:
 
-- [How to Build Fan-Out Pipelines in the OpenTelemetry Collector](https://oneuptime.com/blog/post/fan-out-pipelines-opentelemetry-collector/view)
-- [How to Deploy the OpenTelemetry Collector as a Gateway](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-gateway/view)
+- [How to Build Fan-Out Pipelines in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-fan-out-pipelines-opentelemetry-collector/view)
+- [How to Deploy the OpenTelemetry Collector as a Gateway](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-gateway/view)
 
 The routing connector transforms the OpenTelemetry Collector into an intelligent routing engine that can make sophisticated decisions about where to send each piece of telemetry. This capability is essential for building cost-effective, compliant, and scalable observability architectures.

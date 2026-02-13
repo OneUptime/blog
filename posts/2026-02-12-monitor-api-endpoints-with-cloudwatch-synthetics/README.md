@@ -385,7 +385,7 @@ aws cloudwatch put-dashboard \
   }'
 ```
 
-For more advanced dashboards, consider using [Amazon Managed Grafana](https://oneuptime.com/blog/post/set-up-amazon-managed-grafana/view) which provides richer visualization options.
+For more advanced dashboards, consider using [Amazon Managed Grafana](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-managed-grafana/view) which provides richer visualization options.
 
 ## Step 6: Configure Comprehensive Alerting
 

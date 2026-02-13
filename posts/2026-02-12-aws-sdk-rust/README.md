@@ -375,4 +375,4 @@ async fn upload_files_concurrently(
 - **Use Tokio for the async runtime.** The SDK is built on Tokio and works best with it.
 - **Leverage Rust's type safety.** Use structs with serde for serializing Lambda payloads instead of raw JSON strings.
 
-For testing Rust AWS code locally without real AWS services, check out [LocalStack](https://oneuptime.com/blog/post/localstack-test-aws-services-locally/view). The custom endpoint configuration shown above is all you need to point your Rust clients at a local stack.
+For testing Rust AWS code locally without real AWS services, check out [LocalStack](https://oneuptime.com/blog/post/2026-02-12-localstack-test-aws-services-locally/view). The custom endpoint configuration shown above is all you need to point your Rust clients at a local stack.

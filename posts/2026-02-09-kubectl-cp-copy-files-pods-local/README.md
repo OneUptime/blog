@@ -429,4 +429,4 @@ kubectl exec $POD -- cat /etc/app/config.yaml | grep "environment: production"
 
 This enables configuration updates without rebuilding containers.
 
-kubectl cp provides essential file transfer capabilities for Kubernetes workflows. Use it for debugging, backups, and emergency configuration updates. For production data management, prefer volume mounts or object storage, but keep cp in your toolkit for quick file operations. Learn more about pod interaction at https://oneuptime.com/blog/post/kubectl-exec-troubleshoot-containers/view.
+kubectl cp provides essential file transfer capabilities for Kubernetes workflows. Use it for debugging, backups, and emergency configuration updates. For production data management, prefer volume mounts or object storage, but keep cp in your toolkit for quick file operations. Learn more about pod interaction at https://oneuptime.com/blog/post/2026-01-22-kubectl-exec-troubleshoot-containers/view.

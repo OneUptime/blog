@@ -265,7 +265,7 @@ After cutover, watch these CloudWatch metrics for your Amazon MQ broker:
 - **ConsumerCount**: Verify all consumers reconnected.
 - **PublishRate / AckRate**: Compare with your baseline numbers.
 
-For comprehensive monitoring of your AWS messaging infrastructure, consider setting up [CloudWatch monitoring for your messaging services](https://oneuptime.com/blog/post/monitor-sns-cloudwatch/view).
+For comprehensive monitoring of your AWS messaging infrastructure, consider setting up [CloudWatch monitoring for your messaging services](https://oneuptime.com/blog/post/2026-02-12-monitor-sns-cloudwatch/view).
 
 ## Decommission the Old Broker
 

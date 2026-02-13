@@ -318,7 +318,7 @@ Key CloudWatch metrics to watch:
 - **HealthyHostCount / UnHealthyHostCount** - Target health status
 - **ActiveConnectionCount** - Current active connections
 
-For comprehensive monitoring of your ALB metrics including response times, error rates, and target health, check out [health check configuration best practices](https://oneuptime.com/blog/post/configure-health-checks-ec2-load-balancer/view) to keep your load balancer running smoothly.
+For comprehensive monitoring of your ALB metrics including response times, error rates, and target health, check out [health check configuration best practices](https://oneuptime.com/blog/post/2026-02-12-configure-health-checks-ec2-load-balancer/view) to keep your load balancer running smoothly.
 
 ## Summary
 

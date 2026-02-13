@@ -373,4 +373,4 @@ That's a 94% reduction in ECR storage costs. Not life-changing amounts of money,
 
 **Rule ordering matters**: Put more specific rules first (lower priority numbers). A broad `tagStatus: "any"` rule should have a high priority number.
 
-Lifecycle policies are a set-it-and-forget-it optimization. Spend 15 minutes configuring them when you create a repository, and you'll never worry about ECR storage costs again. For managing the images themselves, check out our post on [managing ECS container images in ECR](https://oneuptime.com/blog/post/manage-ecs-container-images-ecr/view).
+Lifecycle policies are a set-it-and-forget-it optimization. Spend 15 minutes configuring them when you create a repository, and you'll never worry about ECR storage costs again. For managing the images themselves, check out our post on [managing ECS container images in ECR](https://oneuptime.com/blog/post/2026-02-12-manage-ecs-container-images-ecr/view).

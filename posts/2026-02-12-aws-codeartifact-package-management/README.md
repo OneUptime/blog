@@ -218,9 +218,9 @@ echo "Token valid for 12 hours"
 
 Each package manager has its own way of using this token. For details, see our dedicated guides:
 
-- [Using CodeArtifact with npm](https://oneuptime.com/blog/post/codeartifact-npm/view)
-- [Using CodeArtifact with pip](https://oneuptime.com/blog/post/codeartifact-pip-python/view)
-- [Using CodeArtifact with Maven](https://oneuptime.com/blog/post/codeartifact-maven-java/view)
+- [Using CodeArtifact with npm](https://oneuptime.com/blog/post/2026-02-12-codeartifact-npm/view)
+- [Using CodeArtifact with pip](https://oneuptime.com/blog/post/2026-02-12-codeartifact-pip-python/view)
+- [Using CodeArtifact with Maven](https://oneuptime.com/blog/post/2026-02-12-codeartifact-maven-java/view)
 
 ## Using CodeArtifact in CI/CD
 

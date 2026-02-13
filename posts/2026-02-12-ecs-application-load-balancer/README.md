@@ -291,7 +291,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
 ```
 
-For a comprehensive monitoring setup, check out how to [configure ECS health checks](https://oneuptime.com/blog/post/ecs-health-checks/view) alongside your ALB.
+For a comprehensive monitoring setup, check out how to [configure ECS health checks](https://oneuptime.com/blog/post/2026-02-12-ecs-health-checks/view) alongside your ALB.
 
 ## Wrapping Up
 

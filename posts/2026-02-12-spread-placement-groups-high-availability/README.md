@@ -215,7 +215,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts
 ```
 
-For comprehensive monitoring of your critical spread-group instances, including application-level health checks and automated incident response, consider using [OneUptime's monitoring platform](https://oneuptime.com/blog/post/configure-health-checks-ec2-load-balancer/view) to get real-time visibility into your infrastructure health.
+For comprehensive monitoring of your critical spread-group instances, including application-level health checks and automated incident response, consider using [OneUptime's monitoring platform](https://oneuptime.com/blog/post/2026-02-12-configure-health-checks-ec2-load-balancer/view) to get real-time visibility into your infrastructure health.
 
 ## Cost Considerations
 
@@ -225,4 +225,4 @@ Since spread groups are typically used for small, critical clusters, the 7-per-A
 
 ## Summary
 
-Spread placement groups are a simple, no-cost way to protect your critical small clusters from correlated hardware failures. They guarantee each instance runs on a distinct rack with independent network and power. Use them for database clusters, quorum-based systems, and any small set of instances where losing multiple nodes simultaneously would be catastrophic. The 7-instance-per-AZ limit is the main constraint, but for the workloads spread groups are designed for, it's rarely a problem. For larger distributed systems, check out [partition placement groups](https://oneuptime.com/blog/post/partition-placement-groups-large-distributed-systems/view).
+Spread placement groups are a simple, no-cost way to protect your critical small clusters from correlated hardware failures. They guarantee each instance runs on a distinct rack with independent network and power. Use them for database clusters, quorum-based systems, and any small set of instances where losing multiple nodes simultaneously would be catastrophic. The 7-instance-per-AZ limit is the main constraint, but for the workloads spread groups are designed for, it's rarely a problem. For larger distributed systems, check out [partition placement groups](https://oneuptime.com/blog/post/2026-02-12-partition-placement-groups-large-distributed-systems/view).

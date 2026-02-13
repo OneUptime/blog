@@ -594,4 +594,4 @@ Follow these guidelines for production use:
 
 The CoreDNS hosts plugin provides a powerful mechanism for injecting custom DNS entries across your Kubernetes cluster. By understanding how to configure, manage, and troubleshoot the hosts plugin, you can support legacy systems, implement testing scenarios, and handle special routing requirements without modifying individual pod configurations.
 
-For more DNS customization patterns, explore our guides on [CoreDNS rewrite plugin](https://oneuptime.com/blog/post/coredns-rewrite-plugin-transform/view) and [custom DNS configuration](https://oneuptime.com/blog/post/custom-dns-resolvers-pod-dnsconfig/view).
+For more DNS customization patterns, explore our guides on [CoreDNS rewrite plugin](https://oneuptime.com/blog/post/2026-02-09-coredns-rewrite-plugin-transform/view) and [custom DNS configuration](https://oneuptime.com/blog/post/2026-02-09-custom-dns-resolvers-pod-dnsconfig/view).

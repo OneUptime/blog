@@ -426,7 +426,7 @@ There are a few rules the Custom Message trigger must follow:
 
 4. **Email size limits**: SES has a 10MB email size limit, but keep it reasonable for email clients. Under 100KB is a good target.
 
-For other Lambda triggers in the Cognito lifecycle, see [Pre Sign-Up triggers](https://oneuptime.com/blog/post/cognito-lambda-triggers-pre-sign-up/view) and [Post Confirmation triggers](https://oneuptime.com/blog/post/cognito-lambda-triggers-post-confirmation/view).
+For other Lambda triggers in the Cognito lifecycle, see [Pre Sign-Up triggers](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-pre-sign-up/view) and [Post Confirmation triggers](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-post-confirmation/view).
 
 ## Summary
 

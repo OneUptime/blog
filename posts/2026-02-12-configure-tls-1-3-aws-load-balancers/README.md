@@ -281,4 +281,4 @@ Here's a safe migration path:
 
 **Test before production.** Always test in a staging environment first. Use the OpenSSL commands above to verify the expected behavior.
 
-For internal TLS with private certificates, see our guide on [AWS Private CA](https://oneuptime.com/blog/post/aws-private-ca-internal-certificate-management/view). Monitor your TLS endpoints and certificate health with [OneUptime](https://oneuptime.com) to catch configuration issues before they cause outages.
+For internal TLS with private certificates, see our guide on [AWS Private CA](https://oneuptime.com/blog/post/2026-02-12-aws-private-ca-internal-certificate-management/view). Monitor your TLS endpoints and certificate health with [OneUptime](https://oneuptime.com) to catch configuration issues before they cause outages.

@@ -369,10 +369,10 @@ phases:
 
 1. **Use OIDC federation** (GitHub Actions) or IAM roles (CodeBuild, Jenkins on EC2) instead of long-lived access keys
 2. **Scope ECR permissions** to specific repositories, not `*`
-3. **Enable image scanning** on push to catch vulnerabilities early (see our post on [ECR image scanning](https://oneuptime.com/blog/post/ecr-image-scanning-vulnerabilities/view))
+3. **Enable image scanning** on push to catch vulnerabilities early (see our post on [ECR image scanning](https://oneuptime.com/blog/post/2026-02-12-ecr-image-scanning-vulnerabilities/view))
 4. **Use immutable tags** to prevent overwriting images
 5. **Don't push from developer machines** - All pushes should go through CI/CD
 
-For a deeper look at authentication methods, see our post on [authenticating Docker with ECR](https://oneuptime.com/blog/post/authenticate-docker-ecr/view).
+For a deeper look at authentication methods, see our post on [authenticating Docker with ECR](https://oneuptime.com/blog/post/2026-02-12-authenticate-docker-ecr/view).
 
 Pushing images to ECR from CI/CD is foundational. Get the authentication and permissions right once, and every deployment that follows flows smoothly. Pick the approach that matches your CI/CD platform, scope the IAM permissions tightly, and you're set.

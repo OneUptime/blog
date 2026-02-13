@@ -333,4 +333,4 @@ Changes propagate globally in seconds. Compare that to updating a CloudFront Fun
 - **Blocklists**: Block specific IPs or user agents by updating a list.
 - **Rate limiting configs**: Adjust rate limit thresholds dynamically.
 
-KeyValueStore is a small but impactful addition to the CloudFront toolbox. For teams that frequently update edge configurations, it eliminates a lot of deployment friction. For more on CloudFront deployment patterns, see our post on [continuous deployment](https://oneuptime.com/blog/post/cloudfront-continuous-deployment-safe-rollouts/view).
+KeyValueStore is a small but impactful addition to the CloudFront toolbox. For teams that frequently update edge configurations, it eliminates a lot of deployment friction. For more on CloudFront deployment patterns, see our post on [continuous deployment](https://oneuptime.com/blog/post/2026-02-12-cloudfront-continuous-deployment-safe-rollouts/view).

@@ -202,7 +202,7 @@ aws rds add-option-to-option-group \
   --options "OptionName=NATIVE_NETWORK_ENCRYPTION,OptionSettings=[{Name=SQLNET.ENCRYPTION_SERVER,Value=REQUIRED},{Name=SQLNET.ENCRYPTION_TYPES_SERVER,Value=AES256}]"
 ```
 
-For more details on option groups, see [configuring RDS option groups](https://oneuptime.com/blog/post/configure-rds-option-groups/view).
+For more details on option groups, see [configuring RDS option groups](https://oneuptime.com/blog/post/2026-02-12-configure-rds-option-groups/view).
 
 ## Performance Tuning
 
@@ -213,7 +213,7 @@ Oracle on RDS benefits from proper tuning. Key parameters to adjust through para
 - **open_cursors**: Increase from the default if your application uses many prepared statements
 - **processes**: Maximum number of operating system processes (connections + background processes)
 
-Learn more about tuning in our guide on [configuring RDS parameter groups](https://oneuptime.com/blog/post/configure-rds-parameter-groups/view).
+Learn more about tuning in our guide on [configuring RDS parameter groups](https://oneuptime.com/blog/post/2026-02-12-configure-rds-parameter-groups/view).
 
 ## Monitoring Oracle on RDS
 

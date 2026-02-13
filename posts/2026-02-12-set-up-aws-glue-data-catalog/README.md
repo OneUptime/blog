@@ -166,7 +166,7 @@ for i in range(0, len(partitions), 100):
     )
 ```
 
-For automated partition management, use [Glue Crawlers](https://oneuptime.com/blog/post/create-aws-glue-crawlers-for-data-cataloging/view) or Athena's partition projection.
+For automated partition management, use [Glue Crawlers](https://oneuptime.com/blog/post/2026-02-12-create-aws-glue-crawlers-for-data-cataloging/view) or Athena's partition projection.
 
 ## Creating Connections
 
@@ -326,4 +326,4 @@ Beyond that, it's $1 per 100,000 objects stored and $1 per million API requests.
 
 The Glue Data Catalog is the foundation for analytics on AWS. Set up a clean database structure, define your tables carefully (or let crawlers do it), and maintain partitions as your data grows. Every other analytics service - Athena, Glue ETL, EMR, Redshift Spectrum - builds on top of it.
 
-Once your catalog is set up, you're ready to [query data with Athena](https://oneuptime.com/blog/post/set-up-amazon-athena-for-querying-s3-data/view) or [build ETL pipelines with Glue](https://oneuptime.com/blog/post/create-aws-glue-etl-jobs/view).
+Once your catalog is set up, you're ready to [query data with Athena](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-athena-for-querying-s3-data/view) or [build ETL pipelines with Glue](https://oneuptime.com/blog/post/2026-02-12-create-aws-glue-etl-jobs/view).

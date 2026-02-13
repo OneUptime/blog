@@ -168,7 +168,7 @@ def process_message(record):
 
 ## Handling Partial Batch Failures
 
-The all-or-nothing approach is wasteful. If 9 out of 10 messages succeed, you don't want to reprocess all 10. AWS added partial batch failure reporting to solve this. We cover this in depth in our post on [handling SQS partial batch failures in Lambda](https://oneuptime.com/blog/post/handle-sqs-partial-batch-failures-lambda/view), but here's the quick version.
+The all-or-nothing approach is wasteful. If 9 out of 10 messages succeed, you don't want to reprocess all 10. AWS added partial batch failure reporting to solve this. We cover this in depth in our post on [handling SQS partial batch failures in Lambda](https://oneuptime.com/blog/post/2026-02-12-handle-sqs-partial-batch-failures-lambda/view), but here's the quick version.
 
 Enable it in your event source mapping.
 

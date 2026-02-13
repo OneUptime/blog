@@ -305,7 +305,7 @@ Combine zPages with other collector extensions like the health check extension a
 
 For more information about OpenTelemetry Collector extensions, check out these related posts:
 
-- [How to Configure Bearer Token Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/bearer-token-auth-extension-opentelemetry-collector/view)
-- [How to Configure Basic Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/basic-auth-extension-opentelemetry-collector/view)
+- [How to Configure Bearer Token Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-bearer-token-auth-extension-opentelemetry-collector/view)
+- [How to Configure Basic Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-basic-auth-extension-opentelemetry-collector/view)
 
 The zPages extension provides an essential debugging capability for OpenTelemetry Collector deployments. By offering real-time visibility into trace processing and pipeline performance, it helps teams quickly identify and resolve issues without requiring external tools or complex setup procedures.

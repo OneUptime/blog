@@ -553,7 +553,7 @@ service:
       exporters: [debug]
 ```
 
-Learn more about using extensions at https://oneuptime.com/blog/post/zpages-live-debugging-collector/view and https://oneuptime.com/blog/post/profile-collector-pprof-extension/view.
+Learn more about using extensions at https://oneuptime.com/blog/post/2026-02-06-zpages-live-debugging-collector/view and https://oneuptime.com/blog/post/2026-02-06-profile-collector-pprof-extension/view.
 
 ## Pipeline Configuration Errors
 
@@ -843,7 +843,7 @@ spec:
           value: "900MiB"
 ```
 
-For memory management guidance, see https://oneuptime.com/blog/post/troubleshoot-memory-issues-oom-kills-collector/view.
+For memory management guidance, see https://oneuptime.com/blog/post/2026-02-06-troubleshoot-memory-issues-oom-kills-collector/view.
 
 ## Systematic Troubleshooting Approach
 
@@ -928,7 +928,7 @@ docker logs otel-collector
 
 Start with a minimal working configuration, then add components one at a time until the failure reoccurs. This identifies the specific component causing the issue.
 
-For detailed log analysis, refer to https://oneuptime.com/blog/post/read-interpret-collector-internal-logs/view.
+For detailed log analysis, refer to https://oneuptime.com/blog/post/2026-02-06-read-interpret-collector-internal-logs/view.
 
 ## Common Startup Failure Patterns
 
@@ -950,4 +950,4 @@ Recognize these common patterns to accelerate troubleshooting:
 
 Troubleshooting collector startup failures requires understanding the startup sequence, recognizing common failure patterns, and applying systematic debugging approaches. Configuration validation, resource allocation, port availability, and component compatibility are the primary areas to investigate. With proper validation tools and incremental configuration testing, most startup failures can be quickly diagnosed and resolved.
 
-For runtime troubleshooting after successful startup, see https://oneuptime.com/blog/post/debug-exporter-troubleshoot-collector-pipelines/view and https://oneuptime.com/blog/post/zpages-live-debugging-collector/view.
+For runtime troubleshooting after successful startup, see https://oneuptime.com/blog/post/2026-02-06-debug-exporter-troubleshoot-collector-pipelines/view and https://oneuptime.com/blog/post/2026-02-06-zpages-live-debugging-collector/view.

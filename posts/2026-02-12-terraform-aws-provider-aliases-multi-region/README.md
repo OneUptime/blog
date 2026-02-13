@@ -410,7 +410,7 @@ provider "aws" {
 
 **State management**: Multi-region deployments can use a single state file or separate state files per region. Single state is simpler but creates a blast radius issue. Separate state files are safer but require cross-state data sharing with `terraform_remote_state`.
 
-For creating certificates that work across regions, see our guide on [ACM certificates with Terraform](https://oneuptime.com/blog/post/create-acm-certificates-terraform/view).
+For creating certificates that work across regions, see our guide on [ACM certificates with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-acm-certificates-terraform/view).
 
 ## Wrapping Up
 

@@ -425,4 +425,4 @@ CloudTrail itself needs to be protected. An attacker's first move is often to di
 
 This SCP or IAM policy prevents anyone except the SecurityAdmin role from modifying or disabling the trail.
 
-CloudTrail is non-negotiable for any serious AWS deployment. Enable it on day one, send logs to both S3 and CloudWatch, set up alerts for suspicious activity, and protect the trail itself from tampering. For multi-region coverage, see our guide on [creating CloudTrail trails for multi-region logging](https://oneuptime.com/blog/post/create-cloudtrail-trails-multi-region-logging/view).
+CloudTrail is non-negotiable for any serious AWS deployment. Enable it on day one, send logs to both S3 and CloudWatch, set up alerts for suspicious activity, and protect the trail itself from tampering. For multi-region coverage, see our guide on [creating CloudTrail trails for multi-region logging](https://oneuptime.com/blog/post/2026-02-12-create-cloudtrail-trails-multi-region-logging/view).

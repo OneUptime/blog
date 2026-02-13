@@ -285,4 +285,4 @@ aws cloudwatch get-metric-statistics \
 
 Neptune Analytics gives you a purpose-built engine for graph analytics workloads. Instead of running expensive analytical queries on your transactional graph database, you load your data into Neptune Analytics and run PageRank, community detection, shortest path, and other algorithms at scale. Combined with openCypher query support and vector search, it is a solid platform for fraud detection, recommendation systems, and knowledge graph analytics.
 
-For more on graph databases, see our guide on [Neptune Serverless](https://oneuptime.com/blog/post/use-neptune-serverless/view) for transactional graph workloads.
+For more on graph databases, see our guide on [Neptune Serverless](https://oneuptime.com/blog/post/2026-02-12-use-neptune-serverless/view) for transactional graph workloads.

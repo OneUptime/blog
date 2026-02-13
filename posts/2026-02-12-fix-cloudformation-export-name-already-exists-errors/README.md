@@ -222,7 +222,7 @@ Outputs:
 
 Using the stack name as a prefix guarantees uniqueness as long as stack names are unique (which they must be within a region).
 
-Set up [monitoring on your CloudFormation deployments](https://oneuptime.com/blog/post/fix-cloudformation-create-failed-stack-errors/view) to catch these kinds of deployment failures early, especially in CI/CD pipelines where failed deploys might otherwise go unnoticed.
+Set up [monitoring on your CloudFormation deployments](https://oneuptime.com/blog/post/2026-02-12-fix-cloudformation-create-failed-stack-errors/view) to catch these kinds of deployment failures early, especially in CI/CD pipelines where failed deploys might otherwise go unnoticed.
 
 ## Summary
 

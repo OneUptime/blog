@@ -288,6 +288,6 @@ aws s3api get-public-access-block --bucket my-bucket
 aws s3api get-bucket-policy --bucket my-bucket
 ```
 
-For a broader look at S3 security across your organization, consider auditing all buckets periodically. For more on fine-grained access control, see our guide on [S3 IAM policies](https://oneuptime.com/blog/post/s3-iam-policies-fine-grained-access-control/view).
+For a broader look at S3 security across your organization, consider auditing all buckets periodically. For more on fine-grained access control, see our guide on [S3 IAM policies](https://oneuptime.com/blog/post/2026-02-12-s3-iam-policies-fine-grained-access-control/view).
 
 Monitor your S3 security configuration changes with [OneUptime](https://oneuptime.com) to catch accidental misconfigurations before they become security incidents.

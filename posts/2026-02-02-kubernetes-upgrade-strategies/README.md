@@ -1027,7 +1027,7 @@ For monitoring your Kubernetes deployments and getting alerts when upgrades caus
 
 ## Related Resources
 
-- [How to Upgrade Kubernetes Clusters with Zero Downtime](https://oneuptime.com/blog/post/kubernetes-upgrade-zero-downtime/view)
-- [How to Drain and Cordon Nodes for Maintenance](https://oneuptime.com/blog/post/kubernetes-drain-cordon-node-maintenance/view)
-- [How to Set Up Pod Disruption Budgets](https://oneuptime.com/blog/post/kubernetes-resource-quotas-limit-ranges/view)
-- [How to Upgrade and Rollback Helm Releases Safely](https://oneuptime.com/blog/post/helm-upgrade-rollback-releases/view)
+- [How to Upgrade Kubernetes Clusters with Zero Downtime](https://oneuptime.com/blog/post/2026-01-19-kubernetes-upgrade-zero-downtime/view)
+- [How to Drain and Cordon Nodes for Maintenance](https://oneuptime.com/blog/post/2026-01-19-kubernetes-drain-cordon-node-maintenance/view)
+- [How to Set Up Pod Disruption Budgets](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-quotas-limit-ranges/view)
+- [How to Upgrade and Rollback Helm Releases Safely](https://oneuptime.com/blog/post/2026-01-17-helm-upgrade-rollback-releases/view)

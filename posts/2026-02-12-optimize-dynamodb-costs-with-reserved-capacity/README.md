@@ -261,4 +261,4 @@ get_dynamodb_monthly_cost()
 
 The bottom line: if you've got DynamoDB tables with predictable, steady-state workloads, reserved capacity is one of the easiest ways to cut your AWS bill. Analyze at least 30 days of usage data, reserve for the baseline, and let auto-scaling handle the peaks. The savings compound quickly across multiple tables.
 
-For monitoring your capacity consumption, check out [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/monitor-dynamodb-with-cloudwatch-alarms/view) to make sure you're using what you're paying for.
+For monitoring your capacity consumption, check out [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-monitor-dynamodb-with-cloudwatch-alarms/view) to make sure you're using what you're paying for.

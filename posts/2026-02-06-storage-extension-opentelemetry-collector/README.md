@@ -742,4 +742,4 @@ echo "Storage migration completed"
 
 The Storage extension is essential for reliable OpenTelemetry Collector deployments where data loss is unacceptable. By implementing persistent queuing with disk storage, you can ensure telemetry data survives network outages, backend unavailability, and collector restarts.
 
-For related topics on collector reliability, explore guides on [OpAMP Extension](https://oneuptime.com/blog/post/opamp-extension-remote-collector-management/view) and [HTTP Forwarder configuration](https://oneuptime.com/blog/post/http-forwarder-extension-opentelemetry-collector/view).
+For related topics on collector reliability, explore guides on [OpAMP Extension](https://oneuptime.com/blog/post/2026-02-06-opamp-extension-remote-collector-management/view) and [HTTP Forwarder configuration](https://oneuptime.com/blog/post/2026-02-06-http-forwarder-extension-opentelemetry-collector/view).

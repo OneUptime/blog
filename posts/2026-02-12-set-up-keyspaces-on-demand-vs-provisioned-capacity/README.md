@@ -317,4 +317,4 @@ Use this checklist to decide:
 
 On-demand and provisioned capacity modes serve different workload patterns. Start with on-demand for new projects and unpredictable workloads, then switch to provisioned with auto-scaling once your traffic patterns stabilize. The cost difference can be significant - provisioned mode with auto-scaling is typically 3-7 times cheaper for steady workloads. But on-demand's zero-management overhead and instant scaling make it the right choice when simplicity and flexibility matter more than cost optimization.
 
-For more on Keyspaces, see our guide on [migrating from Cassandra to Amazon Keyspaces](https://oneuptime.com/blog/post/migrate-from-cassandra-to-amazon-keyspaces/view).
+For more on Keyspaces, see our guide on [migrating from Cassandra to Amazon Keyspaces](https://oneuptime.com/blog/post/2026-02-12-migrate-from-cassandra-to-amazon-keyspaces/view).

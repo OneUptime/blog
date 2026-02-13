@@ -452,6 +452,6 @@ For monitoring your Kubernetes deployments and image issues, check out [OneUptim
 
 ## Related Resources
 
-- [How to Troubleshoot Kubernetes Networking](https://oneuptime.com/blog/post/kubernetes-troubleshoot-networking/view)
-- [How to Debug OOMKilled Errors](https://oneuptime.com/blog/post/kubernetes-debug-oomkilled/view)
+- [How to Troubleshoot Kubernetes Networking](https://oneuptime.com/blog/post/2026-01-19-kubernetes-troubleshoot-networking/view)
+- [How to Debug OOMKilled Errors](https://oneuptime.com/blog/post/2026-01-19-kubernetes-debug-oomkilled/view)
 - [How to Configure Pod Security](https://oneuptime.com/blog/post/kubernetes-pod-security-standards/view)

@@ -326,4 +326,4 @@ function logMemory(label) {
 
 For monitoring your Node.js application's memory and performance in production, use [OneUptime](https://oneuptime.com) to track memory usage, response times, and error rates across your streaming endpoints.
 
-For the Python equivalent of these patterns, check out our guide on [using Boto3 to upload and download files from S3](https://oneuptime.com/blog/post/boto3-upload-download-files-s3/view).
+For the Python equivalent of these patterns, check out our guide on [using Boto3 to upload and download files from S3](https://oneuptime.com/blog/post/2026-02-12-boto3-upload-download-files-s3/view).

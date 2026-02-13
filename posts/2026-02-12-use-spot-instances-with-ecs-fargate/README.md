@@ -309,7 +309,7 @@ fargate_spot_savings_report()
 
 5. **Monitor interruption rates.** If you're seeing frequent interruptions, increase the base count on regular Fargate.
 
-For more on cost-effective compute options, check out our guide on [using Graviton instances for cost-effective compute](https://oneuptime.com/blog/post/use-graviton-instances-for-cost-effective-compute/view).
+For more on cost-effective compute options, check out our guide on [using Graviton instances for cost-effective compute](https://oneuptime.com/blog/post/2026-02-12-use-graviton-instances-for-cost-effective-compute/view).
 
 ## Key Takeaways
 

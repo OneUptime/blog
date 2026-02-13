@@ -563,8 +563,8 @@ service:
 
 For more information on optimizing your OpenTelemetry Collector deployment:
 
-- [How to Configure Sending Queues and Retry Logic in the Collector](https://oneuptime.com/blog/post/configure-sending-queues-retry-logic-collector/view)
-- [How to Scale the OpenTelemetry Collector for High-Throughput Environments](https://oneuptime.com/blog/post/scale-opentelemetry-collector-high-throughput/view)
-- [How to Monitor the Collector with Its Internal Metrics](https://oneuptime.com/blog/post/monitor-collector-internal-metrics/view)
+- [How to Configure Sending Queues and Retry Logic in the Collector](https://oneuptime.com/blog/post/2026-02-06-configure-sending-queues-retry-logic-collector/view)
+- [How to Scale the OpenTelemetry Collector for High-Throughput Environments](https://oneuptime.com/blog/post/2026-02-06-scale-opentelemetry-collector-high-throughput/view)
+- [How to Monitor the Collector with Its Internal Metrics](https://oneuptime.com/blog/post/2026-02-06-monitor-collector-internal-metrics/view)
 
 Properly tuning the batch processor is fundamental to achieving optimal performance from your OpenTelemetry Collector deployment. By understanding how batch parameters interact with your workload characteristics and monitoring behavior through internal metrics, you can find the right balance between latency, throughput, and resource utilization for your specific requirements.

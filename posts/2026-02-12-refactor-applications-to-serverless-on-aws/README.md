@@ -469,7 +469,7 @@ def handler(event, context):
     # Your logic here
 ```
 
-For comprehensive monitoring across your serverless functions, [OneUptime](https://oneuptime.com/blog/post/containerize-legacy-applications-for-aws/view) provides end-to-end observability that works across Lambda, API Gateway, and your other AWS services.
+For comprehensive monitoring across your serverless functions, [OneUptime](https://oneuptime.com/blog/post/2026-02-12-containerize-legacy-applications-for-aws/view) provides end-to-end observability that works across Lambda, API Gateway, and your other AWS services.
 
 ## Wrapping Up
 

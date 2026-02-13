@@ -384,7 +384,7 @@ Yes, you need to monitor your log pipeline:
 - S3 storage growth rate
 - Ingestion lag (time from log generation to searchability)
 
-For more on metrics, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/build-a-metrics-collection-system-on-aws/view).
+For more on metrics, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-metrics-collection-system-on-aws/view).
 
 ## Wrapping Up
 

@@ -853,9 +853,9 @@ Based on root cause:
 
 For comprehensive OpenTelemetry Collector troubleshooting:
 
-- [How to Fix Collector Slow Startup in Kubernetes](https://oneuptime.com/blog/post/fix-collector-slow-startup-kubernetes/view)
-- [How to Debug Collector Receiver Connection Drops](https://oneuptime.com/blog/post/debug-collector-receiver-connection-drops/view)
-- [How to Fix Collector Exporter Timeout Errors](https://oneuptime.com/blog/post/fix-collector-exporter-timeout-errors/view)
-- [How to Troubleshoot Multi-Pipeline Routing Issues in the Collector](https://oneuptime.com/blog/post/troubleshoot-multi-pipeline-routing-issues-collector/view)
+- [How to Fix Collector Slow Startup in Kubernetes](https://oneuptime.com/blog/post/2026-02-06-fix-collector-slow-startup-kubernetes/view)
+- [How to Debug Collector Receiver Connection Drops](https://oneuptime.com/blog/post/2026-02-06-debug-collector-receiver-connection-drops/view)
+- [How to Fix Collector Exporter Timeout Errors](https://oneuptime.com/blog/post/2026-02-06-fix-collector-exporter-timeout-errors/view)
+- [How to Troubleshoot Multi-Pipeline Routing Issues in the Collector](https://oneuptime.com/blog/post/2026-02-06-troubleshoot-multi-pipeline-routing-issues-collector/view)
 
 Effective queue management prevents data loss and ensures reliable telemetry delivery. By monitoring queue depth metrics, configuring appropriate queue sizes, and implementing automated responses to backpressure, you can build resilient observability pipelines that handle traffic spikes and backend issues gracefully.

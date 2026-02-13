@@ -567,4 +567,4 @@ Organization administrators can view context access logs to troubleshoot securit
 
 CircleCI Contexts provide the foundation for secure, scalable secret management in your CI/CD pipelines. By centralizing credentials in contexts with appropriate access controls, you reduce the risk of secret sprawl while making credential rotation straightforward. Start by migrating your most sensitive and widely-shared secrets to contexts, then expand coverage as you establish organizational patterns.
 
-Monitor your CI/CD pipeline security and performance with [OneUptime](https://oneuptime.com/blog/post/circleci-production-setup/view). Track context usage patterns, detect anomalies, and ensure your deployment pipeline remains secure and reliable.
+Monitor your CI/CD pipeline security and performance with [OneUptime](https://oneuptime.com/blog/post/2026-01-26-circleci-production-setup/view). Track context usage patterns, detect anomalies, and ensure your deployment pipeline remains secure and reliable.

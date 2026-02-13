@@ -425,4 +425,4 @@ A few things that catch people repeatedly:
 - **The build times out silently.** If your build hangs (maybe waiting for a database connection), it'll just time out with no helpful error. Set reasonable timeouts.
 - **Cache paths must use `**/*` glob.** Just `node_modules/` won't work; you need `node_modules/**/*`.
 
-For the full CodeBuild setup including project creation and source configuration, see our guide on [creating CodeBuild projects](https://oneuptime.com/blog/post/create-aws-codebuild-projects/view).
+For the full CodeBuild setup including project creation and source configuration, see our guide on [creating CodeBuild projects](https://oneuptime.com/blog/post/2026-02-12-create-aws-codebuild-projects/view).

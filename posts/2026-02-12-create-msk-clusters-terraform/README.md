@@ -423,7 +423,7 @@ resource "aws_cloudwatch_metric_alarm" "disk_usage" {
 }
 ```
 
-For a broader monitoring setup, see our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/create-cloudwatch-alarms-terraform/view).
+For a broader monitoring setup, see our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-terraform/view).
 
 ## Outputs
 

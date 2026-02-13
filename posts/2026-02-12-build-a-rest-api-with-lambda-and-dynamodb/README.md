@@ -536,7 +536,7 @@ function validateTask(body, isUpdate = false) {
 - Use GSIs for your most common query patterns
 - Use `Scan` sparingly - it reads every item in the table and gets slower as the table grows
 
-For monitoring your API's performance, see [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/monitor-lambda-function-performance-with-cloudwatch/view).
+For monitoring your API's performance, see [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-lambda-function-performance-with-cloudwatch/view).
 
 ## Wrapping Up
 

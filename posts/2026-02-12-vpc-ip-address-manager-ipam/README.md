@@ -281,4 +281,4 @@ aws ec2 provision-ipam-pool-cidr \
 4. **Monitor utilization proactively.** Running out of addresses in a pool is disruptive - set alarms at 70-80% utilization.
 5. **Import existing VPCs.** Use the auto-import feature to bring existing VPCs under IPAM management without re-creating them.
 
-For more on VPC networking, check out our post on [VPC Network Access Analyzer](https://oneuptime.com/blog/post/vpc-network-access-analyzer/view).
+For more on VPC networking, check out our post on [VPC Network Access Analyzer](https://oneuptime.com/blog/post/2026-02-12-vpc-network-access-analyzer/view).

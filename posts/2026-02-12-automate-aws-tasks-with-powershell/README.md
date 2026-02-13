@@ -10,7 +10,7 @@ Description: Practical PowerShell automation scripts for common AWS operations i
 
 Once you've got the AWS PowerShell tools installed, the real value comes from automation. Instead of clicking around the console or running one-off commands, you can build scripts that handle repetitive tasks reliably. In this post, we'll cover practical automation patterns that you can adapt to your own workflows - from instance management to backup automation to cost optimization.
 
-If you haven't set up the AWS PowerShell tools yet, check out our guide on [getting started with AWS PowerShell tools](https://oneuptime.com/blog/post/use-aws-powershell-tools/view) first.
+If you haven't set up the AWS PowerShell tools yet, check out our guide on [getting started with AWS PowerShell tools](https://oneuptime.com/blog/post/2026-02-12-use-aws-powershell-tools/view) first.
 
 ## Automated Instance Management
 

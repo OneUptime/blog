@@ -306,8 +306,8 @@ aws cloudformation create-stack \
 
 **Use AWS-specific types when possible.** They provide automatic validation and nice dropdown menus in the Console.
 
-**Keep the parameter count manageable.** If your template has 30 parameters, it's probably doing too much. Split it into [nested stacks](https://oneuptime.com/blog/post/cloudformation-nested-stacks/view) instead.
+**Keep the parameter count manageable.** If your template has 30 parameters, it's probably doing too much. Split it into [nested stacks](https://oneuptime.com/blog/post/2026-02-12-cloudformation-nested-stacks/view) instead.
 
 **Document with Description.** Always add descriptions - they show up in the Console and help anyone deploying the template understand what each parameter does.
 
-Parameters are the first step toward reusable infrastructure. Combined with [conditions](https://oneuptime.com/blog/post/cloudformation-conditions-conditional-resources/view) and [mappings](https://oneuptime.com/blog/post/cloudformation-mappings-region-specific-values/view), they let you build templates that adapt to any environment or region without duplication.
+Parameters are the first step toward reusable infrastructure. Combined with [conditions](https://oneuptime.com/blog/post/2026-02-12-cloudformation-conditions-conditional-resources/view) and [mappings](https://oneuptime.com/blog/post/2026-02-12-cloudformation-mappings-region-specific-values/view), they let you build templates that adapt to any environment or region without duplication.

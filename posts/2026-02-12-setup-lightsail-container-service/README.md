@@ -324,4 +324,4 @@ Lightsail performs a rolling deployment, so there's no downtime during updates.
 4. Image push failing? Make sure the Docker daemon is running locally
 5. Custom domain not working? Verify the certificate is validated and DNS CNAME is correct
 
-Lightsail Container Service is the sweet spot between running containers on a VM and dealing with the complexity of ECS. For adding a database to your container app, check out our guide on [setting up a Lightsail database](https://oneuptime.com/blog/post/setup-lightsail-database/view).
+Lightsail Container Service is the sweet spot between running containers on a VM and dealing with the complexity of ECS. For adding a database to your container app, check out our guide on [setting up a Lightsail database](https://oneuptime.com/blog/post/2026-02-12-setup-lightsail-database/view).

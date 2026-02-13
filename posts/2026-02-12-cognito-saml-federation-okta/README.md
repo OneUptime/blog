@@ -319,7 +319,7 @@ The logout URL in your app client should point to your app's post-logout page. C
 
 **"Metadata fetch failed"** - Cognito can't reach Okta's metadata URL. Try uploading the metadata file directly instead.
 
-For SAML federation with Azure AD, see [Cognito SAML federation with Azure AD](https://oneuptime.com/blog/post/cognito-saml-federation-azure-ad/view). For OIDC-based federation, check out [Cognito OIDC federation](https://oneuptime.com/blog/post/cognito-oidc-federation/view).
+For SAML federation with Azure AD, see [Cognito SAML federation with Azure AD](https://oneuptime.com/blog/post/2026-02-12-cognito-saml-federation-azure-ad/view). For OIDC-based federation, check out [Cognito OIDC federation](https://oneuptime.com/blog/post/2026-02-12-cognito-oidc-federation/view).
 
 ## Summary
 

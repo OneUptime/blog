@@ -397,4 +397,4 @@ aws ssm create-maintenance-window \
 
 Track patch compliance over time. If compliance drops, you've either got new patches or failed installations. For comprehensive monitoring of your patching operations and post-patch application health, [OneUptime](https://oneuptime.com) can correlate patch events with application performance metrics, helping you catch patch-related issues quickly.
 
-For running ad-hoc commands on your instances outside of maintenance windows, see our guide on [Systems Manager Run Command](https://oneuptime.com/blog/post/systems-manager-run-command/view).
+For running ad-hoc commands on your instances outside of maintenance windows, see our guide on [Systems Manager Run Command](https://oneuptime.com/blog/post/2026-02-12-systems-manager-run-command/view).

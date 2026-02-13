@@ -173,7 +173,7 @@ Resources:
         PlatformVersion: "LATEST"
 ```
 
-For a deeper dive into AppSpec files, check our guide on [creating CodeDeploy AppSpec files](https://oneuptime.com/blog/post/codedeploy-appspec-files/view).
+For a deeper dive into AppSpec files, check our guide on [creating CodeDeploy AppSpec files](https://oneuptime.com/blog/post/2026-02-12-codedeploy-appspec-files/view).
 
 ## Step 6: Trigger a Deployment
 
@@ -262,4 +262,4 @@ Since the old tasks are still running during the termination wait period, the ro
 
 Keep an eye on your deployments with CloudWatch and consider using [OneUptime](https://oneuptime.com) for comprehensive monitoring of your ECS services. Track response times, error rates, and container health during traffic shifts to catch issues early.
 
-For integrating this into a full CI/CD pipeline, check our guide on [using CodePipeline with ECS](https://oneuptime.com/blog/post/codepipeline-ecs/view).
+For integrating this into a full CI/CD pipeline, check our guide on [using CodePipeline with ECS](https://oneuptime.com/blog/post/2026-02-12-codepipeline-ecs/view).

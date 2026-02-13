@@ -349,7 +349,7 @@ Stacks give you the coordination benefits of Terragrunt with native Terraform su
 
 ## Monitoring Multi-Region Deployments
 
-After deploying across regions, you need visibility into what's running where. For monitoring your multi-region infrastructure, consider setting up centralized observability. Check out [structuring Terraform projects for large AWS deployments](https://oneuptime.com/blog/post/structure-terraform-projects-large-aws-deployments/view) for more on organizing complex infrastructure.
+After deploying across regions, you need visibility into what's running where. For monitoring your multi-region infrastructure, consider setting up centralized observability. Check out [structuring Terraform projects for large AWS deployments](https://oneuptime.com/blog/post/2026-02-12-structure-terraform-projects-large-aws-deployments/view) for more on organizing complex infrastructure.
 
 ## Summary
 

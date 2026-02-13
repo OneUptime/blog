@@ -311,4 +311,4 @@ aws codestar-notifications list-notification-rules \
   --filters '[{"Name": "RESOURCE", "Value": "arn:aws:codecommit:us-east-1:123456789012:my-application"}]'
 ```
 
-Getting notifications right is fundamental to a healthy development workflow. Nobody should be surprised by changes to critical branches, and pull requests shouldn't sit unreviewed because nobody knew they existed. For building a complete CI/CD pipeline from these triggers, check out our guide on [creating CodeBuild projects](https://oneuptime.com/blog/post/create-aws-codebuild-projects/view) that kick off builds automatically from CodeCommit events.
+Getting notifications right is fundamental to a healthy development workflow. Nobody should be surprised by changes to critical branches, and pull requests shouldn't sit unreviewed because nobody knew they existed. For building a complete CI/CD pipeline from these triggers, check out our guide on [creating CodeBuild projects](https://oneuptime.com/blog/post/2026-02-12-create-aws-codebuild-projects/view) that kick off builds automatically from CodeCommit events.

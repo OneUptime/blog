@@ -603,6 +603,6 @@ For ongoing monitoring of your pods and early detection of crash loops, check ou
 
 ## Related Resources
 
-- [How to Set Up Health Checks for Kubernetes](https://oneuptime.com/blog/post/python-health-checks-kubernetes/view)
-- [How to Send Python Logs to OneUptime](https://oneuptime.com/blog/post/python-logs-oneuptime/view)
-- [How to Debug Kubernetes Memory Leaks](https://oneuptime.com/blog/post/python-memory-leak-debugging/view)
+- [How to Set Up Health Checks for Kubernetes](https://oneuptime.com/blog/post/2025-01-06-python-health-checks-kubernetes/view)
+- [How to Send Python Logs to OneUptime](https://oneuptime.com/blog/post/2025-01-06-python-logs-oneuptime/view)
+- [How to Debug Kubernetes Memory Leaks](https://oneuptime.com/blog/post/2025-01-06-python-memory-leak-debugging/view)

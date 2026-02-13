@@ -302,4 +302,4 @@ API Gateway provides built-in metrics for latency, error rates, and request coun
 
 CDK makes API Gateway manageable. You define routes, handlers, and policies in code, and CDK handles the CloudFormation complexity underneath. Start simple with Lambda proxy integrations, then layer on validation, API keys, and custom domains as your API matures.
 
-If you're building the database layer too, check out our guide on [creating a DynamoDB table with CDK](https://oneuptime.com/blog/post/create-dynamodb-table-with-cdk/view) - it pairs perfectly with API Gateway and Lambda.
+If you're building the database layer too, check out our guide on [creating a DynamoDB table with CDK](https://oneuptime.com/blog/post/2026-02-12-create-dynamodb-table-with-cdk/view) - it pairs perfectly with API Gateway and Lambda.

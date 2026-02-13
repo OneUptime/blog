@@ -392,6 +392,6 @@ module "shared_s3_reader" {
 4. **Log everything** - CloudTrail records all `AssumeRole` calls with the source account
 5. **Set session duration appropriately** - shorter for sensitive operations
 6. **Tag cross-account roles** for tracking and automation
-7. **Review trust policies regularly** - check who can assume your roles with our guide on [auditing IAM with credential reports](https://oneuptime.com/blog/post/audit-iam-users-roles-credential-reports/view)
+7. **Review trust policies regularly** - check who can assume your roles with our guide on [auditing IAM with credential reports](https://oneuptime.com/blog/post/2026-02-12-audit-iam-users-roles-credential-reports/view)
 
 Cross-account roles are the backbone of multi-account AWS architectures. Get the patterns right, and you can build a secure, maintainable infrastructure where accounts collaborate without compromising isolation.

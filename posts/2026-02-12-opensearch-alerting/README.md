@@ -370,4 +370,4 @@ curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_alerting
 }'
 ```
 
-Alerting in OpenSearch gives you a complete monitoring solution when combined with [log analytics dashboards](https://oneuptime.com/blog/post/log-analytics-dashboards-opensearch/view) and [anomaly detection](https://oneuptime.com/blog/post/opensearch-anomaly-detection/view). For managing the indexes that power these alerts, look into [OpenSearch ISM](https://oneuptime.com/blog/post/opensearch-index-state-management-ism/view).
+Alerting in OpenSearch gives you a complete monitoring solution when combined with [log analytics dashboards](https://oneuptime.com/blog/post/2026-02-12-log-analytics-dashboards-opensearch/view) and [anomaly detection](https://oneuptime.com/blog/post/2026-02-12-opensearch-anomaly-detection/view). For managing the indexes that power these alerts, look into [OpenSearch ISM](https://oneuptime.com/blog/post/2026-02-12-opensearch-index-state-management-ism/view).

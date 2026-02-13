@@ -359,10 +359,10 @@ def get_user(user_id):
     return user
 ```
 
-**Monitor your connections.** Keep an eye on the number of active connections to avoid hitting limits. See the guide on [monitoring ElastiCache with CloudWatch](https://oneuptime.com/blog/post/monitor-elasticache-with-cloudwatch/view) for details.
+**Monitor your connections.** Keep an eye on the number of active connections to avoid hitting limits. See the guide on [monitoring ElastiCache with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-elasticache-with-cloudwatch/view) for details.
 
 ## Wrapping Up
 
 Connecting to ElastiCache Redis is straightforward once you know the pattern: use connection pooling, set timeouts, handle failures gracefully, and use the right endpoint type for your cluster configuration. Start with the examples above, adapt them to your framework, and you'll have a solid caching layer running in no time.
 
-For more on what to do with your Redis connection once it's established, check out the guides on [session caching](https://oneuptime.com/blog/post/elasticache-redis-for-session-caching/view) and [API response caching](https://oneuptime.com/blog/post/elasticache-redis-for-api-response-caching/view).
+For more on what to do with your Redis connection once it's established, check out the guides on [session caching](https://oneuptime.com/blog/post/2026-02-12-elasticache-redis-for-session-caching/view) and [API response caching](https://oneuptime.com/blog/post/2026-02-12-elasticache-redis-for-api-response-caching/view).

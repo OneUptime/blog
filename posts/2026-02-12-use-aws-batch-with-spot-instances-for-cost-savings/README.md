@@ -248,7 +248,7 @@ aws ec2 describe-spot-instance-requests \
   --query 'SpotInstanceRequests[?CreateTime>=`2026-02-11`].{Id:InstanceId,Status:Status.Code,Time:Status.UpdateTime}'
 ```
 
-For comprehensive job monitoring, see [monitoring AWS Batch with CloudWatch](https://oneuptime.com/blog/post/monitor-aws-batch-jobs-with-cloudwatch/view).
+For comprehensive job monitoring, see [monitoring AWS Batch with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-aws-batch-jobs-with-cloudwatch/view).
 
 ## Wrapping Up
 

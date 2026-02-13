@@ -247,10 +247,10 @@ export const handler = async (event) => {
 
 ## Automating the Optimization
 
-For a more automated approach to finding the optimal memory size, AWS Lambda Power Tuning is an open-source tool that runs your function at different memory levels and produces a cost/performance visualization. Check out our dedicated guide on [Lambda Power Tuning](https://oneuptime.com/blog/post/aws-lambda-power-tuning-optimize-cost-performance/view).
+For a more automated approach to finding the optimal memory size, AWS Lambda Power Tuning is an open-source tool that runs your function at different memory levels and produces a cost/performance visualization. Check out our dedicated guide on [Lambda Power Tuning](https://oneuptime.com/blog/post/2026-02-12-aws-lambda-power-tuning-optimize-cost-performance/view).
 
 ## Wrapping Up
 
 Choosing the right Lambda memory size isn't guesswork - it's a measurable optimization. Profile your function at multiple memory levels, identify whether it's CPU-bound or I/O-bound, and pick the sweet spot where cost and performance meet. Then revisit the setting periodically as your function's workload evolves.
 
-For reducing cold start latency specifically, see our posts on [reducing Lambda cold start times](https://oneuptime.com/blog/post/reduce-lambda-cold-start-times/view) and [Lambda SnapStart for Java](https://oneuptime.com/blog/post/lambda-snapstart-java-functions/view).
+For reducing cold start latency specifically, see our posts on [reducing Lambda cold start times](https://oneuptime.com/blog/post/2026-02-12-reduce-lambda-cold-start-times/view) and [Lambda SnapStart for Java](https://oneuptime.com/blog/post/2026-02-12-lambda-snapstart-java-functions/view).

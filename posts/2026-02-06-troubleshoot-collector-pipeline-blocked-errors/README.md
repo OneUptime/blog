@@ -734,10 +734,10 @@ graph TD
 
 ## Related Resources
 
-- [How to Fix Collector Connection Refused on OTLP Ports](https://oneuptime.com/blog/post/fix-collector-connection-refused-otlp-ports/view)
-- [How to Diagnose Data Loss with otelcol_exporter_send_failed_spans Metrics](https://oneuptime.com/blog/post/diagnose-data-loss-exporter-send-failed-spans/view)
+- [How to Fix Collector Connection Refused on OTLP Ports](https://oneuptime.com/blog/post/2026-02-06-fix-collector-connection-refused-otlp-ports/view)
+- [How to Diagnose Data Loss with otelcol_exporter_send_failed_spans Metrics](https://oneuptime.com/blog/post/2026-02-06-diagnose-data-loss-exporter-send-failed-spans/view)
 - [How to Collect OpenTelemetry Collector Internal Metrics](https://oneuptime.com/blog/post/2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics/view)
-- [What is OpenTelemetry Collector and Why Use One?](https://oneuptime.com/blog/post/what-is-opentelemetry-collector-and-why-use-one/view)
+- [What is OpenTelemetry Collector and Why Use One?](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
 
 ---
 

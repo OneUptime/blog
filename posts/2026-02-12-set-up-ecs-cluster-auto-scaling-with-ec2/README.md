@@ -187,7 +187,7 @@ aws ecs create-service \
   ]'
 ```
 
-For more on placement strategies, see [configuring ECS task placement strategies](https://oneuptime.com/blog/post/configure-ecs-task-placement-strategies/view).
+For more on placement strategies, see [configuring ECS task placement strategies](https://oneuptime.com/blog/post/2026-02-12-configure-ecs-task-placement-strategies/view).
 
 ## Step 6: Set Up Service Auto Scaling
 

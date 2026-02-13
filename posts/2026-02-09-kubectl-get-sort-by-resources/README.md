@@ -438,4 +438,4 @@ kubectl get nodes --sort-by=.status.capacity.memory \
 
 This creates fully customized sorted reports.
 
-Sorting transforms kubectl output from random listings into organized insights. Sort by age to find outdated resources, by restarts to identify unstable pods, or by capacity to understand infrastructure. Combine sorting with custom columns and label selectors for powerful cluster analysis. For more output customization, see https://oneuptime.com/blog/post/kubectl-custom-columns-output-format/view.
+Sorting transforms kubectl output from random listings into organized insights. Sort by age to find outdated resources, by restarts to identify unstable pods, or by capacity to understand infrastructure. Combine sorting with custom columns and label selectors for powerful cluster analysis. For more output customization, see https://oneuptime.com/blog/post/2026-02-09-kubectl-custom-columns-output-format/view.

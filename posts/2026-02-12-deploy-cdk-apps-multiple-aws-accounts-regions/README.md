@@ -267,4 +267,4 @@ cdk deploy 'Prod-*' --profile prod-account
 cdk deploy --all
 ```
 
-Multi-account CDK gets easier once the bootstrapping and trust relationships are in place. The initial setup is the hardest part. For a deeper dive into automated deployment pipelines, check out the post on [CDK Pipelines](https://oneuptime.com/blog/post/cdk-pipelines-automated-deployments/view). And for organizing the stacks within those accounts, see [CDK stacks and environments](https://oneuptime.com/blog/post/cdk-stacks-and-environments/view).
+Multi-account CDK gets easier once the bootstrapping and trust relationships are in place. The initial setup is the hardest part. For a deeper dive into automated deployment pipelines, check out the post on [CDK Pipelines](https://oneuptime.com/blog/post/2026-02-12-cdk-pipelines-automated-deployments/view). And for organizing the stacks within those accounts, see [CDK stacks and environments](https://oneuptime.com/blog/post/2026-02-12-cdk-stacks-and-environments/view).

@@ -292,7 +292,7 @@ A few things I've learned from running A/B tests:
 - **Make sure your sample sizes are large enough** before drawing conclusions
 - **Always have a kill switch** to stop an experiment if something goes badly wrong
 
-For monitoring the health of your experimentation infrastructure, see our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/build-logging-and-monitoring-stack-on-aws/view).
+For monitoring the health of your experimentation infrastructure, see our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view).
 
 ## Summary
 

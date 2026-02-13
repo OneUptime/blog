@@ -23,7 +23,7 @@ The default metrics are:
 | CPUUtilization | Percentage of CPU units used vs reserved | Capacity planning, autoscaling |
 | MemoryUtilization | Percentage of memory used vs reserved | OOM prevention, right-sizing |
 
-These are aggregated at the service level and reported every minute. While they're helpful, they only give you the service-wide average. If you need per-task or per-container metrics, you'll want to enable Container Insights (covered in our [Container Insights guide](https://oneuptime.com/blog/post/monitor-ecs-container-insights/view)).
+These are aggregated at the service level and reported every minute. While they're helpful, they only give you the service-wide average. If you need per-task or per-container metrics, you'll want to enable Container Insights (covered in our [Container Insights guide](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-container-insights/view)).
 
 ## Querying ECS Metrics with the CLI
 
@@ -298,4 +298,4 @@ CloudWatch metrics are the foundation of ECS monitoring. Start with the built-in
 
 The key is to be intentional about what you monitor. Don't create alarms for everything - focus on the signals that indicate real problems and require human intervention. And always test your alarms by deliberately crossing thresholds in a staging environment before relying on them in production.
 
-For more advanced monitoring setups, including per-container metrics, take a look at our [Container Insights guide](https://oneuptime.com/blog/post/monitor-ecs-container-insights/view).
+For more advanced monitoring setups, including per-container metrics, take a look at our [Container Insights guide](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-container-insights/view).

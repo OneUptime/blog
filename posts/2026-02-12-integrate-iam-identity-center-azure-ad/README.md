@@ -34,7 +34,7 @@ flowchart LR
 
 ## Prerequisites
 
-- AWS IAM Identity Center enabled (see our [setup guide](https://oneuptime.com/blog/post/set-up-aws-iam-identity-center-sso/view))
+- AWS IAM Identity Center enabled (see our [setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-iam-identity-center-sso/view))
 - Azure AD Premium P1 or P2 license (required for enterprise application provisioning)
 - Global Administrator or Application Administrator role in Azure AD
 - Admin access to the AWS management account

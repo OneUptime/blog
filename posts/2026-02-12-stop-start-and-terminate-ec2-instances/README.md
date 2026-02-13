@@ -36,7 +36,7 @@ Stopping an instance is like shutting down a computer. The instance powers off, 
 
 - **EBS volumes persist** - all data on attached EBS volumes is saved
 - **Instance store data is lost** - if your instance type has local NVMe storage, that data is gone
-- **Public IP changes** - the auto-assigned public IP is released (use an [Elastic IP](https://oneuptime.com/blog/post/assign-elastic-ip-address-to-ec2-instance/view) to prevent this)
+- **Public IP changes** - the auto-assigned public IP is released (use an [Elastic IP](https://oneuptime.com/blog/post/2026-02-12-assign-elastic-ip-address-to-ec2-instance/view) to prevent this)
 - **Private IP stays** - the private IP in your VPC doesn't change
 - **Billing stops for compute** - you stop paying for the instance hours
 - **EBS charges continue** - you still pay for EBS volume storage

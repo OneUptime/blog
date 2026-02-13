@@ -137,7 +137,7 @@ When downsizing, consider more than just CPU. Here's a decision matrix.
 | Compute-bound, steady | Switch to compute-optimized (c-series) |
 | Bursty, low baseline | Consider T-series with unlimited credits |
 
-AWS Compute Optimizer handles this analysis automatically. See our guide on [using Compute Optimizer](https://oneuptime.com/blog/post/use-aws-compute-optimizer-right-sizing/view) for data-driven recommendations.
+AWS Compute Optimizer handles this analysis automatically. See our guide on [using Compute Optimizer](https://oneuptime.com/blog/post/2026-02-12-use-aws-compute-optimizer-right-sizing/view) for data-driven recommendations.
 
 ## Step 3: Calculate Potential Savings
 
@@ -332,4 +332,4 @@ resource "aws_cloudwatch_event_target" "rightsizing_lambda" {
 
 ## Wrapping Up
 
-Right-sizing is the lowest-risk, highest-reward optimization you can make for EC2 costs. Gather at least two weeks of utilization data, identify over-provisioned instances, calculate the savings potential, and migrate safely using instance refresh for stateless workloads or stop-and-resize for stateful ones. Make it a monthly habit, and combine it with other strategies like [Savings Plans](https://oneuptime.com/blog/post/reduce-ec2-costs-savings-plans/view) and [Spot Instances](https://oneuptime.com/blog/post/reduce-ec2-costs-spot-instances/view) for maximum savings.
+Right-sizing is the lowest-risk, highest-reward optimization you can make for EC2 costs. Gather at least two weeks of utilization data, identify over-provisioned instances, calculate the savings potential, and migrate safely using instance refresh for stateless workloads or stop-and-resize for stateful ones. Make it a monthly habit, and combine it with other strategies like [Savings Plans](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-savings-plans/view) and [Spot Instances](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-spot-instances/view) for maximum savings.

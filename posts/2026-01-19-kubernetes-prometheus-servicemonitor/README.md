@@ -618,6 +618,6 @@ For comprehensive application monitoring, check out [OneUptime's monitoring plat
 
 ## Related Resources
 
-- [How to Set Up Custom Metrics with Prometheus](https://oneuptime.com/blog/post/python-custom-metrics-prometheus/view)
-- [How to Set Up Centralized Logging](https://oneuptime.com/blog/post/kubernetes-logging-fluentd-fluent-bit/view)
-- [How to Monitor OpenTelemetry Collector](https://oneuptime.com/blog/post/how-to-collect-opentelemetry-collector-internal-metrics/view)
+- [How to Set Up Custom Metrics with Prometheus](https://oneuptime.com/blog/post/2025-01-06-python-custom-metrics-prometheus/view)
+- [How to Set Up Centralized Logging](https://oneuptime.com/blog/post/2026-01-19-kubernetes-logging-fluentd-fluent-bit/view)
+- [How to Monitor OpenTelemetry Collector](https://oneuptime.com/blog/post/2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics/view)

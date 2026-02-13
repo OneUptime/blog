@@ -480,7 +480,7 @@ export default class LoginComponent {
 }
 ```
 
-For more on securing your API calls with Cognito tokens, see [integrating Cognito with API Gateway for authorization](https://oneuptime.com/blog/post/cognito-api-gateway-authorization/view). If you want to use Amplify instead of the raw SDK, check out [using Amplify Authentication with Cognito](https://oneuptime.com/blog/post/amplify-authentication-cognito/view).
+For more on securing your API calls with Cognito tokens, see [integrating Cognito with API Gateway for authorization](https://oneuptime.com/blog/post/2026-02-12-cognito-api-gateway-authorization/view). If you want to use Amplify instead of the raw SDK, check out [using Amplify Authentication with Cognito](https://oneuptime.com/blog/post/2026-02-12-amplify-authentication-cognito/view).
 
 ## Wrapping Up
 

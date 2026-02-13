@@ -338,7 +338,7 @@ deliveryTopic.addSubscription(new snsSubscriptions.LambdaSubscription(deliveryTr
 
 Be careful with notification volume. SES has sending limits (start at 200 emails/day in sandbox mode). SNS SMS has spend limits. Add rate limiting in your dispatch layer.
 
-For monitoring the health of your notification system, consider setting up proper alerting. Check out [how to build a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/build-logging-and-monitoring-stack-on-aws/view) for tips on CloudWatch dashboards and alarms that'll help you catch delivery issues before users notice.
+For monitoring the health of your notification system, consider setting up proper alerting. Check out [how to build a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view) for tips on CloudWatch dashboards and alarms that'll help you catch delivery issues before users notice.
 
 ## Summary
 

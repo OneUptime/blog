@@ -45,7 +45,7 @@ sequenceDiagram
 
 Before configuring file shares, you need:
 
-- An activated Storage Gateway (see our guide on [setting up Storage Gateway](https://oneuptime.com/blog/post/set-up-aws-storage-gateway-hybrid-storage/view))
+- An activated Storage Gateway (see our guide on [setting up Storage Gateway](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-storage-gateway-hybrid-storage/view))
 - An S3 bucket for storing your files
 - An IAM role that grants the gateway access to the bucket
 - Client machines with NFS or SMB support

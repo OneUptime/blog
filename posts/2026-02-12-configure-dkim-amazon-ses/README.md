@@ -308,4 +308,4 @@ SES automatically rotates Easy DKIM keys periodically. When rotation happens, SE
 
 With BYODKIM, you need to manage rotation yourself. A common approach is to generate new keys, add the new DNS record with a different selector, update SES to use the new key, and then remove the old DNS record after a transition period.
 
-DKIM is a critical piece of the email authentication puzzle. Combined with [SPF and DMARC](https://oneuptime.com/blog/post/verify-domains-amazon-ses/view), it gives receiving mail servers confidence that your emails are genuine, which directly translates to better inbox placement rates.
+DKIM is a critical piece of the email authentication puzzle. Combined with [SPF and DMARC](https://oneuptime.com/blog/post/2026-02-12-verify-domains-amazon-ses/view), it gives receiving mail servers confidence that your emails are genuine, which directly translates to better inbox placement rates.

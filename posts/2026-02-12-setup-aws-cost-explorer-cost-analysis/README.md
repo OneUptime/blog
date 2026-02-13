@@ -319,7 +319,7 @@ def weekly_cost_report(event, context):
     return {"statusCode": 200, "body": report}
 ```
 
-For a deeper dive into finding your most expensive services, check out our guide on [using Cost Explorer to find your most expensive services](https://oneuptime.com/blog/post/cost-explorer-find-most-expensive-services/view). And to take action on what you find, see our post on [setting up AWS Budgets for cost alerts](https://oneuptime.com/blog/post/setup-aws-budgets-cost-alerts/view).
+For a deeper dive into finding your most expensive services, check out our guide on [using Cost Explorer to find your most expensive services](https://oneuptime.com/blog/post/2026-02-12-cost-explorer-find-most-expensive-services/view). And to take action on what you find, see our post on [setting up AWS Budgets for cost alerts](https://oneuptime.com/blog/post/2026-02-12-setup-aws-budgets-cost-alerts/view).
 
 ## Wrapping Up
 

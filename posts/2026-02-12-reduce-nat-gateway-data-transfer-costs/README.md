@@ -216,7 +216,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:billing-alerts
 ```
 
-For broader cost monitoring, take a look at our guide on [setting up anomaly detection for AWS costs](https://oneuptime.com/blog/post/set-up-anomaly-detection-for-aws-costs/view).
+For broader cost monitoring, take a look at our guide on [setting up anomaly detection for AWS costs](https://oneuptime.com/blog/post/2026-02-12-set-up-anomaly-detection-for-aws-costs/view).
 
 ## Action Plan
 
@@ -231,4 +231,4 @@ Here's the order I'd tackle NAT Gateway cost reduction:
 
 Most teams see a 50-80% reduction in NAT Gateway data processing charges just by adding VPC endpoints for S3 and ECR. Start there, measure the impact, and work down the list.
 
-For more on reducing your overall data transfer spend, check out our posts on [reducing S3 data transfer costs](https://oneuptime.com/blog/post/reduce-s3-data-transfer-costs/view) and [reducing data transfer costs between AWS regions](https://oneuptime.com/blog/post/reduce-data-transfer-costs-between-aws-regions/view).
+For more on reducing your overall data transfer spend, check out our posts on [reducing S3 data transfer costs](https://oneuptime.com/blog/post/2026-02-12-reduce-s3-data-transfer-costs/view) and [reducing data transfer costs between AWS regions](https://oneuptime.com/blog/post/2026-02-12-reduce-data-transfer-costs-between-aws-regions/view).

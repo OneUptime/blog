@@ -390,4 +390,4 @@ For most serverless applications, the cost is minimal. If you have very high thr
 
 X-Ray tracing gives you the distributed tracing capability that's essential for debugging serverless architectures. Enable active tracing on your Lambda functions, add custom subsegments for your business logic, use annotations for searchable data, and propagate trace headers across service boundaries. The service map alone is worth the setup - it shows you your architecture as it actually runs, not as you think it runs.
 
-For complementary monitoring approaches, check out our guides on [debugging Lambda with CloudWatch Logs](https://oneuptime.com/blog/post/debug-lambda-functions-cloudwatch-logs/view) and [Lambda extensions for monitoring](https://oneuptime.com/blog/post/lambda-extensions-monitoring/view).
+For complementary monitoring approaches, check out our guides on [debugging Lambda with CloudWatch Logs](https://oneuptime.com/blog/post/2026-02-12-debug-lambda-functions-cloudwatch-logs/view) and [Lambda extensions for monitoring](https://oneuptime.com/blog/post/2026-02-12-lambda-extensions-monitoring/view).

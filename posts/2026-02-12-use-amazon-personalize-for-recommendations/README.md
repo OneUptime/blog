@@ -300,7 +300,7 @@ For small to medium workloads, the campaign cost is usually the biggest line ite
 
 Keep an eye on your campaign's performance. CloudWatch metrics for Personalize include `GetRecommendations` latency and error rates. As your user base grows, you may need to increase your provisioned TPS.
 
-For end-to-end monitoring of your recommendation pipeline, from data ingestion through to the user-facing API, consider using a comprehensive monitoring solution. You can learn more about [monitoring operational insights with DevOps Guru](https://oneuptime.com/blog/post/use-amazon-devops-guru-for-operational-insights/view) to keep track of how your ML services are performing in production.
+For end-to-end monitoring of your recommendation pipeline, from data ingestion through to the user-facing API, consider using a comprehensive monitoring solution. You can learn more about [monitoring operational insights with DevOps Guru](https://oneuptime.com/blog/post/2026-02-12-use-amazon-devops-guru-for-operational-insights/view) to keep track of how your ML services are performing in production.
 
 ## Wrapping Up
 

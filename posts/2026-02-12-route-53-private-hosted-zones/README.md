@@ -37,7 +37,7 @@ aws ec2 describe-vpc-attribute --vpc-id vpc-0abc123def456789 --attribute enableD
 aws ec2 describe-vpc-attribute --vpc-id vpc-0abc123def456789 --attribute enableDnsHostnames
 ```
 
-For more on VPC DNS configuration, see https://oneuptime.com/blog/post/configure-dns-resolution-in-vpc/view.
+For more on VPC DNS configuration, see https://oneuptime.com/blog/post/2026-02-12-configure-dns-resolution-in-vpc/view.
 
 ## Adding Records
 

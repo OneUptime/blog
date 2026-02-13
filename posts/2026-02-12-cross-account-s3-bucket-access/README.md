@@ -214,7 +214,7 @@ If the bucket uses SSE-KMS, you'll need to update the KMS key policy too.
 }
 ```
 
-Forgetting the KMS piece is one of the most common reasons cross-account access fails. If you're getting access denied errors even though your S3 policies look right, check the encryption configuration first. For more on troubleshooting these kinds of issues, check out our post on [troubleshooting S3 403 errors](https://oneuptime.com/blog/post/troubleshoot-s3-403-forbidden-access-denied/view).
+Forgetting the KMS piece is one of the most common reasons cross-account access fails. If you're getting access denied errors even though your S3 policies look right, check the encryption configuration first. For more on troubleshooting these kinds of issues, check out our post on [troubleshooting S3 403 errors](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-s3-403-forbidden-access-denied/view).
 
 ## Object Ownership Gotcha
 

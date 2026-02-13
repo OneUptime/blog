@@ -234,7 +234,7 @@ aws sts assume-role \
   --token-code 654321
 ```
 
-This is the recommended pattern for cross-account access to sensitive accounts. For more details, see our guide on [creating IAM roles for cross-account access](https://oneuptime.com/blog/post/create-iam-roles-for-cross-account-access/view).
+This is the recommended pattern for cross-account access to sensitive accounts. For more details, see our guide on [creating IAM roles for cross-account access](https://oneuptime.com/blog/post/2026-02-12-create-iam-roles-for-cross-account-access/view).
 
 ## Combining MFA with Other Conditions
 

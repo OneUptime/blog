@@ -332,7 +332,7 @@ Use IAM-authenticated Function URLs when:
 
 For user-facing authentication (login, OAuth, JWT tokens), API Gateway with Cognito or a custom authorizer is a better choice. IAM auth is designed for machine-to-machine communication, not browser-based user sessions.
 
-For more on Function URLs in general, see our guide on [using Lambda Function URLs for simple HTTP endpoints](https://oneuptime.com/blog/post/use-lambda-function-urls-for-simple-http-endpoints/view).
+For more on Function URLs in general, see our guide on [using Lambda Function URLs for simple HTTP endpoints](https://oneuptime.com/blog/post/2026-02-12-use-lambda-function-urls-for-simple-http-endpoints/view).
 
 ## Wrapping Up
 

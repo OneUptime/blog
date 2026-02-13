@@ -20,7 +20,7 @@ A fully private EKS cluster has three characteristics:
 2. **Private nodes** - worker nodes run in private subnets with no public IP addresses
 3. **No internet gateway dependency** - nodes access the internet through NAT gateways or not at all
 
-You can also run a semi-private setup where the API endpoint is public but restricted to specific CIDRs. That's simpler and works for many teams. See our [endpoint access configuration guide](https://oneuptime.com/blog/post/configure-eks-control-plane-endpoint-access/view) for details on the different options.
+You can also run a semi-private setup where the API endpoint is public but restricted to specific CIDRs. That's simpler and works for many teams. See our [endpoint access configuration guide](https://oneuptime.com/blog/post/2026-02-12-configure-eks-control-plane-endpoint-access/view) for details on the different options.
 
 ## VPC Architecture
 
@@ -286,4 +286,4 @@ nslookup ecr.us-west-2.amazonaws.com
 
 If pods can't pull images, verify the ECR VPC endpoints are configured and the security groups allow traffic.
 
-Private EKS clusters take more upfront work, but they dramatically reduce your attack surface. Combined with [IRSA](https://oneuptime.com/blog/post/set-up-iam-roles-for-eks-service-accounts-irsa/view) and proper network policies, they form the foundation of a secure Kubernetes platform on AWS.
+Private EKS clusters take more upfront work, but they dramatically reduce your attack surface. Combined with [IRSA](https://oneuptime.com/blog/post/2026-02-12-set-up-iam-roles-for-eks-service-accounts-irsa/view) and proper network policies, they form the foundation of a secure Kubernetes platform on AWS.

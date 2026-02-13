@@ -255,7 +255,7 @@ Here are some tips I've picked up from running Application Insights in productio
 
 **Review detected problems regularly.** Application Insights might flag things that aren't actually problems for your use case. Tuning the sensitivity over the first few weeks is normal.
 
-**Combine with other monitoring.** Application Insights is great for AWS resource monitoring, but it doesn't replace application-level observability. Pair it with tools like [X-Ray for tracing](https://oneuptime.com/blog/post/xray-tracing-application-requests/view) and custom metrics for a complete picture.
+**Combine with other monitoring.** Application Insights is great for AWS resource monitoring, but it doesn't replace application-level observability. Pair it with tools like [X-Ray for tracing](https://oneuptime.com/blog/post/2026-02-12-xray-tracing-application-requests/view) and custom metrics for a complete picture.
 
 **Use OpsCenter integration.** When you enable OpsCenter, each detected problem creates an operational item that your team can track to resolution. It adds accountability to the process.
 
@@ -265,7 +265,7 @@ Application Insights isn't perfect. It only works with supported AWS resource ty
 
 The anomaly detection can be noisy during the initial learning period. Give it a week or two to baseline your application's normal behavior before you trust the problem detection fully.
 
-There's also a cost component - Application Insights itself is free, but the CloudWatch metrics, logs, and alarms it creates do count toward your CloudWatch bill. Check out our guide on [reducing CloudWatch costs](https://oneuptime.com/blog/post/reduce-cloudwatch-costs/view) if that's a concern.
+There's also a cost component - Application Insights itself is free, but the CloudWatch metrics, logs, and alarms it creates do count toward your CloudWatch bill. Check out our guide on [reducing CloudWatch costs](https://oneuptime.com/blog/post/2026-02-12-reduce-cloudwatch-costs/view) if that's a concern.
 
 ## Wrapping Up
 

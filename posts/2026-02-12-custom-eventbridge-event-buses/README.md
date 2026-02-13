@@ -303,7 +303,7 @@ aws events tag-resource \
 
 Each custom bus gets its own CloudWatch metrics. Monitor `PutEvents` failures and invocation counts per rule. If events are being dropped, you'll see it in the `FailedInvocations` metric.
 
-For a broader view of event-driven monitoring, check out our post on [EventBridge archive and replay for debugging](https://oneuptime.com/blog/post/eventbridge-archive-replay-event-debugging/view).
+For a broader view of event-driven monitoring, check out our post on [EventBridge archive and replay for debugging](https://oneuptime.com/blog/post/2026-02-12-eventbridge-archive-replay-event-debugging/view).
 
 ## Wrapping Up
 

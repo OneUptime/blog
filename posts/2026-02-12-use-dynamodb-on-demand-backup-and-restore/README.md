@@ -252,7 +252,7 @@ flowchart TD
 - **PITR**: For accidental data corruption or deletion within 35 days
 - **Global Tables**: For cross-region redundancy and failover
 
-For multi-region disaster recovery with Global Tables, check out [using DynamoDB Global Tables for multi-region](https://oneuptime.com/blog/post/use-dynamodb-global-tables-for-multi-region/view).
+For multi-region disaster recovery with Global Tables, check out [using DynamoDB Global Tables for multi-region](https://oneuptime.com/blog/post/2026-02-12-use-dynamodb-global-tables-for-multi-region/view).
 
 ## Cost Considerations
 

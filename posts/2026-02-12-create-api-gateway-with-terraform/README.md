@@ -229,7 +229,7 @@ resource "aws_apigatewayv2_route" "protected" {
 }
 ```
 
-For setting up Cognito user pools, see our post on [creating Cognito user pools with Terraform](https://oneuptime.com/blog/post/create-cognito-user-pools-with-terraform/view).
+For setting up Cognito user pools, see our post on [creating Cognito user pools with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-cognito-user-pools-with-terraform/view).
 
 ## Custom Domain Names
 
@@ -270,7 +270,7 @@ resource "aws_route53_record" "api" {
 }
 ```
 
-For managing SSL certificates, check out our guide on [managing ACM certificates with Terraform](https://oneuptime.com/blog/post/manage-aws-acm-certificates-with-terraform/view).
+For managing SSL certificates, check out our guide on [managing ACM certificates with Terraform](https://oneuptime.com/blog/post/2026-02-12-manage-aws-acm-certificates-with-terraform/view).
 
 ## Throttling and Monitoring
 

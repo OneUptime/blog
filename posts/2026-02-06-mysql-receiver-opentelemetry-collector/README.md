@@ -747,7 +747,7 @@ service:
       exporters: [otlp]
 ```
 
-OneUptime automatically creates MySQL dashboards with query performance analytics, replication monitoring, and intelligent alerting. For monitoring other databases, see our guides on [PostgreSQL receiver](https://oneuptime.com/blog/post/postgresql-receiver-opentelemetry-collector/view) and [MongoDB receiver](https://oneuptime.com/blog/post/mongodb-receiver-opentelemetry-collector/view).
+OneUptime automatically creates MySQL dashboards with query performance analytics, replication monitoring, and intelligent alerting. For monitoring other databases, see our guides on [PostgreSQL receiver](https://oneuptime.com/blog/post/2026-02-06-postgresql-receiver-opentelemetry-collector/view) and [MongoDB receiver](https://oneuptime.com/blog/post/2026-02-06-mongodb-receiver-opentelemetry-collector/view).
 
 ## Conclusion
 
@@ -755,4 +755,4 @@ The MySQL receiver provides comprehensive database monitoring through the OpenTe
 
 Start with basic configuration to establish baseline metrics, then add custom queries, replication monitoring, and advanced filtering as your needs evolve. Use the collected metrics to optimize queries, tune configuration parameters, and maintain healthy MySQL operations.
 
-For monitoring MySQL in containerized environments, combine this receiver with the [Docker Stats receiver](https://oneuptime.com/blog/post/docker-stats-receiver-opentelemetry-collector/view) for complete infrastructure visibility.
+For monitoring MySQL in containerized environments, combine this receiver with the [Docker Stats receiver](https://oneuptime.com/blog/post/2026-02-06-docker-stats-receiver-opentelemetry-collector/view) for complete infrastructure visibility.

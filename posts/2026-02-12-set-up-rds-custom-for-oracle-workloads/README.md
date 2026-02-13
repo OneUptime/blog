@@ -260,4 +260,4 @@ Things outside the support perimeter (safe to change):
 
 RDS Custom for Oracle bridges the gap between fully managed RDS and self-managed Oracle on EC2. You get automated backups, patching, and monitoring while retaining the ability to customize the OS and database to meet your Oracle workload requirements. The key is understanding the support perimeter and always pausing automation before making custom changes.
 
-For other database migration topics, check out our guides on [setting up DMS for Oracle to PostgreSQL migration](https://oneuptime.com/blog/post/set-up-dms-for-oracle-to-postgresql-migration/view) and [RDS Custom for SQL Server](https://oneuptime.com/blog/post/set-up-rds-custom-for-sql-server-workloads/view).
+For other database migration topics, check out our guides on [setting up DMS for Oracle to PostgreSQL migration](https://oneuptime.com/blog/post/2026-02-12-set-up-dms-for-oracle-to-postgresql-migration/view) and [RDS Custom for SQL Server](https://oneuptime.com/blog/post/2026-02-12-set-up-rds-custom-for-sql-server-workloads/view).

@@ -376,7 +376,7 @@ These settings increase parallelism and batch sizes to handle higher data volume
 
 For more information on OpenTelemetry Collector configuration, check out these related posts:
 
-- [How to Configure the Zipkin Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/zipkin-exporter-opentelemetry-collector/view)
-- [How to Configure the Splunk HEC Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/splunk-hec-exporter-opentelemetry-collector/view)
+- [How to Configure the Zipkin Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-zipkin-exporter-opentelemetry-collector/view)
+- [How to Configure the Splunk HEC Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-splunk-hec-exporter-opentelemetry-collector/view)
 
 The OpenSearch exporter provides a powerful, flexible way to store and analyze your OpenTelemetry data in an open-source platform. With proper configuration and tuning, it can handle production-scale workloads while giving you complete control over your observability data.

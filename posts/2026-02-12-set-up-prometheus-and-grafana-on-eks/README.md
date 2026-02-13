@@ -8,7 +8,7 @@ Description: A practical guide to deploying Prometheus and Grafana on Amazon EKS
 
 ---
 
-Prometheus and Grafana are the de facto standard for monitoring Kubernetes clusters, and for good reason. Prometheus scrapes metrics from your pods, nodes, and cluster components with incredible granularity, while Grafana turns those metrics into dashboards that actually help you understand what's happening. While AWS offers [Container Insights](https://oneuptime.com/blog/post/set-up-container-insights-for-eks/view) as a managed alternative, running your own Prometheus stack gives you far more flexibility and control.
+Prometheus and Grafana are the de facto standard for monitoring Kubernetes clusters, and for good reason. Prometheus scrapes metrics from your pods, nodes, and cluster components with incredible granularity, while Grafana turns those metrics into dashboards that actually help you understand what's happening. While AWS offers [Container Insights](https://oneuptime.com/blog/post/2026-02-12-set-up-container-insights-for-eks/view) as a managed alternative, running your own Prometheus stack gives you far more flexibility and control.
 
 This guide walks through deploying the kube-prometheus-stack on EKS using Helm, which bundles Prometheus, Grafana, Alertmanager, and a bunch of pre-configured dashboards.
 
@@ -156,7 +156,7 @@ kubectl port-forward -n monitoring svc/prometheus-stack-grafana 3000:80
 
 Open http://localhost:3000 in your browser. Log in with username `admin` and the password you set in the values file.
 
-For production access, set up an [ALB Ingress](https://oneuptime.com/blog/post/set-up-ingress-with-alb-on-eks/view) with proper authentication.
+For production access, set up an [ALB Ingress](https://oneuptime.com/blog/post/2026-02-12-set-up-ingress-with-alb-on-eks/view) with proper authentication.
 
 ## Step 5: Explore Pre-Built Dashboards
 

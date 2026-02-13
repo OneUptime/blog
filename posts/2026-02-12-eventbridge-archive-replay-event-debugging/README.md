@@ -292,7 +292,7 @@ Track replay progress through the console or CLI:
 aws events describe-replay --replay-name debug-replay-2026-02-12
 ```
 
-This shows the replay state (STARTING, RUNNING, COMPLETED, CANCELLED, FAILED), number of events replayed, and timing information. For ongoing monitoring of your EventBridge setup, see our post on [setting up EventBridge rules](https://oneuptime.com/blog/post/eventbridge-rules-event-driven-architecture/view).
+This shows the replay state (STARTING, RUNNING, COMPLETED, CANCELLED, FAILED), number of events replayed, and timing information. For ongoing monitoring of your EventBridge setup, see our post on [setting up EventBridge rules](https://oneuptime.com/blog/post/2026-02-12-eventbridge-rules-event-driven-architecture/view).
 
 ## Wrapping Up
 

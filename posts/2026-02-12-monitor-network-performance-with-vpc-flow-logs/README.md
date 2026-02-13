@@ -244,9 +244,9 @@ VPC Flow Logs can generate a lot of data. Here are some tips to keep costs under
 
 ## Integrating with Monitoring Tools
 
-VPC Flow Logs become even more powerful when combined with a monitoring platform. You can stream flow logs from CloudWatch or S3 into tools like [OneUptime](https://oneuptime.com/blog/post/monitor-network-performance-with-vpc-flow-logs/view) for unified dashboards that correlate network events with application metrics.
+VPC Flow Logs become even more powerful when combined with a monitoring platform. You can stream flow logs from CloudWatch or S3 into tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-monitor-network-performance-with-vpc-flow-logs/view) for unified dashboards that correlate network events with application metrics.
 
-For related networking topics, check out our guide on [using Reachability Analyzer for network troubleshooting](https://oneuptime.com/blog/post/use-reachability-analyzer-for-network-troubleshooting/view) and [setting up AWS Site-to-Site VPN with BGP routing](https://oneuptime.com/blog/post/set-up-aws-site-to-site-vpn-with-bgp-routing/view).
+For related networking topics, check out our guide on [using Reachability Analyzer for network troubleshooting](https://oneuptime.com/blog/post/2026-02-12-use-reachability-analyzer-for-network-troubleshooting/view) and [setting up AWS Site-to-Site VPN with BGP routing](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-site-to-site-vpn-with-bgp-routing/view).
 
 ## Summary
 

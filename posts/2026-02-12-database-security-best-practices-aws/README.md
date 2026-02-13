@@ -383,4 +383,4 @@ Database security on AWS boils down to: isolate the network, encrypt everything,
 
 Take the time to lock these down properly. A database breach isn't just a technical incident - it's a business crisis that can cost millions in fines, lawsuits, and lost customer trust.
 
-For related security topics, see our posts on [encryption everywhere on AWS](https://oneuptime.com/blog/post/encryption-everywhere-aws/view) and [data protection best practices on AWS](https://oneuptime.com/blog/post/data-protection-best-practices-aws/view).
+For related security topics, see our posts on [encryption everywhere on AWS](https://oneuptime.com/blog/post/2026-02-12-encryption-everywhere-aws/view) and [data protection best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-data-protection-best-practices-aws/view).

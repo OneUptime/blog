@@ -245,4 +245,4 @@ DataSync charges per GB of data transferred. As of writing, it's roughly $0.0125
 
 If you're doing a one-time migration of very large datasets (hundreds of TB), consider whether AWS Snowball might be more cost-effective. But for ongoing synchronization or migrations under 50 TB, DataSync is usually the better choice.
 
-For more on managing S3 storage costs after migration, check out our post on [S3 storage class analysis](https://oneuptime.com/blog/post/s3-storage-class-analysis-optimize-costs/view).
+For more on managing S3 storage costs after migration, check out our post on [S3 storage class analysis](https://oneuptime.com/blog/post/2026-02-12-s3-storage-class-analysis-optimize-costs/view).

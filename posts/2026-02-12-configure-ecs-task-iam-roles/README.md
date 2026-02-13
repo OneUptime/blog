@@ -35,7 +35,7 @@ graph TB
     App --> DDB[DynamoDB]
 ```
 
-For a focused look at execution roles, see our guide on [configuring ECS task execution roles](https://oneuptime.com/blog/post/configure-ecs-task-execution-roles/view).
+For a focused look at execution roles, see our guide on [configuring ECS task execution roles](https://oneuptime.com/blog/post/2026-02-12-configure-ecs-task-execution-roles/view).
 
 ## Creating a Task Role
 

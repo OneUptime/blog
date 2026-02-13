@@ -347,7 +347,7 @@ export const handler = async (event) => {
 };
 ```
 
-For the complete Lambda trigger setup, see [using Cognito Lambda triggers for custom messages](https://oneuptime.com/blog/post/cognito-lambda-triggers-custom-message/view).
+For the complete Lambda trigger setup, see [using Cognito Lambda triggers for custom messages](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-custom-message/view).
 
 ## Hosted UI Limitations
 
@@ -363,7 +363,7 @@ If these limitations are too restrictive, building a custom UI with Amplify or t
 
 ## Using a Custom Domain
 
-For a polished experience, use your own domain instead of the Cognito-generated one. See [using a custom domain for Cognito hosted UI](https://oneuptime.com/blog/post/custom-domain-cognito-hosted-ui/view) for the full setup.
+For a polished experience, use your own domain instead of the Cognito-generated one. See [using a custom domain for Cognito hosted UI](https://oneuptime.com/blog/post/2026-02-12-custom-domain-cognito-hosted-ui/view) for the full setup.
 
 ## Summary
 

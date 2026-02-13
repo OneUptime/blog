@@ -711,4 +711,4 @@ This means:
 
 The cumulative to delta processor converts monotonic counters and cumulative sums into delta metrics by tracking state and calculating differences between consecutive data points. This is essential for backends that prefer delta metrics and enables proper rate calculations and aggregations across distributed systems.
 
-For more on metrics handling, see our guides on [metrics transform processor](https://oneuptime.com/blog/post/metrics-transform-processor-opentelemetry-collector/view) and [what are metrics in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view).
+For more on metrics handling, see our guides on [metrics transform processor](https://oneuptime.com/blog/post/2026-02-06-metrics-transform-processor-opentelemetry-collector/view) and [what are metrics in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view).

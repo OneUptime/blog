@@ -334,7 +334,7 @@ cloudwatch.put_metric_alarm(
 )
 ```
 
-For end-to-end monitoring of your DocumentDB cluster alongside your application, [OneUptime](https://oneuptime.com/blog/post/build-a-time-series-dashboard-for-iot-on-aws/view) provides comprehensive observability.
+For end-to-end monitoring of your DocumentDB cluster alongside your application, [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-time-series-dashboard-for-iot-on-aws/view) provides comprehensive observability.
 
 ## Wrapping Up
 

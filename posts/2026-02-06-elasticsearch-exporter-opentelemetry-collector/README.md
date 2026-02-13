@@ -458,4 +458,4 @@ The Elasticsearch exporter provides a robust solution for sending OpenTelemetry 
 
 For organizations already invested in the Elastic Stack, this exporter offers a smooth path to adopting OpenTelemetry as the standardized observability framework while maintaining your existing analysis and visualization workflows.
 
-To learn more about other exporters, check out our guides on the [ClickHouse exporter](https://oneuptime.com/blog/post/clickhouse-exporter-opentelemetry-collector/view) and [Datadog exporter](https://oneuptime.com/blog/post/datadog-exporter-opentelemetry-collector/view).
+To learn more about other exporters, check out our guides on the [ClickHouse exporter](https://oneuptime.com/blog/post/2026-02-06-clickhouse-exporter-opentelemetry-collector/view) and [Datadog exporter](https://oneuptime.com/blog/post/2026-02-06-datadog-exporter-opentelemetry-collector/view).

@@ -253,7 +253,7 @@ aws sns subscribe \
 
 ## Integrating with SES Monitoring
 
-If you're monitoring SES sending (bounces, complaints, delivery issues), route those alerts to a dedicated channel. For setting up SES monitoring, see [monitoring SES sending with CloudWatch](https://oneuptime.com/blog/post/monitor-ses-sending-with-cloudwatch/view).
+If you're monitoring SES sending (bounces, complaints, delivery issues), route those alerts to a dedicated channel. For setting up SES monitoring, see [monitoring SES sending with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-ses-sending-with-cloudwatch/view).
 
 ```bash
 # SES alerts to a dedicated email-ops channel

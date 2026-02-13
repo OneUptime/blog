@@ -288,7 +288,7 @@ For a 1 TB file system replicating from us-east-1 to us-west-2:
 - Initial data transfer: ~$20 (one-time)
 - Ongoing transfer: Depends on change rate, typically small
 
-The replica file system also supports lifecycle management, so you can move cold data to IA on the replica too. See our post on [EFS lifecycle management](https://oneuptime.com/blog/post/efs-lifecycle-management-cost-optimization/view) for details.
+The replica file system also supports lifecycle management, so you can move cold data to IA on the replica too. See our post on [EFS lifecycle management](https://oneuptime.com/blog/post/2026-02-12-efs-lifecycle-management-cost-optimization/view) for details.
 
 ## Testing Your DR Plan
 

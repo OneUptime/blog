@@ -833,4 +833,4 @@ spec:
 
 The OpAMP extension transforms OpenTelemetry Collector operations by enabling centralized, automated fleet management. By implementing dynamic configuration updates, package management, and comprehensive health monitoring, OpAMP reduces operational overhead and improves reliability at scale.
 
-For related collector management topics, see guides on [Storage Extension](https://oneuptime.com/blog/post/storage-extension-opentelemetry-collector/view) and [Jaeger Remote Sampling](https://oneuptime.com/blog/post/jaeger-remote-sampling-extension-opentelemetry-collector/view).
+For related collector management topics, see guides on [Storage Extension](https://oneuptime.com/blog/post/2026-02-06-storage-extension-opentelemetry-collector/view) and [Jaeger Remote Sampling](https://oneuptime.com/blog/post/2026-02-06-jaeger-remote-sampling-extension-opentelemetry-collector/view).

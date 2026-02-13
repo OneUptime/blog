@@ -746,4 +746,4 @@ Start with GFS if you are unsure. It provides a good balance of recovery points,
 
 ---
 
-*For more on monitoring backup jobs, see our guide on [Monitoring Backup Jobs with OneUptime](https://oneuptime.com/blog/post/monitoring-backup-jobs-with-oneuptime).*
+*For more on monitoring backup jobs, see our guide on [Monitoring Backup Jobs with OneUptime](https://oneuptime.com/blog/post/2025-09-25-monitoring-backup-jobs-with-oneuptime).*

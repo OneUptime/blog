@@ -64,7 +64,7 @@ aws route53 change-resource-record-sets \
 
 DNS clients usually rotate through the returned addresses (DNS round-robin), providing basic load distribution. But there's a big catch: this doesn't do health checking. If 52.4.5.6 goes down, Route 53 still returns it in the response. Clients will try connecting to a dead server until the record is manually updated.
 
-If you need health checks with multiple values, look at multivalue answer routing instead - see https://oneuptime.com/blog/post/route-53-multivalue-answer-routing/view.
+If you need health checks with multiple values, look at multivalue answer routing instead - see https://oneuptime.com/blog/post/2026-02-12-route-53-multivalue-answer-routing/view.
 
 ## Simple Routing with Alias Records
 
@@ -216,7 +216,7 @@ Switch to a different routing policy when:
 - You need users to hit the nearest endpoint - use **latency-based** or **geolocation** routing
 - You need active-passive failover - use **failover** routing
 
-For an overview of weighted routing, see https://oneuptime.com/blog/post/route-53-weighted-routing-policy/view. For failover routing, see https://oneuptime.com/blog/post/route-53-failover-routing-policy/view.
+For an overview of weighted routing, see https://oneuptime.com/blog/post/2026-02-12-route-53-weighted-routing-policy/view. For failover routing, see https://oneuptime.com/blog/post/2026-02-12-route-53-failover-routing-policy/view.
 
 ## TTL Considerations
 

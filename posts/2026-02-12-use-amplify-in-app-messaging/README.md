@@ -415,4 +415,4 @@ Choose the layout based on the urgency and importance of the message. Full scree
 
 Amplify In-App Messaging gives you a complete solution for targeted user engagement without building your own messaging infrastructure. The Pinpoint backend handles targeting, scheduling, and analytics, while the Amplify frontend library handles rendering and event handling. It is a solid choice for feature announcements, onboarding flows, and promotional messages.
 
-For more Amplify engagement features, check out [Amplify PubSub for real-time data](https://oneuptime.com/blog/post/use-amplify-pubsub-for-real-time-data/view). For AI-powered features in your app, see [Amplify Predictions for AI/ML features](https://oneuptime.com/blog/post/use-amplify-predictions-for-aiml-features/view).
+For more Amplify engagement features, check out [Amplify PubSub for real-time data](https://oneuptime.com/blog/post/2026-02-12-use-amplify-pubsub-for-real-time-data/view). For AI-powered features in your app, see [Amplify Predictions for AI/ML features](https://oneuptime.com/blog/post/2026-02-12-use-amplify-predictions-for-aiml-features/view).

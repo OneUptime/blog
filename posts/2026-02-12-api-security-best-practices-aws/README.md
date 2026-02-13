@@ -454,4 +454,4 @@ API security isn't just about authentication. It's about validating every input,
 
 Start with authentication and rate limiting - those cover the most common attack vectors. Then add WAF rules, request validation, and monitoring. Security is layers, and APIs need all of them.
 
-For broader security guidance, see [defense in depth on AWS](https://oneuptime.com/blog/post/defense-in-depth-aws/view) and [serverless security best practices](https://oneuptime.com/blog/post/serverless-security-best-practices-aws/view).
+For broader security guidance, see [defense in depth on AWS](https://oneuptime.com/blog/post/2026-02-12-defense-in-depth-aws/view) and [serverless security best practices](https://oneuptime.com/blog/post/2026-02-12-serverless-security-best-practices-aws/view).

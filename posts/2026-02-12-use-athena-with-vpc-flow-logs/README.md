@@ -329,13 +329,13 @@ VPC Flow Logs can generate a lot of data. A busy VPC might produce gigabytes per
 
 1. **Always filter on the date partition** - never scan all dates
 2. **Filter on action when possible** - if you only need rejected traffic, filter for it
-3. **Consider converting to Parquet** - for very high-volume logs, converting to columnar format can cut costs by 90%+ (see [optimizing with column formats](https://oneuptime.com/blog/post/optimize-athena-queries-with-column-formats-parquet-orc/view))
+3. **Consider converting to Parquet** - for very high-volume logs, converting to columnar format can cut costs by 90%+ (see [optimizing with column formats](https://oneuptime.com/blog/post/2026-02-12-optimize-athena-queries-with-column-formats-parquet-orc/view))
 4. **Use aggregation intervals wisely** - 600-second intervals produce less data than 60-second intervals
 
-For more tips on Athena cost management, check out [reducing Athena query costs](https://oneuptime.com/blog/post/reduce-athena-query-costs/view).
+For more tips on Athena cost management, check out [reducing Athena query costs](https://oneuptime.com/blog/post/2026-02-12-reduce-athena-query-costs/view).
 
 ## Wrapping Up
 
 VPC Flow Logs with Athena give you network-level visibility that would otherwise require expensive third-party tools. The combination is particularly powerful for security investigations, connectivity troubleshooting, and understanding traffic patterns across your AWS infrastructure.
 
-Build a library of saved queries for your common analysis tasks, and consider automating security-focused queries to run daily. For application-level monitoring to complement your network analysis, check out our posts on [using Athena with ALB access logs](https://oneuptime.com/blog/post/use-athena-with-alb-access-logs/view) and [CloudTrail logs](https://oneuptime.com/blog/post/use-athena-with-cloudtrail-logs/view).
+Build a library of saved queries for your common analysis tasks, and consider automating security-focused queries to run daily. For application-level monitoring to complement your network analysis, check out our posts on [using Athena with ALB access logs](https://oneuptime.com/blog/post/2026-02-12-use-athena-with-alb-access-logs/view) and [CloudTrail logs](https://oneuptime.com/blog/post/2026-02-12-use-athena-with-cloudtrail-logs/view).

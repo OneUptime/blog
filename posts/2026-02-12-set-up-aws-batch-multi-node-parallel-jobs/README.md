@@ -64,7 +64,7 @@ aws batch create-compute-environment \
   --state ENABLED
 ```
 
-The `c5n` instances have enhanced networking with up to 100 Gbps bandwidth, which matters for MPI communication. You can also use EFA-enabled instances for even lower latency. See our guide on [configuring EFA for HPC](https://oneuptime.com/blog/post/configure-efa-elastic-fabric-adapter-for-hpc/view).
+The `c5n` instances have enhanced networking with up to 100 Gbps bandwidth, which matters for MPI communication. You can also use EFA-enabled instances for even lower latency. See our guide on [configuring EFA for HPC](https://oneuptime.com/blog/post/2026-02-12-configure-efa-elastic-fabric-adapter-for-hpc/view).
 
 Create the placement group first:
 
@@ -282,7 +282,7 @@ Multi-node jobs have some important constraints:
 - The nodes must be in the same AZ for placement group support
 - There is no automatic retry at the node level - if one node fails, the whole job fails
 
-For fault-tolerant parallel processing where nodes do not need to communicate, use [array jobs](https://oneuptime.com/blog/post/use-aws-batch-array-jobs-for-parallel-processing/view) instead.
+For fault-tolerant parallel processing where nodes do not need to communicate, use [array jobs](https://oneuptime.com/blog/post/2026-02-12-use-aws-batch-array-jobs-for-parallel-processing/view) instead.
 
 ## Monitoring Multi-Node Jobs
 

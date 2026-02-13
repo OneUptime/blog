@@ -251,4 +251,4 @@ const cfnBucket = new s3.CfnBucket(this, 'Bucket', {
 });
 ```
 
-But for most cases, L2 plus a few escape hatches gives you the best of both worlds - smart defaults and convenience methods from L2, with precision control where you need it. For understanding the different construct levels, see the post on [CDK constructs L1, L2, and L3](https://oneuptime.com/blog/post/understand-cdk-constructs-l1-l2-l3/view).
+But for most cases, L2 plus a few escape hatches gives you the best of both worlds - smart defaults and convenience methods from L2, with precision control where you need it. For understanding the different construct levels, see the post on [CDK constructs L1, L2, and L3](https://oneuptime.com/blog/post/2026-02-12-understand-cdk-constructs-l1-l2-l3/view).

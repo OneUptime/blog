@@ -29,11 +29,11 @@ A macro is a custom transform backed by a Lambda function. When CloudFormation e
 
 ### AWS::Include
 
-The `AWS::Include` transform lets you include template snippets from S3. We cover this in detail in our [AWS::Include guide](https://oneuptime.com/blog/post/aws-include-transform-cloudformation/view).
+The `AWS::Include` transform lets you include template snippets from S3. We cover this in detail in our [AWS::Include guide](https://oneuptime.com/blog/post/2026-02-12-aws-include-transform-cloudformation/view).
 
 ### AWS::Serverless (SAM)
 
-The SAM transform expands simplified serverless resource types into full CloudFormation resources. See our [SAM transform guide](https://oneuptime.com/blog/post/cloudformation-sam-transform-serverless/view) for details.
+The SAM transform expands simplified serverless resource types into full CloudFormation resources. See our [SAM transform guide](https://oneuptime.com/blog/post/2026-02-12-cloudformation-sam-transform-serverless/view) for details.
 
 ## Creating a Custom Macro
 

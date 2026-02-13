@@ -424,4 +424,4 @@ aws macie2 list-findings \
 
 **Review and tune regularly.** As your data patterns evolve, update your custom identifiers. Set a quarterly review cadence.
 
-**Combine with S3 access monitoring.** Finding sensitive data is step one. Monitoring who accesses it is step two. Check out our guide on [GuardDuty S3 Protection](https://oneuptime.com/blog/post/guardduty-s3-protection/view) for access monitoring. Use [OneUptime](https://oneuptime.com) to track your overall data security posture across all your monitoring tools.
+**Combine with S3 access monitoring.** Finding sensitive data is step one. Monitoring who accesses it is step two. Check out our guide on [GuardDuty S3 Protection](https://oneuptime.com/blog/post/2026-02-12-guardduty-s3-protection/view) for access monitoring. Use [OneUptime](https://oneuptime.com) to track your overall data security posture across all your monitoring tools.

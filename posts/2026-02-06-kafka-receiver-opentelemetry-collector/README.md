@@ -767,9 +767,9 @@ service:
 
 Learn more about OpenTelemetry Collector receivers:
 
-- https://oneuptime.com/blog/post/jaeger-receiver-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/zipkin-receiver-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/statsd-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-jaeger-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-zipkin-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-statsd-receiver-opentelemetry-collector/view
 
 ## Conclusion
 

@@ -400,4 +400,4 @@ Follow these guidelines for production deployments:
 
 Forward zones in CoreDNS provide the foundation for sophisticated DNS architectures in Kubernetes. By carefully configuring zone-specific forwarding rules, you can implement split-horizon DNS that meets complex enterprise networking requirements while maintaining the flexibility to adapt as your infrastructure evolves.
 
-For more DNS configuration patterns, see our guides on [CoreDNS cache optimization](https://oneuptime.com/blog/post/coredns-cache-settings-high-qps/view) and [NodeLocal DNSCache implementation](https://oneuptime.com/blog/post/nodelocal-dnscache-reduce-coredns-load/view).
+For more DNS configuration patterns, see our guides on [CoreDNS cache optimization](https://oneuptime.com/blog/post/2026-02-09-coredns-cache-settings-high-qps/view) and [NodeLocal DNSCache implementation](https://oneuptime.com/blog/post/2026-02-09-nodelocal-dnscache-reduce-coredns-load/view).

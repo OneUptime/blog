@@ -18,7 +18,7 @@ Before you dive in, make sure you have:
 - The email channel enabled with a verified SES identity
 - Some endpoints (users) imported
 
-If you need help with the initial setup, check our guide on [setting up Amazon Pinpoint for marketing campaigns](https://oneuptime.com/blog/post/set-up-amazon-pinpoint-for-marketing-campaigns/view).
+If you need help with the initial setup, check our guide on [setting up Amazon Pinpoint for marketing campaigns](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-pinpoint-for-marketing-campaigns/view).
 
 ## Creating Email Templates
 

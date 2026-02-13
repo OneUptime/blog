@@ -199,7 +199,7 @@ aws cloudwatch get-metric-statistics \
   --region eu-west-1
 ```
 
-If you see lag consistently above 1 second, it usually means your write throughput on the primary is extremely high or there's a network issue between regions. Setting up proper monitoring with tools like [CloudWatch alarms](https://oneuptime.com/blog/post/monitor-elasticache-with-cloudwatch/view) helps you catch these issues early.
+If you see lag consistently above 1 second, it usually means your write throughput on the primary is extremely high or there's a network issue between regions. Setting up proper monitoring with tools like [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-monitor-elasticache-with-cloudwatch/view) helps you catch these issues early.
 
 ## Configuring Your Application
 
@@ -254,7 +254,7 @@ A rough rule of thumb: budget for about 1.5-2x the cost of your primary cluster 
 
 **Forgetting to update security groups.** Each region has its own VPC and security groups. Make sure the secondary cluster's security groups allow traffic from your application.
 
-**Not testing failover.** Setting up a global database without testing failover is like having a fire extinguisher you've never checked. Practice the failover process regularly. Check out the guide on [performing Aurora Global Database failover](https://oneuptime.com/blog/post/perform-aurora-global-database-failover/view) for detailed steps.
+**Not testing failover.** Setting up a global database without testing failover is like having a fire extinguisher you've never checked. Practice the failover process regularly. Check out the guide on [performing Aurora Global Database failover](https://oneuptime.com/blog/post/2026-02-12-perform-aurora-global-database-failover/view) for detailed steps.
 
 **Using too-small instance classes.** Secondary readers need to handle the replication workload plus serve reads. Don't skimp on instance sizes in secondary regions.
 
@@ -262,4 +262,4 @@ A rough rule of thumb: budget for about 1.5-2x the cost of your primary cluster 
 
 Aurora Global Databases give you a production-ready multi-region database setup with remarkably low replication lag. The setup process is straightforward whether you use the console, CLI, or infrastructure-as-code tools. Just remember to monitor that replication lag, test your failover process, and size your secondary instances appropriately.
 
-For more on managing your Aurora deployment, take a look at how to [configure Aurora endpoints](https://oneuptime.com/blog/post/configure-aurora-endpoints-writer-reader-custom/view) to optimize your read/write traffic routing.
+For more on managing your Aurora deployment, take a look at how to [configure Aurora endpoints](https://oneuptime.com/blog/post/2026-02-12-configure-aurora-endpoints-writer-reader-custom/view) to optimize your read/write traffic routing.

@@ -265,7 +265,7 @@ aws cloudwatch get-metric-statistics \
 - Start with a generous slow start duration and reduce it based on monitoring data
 - Combine slow start with pre-warming scripts in your deployment pipeline for the best results
 - Monitor p99 latency per target group during deployments to validate your slow start duration
-- Consider using weighted target groups alongside slow start for canary deployments - see our guide on [using weighted target groups with ALB](https://oneuptime.com/blog/post/use-weighted-target-groups-with-alb/view)
+- Consider using weighted target groups alongside slow start for canary deployments - see our guide on [using weighted target groups with ALB](https://oneuptime.com/blog/post/2026-02-12-use-weighted-target-groups-with-alb/view)
 
 ## Conclusion
 

@@ -299,7 +299,7 @@ aws iot set-v2-logging-options \
     --default-log-level INFO
 ```
 
-For more on IoT Core MQTT connections and best practices, see our guide on [setting up IoT Core MQTT connections](https://oneuptime.com/blog/post/set-up-iot-core-mqtt-connections/view).
+For more on IoT Core MQTT connections and best practices, see our guide on [setting up IoT Core MQTT connections](https://oneuptime.com/blog/post/2026-02-12-set-up-iot-core-mqtt-connections/view).
 
 ## Wrapping Up
 

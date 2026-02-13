@@ -18,7 +18,7 @@ Before diving in, let's be clear about the difference. A **Query** targets a spe
 
 For a table with a million items where you need 10, a Query reads 10 items. A Scan reads 1,000,000 items and discards 999,990. The cost and performance difference is enormous.
 
-Always use Query when you can. Save Scan for data migrations, analytics exports, and other bulk operations. For more on this distinction, check out our post on [DynamoDB scan vs query](https://oneuptime.com/blog/post/dynamodb-scan-vs-query/view).
+Always use Query when you can. Save Scan for data migrations, analytics exports, and other bulk operations. For more on this distinction, check out our post on [DynamoDB scan vs query](https://oneuptime.com/blog/post/2026-02-12-dynamodb-scan-vs-query/view).
 
 ## Basic Query Structure
 

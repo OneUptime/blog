@@ -359,4 +359,4 @@ done
 5. **Monitor replication status** to catch failures early.
 6. **Consider destination storage class** - replicate to IA or Glacier for backups to save on storage costs.
 
-For a complete guide on setting up the replication infrastructure, see our [S3 Same-Region Replication guide](https://oneuptime.com/blog/post/set-up-s3-same-region-replication/view). For versioning setup (a prerequisite for replication), check [enabling S3 bucket versioning](https://oneuptime.com/blog/post/enable-s3-bucket-versioning/view).
+For a complete guide on setting up the replication infrastructure, see our [S3 Same-Region Replication guide](https://oneuptime.com/blog/post/2026-02-12-set-up-s3-same-region-replication/view). For versioning setup (a prerequisite for replication), check [enabling S3 bucket versioning](https://oneuptime.com/blog/post/2026-02-12-enable-s3-bucket-versioning/view).

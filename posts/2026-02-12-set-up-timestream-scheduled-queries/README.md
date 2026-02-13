@@ -372,4 +372,4 @@ For a concrete example: if you have 1000 devices sending data every second, that
 
 Timestream scheduled queries are the key to making time series analytics both fast and affordable. Instead of repeatedly computing aggregations over raw data, pre-compute them on a schedule and store the results. Your dashboards load faster, your query costs drop dramatically, and you can build more sophisticated analytics like rolling statistics and anomaly detection without worrying about query performance.
 
-For more on Timestream, see our guides on [setting up Timestream for IoT data](https://oneuptime.com/blog/post/set-up-timestream-for-iot-data/view) and [querying Timestream with SQL](https://oneuptime.com/blog/post/query-timestream-with-sql/view).
+For more on Timestream, see our guides on [setting up Timestream for IoT data](https://oneuptime.com/blog/post/2026-02-12-set-up-timestream-for-iot-data/view) and [querying Timestream with SQL](https://oneuptime.com/blog/post/2026-02-12-query-timestream-with-sql/view).

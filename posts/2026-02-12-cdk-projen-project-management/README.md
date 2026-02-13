@@ -335,7 +335,7 @@ The main benefits boil down to:
 
 **Best practices** - Projen's CDK presets encode community best practices. You get proper jsii setup, snapshot testing, and release automation out of the box.
 
-For publishing the constructs you build with Projen, see [publishing CDK constructs to Construct Hub](https://oneuptime.com/blog/post/publish-cdk-constructs-construct-hub/view). For sharing constructs privately, check out [sharing CDK constructs across projects](https://oneuptime.com/blog/post/share-cdk-constructs-across-projects/view).
+For publishing the constructs you build with Projen, see [publishing CDK constructs to Construct Hub](https://oneuptime.com/blog/post/2026-02-12-publish-cdk-constructs-construct-hub/view). For sharing constructs privately, check out [sharing CDK constructs across projects](https://oneuptime.com/blog/post/2026-02-12-share-cdk-constructs-across-projects/view).
 
 ## Wrapping Up
 

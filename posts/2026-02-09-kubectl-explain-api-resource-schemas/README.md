@@ -505,4 +505,4 @@ done
 
 This creates an interactive API documentation browser.
 
-kubectl explain turns your cluster into a living API reference. No internet required, no version mismatches, just accurate schema information from the authoritative source. Use it when writing YAML, debugging field errors, or exploring new resource types. Combine with other discovery commands like api-resources for complete cluster capability understanding. See https://oneuptime.com/blog/post/kubectl-api-resources-versions-discover/view for more API exploration techniques.
+kubectl explain turns your cluster into a living API reference. No internet required, no version mismatches, just accurate schema information from the authoritative source. Use it when writing YAML, debugging field errors, or exploring new resource types. Combine with other discovery commands like api-resources for complete cluster capability understanding. See https://oneuptime.com/blog/post/2026-02-09-kubectl-api-resources-versions-discover/view for more API exploration techniques.

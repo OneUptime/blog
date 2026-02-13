@@ -398,4 +398,4 @@ import json
 marks = get_speech_marks("Welcome to our platform. Monitor your services in real time.")
 ```
 
-Amazon Polly is easy to get started with but has enough depth for sophisticated audio applications. The neural voices are good enough for production use in most contexts, and the SSML support gives you the fine-grained control needed for professional audio content. For converting speech back to text, check out our guide on [Amazon Transcribe for speech-to-text](https://oneuptime.com/blog/post/amazon-transcribe-speech-to-text/view).
+Amazon Polly is easy to get started with but has enough depth for sophisticated audio applications. The neural voices are good enough for production use in most contexts, and the SSML support gives you the fine-grained control needed for professional audio content. For converting speech back to text, check out our guide on [Amazon Transcribe for speech-to-text](https://oneuptime.com/blog/post/2026-02-12-amazon-transcribe-speech-to-text/view).

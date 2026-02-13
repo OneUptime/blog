@@ -10,7 +10,7 @@ Description: A complete guide to CloudWatch Log subscription filters covering al
 
 CloudWatch Log subscription filters are the mechanism for streaming log data out of CloudWatch Logs in real time. They let you send matching log events to Lambda functions, Kinesis Data Streams, Kinesis Data Firehose, or OpenSearch Service. This is the foundation for building log processing pipelines, real-time alerting systems, and log forwarding to external platforms.
 
-If you've read our posts on [streaming logs to Lambda](https://oneuptime.com/blog/post/stream-cloudwatch-logs-lambda-processing/view) or [streaming logs to OpenSearch](https://oneuptime.com/blog/post/stream-cloudwatch-logs-opensearch/view), this post goes broader - covering all destination types, advanced filter patterns, cross-account streaming, and troubleshooting.
+If you've read our posts on [streaming logs to Lambda](https://oneuptime.com/blog/post/2026-02-12-stream-cloudwatch-logs-lambda-processing/view) or [streaming logs to OpenSearch](https://oneuptime.com/blog/post/2026-02-12-stream-cloudwatch-logs-opensearch/view), this post goes broader - covering all destination types, advanced filter patterns, cross-account streaming, and troubleshooting.
 
 ## Subscription Filter Basics
 
@@ -276,4 +276,4 @@ If events aren't reaching your destination:
 
 ## Wrapping Up
 
-Subscription filters are the key to building real-time log processing pipelines on AWS. Choose Lambda for flexibility, Kinesis for high throughput with multiple consumers, Firehose for simple delivery to S3, and OpenSearch for full-text search. Combine filter patterns with the right destination to keep costs down while getting the data where it needs to go. For more on the specific destinations, see our posts on [streaming to Lambda](https://oneuptime.com/blog/post/stream-cloudwatch-logs-lambda-processing/view), [streaming to OpenSearch](https://oneuptime.com/blog/post/stream-cloudwatch-logs-opensearch/view), and [exporting to S3](https://oneuptime.com/blog/post/export-cloudwatch-logs-s3/view).
+Subscription filters are the key to building real-time log processing pipelines on AWS. Choose Lambda for flexibility, Kinesis for high throughput with multiple consumers, Firehose for simple delivery to S3, and OpenSearch for full-text search. Combine filter patterns with the right destination to keep costs down while getting the data where it needs to go. For more on the specific destinations, see our posts on [streaming to Lambda](https://oneuptime.com/blog/post/2026-02-12-stream-cloudwatch-logs-lambda-processing/view), [streaming to OpenSearch](https://oneuptime.com/blog/post/2026-02-12-stream-cloudwatch-logs-opensearch/view), and [exporting to S3](https://oneuptime.com/blog/post/2026-02-12-export-cloudwatch-logs-s3/view).

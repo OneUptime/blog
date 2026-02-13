@@ -269,7 +269,7 @@ internalAlb.addListener('Internal', { port: 80 }).addTargets('InternalTarget', {
 
 When you have multiple target groups, monitoring becomes more important. Track the `HealthyHostCount` and `UnhealthyHostCount` for each target group independently. A health issue on one port should not necessarily take down traffic on another.
 
-For comprehensive ECS monitoring, refer to our guide on [setting up CloudWatch Container Insights for ECS](https://oneuptime.com/blog/post/cloudwatch-container-insights-ecs/view).
+For comprehensive ECS monitoring, refer to our guide on [setting up CloudWatch Container Insights for ECS](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-container-insights-ecs/view).
 
 ## Wrapping Up
 

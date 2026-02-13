@@ -16,7 +16,7 @@ This guide covers everything from initial configuration to publishing packages a
 
 You'll need:
 
-- An AWS CodeArtifact domain and repository (see our guide on [setting up CodeArtifact](https://oneuptime.com/blog/post/aws-codeartifact-package-management/view))
+- An AWS CodeArtifact domain and repository (see our guide on [setting up CodeArtifact](https://oneuptime.com/blog/post/2026-02-12-aws-codeartifact-package-management/view))
 - AWS CLI installed and configured
 - Node.js and npm installed
 

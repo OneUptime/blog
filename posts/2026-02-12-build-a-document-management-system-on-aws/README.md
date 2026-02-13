@@ -435,7 +435,7 @@ async function logAccess(userId, documentId, action) {
 }
 ```
 
-For monitoring the system itself, check out our guide on [building a log aggregation system on AWS](https://oneuptime.com/blog/post/build-a-log-aggregation-system-on-aws/view).
+For monitoring the system itself, check out our guide on [building a log aggregation system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-log-aggregation-system-on-aws/view).
 
 ## Wrapping Up
 

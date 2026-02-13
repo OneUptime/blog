@@ -148,7 +148,7 @@ aws s3api get-bucket-ownership-controls --bucket my-bucket
 aws s3api get-object-acl --bucket my-bucket --key problematic-file.txt
 ```
 
-If the object is owned by a different account and ACLs don't grant you access, you'll get 403. The fix is to copy the object back to itself with the proper ownership, or switch to [bucket owner enforced](https://oneuptime.com/blog/post/s3-bucket-ownership-controls/view).
+If the object is owned by a different account and ACLs don't grant you access, you'll get 403. The fix is to copy the object back to itself with the proper ownership, or switch to [bucket owner enforced](https://oneuptime.com/blog/post/2026-02-12-s3-bucket-ownership-controls/view).
 
 ## Check 5: KMS Encryption
 
@@ -272,4 +272,4 @@ aws iam attach-user-policy \
 
 For ongoing monitoring of 403 errors and other access issues, set up [OneUptime](https://oneuptime.com) to alert on spikes in S3 access denied errors. This helps you catch permission issues before they escalate into production incidents.
 
-If slow performance rather than access denied is your issue, check out our guide on [troubleshooting S3 slow upload speeds](https://oneuptime.com/blog/post/troubleshoot-s3-slow-upload-speeds/view).
+If slow performance rather than access denied is your issue, check out our guide on [troubleshooting S3 slow upload speeds](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-s3-slow-upload-speeds/view).

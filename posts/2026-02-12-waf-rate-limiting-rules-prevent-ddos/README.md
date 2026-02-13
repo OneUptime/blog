@@ -417,4 +417,4 @@ Setting rate limits too low blocks legitimate users. Too high and attacks get th
 4. **Gradually lower it** while monitoring for false positives
 5. **Use tighter limits for sensitive endpoints** (login, API, search) than for static content
 
-For broader protection, combine rate limiting with [WAF rules for common web attacks](https://oneuptime.com/blog/post/aws-waf-rules-common-web-attacks/view) and [managed rule groups](https://oneuptime.com/blog/post/waf-managed-rule-groups/view). For global applications, deploy [WAF with CloudFront](https://oneuptime.com/blog/post/waf-cloudfront-global-protection/view) for edge-level rate limiting.
+For broader protection, combine rate limiting with [WAF rules for common web attacks](https://oneuptime.com/blog/post/2026-02-12-aws-waf-rules-common-web-attacks/view) and [managed rule groups](https://oneuptime.com/blog/post/2026-02-12-waf-managed-rule-groups/view). For global applications, deploy [WAF with CloudFront](https://oneuptime.com/blog/post/2026-02-12-waf-cloudfront-global-protection/view) for edge-level rate limiting.

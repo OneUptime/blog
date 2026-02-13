@@ -381,6 +381,6 @@ This rate-based rule blocks any IP making more than 100 requests to your login e
 
 **Monitor failed login rates.** A sudden spike in failed logins, even below ATP's thresholds, could indicate an attack in progress. Use [OneUptime](https://oneuptime.com) to track these metrics alongside your application performance.
 
-**Combine with WAF Bot Control.** ATP focuses on login protection, while [Bot Control](https://oneuptime.com/blog/post/aws-waf-bot-control/view) covers broader bot detection. Use both together for comprehensive protection.
+**Combine with WAF Bot Control.** ATP focuses on login protection, while [Bot Control](https://oneuptime.com/blog/post/2026-02-12-aws-waf-bot-control/view) covers broader bot detection. Use both together for comprehensive protection.
 
 **Use MFA.** WAF is a defense layer, not a replacement for strong authentication. Always encourage or require multi-factor authentication for your users.

@@ -340,4 +340,4 @@ aws budgets create-budget \
 
 AWS Cost Anomaly Detection is free, takes 10 minutes to set up, and can save you from nasty billing surprises. Create a service-level monitor first, set a reasonable threshold ($50-100 absolute impact), and connect it to your team's communication channel. Review anomalies weekly to refine your thresholds and understand your spending patterns.
 
-For the broader cost management picture, check out our guides on [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/create-a-cost-optimization-strategy-for-aws/view) and [using Trusted Advisor for cost optimization](https://oneuptime.com/blog/post/use-trusted-advisor-for-cost-optimization-recommendations/view).
+For the broader cost management picture, check out our guides on [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/2026-02-12-create-a-cost-optimization-strategy-for-aws/view) and [using Trusted Advisor for cost optimization](https://oneuptime.com/blog/post/2026-02-12-use-trusted-advisor-for-cost-optimization-recommendations/view).

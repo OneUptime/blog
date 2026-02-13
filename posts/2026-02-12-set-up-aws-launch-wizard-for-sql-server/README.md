@@ -68,7 +68,7 @@ aws s3 cp SQLServer2022-x64-ENU.iso \
   s3://my-sql-media/SQLServer2022-x64-ENU.iso
 ```
 
-For BYOL, you will need to use Dedicated Hosts or Dedicated Instances to comply with Microsoft licensing. For managing these licenses, see our guide on [using AWS License Manager with EC2 and RDS](https://oneuptime.com/blog/post/use-aws-license-manager-with-ec2-and-rds/view).
+For BYOL, you will need to use Dedicated Hosts or Dedicated Instances to comply with Microsoft licensing. For managing these licenses, see our guide on [using AWS License Manager with EC2 and RDS](https://oneuptime.com/blog/post/2026-02-12-use-aws-license-manager-with-ec2-and-rds/view).
 
 ### Key Pair
 

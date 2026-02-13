@@ -329,4 +329,4 @@ Migrating from VPN to Verified Access doesn't have to be all-or-nothing. Start w
 
 The user experience is dramatically better - open a browser, go to the URL, authenticate once, and you're in. No VPN client to install, no split tunneling to debug, no "I can't connect to the VPN" support tickets.
 
-For network-level security analysis, see our post on [VPC Network Access Analyzer](https://oneuptime.com/blog/post/vpc-network-access-analyzer/view).
+For network-level security analysis, see our post on [VPC Network Access Analyzer](https://oneuptime.com/blog/post/2026-02-12-vpc-network-access-analyzer/view).

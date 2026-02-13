@@ -774,4 +774,4 @@ The AWS CloudWatch Logs exporter enables centralized log management for applicat
 
 The configuration patterns shown here provide a foundation for building scalable log collection infrastructure that integrates seamlessly with AWS services. Whether you're running containers on ECS, Kubernetes on EKS, or traditional EC2 instances, the CloudWatch Logs exporter offers flexible options for organizing and managing your log data.
 
-For information about other AWS exporters, see our guides on the [AWS X-Ray exporter](https://oneuptime.com/blog/post/aws-xray-exporter-opentelemetry-collector/view) and [AWS Kinesis exporter](https://oneuptime.com/blog/post/aws-kinesis-exporter-opentelemetry-collector/view).
+For information about other AWS exporters, see our guides on the [AWS X-Ray exporter](https://oneuptime.com/blog/post/2026-02-06-aws-xray-exporter-opentelemetry-collector/view) and [AWS Kinesis exporter](https://oneuptime.com/blog/post/2026-02-06-aws-kinesis-exporter-opentelemetry-collector/view).

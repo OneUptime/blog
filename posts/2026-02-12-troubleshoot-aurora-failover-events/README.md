@@ -141,7 +141,7 @@ aws rds describe-db-cluster-parameters \
   --query 'Parameters[?ParameterName==`innodb_buffer_pool_size` || ParameterName==`max_connections` || ParameterName==`table_open_cache`].{Name:ParameterName,Value:ParameterValue}'
 ```
 
-**Long-term fix:** Reduce `max_connections` or use [RDS Proxy](https://oneuptime.com/blog/post/set-up-aurora-with-rds-proxy/view) to manage connections more efficiently.
+**Long-term fix:** Reduce `max_connections` or use [RDS Proxy](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-with-rds-proxy/view) to manage connections more efficiently.
 
 ### Cause 2: CPU Exhaustion
 
@@ -350,4 +350,4 @@ aws rds create-event-subscription \
 
 Most Aurora failovers come down to resource exhaustion - memory, CPU, or connections. The fix is a combination of right-sizing your instances, optimizing your queries, and building resilient connection handling into your application. Set up monitoring and alerts so you know about failovers immediately, and always investigate the root cause so you can prevent recurrence.
 
-For proactive monitoring of your Aurora infrastructure, check out how to [troubleshoot reader instance lag](https://oneuptime.com/blog/post/troubleshoot-aurora-reader-instance-lag/view) as an early warning sign, and consider [configuring auto scaling](https://oneuptime.com/blog/post/configure-aurora-auto-scaling-for-read-replicas/view) to handle load spikes automatically.
+For proactive monitoring of your Aurora infrastructure, check out how to [troubleshoot reader instance lag](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-aurora-reader-instance-lag/view) as an early warning sign, and consider [configuring auto scaling](https://oneuptime.com/blog/post/2026-02-12-configure-aurora-auto-scaling-for-read-replicas/view) to handle load spikes automatically.

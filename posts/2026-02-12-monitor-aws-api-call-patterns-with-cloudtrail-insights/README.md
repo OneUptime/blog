@@ -284,7 +284,7 @@ You can reduce costs by enabling Insights only on your production trail, not on 
 
 **Wait for the baseline**: Do not expect useful insights immediately. The 36-hour baseline period is important. If you make major changes to your workload during this period, the baseline may be inaccurate.
 
-**Combine with other detection methods**: Insights is one layer in a defense-in-depth strategy. Pair it with EventBridge rules for specific API patterns (see [detecting unauthorized API calls](https://oneuptime.com/blog/post/detect-unauthorized-api-calls-with-cloudtrail-and-eventbridge/view)) and GuardDuty for ML-based threat detection.
+**Combine with other detection methods**: Insights is one layer in a defense-in-depth strategy. Pair it with EventBridge rules for specific API patterns (see [detecting unauthorized API calls](https://oneuptime.com/blog/post/2026-02-12-detect-unauthorized-api-calls-with-cloudtrail-and-eventbridge/view)) and GuardDuty for ML-based threat detection.
 
 **Review resolved insights too**: Sometimes anomalies resolve on their own (like a deployment spike). Reviewing these helps you understand your normal patterns and reduce false positives.
 
@@ -292,4 +292,4 @@ You can reduce costs by enabling Insights only on your production trail, not on 
 
 CloudTrail Insights is a low-effort, high-value security feature. Enable it once, and you get automated anomaly detection across your entire AWS API activity. The baseline learning means it adapts to your specific usage patterns, so you are not drowning in generic alerts. Combined with EventBridge routing, you can build a responsive detection and alerting pipeline in under an hour.
 
-For more advanced event analysis, see our guide on [CloudTrail Lake for advanced event analysis](https://oneuptime.com/blog/post/use-cloudtrail-lake-for-advanced-event-analysis/view). And for centralizing trails across your organization, check out [CloudTrail Organization Trail for multi-account](https://oneuptime.com/blog/post/set-up-cloudtrail-organization-trail-for-multi-account/view).
+For more advanced event analysis, see our guide on [CloudTrail Lake for advanced event analysis](https://oneuptime.com/blog/post/2026-02-12-use-cloudtrail-lake-for-advanced-event-analysis/view). And for centralizing trails across your organization, check out [CloudTrail Organization Trail for multi-account](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudtrail-organization-trail-for-multi-account/view).

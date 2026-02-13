@@ -404,4 +404,4 @@ func main() {
 
 The AWS SDK v2 for Go is well-designed and idiomatic. The expression builder prevents injection-style bugs in your DynamoDB expressions, and the `attributevalue` package makes struct marshalling painless. Use the repository pattern to keep your DynamoDB logic testable and isolated from your HTTP handlers.
 
-For monitoring your DynamoDB tables from Go applications, check out our guide on [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/monitor-dynamodb-with-cloudwatch-alarms/view).
+For monitoring your DynamoDB tables from Go applications, check out our guide on [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-monitor-dynamodb-with-cloudwatch-alarms/view).

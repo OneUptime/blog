@@ -296,6 +296,6 @@ aws ec2 authorize-security-group-ingress \
 
 ## What's Next
 
-With your VPC in place, you're ready to start deploying resources. For more advanced network designs, look into [designing a VPC with public and private subnets](https://oneuptime.com/blog/post/design-vpc-with-public-and-private-subnets/view) or [setting up a three-tier VPC architecture](https://oneuptime.com/blog/post/set-up-three-tier-vpc-architecture/view).
+With your VPC in place, you're ready to start deploying resources. For more advanced network designs, look into [designing a VPC with public and private subnets](https://oneuptime.com/blog/post/2026-02-12-design-vpc-with-public-and-private-subnets/view) or [setting up a three-tier VPC architecture](https://oneuptime.com/blog/post/2026-02-12-set-up-three-tier-vpc-architecture/view).
 
 The VPC is just the beginning. A well-designed network makes everything else - load balancers, auto-scaling groups, databases, containers - work smoothly. Take the time to get it right early, and you'll save yourself countless headaches down the road.

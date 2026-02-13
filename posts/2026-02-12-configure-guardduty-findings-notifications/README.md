@@ -375,4 +375,4 @@ aws guardduty create-sample-findings \
 
 This creates sample findings that flow through your entire notification pipeline, letting you verify that emails arrive, Slack messages look right, and PagerDuty incidents get created.
 
-For more on managing GuardDuty at scale, see [suppressing false positives](https://oneuptime.com/blog/post/suppress-guardduty-false-positives/view) and [setting up GuardDuty across multiple accounts](https://oneuptime.com/blog/post/guardduty-multiple-aws-accounts/view).
+For more on managing GuardDuty at scale, see [suppressing false positives](https://oneuptime.com/blog/post/2026-02-12-suppress-guardduty-false-positives/view) and [setting up GuardDuty across multiple accounts](https://oneuptime.com/blog/post/2026-02-12-guardduty-multiple-aws-accounts/view).

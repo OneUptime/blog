@@ -114,7 +114,7 @@ aws rds modify-db-instance \
   --apply-immediately
 ```
 
-Consider setting up [auto scaling for read replicas](https://oneuptime.com/blog/post/configure-aurora-auto-scaling-for-read-replicas/view) so this adjusts automatically.
+Consider setting up [auto scaling for read replicas](https://oneuptime.com/blog/post/2026-02-12-configure-aurora-auto-scaling-for-read-replicas/view) so this adjusts automatically.
 
 ### Cause 2: Heavy Queries on the Reader
 
@@ -145,7 +145,7 @@ ORDER BY TIME DESC;
 KILL 12345;
 ```
 
-A better long-term fix is to use [custom endpoints](https://oneuptime.com/blog/post/configure-aurora-endpoints-writer-reader-custom/view) to separate analytical queries from OLTP reads, so heavy queries don't impact your application readers.
+A better long-term fix is to use [custom endpoints](https://oneuptime.com/blog/post/2026-02-12-configure-aurora-endpoints-writer-reader-custom/view) to separate analytical queries from OLTP reads, so heavy queries don't impact your application readers.
 
 ### Cause 3: High Write Throughput on the Writer
 
@@ -322,4 +322,4 @@ diagnose_lag("my-aurora-cluster")
 
 Aurora replica lag usually comes down to one of four things: under-provisioned reader instances, heavy queries hogging CPU, extreme write throughput on the writer, or buffer pool pressure. Start with the CloudWatch metrics to narrow down the cause, then apply the appropriate fix.
 
-Set up monitoring and alarms before lag becomes a problem. A reader with consistently elevated lag can cause stale reads in your application, which leads to bugs that are incredibly hard to track down. For more Aurora operational guidance, check out the guide on [troubleshooting Aurora failover events](https://oneuptime.com/blog/post/troubleshoot-aurora-failover-events/view).
+Set up monitoring and alarms before lag becomes a problem. A reader with consistently elevated lag can cause stale reads in your application, which leads to bugs that are incredibly hard to track down. For more Aurora operational guidance, check out the guide on [troubleshooting Aurora failover events](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-aurora-failover-events/view).

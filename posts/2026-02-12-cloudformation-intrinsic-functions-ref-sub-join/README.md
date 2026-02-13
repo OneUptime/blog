@@ -313,4 +313,4 @@ BucketName: !Sub '${Environment}-bucket'
 
 **Over-nesting functions.** If your expression looks like a LISP program, there's probably a cleaner way. Usually `Fn::Sub` with a variable mapping can flatten deeply nested expressions.
 
-These three functions form the core of CloudFormation template authoring. Master them and you'll handle 90% of the dynamic values you need. For the remaining edge cases, look into [Fn::Select and Fn::Split](https://oneuptime.com/blog/post/cloudformation-fn-select-fn-split-functions/view) and [Fn::If and Fn::Equals](https://oneuptime.com/blog/post/cloudformation-fn-if-fn-equals-conditional-logic/view).
+These three functions form the core of CloudFormation template authoring. Master them and you'll handle 90% of the dynamic values you need. For the remaining edge cases, look into [Fn::Select and Fn::Split](https://oneuptime.com/blog/post/2026-02-12-cloudformation-fn-select-fn-split-functions/view) and [Fn::If and Fn::Equals](https://oneuptime.com/blog/post/2026-02-12-cloudformation-fn-if-fn-equals-conditional-logic/view).

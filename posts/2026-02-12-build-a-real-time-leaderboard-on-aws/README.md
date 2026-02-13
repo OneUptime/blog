@@ -344,7 +344,7 @@ def submit_to_all_boards(player_id, score):
 
 ## Monitoring Leaderboard Performance
 
-Redis sorted set operations should be sub-millisecond. If response times climb, you have a problem - either the dataset is too large for the instance, or network latency is the bottleneck. Monitor Redis memory usage, operation latency, and connection counts. For end-to-end API monitoring including client-perceived latency, [OneUptime](https://oneuptime.com/blog/post/build-an-api-monetization-platform-on-aws/view) can help track the full request path.
+Redis sorted set operations should be sub-millisecond. If response times climb, you have a problem - either the dataset is too large for the instance, or network latency is the bottleneck. Monitor Redis memory usage, operation latency, and connection counts. For end-to-end API monitoring including client-perceived latency, [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-an-api-monetization-platform-on-aws/view) can help track the full request path.
 
 ## Wrapping Up
 

@@ -236,7 +236,7 @@ ECS (Fargate) is better when:
 - You need blue/green deployments with CodeDeploy
 - You need to run non-web workloads (batch jobs, daemons)
 
-For a deeper look at App Runner with ECR specifically, check out our guide on [setting up App Runner with ECR](https://oneuptime.com/blog/post/app-runner-with-ecr/view).
+For a deeper look at App Runner with ECR specifically, check out our guide on [setting up App Runner with ECR](https://oneuptime.com/blog/post/2026-02-12-app-runner-with-ecr/view).
 
 ## Wrapping Up
 

@@ -441,8 +441,8 @@ service:
 
 For more information about OpenTelemetry Collector configuration, check out these related articles:
 
-- https://oneuptime.com/blog/post/zipkin-receiver-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/kafka-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-zipkin-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-kafka-receiver-opentelemetry-collector/view
 
 ## Conclusion
 

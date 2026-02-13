@@ -308,7 +308,7 @@ Atomic counters are eventually consistent by default. If you write an increment 
 
 Atomic counters don't support conditional arithmetic in a single expression. You can't say "increment by 1 if less than 100" purely with SET arithmetic. You need a separate ConditionExpression for that.
 
-High-throughput counters on a single item can create hot partitions. If you're counting millions of events per second on a single counter, look into write sharding. Split the counter across multiple items and sum them when reading. See our post on [DynamoDB write sharding](https://oneuptime.com/blog/post/dynamodb-write-sharding/view) for that pattern.
+High-throughput counters on a single item can create hot partitions. If you're counting millions of events per second on a single counter, look into write sharding. Split the counter across multiple items and sum them when reading. See our post on [DynamoDB write sharding](https://oneuptime.com/blog/post/2026-02-12-dynamodb-write-sharding/view) for that pattern.
 
 ## Monitoring Counter Performance
 

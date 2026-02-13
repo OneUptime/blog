@@ -294,7 +294,7 @@ Watch these metrics to ensure your partial batch failure setup is working:
 - **SQS ApproximateNumberOfMessagesVisible**: Should decrease steadily, not bounce up and down.
 - **DLQ message count**: Only truly unprocessable messages should end up here.
 
-For more on monitoring your SQS and Lambda pipeline, check our post on [monitoring SNS with CloudWatch](https://oneuptime.com/blog/post/monitor-sns-cloudwatch/view) which covers related CloudWatch patterns.
+For more on monitoring your SQS and Lambda pipeline, check our post on [monitoring SNS with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-sns-cloudwatch/view) which covers related CloudWatch patterns.
 
 ## Wrapping Up
 

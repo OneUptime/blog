@@ -21,7 +21,7 @@ You need SCT whenever you are migrating between different database engines. Comm
 - Oracle to MySQL
 - Teradata or Netezza to Amazon Redshift (data warehouse migrations)
 
-If you are moving between the same engine (MySQL to MySQL, Postgres to Postgres), you can skip SCT and go straight to DMS. Check out our guide on [setting up DMS Serverless](https://oneuptime.com/blog/post/set-up-dms-serverless-for-database-migration/view) for that path.
+If you are moving between the same engine (MySQL to MySQL, Postgres to Postgres), you can skip SCT and go straight to DMS. Check out our guide on [setting up DMS Serverless](https://oneuptime.com/blog/post/2026-02-12-set-up-dms-serverless-for-database-migration/view) for that path.
 
 ```mermaid
 graph TD
@@ -226,4 +226,4 @@ Keep a tracking spreadsheet of all red and orange action items. Assign them to t
 
 The Schema Conversion Tool is indispensable for heterogeneous database migrations. It automates the tedious part of translating database-specific syntax and gives you a clear roadmap for what needs manual attention. Combined with DMS for data movement, SCT makes engine-to-engine migrations practical for teams that would otherwise be stuck on expensive legacy databases.
 
-If you are also dealing with CDC latency during the data migration phase, check out our guide on [handling DMS CDC latency issues](https://oneuptime.com/blog/post/handle-dms-cdc-latency-issues/view).
+If you are also dealing with CDC latency during the data migration phase, check out our guide on [handling DMS CDC latency issues](https://oneuptime.com/blog/post/2026-02-12-handle-dms-cdc-latency-issues/view).

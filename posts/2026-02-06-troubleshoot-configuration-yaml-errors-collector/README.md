@@ -1015,6 +1015,6 @@ envsubst < template.yaml > staging-config.yaml
 Configuration errors are preventable through systematic validation, proper YAML formatting, and following OpenTelemetry Collector configuration requirements. Use the built-in validator, start with minimal configurations, add complexity incrementally, and leverage configuration management tools to maintain reliable collector deployments. Always validate configuration changes before deploying to production.
 
 For more troubleshooting guides, see related posts:
-- https://oneuptime.com/blog/post/troubleshoot-collector-not-receiving-data/view
-- https://oneuptime.com/blog/post/troubleshoot-collector-not-exporting-data/view
-- https://oneuptime.com/blog/post/right-size-cpu-memory-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-not-receiving-data/view
+- https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-not-exporting-data/view
+- https://oneuptime.com/blog/post/2026-02-06-right-size-cpu-memory-opentelemetry-collector/view

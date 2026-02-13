@@ -288,7 +288,7 @@ def handler(event, context):
             )
 ```
 
-For a deeper dive into building anomaly detection pipelines on AWS, check out our guide on [building an anomaly detection system](https://oneuptime.com/blog/post/build-an-anomaly-detection-system-on-aws/view).
+For a deeper dive into building anomaly detection pipelines on AWS, check out our guide on [building an anomaly detection system](https://oneuptime.com/blog/post/2026-02-12-build-an-anomaly-detection-system-on-aws/view).
 
 ## Cost Optimization Tips
 

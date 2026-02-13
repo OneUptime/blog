@@ -245,7 +245,7 @@ exports.handler = async (event) => {
 };
 ```
 
-Custom claims appear in the JWT token, so your API can read them without making additional database calls. Very handy for authorization decisions. If you're using [custom authorizers with API Gateway](https://oneuptime.com/blog/post/custom-authorizers-api-gateway-lambda/view), these custom claims streamline the authorization logic.
+Custom claims appear in the JWT token, so your API can read them without making additional database calls. Very handy for authorization decisions. If you're using [custom authorizers with API Gateway](https://oneuptime.com/blog/post/2026-02-12-custom-authorizers-api-gateway-lambda/view), these custom claims streamline the authorization logic.
 
 ## User Migration Trigger
 

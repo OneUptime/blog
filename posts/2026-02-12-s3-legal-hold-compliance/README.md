@@ -22,7 +22,7 @@ You can use both simultaneously on the same object. An object with a retention p
 
 ## Prerequisites
 
-Legal Hold requires an S3 bucket with Object Lock enabled. If you haven't set that up yet, check out our guide on [configuring S3 Object Lock for WORM compliance](https://oneuptime.com/blog/post/configure-s3-object-lock-worm-compliance/view).
+Legal Hold requires an S3 bucket with Object Lock enabled. If you haven't set that up yet, check out our guide on [configuring S3 Object Lock for WORM compliance](https://oneuptime.com/blog/post/2026-02-12-configure-s3-object-lock-worm-compliance/view).
 
 Quick reminder - Object Lock must be enabled at bucket creation time.
 
@@ -201,7 +201,7 @@ And this policy for legal team managers who can also remove holds.
 
 ## Using S3 Batch Operations for Large-Scale Legal Holds
 
-When you need to place legal holds on thousands or millions of objects, individual API calls aren't practical. S3 Batch Operations can apply legal holds at scale. For a deep dive into batch operations, see our post on [using S3 Batch Operations to process millions of objects](https://oneuptime.com/blog/post/s3-batch-operations-process-millions-objects/view).
+When you need to place legal holds on thousands or millions of objects, individual API calls aren't practical. S3 Batch Operations can apply legal holds at scale. For a deep dive into batch operations, see our post on [using S3 Batch Operations to process millions of objects](https://oneuptime.com/blog/post/2026-02-12-s3-batch-operations-process-millions-objects/view).
 
 Here's the general flow:
 

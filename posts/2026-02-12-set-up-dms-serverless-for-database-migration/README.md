@@ -188,7 +188,7 @@ aws dms describe-replications \
   --filters Name=replication-config-arn,Values=arn:aws:dms:us-east-1:123456789012:replication-config:MY_CONFIG_ARN
 ```
 
-For ongoing monitoring, set up CloudWatch alarms on key metrics like `CDCLatencySource`, `CDCLatencyTarget`, and `CDCThroughputRowsSource`. If you are looking for a more comprehensive monitoring setup, check out our post on [monitoring DMS replication tasks](https://oneuptime.com/blog/post/monitor-dms-replication-tasks/view).
+For ongoing monitoring, set up CloudWatch alarms on key metrics like `CDCLatencySource`, `CDCLatencyTarget`, and `CDCThroughputRowsSource`. If you are looking for a more comprehensive monitoring setup, check out our post on [monitoring DMS replication tasks](https://oneuptime.com/blog/post/2026-02-12-monitor-dms-replication-tasks/view).
 
 ## Common Pitfalls
 
@@ -208,4 +208,4 @@ For long-running CDC replications that operate 24/7, do the math carefully. A de
 
 DMS Serverless takes away the capacity planning headache from database migrations. You define your endpoints, set your capacity bounds, and let AWS handle the rest. The auto-scaling capability makes it particularly well-suited for migrations where the data volume is unpredictable or where you want to avoid over-provisioning.
 
-If you are planning a heterogeneous migration (say, Oracle to PostgreSQL), you will also want to look into the [Schema Conversion Tool](https://oneuptime.com/blog/post/use-schema-conversion-tool-for-heterogeneous-migrations/view) to handle schema translation before running DMS.
+If you are planning a heterogeneous migration (say, Oracle to PostgreSQL), you will also want to look into the [Schema Conversion Tool](https://oneuptime.com/blog/post/2026-02-12-use-schema-conversion-tool-for-heterogeneous-migrations/view) to handle schema translation before running DMS.

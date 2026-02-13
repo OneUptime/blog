@@ -200,7 +200,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:db-alerts
 ```
 
-For a more comprehensive monitoring setup, see our post on [setting up CloudWatch alarms for RDS metrics](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view).
+For a more comprehensive monitoring setup, see our post on [setting up CloudWatch alarms for RDS metrics](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view).
 
 ## Best Practices
 
@@ -210,6 +210,6 @@ For a more comprehensive monitoring setup, see our post on [setting up CloudWatc
 
 **Use the counter metrics.** Beyond AAS, Performance Insights tracks database counters like transactions per second, temp table creation rates, and buffer pool hit ratios. These give you a fuller picture of database health.
 
-**Enable Enhanced Monitoring alongside Performance Insights.** They complement each other - Performance Insights shows you what the database engine is doing, while [Enhanced Monitoring](https://oneuptime.com/blog/post/enable-rds-enhanced-monitoring/view) shows you what the operating system is doing.
+**Enable Enhanced Monitoring alongside Performance Insights.** They complement each other - Performance Insights shows you what the database engine is doing, while [Enhanced Monitoring](https://oneuptime.com/blog/post/2026-02-12-enable-rds-enhanced-monitoring/view) shows you what the operating system is doing.
 
 Performance Insights is one of the most underused features of RDS. It takes about 30 seconds to enable and gives you visibility that would otherwise require installing and configuring third-party monitoring tools. If you're running any production workload on RDS, turn it on.

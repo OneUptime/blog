@@ -796,4 +796,4 @@ Effective incident escalation is not about creating bureaucracy; it is about ens
 
 Remember: the goal of escalation is faster resolution and better outcomes, not blame assignment or hierarchy enforcement. Build your escalation system to empower responders, not slow them down.
 
-For more on incident management, check out our posts on [SRE On-Call Rotation Design](https://oneuptime.com/blog/post/sre-on-call-rotation-design/view) and [Effective Incident Postmortem Templates](https://oneuptime.com/blog/post/effective-incident-postmortem-templates/view).
+For more on incident management, check out our posts on [SRE On-Call Rotation Design](https://oneuptime.com/blog/post/2025-11-28-sre-on-call-rotation-design/view) and [Effective Incident Postmortem Templates](https://oneuptime.com/blog/post/effective-incident-postmortem-templates/view).

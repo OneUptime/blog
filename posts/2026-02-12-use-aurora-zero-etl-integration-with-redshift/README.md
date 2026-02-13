@@ -232,4 +232,4 @@ Traditional ETL (Glue, custom pipelines) is better for:
 
 Aurora Zero-ETL integration with Redshift removes one of the biggest headaches in data engineering - building and maintaining ETL pipelines to get transactional data into an analytics warehouse. The setup takes about 30 minutes, replication lag is typically under a minute, and schema changes are handled automatically. If you are running Aurora and Redshift in the same account and Region, there is very little reason not to use it.
 
-For more on Aurora, check out our guides on [Aurora I/O-Optimized pricing](https://oneuptime.com/blog/post/use-aurora-io-optimized-for-predictable-pricing/view) and [Aurora Limitless Database for horizontal scaling](https://oneuptime.com/blog/post/set-up-aurora-limitless-database-for-horizontal-scaling/view).
+For more on Aurora, check out our guides on [Aurora I/O-Optimized pricing](https://oneuptime.com/blog/post/2026-02-12-use-aurora-io-optimized-for-predictable-pricing/view) and [Aurora Limitless Database for horizontal scaling](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-limitless-database-for-horizontal-scaling/view).

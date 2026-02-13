@@ -299,7 +299,7 @@ Regardless of which strategy you choose, follow this checklist:
 - [ ] Notify stakeholders of successful cutover
 ```
 
-For building a complete migration plan, see our guide on [creating an AWS migration runbook](https://oneuptime.com/blog/post/create-an-aws-migration-runbook/view).
+For building a complete migration plan, see our guide on [creating an AWS migration runbook](https://oneuptime.com/blog/post/2026-02-12-create-an-aws-migration-runbook/view).
 
 ## Measuring Your Cutover
 

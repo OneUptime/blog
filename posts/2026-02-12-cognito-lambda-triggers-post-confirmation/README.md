@@ -378,7 +378,7 @@ async function addToDefaultGroup(poolId, username) {
 
 **Timeout**: Keep the Lambda fast. Users are waiting for the confirmation to complete. Use `Promise.allSettled()` to run multiple actions in parallel.
 
-For the trigger that runs before this one, see [Cognito Lambda triggers for pre sign-up](https://oneuptime.com/blog/post/cognito-lambda-triggers-pre-sign-up/view). For actions during sign-in, check out [Cognito Lambda triggers for post authentication](https://oneuptime.com/blog/post/cognito-lambda-triggers-post-authentication/view).
+For the trigger that runs before this one, see [Cognito Lambda triggers for pre sign-up](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-pre-sign-up/view). For actions during sign-in, check out [Cognito Lambda triggers for post authentication](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-post-authentication/view).
 
 ## Summary
 

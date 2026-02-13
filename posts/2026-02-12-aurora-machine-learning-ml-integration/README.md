@@ -295,4 +295,4 @@ You're paying for two things: the Aurora compute time and the ML service usage. 
 
 Aurora ML integration is surprisingly powerful for a feature that's essentially "call an API from SQL." Sentiment analysis on customer reviews, fraud scoring on transactions, churn prediction on user behavior - all without building data pipelines or writing application code. Start with Comprehend for quick wins, then move to SageMaker for custom models.
 
-Just remember to filter your queries aggressively and cache results where possible. ML calls add latency, and the costs scale with usage. For more Aurora optimization techniques, check out the guide on [Aurora Parallel Query for analytics](https://oneuptime.com/blog/post/aurora-parallel-query-for-analytics/view).
+Just remember to filter your queries aggressively and cache results where possible. ML calls add latency, and the costs scale with usage. For more Aurora optimization techniques, check out the guide on [Aurora Parallel Query for analytics](https://oneuptime.com/blog/post/2026-02-12-aurora-parallel-query-for-analytics/view).

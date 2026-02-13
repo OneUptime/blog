@@ -347,4 +347,4 @@ For comprehensive monitoring that goes beyond CloudWatch, consider integrating w
 
 ## Wrapping Up
 
-Deploying Next.js on ECS gives you container-level control with Fargate's serverless convenience. The initial setup is more involved than Amplify, but you get fine-grained control over networking, scaling, and resource allocation. For teams running microservices or needing specific compliance configurations, ECS is the right choice. If you want the simpler path, check out our guide on [deploying Next.js with Amplify](https://oneuptime.com/blog/post/deploy-nextjs-app-to-aws-with-amplify/view) instead.
+Deploying Next.js on ECS gives you container-level control with Fargate's serverless convenience. The initial setup is more involved than Amplify, but you get fine-grained control over networking, scaling, and resource allocation. For teams running microservices or needing specific compliance configurations, ECS is the right choice. If you want the simpler path, check out our guide on [deploying Next.js with Amplify](https://oneuptime.com/blog/post/2026-02-12-deploy-nextjs-app-to-aws-with-amplify/view) instead.

@@ -10,7 +10,7 @@ Description: A practical guide to migrating your MongoDB workloads to Amazon Doc
 
 Migrating from self-managed MongoDB to Amazon DocumentDB can simplify your operations dramatically, but it's not a simple lift-and-shift. DocumentDB is API-compatible with MongoDB, not a drop-in replacement. You need to assess compatibility, choose the right migration approach, and validate thoroughly before cutting over production traffic.
 
-This guide walks through the entire process from assessment to cutover. If you haven't set up DocumentDB yet, start with our [DocumentDB setup guide](https://oneuptime.com/blog/post/amazon-documentdb-mongodb-compatible/view).
+This guide walks through the entire process from assessment to cutover. If you haven't set up DocumentDB yet, start with our [DocumentDB setup guide](https://oneuptime.com/blog/post/2026-02-12-amazon-documentdb-mongodb-compatible/view).
 
 ## Step 1: Assess Compatibility
 
@@ -134,7 +134,7 @@ aws dms create-replication-task \
   --table-mappings '{"rules":[{"rule-type":"selection","rule-id":"1","rule-name":"all-tables","object-locator":{"schema-name":"mydb","table-name":"%"},"rule-action":"include"}]}'
 ```
 
-For more details on DMS, check out our [DMS replication guide](https://oneuptime.com/blog/post/database-migration-service-dms-replication/view).
+For more details on DMS, check out our [DMS replication guide](https://oneuptime.com/blog/post/2026-02-12-database-migration-service-dms-replication/view).
 
 ### Option C: Application-Level Migration
 

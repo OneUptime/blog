@@ -333,4 +333,4 @@ aws cloudwatch put-metric-alarm \
 
 MemoryDB for Redis gives you the speed of Redis with the durability of a traditional database. Transactions work exactly as they do in standard Redis, but with the guarantee that committed transactions survive infrastructure failures. For use cases like financial transactions, inventory management, session storage, and leaderboards where you need both performance and data safety, MemoryDB is the right choice.
 
-For more on Redis-compatible services, see our guides on [ElastiCache Serverless](https://oneuptime.com/blog/post/set-up-elasticache-serverless/view) and [ElastiCache Global Datastore](https://oneuptime.com/blog/post/configure-elasticache-global-datastore-for-multi-region/view).
+For more on Redis-compatible services, see our guides on [ElastiCache Serverless](https://oneuptime.com/blog/post/2026-02-12-set-up-elasticache-serverless/view) and [ElastiCache Global Datastore](https://oneuptime.com/blog/post/2026-02-12-configure-elasticache-global-datastore-for-multi-region/view).

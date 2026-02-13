@@ -259,4 +259,4 @@ But don't just set it to 10 GB and call it a day. That's expensive. Find the act
 
 Memory and timeout are the two most impactful configuration settings for Lambda functions. Start with a reasonable default (256-512 MB, 30 seconds), measure actual usage, and adjust. Remember that more memory means more CPU, so increasing memory often improves performance without increasing cost.
 
-For a more scientific approach to finding the optimal memory size, check out our guide on [choosing the right Lambda memory size](https://oneuptime.com/blog/post/choose-right-lambda-memory-size-performance/view) and [AWS Lambda Power Tuning](https://oneuptime.com/blog/post/aws-lambda-power-tuning-optimize-cost-performance/view).
+For a more scientific approach to finding the optimal memory size, check out our guide on [choosing the right Lambda memory size](https://oneuptime.com/blog/post/2026-02-12-choose-right-lambda-memory-size-performance/view) and [AWS Lambda Power Tuning](https://oneuptime.com/blog/post/2026-02-12-aws-lambda-power-tuning-optimize-cost-performance/view).

@@ -17,7 +17,7 @@ This guide walks through the entire process of creating a CloudFormation stack f
 Before you begin, make sure you have:
 
 - An AWS account with permissions to create CloudFormation stacks
-- A CloudFormation template ready (YAML or JSON). If you need help writing one, check out [writing your first CloudFormation template](https://oneuptime.com/blog/post/write-your-first-cloudformation-template/view).
+- A CloudFormation template ready (YAML or JSON). If you need help writing one, check out [writing your first CloudFormation template](https://oneuptime.com/blog/post/2026-02-12-write-your-first-cloudformation-template/view).
 - The IAM permissions needed for whatever resources your template creates
 
 ## Step 1: Navigate to CloudFormation
@@ -168,7 +168,7 @@ Once creation is complete, explore the other tabs:
 - **Outputs**: Shows the output values defined in your template (like our bucket name and topic ARN)
 - **Parameters**: Shows the parameter values used for this deployment
 - **Template**: Shows the template that was used
-- **Change sets**: For managing updates (more on that in our [change sets guide](https://oneuptime.com/blog/post/cloudformation-change-sets-safe-updates/view))
+- **Change sets**: For managing updates (more on that in our [change sets guide](https://oneuptime.com/blog/post/2026-02-12-cloudformation-change-sets-safe-updates/view))
 
 ## Troubleshooting Failed Stacks
 
@@ -196,13 +196,13 @@ To update a stack from the Console:
 4. Walk through the same wizard, adjusting parameters as needed
 5. Review the changes and submit
 
-Before making updates to production stacks, consider using [change sets](https://oneuptime.com/blog/post/cloudformation-change-sets-safe-updates/view) to preview what will change before executing the update.
+Before making updates to production stacks, consider using [change sets](https://oneuptime.com/blog/post/2026-02-12-cloudformation-change-sets-safe-updates/view) to preview what will change before executing the update.
 
 ## Deleting a Stack
 
 Select the stack and click "Delete." CloudFormation will remove all resources it created. Check the Events tab to monitor progress.
 
-If deletion fails (common with non-empty S3 buckets), you'll see the failure reason in the events. For more on this, see our post on [handling stack deletion failures](https://oneuptime.com/blog/post/cloudformation-stack-deletion-failures/view).
+If deletion fails (common with non-empty S3 buckets), you'll see the failure reason in the events. For more on this, see our post on [handling stack deletion failures](https://oneuptime.com/blog/post/2026-02-12-cloudformation-stack-deletion-failures/view).
 
 ## When to Move Beyond the Console
 
@@ -213,6 +213,6 @@ The Console is great for learning and one-off deployments. But as your infrastru
 - Automated testing and validation
 - Integration with deployment pipelines
 
-Our guide on [deploying CloudFormation with the AWS CLI](https://oneuptime.com/blog/post/deploy-cloudformation-templates-aws-cli/view) covers the next step in that progression.
+Our guide on [deploying CloudFormation with the AWS CLI](https://oneuptime.com/blog/post/2026-02-12-deploy-cloudformation-templates-aws-cli/view) covers the next step in that progression.
 
 The Console remains useful for monitoring stacks, reading events, and debugging - even when you deploy through automation. Think of it as your dashboard, not your deployment tool.

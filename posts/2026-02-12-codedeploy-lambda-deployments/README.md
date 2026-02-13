@@ -332,4 +332,4 @@ aws deploy stop-deployment \
 
 For ongoing monitoring of your Lambda functions, [OneUptime](https://oneuptime.com) can track invocation errors, latency, and throttling across all your serverless functions.
 
-To automate the entire process, check out our guide on [using CodePipeline with Lambda](https://oneuptime.com/blog/post/codepipeline-lambda/view).
+To automate the entire process, check out our guide on [using CodePipeline with Lambda](https://oneuptime.com/blog/post/2026-02-12-codepipeline-lambda/view).

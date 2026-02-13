@@ -204,4 +204,4 @@ LIMIT 20;
 
 Getting distribution and sort keys right isn't a one-time task. As your query patterns evolve, you should revisit these settings. Redshift's `AUTO` distribution style is getting smarter over time, but for critical tables with known access patterns, manual tuning still wins.
 
-For more on monitoring your data infrastructure, check out how to set up proper [observability for your AWS services](https://oneuptime.com/blog/post/monitor-kinesis-data-streams-cloudwatch/view).
+For more on monitoring your data infrastructure, check out how to set up proper [observability for your AWS services](https://oneuptime.com/blog/post/2026-02-12-monitor-kinesis-data-streams-cloudwatch/view).

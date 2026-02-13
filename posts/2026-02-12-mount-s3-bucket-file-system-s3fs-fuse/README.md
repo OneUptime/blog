@@ -253,6 +253,6 @@ For better alternatives, consider:
 - **EFS** - If you need a real shared file system
 - **FSx for Lustre** - If you need high-performance access to S3 data
 
-If you're looking to process S3 data at scale, check out our guide on [using S3 Select for querying CSV and JSON data](https://oneuptime.com/blog/post/s3-select-csv-json-data/view) - it's often faster than mounting the bucket and reading files line by line.
+If you're looking to process S3 data at scale, check out our guide on [using S3 Select for querying CSV and JSON data](https://oneuptime.com/blog/post/2026-02-12-s3-select-csv-json-data/view) - it's often faster than mounting the bucket and reading files line by line.
 
 Monitor your s3fs mounts with [OneUptime](https://oneuptime.com) to catch connectivity issues and performance degradation before they affect your applications.

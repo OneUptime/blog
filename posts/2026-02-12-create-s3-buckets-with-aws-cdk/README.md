@@ -187,7 +187,7 @@ const assetsBucket = new s3.Bucket(this, 'AssetsBucket', {
 });
 ```
 
-For more details on S3 CORS troubleshooting, see our guide on [fixing S3 CORS errors in browser applications](https://oneuptime.com/blog/post/fix-s3-cors-errors-in-browser-applications/view).
+For more details on S3 CORS troubleshooting, see our guide on [fixing S3 CORS errors in browser applications](https://oneuptime.com/blog/post/2026-02-12-fix-s3-cors-errors-in-browser-applications/view).
 
 ## Granting Permissions
 
@@ -286,4 +286,4 @@ Always run `cdk diff` first. It shows you exactly what CloudFormation changes wi
 
 ## Wrapping Up
 
-CDK brings real programming power to S3 bucket management. You get type checking, IDE support, and the ability to build abstractions that enforce your organization's standards. The grant methods alone save significant time compared to writing IAM policies by hand. Start with simple buckets, add encryption and lifecycle rules, and build reusable constructs as your patterns stabilize. If you're also managing buckets with Terraform, check out our guide on [managing S3 buckets with Terraform](https://oneuptime.com/blog/post/manage-s3-buckets-with-terraform/view) for a comparison.
+CDK brings real programming power to S3 bucket management. You get type checking, IDE support, and the ability to build abstractions that enforce your organization's standards. The grant methods alone save significant time compared to writing IAM policies by hand. Start with simple buckets, add encryption and lifecycle rules, and build reusable constructs as your patterns stabilize. If you're also managing buckets with Terraform, check out our guide on [managing S3 buckets with Terraform](https://oneuptime.com/blog/post/2026-02-12-manage-s3-buckets-with-terraform/view) for a comparison.

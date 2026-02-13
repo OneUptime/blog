@@ -20,7 +20,7 @@ Before you start, you'll need:
 - A Lambda function with an execution role that has VPC permissions
 - The RDS instance should be in private subnets (it shouldn't be publicly accessible)
 
-If you haven't configured VPC access for Lambda yet, check out our guide on [connecting Lambda functions to a VPC](https://oneuptime.com/blog/post/connect-lambda-functions-to-a-vpc/view).
+If you haven't configured VPC access for Lambda yet, check out our guide on [connecting Lambda functions to a VPC](https://oneuptime.com/blog/post/2026-02-12-connect-lambda-functions-to-a-vpc/view).
 
 ## Network Architecture
 
@@ -150,7 +150,7 @@ async function getDbCredentials() {
 }
 ```
 
-For more on this pattern, see our post on [using Lambda with Secrets Manager](https://oneuptime.com/blog/post/use-lambda-with-secrets-manager-for-secure-credentials/view).
+For more on this pattern, see our post on [using Lambda with Secrets Manager](https://oneuptime.com/blog/post/2026-02-12-use-lambda-with-secrets-manager-for-secure-credentials/view).
 
 ## Step 4: Write the Database Connection Code
 
@@ -266,7 +266,7 @@ If Lambda scales beyond what your database can handle, new connections will fail
 
 The solutions:
 
-1. **RDS Proxy** - AWS's purpose-built solution. It pools and shares database connections across Lambda invocations. Check our detailed guide on [using RDS Proxy with Lambda](https://oneuptime.com/blog/post/use-rds-proxy-with-lambda-for-database-connections/view).
+1. **RDS Proxy** - AWS's purpose-built solution. It pools and shares database connections across Lambda invocations. Check our detailed guide on [using RDS Proxy with Lambda](https://oneuptime.com/blog/post/2026-02-12-use-rds-proxy-with-lambda-for-database-connections/view).
 
 2. **Reserved concurrency** - Limit how many concurrent Lambda invocations can run:
 

@@ -364,4 +364,4 @@ A few things I've learned about approval gates:
 - Don't put approvals before every stage. One gate between staging and production is usually enough. Too many gates slow everything down.
 - Monitor pending approvals. If deployments are sitting waiting for approval for hours, you've got a bottleneck.
 
-For pipeline monitoring and alerting on stuck approvals, check out [OneUptime](https://oneuptime.com). And for handling pipeline failures, see our guide on [troubleshooting CodePipeline failures](https://oneuptime.com/blog/post/troubleshoot-codepipeline-failures/view).
+For pipeline monitoring and alerting on stuck approvals, check out [OneUptime](https://oneuptime.com). And for handling pipeline failures, see our guide on [troubleshooting CodePipeline failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-codepipeline-failures/view).

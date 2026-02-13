@@ -464,4 +464,4 @@ print(f"Workflow '{WORKFLOW_NAME}' created with all triggers")
 
 Glue Workflows give you a managed way to orchestrate multi-step ETL pipelines. They're simpler than Step Functions for Glue-only pipelines and more reliable than chaining jobs with CloudWatch Events. Use them when you need jobs and crawlers to run in a specific sequence with proper dependency handling.
 
-For the individual jobs within your workflow, check out our guides on [creating Glue ETL jobs](https://oneuptime.com/blog/post/create-aws-glue-etl-jobs/view) and [using job bookmarks for incremental processing](https://oneuptime.com/blog/post/use-glue-job-bookmarks-for-incremental-data-processing/view).
+For the individual jobs within your workflow, check out our guides on [creating Glue ETL jobs](https://oneuptime.com/blog/post/2026-02-12-create-aws-glue-etl-jobs/view) and [using job bookmarks for incremental processing](https://oneuptime.com/blog/post/2026-02-12-use-glue-job-bookmarks-for-incremental-data-processing/view).

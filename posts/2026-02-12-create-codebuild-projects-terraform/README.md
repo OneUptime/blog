@@ -444,7 +444,7 @@ resource "aws_codebuild_project" "per_env" {
 }
 ```
 
-For details on connecting CodeBuild to a full CI/CD pipeline, check out our guide on [creating CodePipeline with Terraform](https://oneuptime.com/blog/post/create-codepipeline-terraform/view).
+For details on connecting CodeBuild to a full CI/CD pipeline, check out our guide on [creating CodePipeline with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-codepipeline-terraform/view).
 
 ## Wrapping Up
 

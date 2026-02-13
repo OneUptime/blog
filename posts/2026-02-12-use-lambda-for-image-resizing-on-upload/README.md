@@ -347,7 +347,7 @@ Track these metrics to understand your resizing pipeline's health:
 - **Throttles** - If you're hitting concurrent execution limits.
 - **File sizes** - Track output sizes to ensure compression is working.
 
-For deeper monitoring, see our post on [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/monitor-lambda-function-performance-with-cloudwatch/view).
+For deeper monitoring, see our post on [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-lambda-function-performance-with-cloudwatch/view).
 
 ## Wrapping Up
 

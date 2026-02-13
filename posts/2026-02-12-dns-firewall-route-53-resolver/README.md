@@ -290,4 +290,4 @@ Be careful with fail-closed. If DNS Firewall has an issue, all DNS resolution in
 
 **Monitor for DNS tunneling.** Unusually long subdomain queries or high query volumes from a single source can indicate DNS tunneling. DNS Firewall logs make this visible.
 
-Pair DNS Firewall with [AWS Network Firewall logging](https://oneuptime.com/blog/post/aws-network-firewall-logging/view) for complete network security visibility. Use [OneUptime](https://oneuptime.com) to monitor both your DNS firewall metrics and overall application availability.
+Pair DNS Firewall with [AWS Network Firewall logging](https://oneuptime.com/blog/post/2026-02-12-aws-network-firewall-logging/view) for complete network security visibility. Use [OneUptime](https://oneuptime.com) to monitor both your DNS firewall metrics and overall application availability.

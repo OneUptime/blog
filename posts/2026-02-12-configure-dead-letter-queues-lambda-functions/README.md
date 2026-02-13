@@ -249,7 +249,7 @@ The most important CloudWatch metrics for your DLQ are:
 
 Set alarms on both. If messages are piling up, something is systematically wrong. If the oldest message is getting stale, your reprocessing pipeline isn't keeping up.
 
-For a deeper look at monitoring Lambda failures, check out [debugging Lambda functions with CloudWatch Logs](https://oneuptime.com/blog/post/debug-lambda-functions-cloudwatch-logs/view).
+For a deeper look at monitoring Lambda failures, check out [debugging Lambda functions with CloudWatch Logs](https://oneuptime.com/blog/post/2026-02-12-debug-lambda-functions-cloudwatch-logs/view).
 
 ## DLQ vs. Lambda Destinations
 
@@ -263,7 +263,7 @@ Lambda Destinations were introduced after DLQs and offer more capabilities. Here
 | Target types | SQS, SNS | SQS, SNS, EventBridge, Lambda |
 | Invocation scope | Async only | Async only |
 
-For new projects, consider using Destinations instead. Read more in our guide on [Lambda Destinations for asynchronous invocation](https://oneuptime.com/blog/post/lambda-destinations-asynchronous-invocation/view). That said, DLQs are still perfectly valid, widely used, and simpler to reason about.
+For new projects, consider using Destinations instead. Read more in our guide on [Lambda Destinations for asynchronous invocation](https://oneuptime.com/blog/post/2026-02-12-lambda-destinations-asynchronous-invocation/view). That said, DLQs are still perfectly valid, widely used, and simpler to reason about.
 
 ## Common Mistakes to Avoid
 
@@ -279,7 +279,7 @@ For new projects, consider using Destinations instead. Read more in our guide on
 
 AWS added the SQS DLQ redrive feature, which lets you move messages from a DLQ back to the original source queue. But for Lambda DLQs, you'll typically want custom reprocessing logic since there's no "source queue" to redrive to.
 
-A common pattern is to have a second Lambda function on a schedule that reads from the DLQ and re-invokes the original function. You can learn more about scheduled Lambda invocations in our post on [triggering Lambda functions on a schedule](https://oneuptime.com/blog/post/trigger-lambda-schedule-cron/view).
+A common pattern is to have a second Lambda function on a schedule that reads from the DLQ and re-invokes the original function. You can learn more about scheduled Lambda invocations in our post on [triggering Lambda functions on a schedule](https://oneuptime.com/blog/post/2026-02-12-trigger-lambda-schedule-cron/view).
 
 ## Final Thoughts
 

@@ -144,7 +144,7 @@ aws ec2 authorize-security-group-ingress \
   --cidr 10.0.1.0/24
 ```
 
-For production, use security group references instead of CIDR blocks. See our guide on [configuring RDS security groups](https://oneuptime.com/blog/post/configure-rds-security-groups-database-access/view) for best practices.
+For production, use security group references instead of CIDR blocks. See our guide on [configuring RDS security groups](https://oneuptime.com/blog/post/2026-02-12-configure-rds-security-groups-database-access/view) for best practices.
 
 ## Step 6: Create the RDS Instance
 
@@ -210,7 +210,7 @@ aws ssm start-session \
 ### Client VPN
 For teams that need regular access, set up AWS Client VPN. Once connected, you're effectively inside the VPC.
 
-For a full comparison of these methods, see [connecting to RDS from a local machine](https://oneuptime.com/blog/post/connect-rds-instance-from-local-machine/view).
+For a full comparison of these methods, see [connecting to RDS from a local machine](https://oneuptime.com/blog/post/2026-02-12-connect-rds-instance-from-local-machine/view).
 
 ## NAT Gateway for RDS Updates
 

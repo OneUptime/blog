@@ -263,7 +263,7 @@ aws configservice put-config-rule \
   }'
 ```
 
-For more on rules, check out [creating custom AWS Config rules](https://oneuptime.com/blog/post/create-custom-aws-config-rules/view) and [using managed rules for security best practices](https://oneuptime.com/blog/post/aws-config-managed-rules-security/view).
+For more on rules, check out [creating custom AWS Config rules](https://oneuptime.com/blog/post/2026-02-12-create-custom-aws-config-rules/view) and [using managed rules for security best practices](https://oneuptime.com/blog/post/2026-02-12-aws-config-managed-rules-security/view).
 
 ## Cost Considerations
 
@@ -277,4 +277,4 @@ For a typical mid-size account, expect $20-50/month. Larger accounts with freque
 
 ## What to Do Next
 
-With Config enabled, you'll want to add rules to actually enforce your compliance requirements. Start with the [managed rules for security best practices](https://oneuptime.com/blog/post/aws-config-managed-rules-security/view), then look at [conformance packs](https://oneuptime.com/blog/post/aws-config-conformance-packs/view) for applying groups of rules at once. For multi-account environments, [Config aggregators](https://oneuptime.com/blog/post/aws-config-aggregators-multi-account/view) give you a single-pane view across all accounts.
+With Config enabled, you'll want to add rules to actually enforce your compliance requirements. Start with the [managed rules for security best practices](https://oneuptime.com/blog/post/2026-02-12-aws-config-managed-rules-security/view), then look at [conformance packs](https://oneuptime.com/blog/post/2026-02-12-aws-config-conformance-packs/view) for applying groups of rules at once. For multi-account environments, [Config aggregators](https://oneuptime.com/blog/post/2026-02-12-aws-config-aggregators-multi-account/view) give you a single-pane view across all accounts.

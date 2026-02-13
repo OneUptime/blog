@@ -129,7 +129,7 @@ aws ssm send-command `
 
 After deployment, validate that the application works correctly on AWS. Set up monitoring to catch any issues early.
 
-For monitoring the health of your migrated application, consider setting up proper observability. You can learn more about application monitoring in our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-route-53-dns-query-logging/view).
+For monitoring the health of your migrated application, consider setting up proper observability. You can learn more about application monitoring in our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-12-monitor-route-53-dns-query-logging/view).
 
 ```powershell
 # Check EMP application status

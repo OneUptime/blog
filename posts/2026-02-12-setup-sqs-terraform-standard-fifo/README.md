@@ -247,7 +247,7 @@ resource "aws_iam_role_policy" "lambda_sqs" {
 }
 ```
 
-For more on handling batch processing and partial failures, see our guides on [processing SQS messages in batch with Lambda](https://oneuptime.com/blog/post/process-sqs-messages-batch-lambda/view) and [handling SQS partial batch failures](https://oneuptime.com/blog/post/handle-sqs-partial-batch-failures-lambda/view).
+For more on handling batch processing and partial failures, see our guides on [processing SQS messages in batch with Lambda](https://oneuptime.com/blog/post/2026-02-12-process-sqs-messages-batch-lambda/view) and [handling SQS partial batch failures](https://oneuptime.com/blog/post/2026-02-12-handle-sqs-partial-batch-failures-lambda/view).
 
 ## Reusable Module
 

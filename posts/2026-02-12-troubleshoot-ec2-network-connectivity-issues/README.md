@@ -46,7 +46,7 @@ aws ec2 describe-instance-status \
   }'
 ```
 
-If status checks are failing, that's a different problem - see [troubleshooting status check failures](https://oneuptime.com/blog/post/troubleshoot-ec2-instance-status-check-failures/view).
+If status checks are failing, that's a different problem - see [troubleshooting status check failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-ec2-instance-status-check-failures/view).
 
 ## Step 2: Check Security Groups
 

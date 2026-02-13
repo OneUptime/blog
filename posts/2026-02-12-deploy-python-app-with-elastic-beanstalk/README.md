@@ -155,7 +155,7 @@ class Config:
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 ```
 
-For more on managing environment variables, check out our guide on [configuring Elastic Beanstalk environment variables](https://oneuptime.com/blog/post/configure-elastic-beanstalk-environment-variables/view).
+For more on managing environment variables, check out our guide on [configuring Elastic Beanstalk environment variables](https://oneuptime.com/blog/post/2026-02-12-configure-elastic-beanstalk-environment-variables/view).
 
 ## Running Database Migrations
 
@@ -222,7 +222,7 @@ eb logs --all
 eb logs --stream
 ```
 
-For production monitoring, you'll want something more robust. Setting up [application monitoring with OneUptime](https://oneuptime.com/blog/post/set-up-aws-resilience-hub-for-application-resilience/view) gives you alerting, dashboards, and incident management beyond what CloudWatch alone provides.
+For production monitoring, you'll want something more robust. Setting up [application monitoring with OneUptime](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-resilience-hub-for-application-resilience/view) gives you alerting, dashboards, and incident management beyond what CloudWatch alone provides.
 
 ## Using a Procfile for Custom Commands
 
@@ -281,4 +281,4 @@ Elastic Beanstalk removes the tedious parts of deployment without taking away co
 
 For Python apps specifically, the combination of a proper `requirements.txt`, a well-structured `.ebextensions` directory, and a Procfile gives you everything you need. Start simple, then add complexity as your application demands it.
 
-If you're looking to deploy containerized Python applications instead, take a look at our guide on [deploying Docker apps with Elastic Beanstalk](https://oneuptime.com/blog/post/deploy-docker-app-with-elastic-beanstalk/view) for a container-based approach.
+If you're looking to deploy containerized Python applications instead, take a look at our guide on [deploying Docker apps with Elastic Beanstalk](https://oneuptime.com/blog/post/2026-02-12-deploy-docker-app-with-elastic-beanstalk/view) for a container-based approach.

@@ -300,7 +300,7 @@ const connectionAlarm = new cloudwatch.Alarm(this, 'HighConnections', {
 connectionAlarm.addAlarmAction(new actions.SnsAction(alertTopic));
 ```
 
-For more on monitoring alarms, see our post on [CloudWatch alarms with CDK](https://oneuptime.com/blog/post/cloudwatch-alarms-cdk/view). And for managing your database credentials securely, check out [Secrets Manager secrets with CDK](https://oneuptime.com/blog/post/secrets-manager-secrets-cdk/view).
+For more on monitoring alarms, see our post on [CloudWatch alarms with CDK](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-cdk/view). And for managing your database credentials securely, check out [Secrets Manager secrets with CDK](https://oneuptime.com/blog/post/2026-02-12-secrets-manager-secrets-cdk/view).
 
 ## Wrapping Up
 

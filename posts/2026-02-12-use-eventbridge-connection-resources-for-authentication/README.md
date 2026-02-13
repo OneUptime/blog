@@ -303,4 +303,4 @@ If an OAuth connection enters `DEAUTHORIZED` state, it means the token refresh f
 
 EventBridge Connections provide a clean, secure way to manage authentication for external API integrations. They handle the tedious parts - credential storage, OAuth token refresh, and secret management - so you can focus on the event routing logic. Combined with API Destinations, they let you build webhook integrations without any Lambda functions.
 
-For a complete walkthrough of building webhook integrations with API Destinations, see our guide on [using EventBridge API Destinations for Webhooks](https://oneuptime.com/blog/post/use-eventbridge-api-destinations-for-webhooks/view).
+For a complete walkthrough of building webhook integrations with API Destinations, see our guide on [using EventBridge API Destinations for Webhooks](https://oneuptime.com/blog/post/2026-02-12-use-eventbridge-api-destinations-for-webhooks/view).

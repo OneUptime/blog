@@ -592,7 +592,7 @@ Monitor the collector's own metrics at the `/metrics` endpoint (default port 888
 
 For more information on OpenTelemetry Collector deployment patterns:
 
-- [How to Deploy the OpenTelemetry Collector as a Gateway](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-gateway/view)
-- [How to Deploy the OpenTelemetry Collector as a DaemonSet in Kubernetes](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-daemonset-kubernetes/view)
+- [How to Deploy the OpenTelemetry Collector as a Gateway](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-gateway/view)
+- [How to Deploy the OpenTelemetry Collector as a DaemonSet in Kubernetes](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-daemonset-kubernetes/view)
 
 Configuring the OpenTelemetry Collector to send data to Grafana Cloud provides a vendor-neutral approach to observability while leveraging Grafana's powerful visualization and analysis capabilities. The native OTLP support in Tempo and the mature Prometheus and Loki exporters make this integration seamless and performant.

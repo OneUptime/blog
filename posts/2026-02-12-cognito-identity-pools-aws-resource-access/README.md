@@ -153,7 +153,7 @@ aws cognito-identity set-identity-pool-roles \
         authenticated=arn:aws:iam::123456789:role/CognitoAuthRole,unauthenticated=arn:aws:iam::123456789:role/CognitoUnauthRole
 ```
 
-If you're using Cognito groups and want group-specific IAM roles, see [mapping Cognito groups to IAM roles](https://oneuptime.com/blog/post/cognito-groups-iam-roles/view) for the Token-based role mapping approach.
+If you're using Cognito groups and want group-specific IAM roles, see [mapping Cognito groups to IAM roles](https://oneuptime.com/blog/post/2026-02-12-cognito-groups-iam-roles/view) for the Token-based role mapping approach.
 
 ## Getting Credentials in JavaScript
 
@@ -289,7 +289,7 @@ class CredentialManager {
 }
 ```
 
-For more on handling token refresh at the Cognito level, see [handling Cognito token refresh in applications](https://oneuptime.com/blog/post/cognito-token-refresh-applications/view).
+For more on handling token refresh at the Cognito level, see [handling Cognito token refresh in applications](https://oneuptime.com/blog/post/2026-02-12-cognito-token-refresh-applications/view).
 
 ## Identity ID Consistency
 

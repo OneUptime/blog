@@ -390,7 +390,7 @@ resource "aws_iam_policy" "athena_analytics" {
 
 Athena publishes workgroup-level metrics to CloudWatch. Monitor scan volumes to keep costs under control.
 
-For tracking Athena costs and performance, pair workgroup metrics with our broader monitoring approach described in [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/create-cloudwatch-alarms-terraform/view).
+For tracking Athena costs and performance, pair workgroup metrics with our broader monitoring approach described in [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-terraform/view).
 
 ## Wrapping Up
 

@@ -54,7 +54,7 @@ Common causes:
 - The resource is in a different module and needs `module.name.output_name`
 - The resource was recently removed or renamed
 
-Fix: Check your resource names, module references, and whether you need a `moved` block for renamed resources. See our post on [Terraform moved blocks](https://oneuptime.com/blog/post/terraform-moved-blocks-resource-refactoring/view) for refactoring safely.
+Fix: Check your resource names, module references, and whether you need a `moved` block for renamed resources. See our post on [Terraform moved blocks](https://oneuptime.com/blog/post/2026-02-12-terraform-moved-blocks-resource-refactoring/view) for refactoring safely.
 
 ### "Error: Cycle detected"
 
@@ -272,7 +272,7 @@ terraform plan -refresh-only
 terraform apply -refresh-only
 ```
 
-For more on state issues, see our post on [handling Terraform state conflicts](https://oneuptime.com/blog/post/terraform-state-conflicts-locking-issues/view).
+For more on state issues, see our post on [handling Terraform state conflicts](https://oneuptime.com/blog/post/2026-02-12-terraform-state-conflicts-locking-issues/view).
 
 ## Debugging Techniques
 

@@ -384,7 +384,7 @@ Common issues and how to fix them:
 
 **CIDR conflicts**: Every VPC CIDR must be unique across all regions. Overlapping CIDRs make routing impossible. Plan your IP addressing before building.
 
-For securing the traffic flowing across regions, consider adding [WAF rules](https://oneuptime.com/blog/post/waf-rules-cdk/view) at each region's entry points. If you're connecting VPN users who need cross-region access, see [AWS Client VPN with mutual authentication](https://oneuptime.com/blog/post/aws-client-vpn-mutual-authentication/view).
+For securing the traffic flowing across regions, consider adding [WAF rules](https://oneuptime.com/blog/post/2026-02-12-waf-rules-cdk/view) at each region's entry points. If you're connecting VPN users who need cross-region access, see [AWS Client VPN with mutual authentication](https://oneuptime.com/blog/post/2026-02-12-aws-client-vpn-mutual-authentication/view).
 
 ## Wrapping Up
 

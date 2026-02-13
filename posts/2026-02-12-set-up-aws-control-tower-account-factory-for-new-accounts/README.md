@@ -222,7 +222,7 @@ sequenceDiagram
 
 Out of the box, Account Factory applies Control Tower's baseline. But most organizations need additional customizations. You can use AWS Control Tower Customizations (CfCT) or Account Factory for Terraform (AFT) for this.
 
-For a deeper dive into customizations, check out our guide on [using AWS Control Tower Customizations](https://oneuptime.com/blog/post/use-aws-control-tower-customizations-cfct/view).
+For a deeper dive into customizations, check out our guide on [using AWS Control Tower Customizations](https://oneuptime.com/blog/post/2026-02-12-use-aws-control-tower-customizations-cfct/view).
 
 A common baseline includes:
 

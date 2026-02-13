@@ -735,9 +735,9 @@ client.incr('high.frequency.event', rate=0.1)
 
 Learn about other OpenTelemetry Collector receivers:
 
-- https://oneuptime.com/blog/post/kafka-receiver-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/syslog-receiver-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/tcp-log-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-kafka-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-syslog-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-tcp-log-receiver-opentelemetry-collector/view
 
 ## Conclusion
 

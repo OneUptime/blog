@@ -16,8 +16,8 @@ ECS integrates with Application Auto Scaling, which supports three scaling appro
 
 Make sure you have:
 
-- An ECS service running (see [creating an ECS service](https://oneuptime.com/blog/post/ecs-service-long-running-containers/view))
-- Properly configured [health checks](https://oneuptime.com/blog/post/ecs-health-checks/view) so scaling decisions are based on healthy tasks
+- An ECS service running (see [creating an ECS service](https://oneuptime.com/blog/post/2026-02-12-ecs-service-long-running-containers/view))
+- Properly configured [health checks](https://oneuptime.com/blog/post/2026-02-12-ecs-health-checks/view) so scaling decisions are based on healthy tasks
 - CloudWatch metrics enabled (Container Insights recommended)
 
 ## Registering the Scaling Target

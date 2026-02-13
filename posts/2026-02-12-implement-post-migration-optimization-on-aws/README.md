@@ -296,7 +296,7 @@ aws ce create-anomaly-subscription \
     }'
 ```
 
-For comprehensive monitoring of your AWS infrastructure, see our guide on [monitoring Route 53 DNS query logging](https://oneuptime.com/blog/post/monitor-route-53-dns-query-logging/view).
+For comprehensive monitoring of your AWS infrastructure, see our guide on [monitoring Route 53 DNS query logging](https://oneuptime.com/blog/post/2026-02-12-monitor-route-53-dns-query-logging/view).
 
 ## The Optimization Timeline
 

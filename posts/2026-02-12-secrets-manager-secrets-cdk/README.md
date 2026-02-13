@@ -277,7 +277,7 @@ const encryptedSecret = new secretsmanager.Secret(this, 'EncryptedSecret', {
 });
 ```
 
-For more on KMS key management, see our post on [creating KMS keys with CDK](https://oneuptime.com/blog/post/kms-keys-cdk/view).
+For more on KMS key management, see our post on [creating KMS keys with CDK](https://oneuptime.com/blog/post/2026-02-12-kms-keys-cdk/view).
 
 ## Wrapping Up
 

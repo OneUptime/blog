@@ -833,7 +833,7 @@ service:
       exporters: [otlp]
 ```
 
-OneUptime provides Redis-specific dashboards with cache performance analytics, memory usage visualization, and intelligent alerting for cache hit rates and eviction patterns. For monitoring databases alongside Redis, see our guides on [PostgreSQL receiver](https://oneuptime.com/blog/post/postgresql-receiver-opentelemetry-collector/view), [MySQL receiver](https://oneuptime.com/blog/post/mysql-receiver-opentelemetry-collector/view), and [MongoDB receiver](https://oneuptime.com/blog/post/mongodb-receiver-opentelemetry-collector/view).
+OneUptime provides Redis-specific dashboards with cache performance analytics, memory usage visualization, and intelligent alerting for cache hit rates and eviction patterns. For monitoring databases alongside Redis, see our guides on [PostgreSQL receiver](https://oneuptime.com/blog/post/2026-02-06-postgresql-receiver-opentelemetry-collector/view), [MySQL receiver](https://oneuptime.com/blog/post/2026-02-06-mysql-receiver-opentelemetry-collector/view), and [MongoDB receiver](https://oneuptime.com/blog/post/2026-02-06-mongodb-receiver-opentelemetry-collector/view).
 
 ## Conclusion
 
@@ -841,4 +841,4 @@ The Redis receiver provides comprehensive monitoring for Redis deployments throu
 
 Start with basic configuration for standalone instances, then expand to monitor Redis Cluster or Sentinel setups as your architecture grows. Use the collected metrics to optimize cache hit rates, tune memory allocation, and maintain high-performance Redis operations.
 
-For monitoring Redis in containerized environments, combine this receiver with the [Docker Stats receiver](https://oneuptime.com/blog/post/docker-stats-receiver-opentelemetry-collector/view) for full-stack observability. To collect application logs alongside Redis metrics, explore our guide on the [Fluent Forward receiver](https://oneuptime.com/blog/post/fluent-forward-receiver-opentelemetry-collector/view).
+For monitoring Redis in containerized environments, combine this receiver with the [Docker Stats receiver](https://oneuptime.com/blog/post/2026-02-06-docker-stats-receiver-opentelemetry-collector/view) for full-stack observability. To collect application logs alongside Redis metrics, explore our guide on the [Fluent Forward receiver](https://oneuptime.com/blog/post/2026-02-06-fluent-forward-receiver-opentelemetry-collector/view).

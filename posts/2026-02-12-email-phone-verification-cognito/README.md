@@ -307,7 +307,7 @@ export const handler = async (event) => {
 };
 ```
 
-For more details on the Custom Message trigger, see [using Cognito Lambda triggers for custom messages](https://oneuptime.com/blog/post/cognito-lambda-triggers-custom-message/view).
+For more details on the Custom Message trigger, see [using Cognito Lambda triggers for custom messages](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-custom-message/view).
 
 ## Auto-Confirming Users
 

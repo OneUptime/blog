@@ -373,7 +373,7 @@ curl http://localhost:8080/api/status
 4. **DNS resolution changes**: Container DNS works differently than bare metal
 5. **Resource limits**: Containers have memory limits; ensure the app respects them
 
-For monitoring your containerized legacy applications, [OneUptime](https://oneuptime.com/blog/post/refactor-applications-to-serverless-on-aws/view) provides container-aware monitoring that tracks both application health and infrastructure metrics.
+For monitoring your containerized legacy applications, [OneUptime](https://oneuptime.com/blog/post/2026-02-12-refactor-applications-to-serverless-on-aws/view) provides container-aware monitoring that tracks both application health and infrastructure metrics.
 
 ## Wrapping Up
 

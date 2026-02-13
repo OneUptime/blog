@@ -375,4 +375,4 @@ The exported journal can be independently verified by auditors using the digest 
 
 QLDB's cryptographic verification gives you mathematical proof that your ledger data has not been tampered with. By regularly computing digests, storing them securely, and verifying documents against those digests, you build an audit trail that can withstand scrutiny from regulators, auditors, and security teams. The key is automating the verification process and storing digests outside the system being verified.
 
-For related topics on data integrity and databases, see our guides on [Timestream for IoT data](https://oneuptime.com/blog/post/set-up-timestream-for-iot-data/view) and [Keyspaces capacity management](https://oneuptime.com/blog/post/set-up-keyspaces-on-demand-vs-provisioned-capacity/view).
+For related topics on data integrity and databases, see our guides on [Timestream for IoT data](https://oneuptime.com/blog/post/2026-02-12-set-up-timestream-for-iot-data/view) and [Keyspaces capacity management](https://oneuptime.com/blog/post/2026-02-12-set-up-keyspaces-on-demand-vs-provisioned-capacity/view).

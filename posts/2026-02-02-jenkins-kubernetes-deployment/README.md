@@ -1302,4 +1302,4 @@ Never deploy the `latest` tag to production. Use specific version tags for repro
 
 Deploying to Kubernetes from Jenkins combines the flexibility of Jenkins pipelines with the power of Kubernetes orchestration. Start with simple kubectl deployments, then graduate to Helm charts as your needs grow. Implement canary or blue-green strategies for safer releases. The key is to automate everything, from building to testing to deploying, while maintaining clear visibility into each stage of the process.
 
-For monitoring your Jenkins and Kubernetes deployments, consider using [OneUptime](https://oneuptime.com/blog/post/nodejs-health-checks-kubernetes/view) to track application health and receive alerts when issues arise.
+For monitoring your Jenkins and Kubernetes deployments, consider using [OneUptime](https://oneuptime.com/blog/post/2026-01-06-nodejs-health-checks-kubernetes/view) to track application health and receive alerts when issues arise.

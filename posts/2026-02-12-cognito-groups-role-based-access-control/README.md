@@ -74,7 +74,7 @@ aws cognito-idp admin-remove-user-from-group \
     --group-name Users
 ```
 
-You can also manage group membership programmatically in your application backend. For a deeper look at user management APIs, check out [using Cognito Admin APIs for user management](https://oneuptime.com/blog/post/cognito-admin-apis-user-management/view).
+You can also manage group membership programmatically in your application backend. For a deeper look at user management APIs, check out [using Cognito Admin APIs for user management](https://oneuptime.com/blog/post/2026-02-12-cognito-admin-apis-user-management/view).
 
 ## How Groups Appear in JWT Tokens
 
@@ -224,7 +224,7 @@ if (hasRole(token, 'Admins')) {
 
 ## API Gateway Authorization with Groups
 
-If you're using API Gateway, you can set up a Cognito authorizer and use groups to control access at the API level. See [integrating Cognito with API Gateway](https://oneuptime.com/blog/post/cognito-api-gateway-authorization/view) for a full walkthrough.
+If you're using API Gateway, you can set up a Cognito authorizer and use groups to control access at the API level. See [integrating Cognito with API Gateway](https://oneuptime.com/blog/post/2026-02-12-cognito-api-gateway-authorization/view) for a full walkthrough.
 
 For group-based authorization at the API Gateway level, you'll need a custom Lambda authorizer that checks group claims:
 
@@ -272,7 +272,7 @@ Cognito allows up to 10,000 groups per user pool, and a user can belong to up to
 - **Token size**: Every group adds to the JWT token size. If a user belongs to 50 groups, that's a lot of extra data in every request.
 - **Precedence planning**: Leave gaps in precedence numbers (1, 5, 10 instead of 1, 2, 3) so you can insert new groups later without reshuffling.
 
-For mapping groups to AWS IAM roles for direct AWS resource access, check out [mapping Cognito groups to IAM roles](https://oneuptime.com/blog/post/cognito-groups-iam-roles/view).
+For mapping groups to AWS IAM roles for direct AWS resource access, check out [mapping Cognito groups to IAM roles](https://oneuptime.com/blog/post/2026-02-12-cognito-groups-iam-roles/view).
 
 ## Wrapping Up
 

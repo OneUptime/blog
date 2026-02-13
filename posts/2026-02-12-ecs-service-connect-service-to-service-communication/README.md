@@ -239,7 +239,7 @@ aws cloudwatch get-metric-statistics \
   --statistics Sum
 ```
 
-For deeper monitoring, check out our guide on [monitoring ECS with Container Insights](https://oneuptime.com/blog/post/monitor-ecs-container-insights/view).
+For deeper monitoring, check out our guide on [monitoring ECS with Container Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-container-insights/view).
 
 ## Service Connect vs Other Options
 
@@ -261,7 +261,7 @@ When should you use Service Connect vs the alternatives?
 - You require mTLS between services
 - You need full Envoy configuration control
 
-For more on App Mesh, see our post on [using ECS with AWS App Mesh](https://oneuptime.com/blog/post/ecs-aws-app-mesh-service-mesh/view).
+For more on App Mesh, see our post on [using ECS with AWS App Mesh](https://oneuptime.com/blog/post/2026-02-12-ecs-aws-app-mesh-service-mesh/view).
 
 ## Common Issues
 

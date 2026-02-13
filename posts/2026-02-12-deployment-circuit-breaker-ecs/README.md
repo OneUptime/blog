@@ -268,7 +268,7 @@ There are a few things to be aware of:
 
 **No custom thresholds**: You can't configure the failure threshold. AWS determines it based on desired count. This means for services with high desired counts, it might take a while before the circuit breaker triggers.
 
-**No health-based triggers**: The circuit breaker only tracks task launch failures, not application-level health metrics. If your new version starts successfully but returns errors, the circuit breaker won't catch that. For health-based rollbacks, use CodeDeploy with CloudWatch alarms (see our post on [blue/green deployments](https://oneuptime.com/blog/post/ecs-blue-green-deployments-codedeploy/view)).
+**No health-based triggers**: The circuit breaker only tracks task launch failures, not application-level health metrics. If your new version starts successfully but returns errors, the circuit breaker won't catch that. For health-based rollbacks, use CodeDeploy with CloudWatch alarms (see our post on [blue/green deployments](https://oneuptime.com/blog/post/2026-02-12-ecs-blue-green-deployments-codedeploy/view)).
 
 **Rollback is to the previous version only**: If the previous version was also broken, the rollback won't help. It goes back exactly one version.
 

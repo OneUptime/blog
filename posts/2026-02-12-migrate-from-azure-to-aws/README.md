@@ -165,7 +165,7 @@ print(f"Import task: {import_task_id}")
 
 **Option B: Use AWS Application Migration Service (Less downtime)**
 
-Install the MGN agent on your Azure VMs and replicate to AWS, just like migrating from on-premises. See our [MGN migration guide](https://oneuptime.com/blog/post/migrate-vms-to-aws-with-aws-application-migration-service-mgn/view) for details.
+Install the MGN agent on your Azure VMs and replicate to AWS, just like migrating from on-premises. See our [MGN migration guide](https://oneuptime.com/blog/post/2026-02-12-migrate-vms-to-aws-with-aws-application-migration-service-mgn/view) for details.
 
 ### Azure App Service to AWS
 
@@ -179,7 +179,7 @@ For App Service applications, the approach depends on the application type:
 
 ### Azure SQL Database to RDS
 
-Use DMS for database migration. See our detailed [DMS migration guide](https://oneuptime.com/blog/post/migrate-databases-to-aws-with-dms/view).
+Use DMS for database migration. See our detailed [DMS migration guide](https://oneuptime.com/blog/post/2026-02-12-migrate-databases-to-aws-with-dms/view).
 
 ```python
 # Create DMS task for Azure SQL to RDS
@@ -266,7 +266,7 @@ azcopy copy "https://myaccount.blob.core.windows.net/mycontainer/*" \
 aws s3 sync /local/staging/ s3://my-bucket/ --storage-class INTELLIGENT_TIERING
 ```
 
-For large datasets (tens of TB or more), consider using [AWS Snowball](https://oneuptime.com/blog/post/migrate-large-datasets-to-s3-with-aws-snowball/view) instead of network transfer.
+For large datasets (tens of TB or more), consider using [AWS Snowball](https://oneuptime.com/blog/post/2026-02-12-migrate-large-datasets-to-s3-with-aws-snowball/view) instead of network transfer.
 
 ## Phase 6: Migrate Identity and Access
 

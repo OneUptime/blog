@@ -352,6 +352,6 @@ Run through this list for every production MSK cluster:
 9. Broker logs shipped to CloudWatch
 10. Secrets Manager used for SCRAM credentials (not hardcoded)
 
-For the basics of setting up your MSK cluster before hardening security, see our guide on [setting up Amazon MSK](https://oneuptime.com/blog/post/set-up-amazon-msk/view).
+For the basics of setting up your MSK cluster before hardening security, see our guide on [setting up Amazon MSK](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-msk/view).
 
 Security isn't something you bolt on later - get it right from the start. IAM authentication is the simplest path if all your clients are AWS-native. SASL/SCRAM with ACLs gives you more flexibility for mixed environments. Either way, always encrypt everything and restrict network access to the minimum necessary.

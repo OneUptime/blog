@@ -1181,4 +1181,4 @@ Key takeaways:
 
 **Related Reading:**
 - [How to Configure Kafka Quotas for Rate Limiting](https://oneuptime.com/blog/post/kafka-quotas-rate-limiting/view)
-- [How to Monitor Kafka with Prometheus](https://oneuptime.com/blog/post/kafka-prometheus-monitoring/view)
+- [How to Monitor Kafka with Prometheus](https://oneuptime.com/blog/post/2026-01-26-kafka-prometheus-monitoring/view)

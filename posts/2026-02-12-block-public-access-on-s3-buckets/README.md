@@ -276,4 +276,4 @@ echo "Account-level S3 Block Public Access enabled!"
 
 There's really no downside to enabling this. Any legitimate use case for public data can be handled through CloudFront, presigned URLs, or S3 Access Points. The protection it provides against accidental data exposure far outweighs the minor inconvenience of using a CDN for public content.
 
-For more on S3 access control, check our guides on [bucket policies](https://oneuptime.com/blog/post/set-up-s3-bucket-policies-access-control/view) and [ACL configuration](https://oneuptime.com/blog/post/configure-s3-bucket-acls/view).
+For more on S3 access control, check our guides on [bucket policies](https://oneuptime.com/blog/post/2026-02-12-set-up-s3-bucket-policies-access-control/view) and [ACL configuration](https://oneuptime.com/blog/post/2026-02-12-configure-s3-bucket-acls/view).

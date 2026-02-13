@@ -419,7 +419,7 @@ export function useAuth() {
 }
 ```
 
-For framework-specific implementations, see [Cognito authentication in Next.js](https://oneuptime.com/blog/post/cognito-authentication-nextjs/view), [in Angular](https://oneuptime.com/blog/post/cognito-authentication-angular/view), or [in Vue.js](https://oneuptime.com/blog/post/cognito-authentication-vuejs/view).
+For framework-specific implementations, see [Cognito authentication in Next.js](https://oneuptime.com/blog/post/2026-02-12-cognito-authentication-nextjs/view), [in Angular](https://oneuptime.com/blog/post/2026-02-12-cognito-authentication-angular/view), or [in Vue.js](https://oneuptime.com/blog/post/2026-02-12-cognito-authentication-vuejs/view).
 
 ## Wrapping Up
 

@@ -294,7 +294,7 @@ Set up a CloudWatch alarm if you detect failures. You can also integrate with [O
 
 **Deploy conformance packs.** Instead of individual rules, use conformance packs to deploy sets of related rules. AWS provides pre-built packs for frameworks like CIS, PCI DSS, and HIPAA.
 
-**Combine with CloudTrail aggregation.** Config tells you what changed, CloudTrail tells you who changed it. Together they give you complete audit visibility. See our [CloudTrail aggregation guide](https://oneuptime.com/blog/post/cross-account-cloudtrail-aggregation/view) for the other half of this setup.
+**Combine with CloudTrail aggregation.** Config tells you what changed, CloudTrail tells you who changed it. Together they give you complete audit visibility. See our [CloudTrail aggregation guide](https://oneuptime.com/blog/post/2026-02-12-cross-account-cloudtrail-aggregation/view) for the other half of this setup.
 
 **Use advanced queries.** Config supports SQL-like queries across aggregated data. This is much more flexible than the basic API calls.
 

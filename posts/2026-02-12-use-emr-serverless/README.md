@@ -320,6 +320,6 @@ Stick with EMR on EC2 when you need:
 - Persistent HDFS storage
 - Fine-grained control over instance types and placement
 
-For more on setting up traditional EMR clusters, see our guide on [setting up Amazon EMR clusters](https://oneuptime.com/blog/post/set-up-amazon-emr-clusters/view).
+For more on setting up traditional EMR clusters, see our guide on [setting up Amazon EMR clusters](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-emr-clusters/view).
 
 EMR Serverless is a solid choice when you want to focus on your data processing logic rather than cluster operations. The trade-off is less visibility and control, but for most batch workloads, that's a trade worth making.

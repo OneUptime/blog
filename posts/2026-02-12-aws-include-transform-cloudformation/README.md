@@ -310,7 +310,7 @@ Resources:
 
 ## Limitations
 
-**No parameterization.** You can't pass variables to included snippets. The snippet is included as-is. For parameterized reusable components, use [nested stacks](https://oneuptime.com/blog/post/cloudformation-nested-stacks/view) or [custom macros](https://oneuptime.com/blog/post/cloudformation-macros-transforms/view).
+**No parameterization.** You can't pass variables to included snippets. The snippet is included as-is. For parameterized reusable components, use [nested stacks](https://oneuptime.com/blog/post/2026-02-12-cloudformation-nested-stacks/view) or [custom macros](https://oneuptime.com/blog/post/2026-02-12-cloudformation-macros-transforms/view).
 
 **S3 only.** Snippets must be stored in S3. You can't include from local files or HTTP URLs.
 

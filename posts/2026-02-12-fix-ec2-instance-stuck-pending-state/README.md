@@ -75,7 +75,7 @@ aws ec2 run-instances \
   --key-name my-key
 ```
 
-For more details on capacity issues, check out our post on [fixing InsufficientInstanceCapacity errors](https://oneuptime.com/blog/post/fix-insufficientinstancecapacity-ec2-errors/view).
+For more details on capacity issues, check out our post on [fixing InsufficientInstanceCapacity errors](https://oneuptime.com/blog/post/2026-02-12-fix-insufficientinstancecapacity-ec2-errors/view).
 
 ### 3. ENI (Elastic Network Interface) Limits
 

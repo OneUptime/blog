@@ -190,7 +190,7 @@ The resulting JSON would look something like this:
 
 The visual editor runs basic validation as you build. It'll flag issues like invalid ARN formats or actions that don't exist. But it won't catch logical errors like granting too much access.
 
-For deeper testing, use the IAM Policy Simulator after creating your policy. We have a detailed walkthrough in our guide on [using the IAM Policy Simulator to test permissions](https://oneuptime.com/blog/post/use-iam-policy-simulator-to-test-permissions/view).
+For deeper testing, use the IAM Policy Simulator after creating your policy. We have a detailed walkthrough in our guide on [using the IAM Policy Simulator to test permissions](https://oneuptime.com/blog/post/2026-02-12-use-iam-policy-simulator-to-test-permissions/view).
 
 ## When to Use the Visual Editor vs JSON
 

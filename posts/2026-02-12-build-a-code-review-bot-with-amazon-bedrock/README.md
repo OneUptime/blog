@@ -440,7 +440,7 @@ REPO_CONFIGS = {
 
 ## Monitoring the Review Bot
 
-A code review bot that goes silent is worse than having no bot - developers assume their code has been reviewed when it has not. Monitor webhook delivery success, review processing latency, Bedrock API errors, and GitHub API rate limits. Use [OneUptime](https://oneuptime.com/blog/post/build-a-knowledge-base-qa-system-with-bedrock/view) to set up uptime checks that verify the bot is responding to webhooks and completing reviews.
+A code review bot that goes silent is worse than having no bot - developers assume their code has been reviewed when it has not. Monitor webhook delivery success, review processing latency, Bedrock API errors, and GitHub API rate limits. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-knowledge-base-qa-system-with-bedrock/view) to set up uptime checks that verify the bot is responding to webhooks and completing reviews.
 
 ## Wrapping Up
 

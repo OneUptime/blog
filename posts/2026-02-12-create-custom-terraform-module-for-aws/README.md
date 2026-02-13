@@ -468,4 +468,4 @@ Follow semantic versioning: major for breaking changes, minor for new features, 
 
 Building custom Terraform modules takes more upfront effort than inline resources, but it pays off quickly as your infrastructure grows. Encode your organization's standards into modules, validate inputs aggressively, write examples, and version everything. Your future self and your teammates will appreciate the consistency.
 
-For using well-maintained community modules, see our guides on the [Terraform AWS VPC module](https://oneuptime.com/blog/post/terraform-aws-vpc-module/view) and [Terraform AWS RDS module](https://oneuptime.com/blog/post/terraform-aws-rds-module/view).
+For using well-maintained community modules, see our guides on the [Terraform AWS VPC module](https://oneuptime.com/blog/post/2026-02-12-terraform-aws-vpc-module/view) and [Terraform AWS RDS module](https://oneuptime.com/blog/post/2026-02-12-terraform-aws-rds-module/view).

@@ -277,4 +277,4 @@ If you can't connect:
 5. **Key permissions**: Must be `chmod 600` on your private key
 6. **Network issue**: Try the browser-based SSH from the console as a fallback
 
-Lightsail instances are great for getting projects off the ground quickly. Once you're connected and configured, look at our guides for [setting up containers](https://oneuptime.com/blog/post/setup-lightsail-container-service/view) and [databases](https://oneuptime.com/blog/post/setup-lightsail-database/view) on Lightsail.
+Lightsail instances are great for getting projects off the ground quickly. Once you're connected and configured, look at our guides for [setting up containers](https://oneuptime.com/blog/post/2026-02-12-setup-lightsail-container-service/view) and [databases](https://oneuptime.com/blog/post/2026-02-12-setup-lightsail-database/view) on Lightsail.

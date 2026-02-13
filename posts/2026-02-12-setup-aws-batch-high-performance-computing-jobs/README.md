@@ -324,4 +324,4 @@ aws logs get-log-events \
 5. Verify the job definition's memory and vCPU settings are within instance limits
 6. Make sure the job queue is ENABLED and connected to a valid compute environment
 
-AWS Batch handles the undifferentiated heavy lifting of managing compute infrastructure for batch jobs. You define what to run and how much compute it needs, and Batch handles the rest. For job definition specifics, see our guide on [creating Batch job definitions and queues](https://oneuptime.com/blog/post/create-aws-batch-job-definitions-queues/view).
+AWS Batch handles the undifferentiated heavy lifting of managing compute infrastructure for batch jobs. You define what to run and how much compute it needs, and Batch handles the rest. For job definition specifics, see our guide on [creating Batch job definitions and queues](https://oneuptime.com/blog/post/2026-02-12-create-aws-batch-job-definitions-queues/view).

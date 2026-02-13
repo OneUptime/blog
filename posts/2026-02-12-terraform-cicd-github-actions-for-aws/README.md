@@ -270,7 +270,7 @@ This creates a manual approval gate - production deployments wait for a reviewer
 
 ## Handling Terraform State Locking
 
-Concurrent pipeline runs can corrupt state. Use DynamoDB locking (see our guide on [Terraform state with S3 backend](https://oneuptime.com/blog/post/terraform-state-with-s3-backend-and-dynamodb-locking/view)) and configure concurrency limits in GitHub Actions.
+Concurrent pipeline runs can corrupt state. Use DynamoDB locking (see our guide on [Terraform state with S3 backend](https://oneuptime.com/blog/post/2026-02-12-terraform-state-with-s3-backend-and-dynamodb-locking/view)) and configure concurrency limits in GitHub Actions.
 
 ```yaml
 # Add to your workflow to prevent concurrent runs
@@ -370,4 +370,4 @@ After apply, validate that your infrastructure is healthy. Consider adding a pos
 
 A well-built Terraform CI/CD pipeline with GitHub Actions gives you automated planning on PRs, manual approval for production, audit trails for every change, and no credentials lying around thanks to OIDC. Start with the basic plan/apply workflow and add features like formatting checks, caching, and Slack notifications as your team grows.
 
-For the GitLab equivalent, check out our guide on [Terraform CI/CD with GitLab CI](https://oneuptime.com/blog/post/terraform-cicd-gitlab-ci-for-aws/view).
+For the GitLab equivalent, check out our guide on [Terraform CI/CD with GitLab CI](https://oneuptime.com/blog/post/2026-02-12-terraform-cicd-gitlab-ci-for-aws/view).

@@ -399,7 +399,7 @@ def lambda_handler(event, context):
             )
 ```
 
-For publishing events to multiple consumers, see our guide on [implementing parallel fan-out with SNS and SQS](https://oneuptime.com/blog/post/implement-parallel-fan-out-with-sns-and-sqs/view).
+For publishing events to multiple consumers, see our guide on [implementing parallel fan-out with SNS and SQS](https://oneuptime.com/blog/post/2026-02-12-implement-parallel-fan-out-with-sns-and-sqs/view).
 
 ## Snapshotting for Performance
 

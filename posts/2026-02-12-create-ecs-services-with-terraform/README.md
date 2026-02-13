@@ -120,7 +120,7 @@ resource "aws_iam_role_policy" "task_s3_access" {
 }
 ```
 
-For more details on IAM configuration, see our post on [creating IAM roles and policies with Terraform](https://oneuptime.com/blog/post/create-iam-roles-policies-with-terraform/view).
+For more details on IAM configuration, see our post on [creating IAM roles and policies with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-iam-roles-policies-with-terraform/view).
 
 ## Task Definition
 
@@ -199,7 +199,7 @@ resource "aws_ecs_task_definition" "app" {
 }
 ```
 
-The `secrets` block pulls values from Secrets Manager at runtime, so sensitive data never appears in your Terraform state or task definition. Check out our post on [creating Secrets Manager secrets with Terraform](https://oneuptime.com/blog/post/create-secrets-manager-secrets-with-terraform/view).
+The `secrets` block pulls values from Secrets Manager at runtime, so sensitive data never appears in your Terraform state or task definition. Check out our post on [creating Secrets Manager secrets with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-secrets-manager-secrets-with-terraform/view).
 
 ## Load Balancer
 

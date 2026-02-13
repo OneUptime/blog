@@ -402,4 +402,4 @@ jobs:
 
 SAM takes the complexity out of serverless deployments. The template syntax is cleaner than raw CloudFormation, local testing catches bugs before they hit production, and the deploy command handles packaging and uploading automatically. If you're building anything beyond a single Lambda function, SAM should be your go-to deployment tool.
 
-For managing dependencies in your Lambda packages, check out our guide on [packaging Lambda functions with dependencies](https://oneuptime.com/blog/post/package-lambda-functions-dependencies/view). And for optimizing function performance after deployment, see [configuring Lambda memory and timeout settings](https://oneuptime.com/blog/post/configure-lambda-memory-timeout-settings/view).
+For managing dependencies in your Lambda packages, check out our guide on [packaging Lambda functions with dependencies](https://oneuptime.com/blog/post/2026-02-12-package-lambda-functions-dependencies/view). And for optimizing function performance after deployment, see [configuring Lambda memory and timeout settings](https://oneuptime.com/blog/post/2026-02-12-configure-lambda-memory-timeout-settings/view).

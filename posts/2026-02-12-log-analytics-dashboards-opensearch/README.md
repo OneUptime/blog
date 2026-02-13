@@ -306,4 +306,4 @@ If you're shipping deployment events to OpenSearch (which you should), add an an
 
 **Use index patterns wisely.** If your dashboard only needs access logs, use `access-logs-*` instead of `logs-*`. Less data to search through means faster dashboards.
 
-For setting up automated alerts based on the patterns you see in these dashboards, check out [OpenSearch alerting](https://oneuptime.com/blog/post/opensearch-alerting/view). And for managing the lifecycle of the indexes powering these dashboards, see [OpenSearch ISM](https://oneuptime.com/blog/post/opensearch-index-state-management-ism/view).
+For setting up automated alerts based on the patterns you see in these dashboards, check out [OpenSearch alerting](https://oneuptime.com/blog/post/2026-02-12-opensearch-alerting/view). And for managing the lifecycle of the indexes powering these dashboards, see [OpenSearch ISM](https://oneuptime.com/blog/post/2026-02-12-opensearch-index-state-management-ism/view).

@@ -294,7 +294,7 @@ aws emr ssh --cluster-id j-XXXXXXXXXXXXX --key-pair-file my-keypair.pem
 aws emr socks --cluster-id j-XXXXXXXXXXXXX --key-pair-file my-keypair.pem
 ```
 
-For long-running clusters, set up CloudWatch alarms on HDFS utilization and YARN memory usage. If you're using [OneUptime for infrastructure monitoring](https://oneuptime.com/blog/post/run-apache-spark-jobs-on-amazon-emr/view), you can integrate these metrics for a unified view alongside your application monitoring.
+For long-running clusters, set up CloudWatch alarms on HDFS utilization and YARN memory usage. If you're using [OneUptime for infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-12-run-apache-spark-jobs-on-amazon-emr/view), you can integrate these metrics for a unified view alongside your application monitoring.
 
 ## Cluster Lifecycle
 

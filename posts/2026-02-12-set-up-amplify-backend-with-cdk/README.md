@@ -416,4 +416,4 @@ export class FunctionsStack extends cdk.Stack {
 
 ## Wrapping Up
 
-Using CDK for your Amplify backend gives you infrastructure-as-code without sacrificing the developer experience of Amplify's client libraries. You get full control over every resource, easy integration with existing infrastructure, and a familiar TypeScript development experience. For setting up CI/CD for this kind of project, check out our guide on [Amplify custom pipelines](https://oneuptime.com/blog/post/set-up-amplify-custom-pipelines/view).
+Using CDK for your Amplify backend gives you infrastructure-as-code without sacrificing the developer experience of Amplify's client libraries. You get full control over every resource, easy integration with existing infrastructure, and a familiar TypeScript development experience. For setting up CI/CD for this kind of project, check out our guide on [Amplify custom pipelines](https://oneuptime.com/blog/post/2026-02-12-set-up-amplify-custom-pipelines/view).

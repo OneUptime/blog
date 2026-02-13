@@ -605,4 +605,4 @@ Follow these guidelines for headless services:
 
 Headless services provide essential functionality for stateful applications and custom networking patterns in Kubernetes. By returning individual pod IPs through DNS, they enable direct pod communication, peer discovery, and application-level load balancing. Understanding when and how to use headless services helps you build sophisticated distributed systems on Kubernetes.
 
-For related networking topics, explore our guides on [ExternalName services](https://oneuptime.com/blog/post/externalname-services-cname/view) and [StatefulSet DNS](https://oneuptime.com/blog/post/dns-service-discovery-statefulset/view).
+For related networking topics, explore our guides on [ExternalName services](https://oneuptime.com/blog/post/2026-02-09-externalname-services-cname/view) and [StatefulSet DNS](https://oneuptime.com/blog/post/2026-02-09-dns-service-discovery-statefulset/view).

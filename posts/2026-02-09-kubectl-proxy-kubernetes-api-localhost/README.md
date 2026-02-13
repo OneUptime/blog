@@ -462,4 +462,4 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 Direct access avoids proxy overhead but requires certificate and token management.
 
-kubectl proxy transforms the Kubernetes API from a certificate-protected endpoint into a simple localhost HTTP interface. Use it for development, debugging, and exploring the API without managing authentication credentials. For production automation, consider direct API access or client libraries. Learn more about API exploration at https://oneuptime.com/blog/post/kubectl-api-resources-versions-discover/view.
+kubectl proxy transforms the Kubernetes API from a certificate-protected endpoint into a simple localhost HTTP interface. Use it for development, debugging, and exploring the API without managing authentication credentials. For production automation, consider direct API access or client libraries. Learn more about API exploration at https://oneuptime.com/blog/post/2026-02-09-kubectl-api-resources-versions-discover/view.

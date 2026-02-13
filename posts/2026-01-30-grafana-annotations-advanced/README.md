@@ -1132,6 +1132,6 @@ With these techniques, the next time a latency spike appears at 14:23, you will 
 
 **Related Reading:**
 
-- [Three Pillars of Observability: Logs, Metrics, and Traces](https://oneuptime.com/blog/post/three-pillars-of-observability-logs-metrics-traces/view)
-- [SRE Best Practices](https://oneuptime.com/blog/post/sre-best-practices/view)
-- [Monitoring vs Observability](https://oneuptime.com/blog/post/monitoring-vs-observability-sre/view)
+- [Three Pillars of Observability: Logs, Metrics, and Traces](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)
+- [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view)
+- [Monitoring vs Observability](https://oneuptime.com/blog/post/2025-11-28-monitoring-vs-observability-sre/view)

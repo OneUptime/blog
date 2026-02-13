@@ -247,7 +247,7 @@ aws elbv2 wait target-in-service \
   --targets Id=i-0def456target
 ```
 
-Make sure to configure proper [connection draining](https://oneuptime.com/blog/post/configure-connection-draining-on-a-load-balancer/view) on your load balancer so active requests aren't dropped during the switchover.
+Make sure to configure proper [connection draining](https://oneuptime.com/blog/post/2026-02-12-configure-connection-draining-on-a-load-balancer/view) on your load balancer so active requests aren't dropped during the switchover.
 
 ## Things to Watch Out For
 
@@ -272,6 +272,6 @@ For production workloads where downtime isn't acceptable:
 5. Deregister the old instance (connection draining handles in-flight requests)
 6. Terminate the old instance after draining completes
 
-This is essentially a blue-green deployment across AZs. For an even more resilient setup, check out [multi-AZ deployments for high availability](https://oneuptime.com/blog/post/set-up-multi-az-ec2-deployments-for-high-availability/view).
+This is essentially a blue-green deployment across AZs. For an even more resilient setup, check out [multi-AZ deployments for high availability](https://oneuptime.com/blog/post/2026-02-12-set-up-multi-az-ec2-deployments-for-high-availability/view).
 
 Migrating between AZs isn't complicated, but it does require careful planning around IP addresses, DNS, load balancers, and any other resources that reference the instance. Take the time to inventory all dependencies before starting the migration.

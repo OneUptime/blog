@@ -400,4 +400,4 @@ Idempotency is not optional for production Lambda functions that perform side ef
 
 Set it up for any function that processes payments, creates records, sends notifications, or calls external APIs. The DynamoDB cost is negligible compared to the cost of handling duplicate operations in production.
 
-For the full Powertools toolkit, see our guides on [Lambda Powertools for Python](https://oneuptime.com/blog/post/lambda-powertools-python/view) and [Event Handler for API Gateway](https://oneuptime.com/blog/post/lambda-powertools-event-handler-api-gateway/view).
+For the full Powertools toolkit, see our guides on [Lambda Powertools for Python](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-python/view) and [Event Handler for API Gateway](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-event-handler-api-gateway/view).

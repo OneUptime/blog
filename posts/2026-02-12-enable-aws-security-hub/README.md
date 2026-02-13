@@ -72,7 +72,7 @@ aws securityhub batch-enable-standards \
   }]'
 ```
 
-For more details on compliance standards, see [using Security Hub compliance standards](https://oneuptime.com/blog/post/security-hub-compliance-standards-cis-pci/view).
+For more details on compliance standards, see [using Security Hub compliance standards](https://oneuptime.com/blog/post/2026-02-12-security-hub-compliance-standards-cis-pci/view).
 
 ## Enabling Product Integrations
 
@@ -247,4 +247,4 @@ For most accounts, Security Hub costs $10-50/month. The value of centralized sec
 
 ## What's Next
 
-With Security Hub enabled, explore [compliance standards in detail](https://oneuptime.com/blog/post/security-hub-compliance-standards-cis-pci/view), create [custom insights](https://oneuptime.com/blog/post/custom-security-hub-insights/view) for your specific monitoring needs, and set up [cross-account finding aggregation](https://oneuptime.com/blog/post/aggregate-security-hub-findings-across-accounts/view) for multi-account environments. Make sure you've also [integrated GuardDuty](https://oneuptime.com/blog/post/integrate-guardduty-security-hub/view) to get threat detection findings flowing into Security Hub.
+With Security Hub enabled, explore [compliance standards in detail](https://oneuptime.com/blog/post/2026-02-12-security-hub-compliance-standards-cis-pci/view), create [custom insights](https://oneuptime.com/blog/post/2026-02-12-custom-security-hub-insights/view) for your specific monitoring needs, and set up [cross-account finding aggregation](https://oneuptime.com/blog/post/2026-02-12-aggregate-security-hub-findings-across-accounts/view) for multi-account environments. Make sure you've also [integrated GuardDuty](https://oneuptime.com/blog/post/2026-02-12-integrate-guardduty-security-hub/view) to get threat detection findings flowing into Security Hub.

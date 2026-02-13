@@ -260,4 +260,4 @@ For monitoring your deployed infrastructure after changes, consider using [OneUp
 
 `cdk synth` and `cdk diff` are your safety net. Synthesis catches code errors early, and diff catches infrastructure changes before they hit production. Build both into your workflow, automate them in CI/CD, and never deploy without reviewing the diff first. The few minutes it takes to review a diff can save you hours of incident response.
 
-For more CDK safety practices, see our guide on [using CDK Nag for security checks](https://oneuptime.com/blog/post/use-cdk-nag-for-security-best-practice-checks/view).
+For more CDK safety practices, see our guide on [using CDK Nag for security checks](https://oneuptime.com/blog/post/2026-02-12-use-cdk-nag-for-security-best-practice-checks/view).

@@ -326,7 +326,7 @@ aws route53 create-health-check \
 
 ## Monitoring CIDR-Based Routing
 
-Track how your CIDR-based routing is performing using Route 53 query logging. See our guide on [monitoring Route 53 DNS query logging](https://oneuptime.com/blog/post/monitor-route-53-dns-query-logging/view) for setting up comprehensive DNS monitoring.
+Track how your CIDR-based routing is performing using Route 53 query logging. See our guide on [monitoring Route 53 DNS query logging](https://oneuptime.com/blog/post/2026-02-12-monitor-route-53-dns-query-logging/view) for setting up comprehensive DNS monitoring.
 
 ```bash
 # Query CloudWatch for DNS query metrics

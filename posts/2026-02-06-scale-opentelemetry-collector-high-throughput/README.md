@@ -792,9 +792,9 @@ Key metrics to alert on:
 
 For more information on optimizing your OpenTelemetry Collector deployment:
 
-- [How to Set Up Load Balancing Across Multiple Collector Instances](https://oneuptime.com/blog/post/load-balancing-multiple-collector-instances/view)
-- [How to Tune Batch Processor Settings for Optimal Collector Performance](https://oneuptime.com/blog/post/tune-batch-processor-optimal-collector-performance/view)
-- [How to Monitor the Collector with Its Internal Metrics](https://oneuptime.com/blog/post/monitor-collector-internal-metrics/view)
-- [How to Configure Sending Queues and Retry Logic in the Collector](https://oneuptime.com/blog/post/configure-sending-queues-retry-logic-collector/view)
+- [How to Set Up Load Balancing Across Multiple Collector Instances](https://oneuptime.com/blog/post/2026-02-06-load-balancing-multiple-collector-instances/view)
+- [How to Tune Batch Processor Settings for Optimal Collector Performance](https://oneuptime.com/blog/post/2026-02-06-tune-batch-processor-optimal-collector-performance/view)
+- [How to Monitor the Collector with Its Internal Metrics](https://oneuptime.com/blog/post/2026-02-06-monitor-collector-internal-metrics/view)
+- [How to Configure Sending Queues and Retry Logic in the Collector](https://oneuptime.com/blog/post/2026-02-06-configure-sending-queues-retry-logic-collector/view)
 
 Scaling the OpenTelemetry Collector for high-throughput environments requires a combination of vertical optimization, horizontal scaling, intelligent routing, and continuous monitoring. By implementing the architectural patterns and configurations outlined in this guide, you can build a telemetry pipeline capable of handling millions of spans per second while maintaining reliability and cost efficiency.

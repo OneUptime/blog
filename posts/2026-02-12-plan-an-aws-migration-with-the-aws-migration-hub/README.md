@@ -160,7 +160,7 @@ for rec in recommendations.get('serverDetail', {}).get('applicationComponentStra
     print(f"Recommendation: {rec['recommendation']}")
 ```
 
-For a deeper look at strategy recommendations, check out our guide on [assessing applications with AWS Migration Hub Strategy Recommendations](https://oneuptime.com/blog/post/assess-your-applications-with-aws-migration-hub-strategy-recommendations/view).
+For a deeper look at strategy recommendations, check out our guide on [assessing applications with AWS Migration Hub Strategy Recommendations](https://oneuptime.com/blog/post/2026-02-12-assess-your-applications-with-aws-migration-hub-strategy-recommendations/view).
 
 ## Phase 4: Migration Execution
 
@@ -247,7 +247,7 @@ Best practices for wave planning:
 
 As workloads move to AWS, your monitoring needs to cover both environments during the transition period. Set up CloudWatch for AWS-side monitoring from day one, and keep your existing monitoring running until each workload is fully migrated and validated.
 
-For unified monitoring across on-premises and AWS environments during migration, [OneUptime](https://oneuptime.com/blog/post/migrate-from-on-premises-to-aws-step-by-step/view) can provide a single pane of glass that works across both environments.
+For unified monitoring across on-premises and AWS environments during migration, [OneUptime](https://oneuptime.com/blog/post/2026-02-12-migrate-from-on-premises-to-aws-step-by-step/view) can provide a single pane of glass that works across both environments.
 
 ## Common Pitfalls
 

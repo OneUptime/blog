@@ -308,4 +308,4 @@ aws dms delete-replication-instance \
   --replication-instance-arn arn:aws:dms:us-east-1:123456789012:rep:my-migration-instance
 ```
 
-After migration, set up proper monitoring on your new RDS instance. Check our guides on [Performance Insights](https://oneuptime.com/blog/post/monitor-rds-with-performance-insights/view) and [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view) to get started.
+After migration, set up proper monitoring on your new RDS instance. Check our guides on [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view) and [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view) to get started.

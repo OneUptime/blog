@@ -398,10 +398,10 @@ processors:
 ```
 
 For details on building custom components, see:
-- https://oneuptime.com/blog/post/build-custom-receiver-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/build-custom-processor-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/build-custom-exporter-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/build-custom-extension-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-processor-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-extension-opentelemetry-collector/view
 
 ## Build Process Architecture
 

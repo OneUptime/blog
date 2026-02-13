@@ -285,4 +285,4 @@ def lambda_handler(event, context):
     }
 ```
 
-Monitoring your Kinesis streams is non-negotiable for production workloads. The write throttling and consumer lag metrics are the two numbers you absolutely must track. For streams using on-demand mode, see [Kinesis on-demand mode](https://oneuptime.com/blog/post/kinesis-data-streams-on-demand-mode/view), and for dedicated consumer throughput, explore [enhanced fan-out](https://oneuptime.com/blog/post/kinesis-data-streams-enhanced-fan-out/view).
+Monitoring your Kinesis streams is non-negotiable for production workloads. The write throttling and consumer lag metrics are the two numbers you absolutely must track. For streams using on-demand mode, see [Kinesis on-demand mode](https://oneuptime.com/blog/post/2026-02-12-kinesis-data-streams-on-demand-mode/view), and for dedicated consumer throughput, explore [enhanced fan-out](https://oneuptime.com/blog/post/2026-02-12-kinesis-data-streams-enhanced-fan-out/view).

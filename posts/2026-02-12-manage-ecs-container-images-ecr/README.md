@@ -157,7 +157,7 @@ aws ecr describe-images \
 
 ## Cleaning Up Old Images
 
-ECR charges for storage, and old images pile up fast. You can delete images manually or set up lifecycle policies for automatic cleanup (see our post on [ECR lifecycle policies](https://oneuptime.com/blog/post/ecr-lifecycle-policies-image-cleanup/view)).
+ECR charges for storage, and old images pile up fast. You can delete images manually or set up lifecycle policies for automatic cleanup (see our post on [ECR lifecycle policies](https://oneuptime.com/blog/post/2026-02-12-ecr-lifecycle-policies-image-cleanup/view)).
 
 ```bash
 # Delete a specific image
@@ -293,6 +293,6 @@ resource "aws_ecs_task_definition" "app" {
 # ecr:BatchGetImage
 ```
 
-For cross-account or cross-region image pulls, you'll need additional repository policies (see our post on [ECR cross-account image sharing](https://oneuptime.com/blog/post/ecr-cross-account-image-sharing/view)).
+For cross-account or cross-region image pulls, you'll need additional repository policies (see our post on [ECR cross-account image sharing](https://oneuptime.com/blog/post/2026-02-12-ecr-cross-account-image-sharing/view)).
 
 Managing ECR well means your deployments are faster, your costs are lower, and your security posture is stronger. Set up immutable tags, enable scanning, configure lifecycle policies, and use specific image tags in your task definitions. Your future self will thank you when that production rollback goes smoothly.

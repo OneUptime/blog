@@ -414,7 +414,7 @@ def assign_task(task_id, user_id, identity):
 
 ## Monitoring and Observability
 
-AppSync integrates with CloudWatch for logging and X-Ray for tracing. Enable both for production APIs. Monitor resolver latency, error rates, and subscription connection counts. For comprehensive monitoring across your entire stack, tools like [OneUptime](https://oneuptime.com/blog/post/build-a-custom-search-engine-with-amazon-opensearch/view) provide end-to-end visibility into your API performance.
+AppSync integrates with CloudWatch for logging and X-Ray for tracing. Enable both for production APIs. Monitor resolver latency, error rates, and subscription connection counts. For comprehensive monitoring across your entire stack, tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-custom-search-engine-with-amazon-opensearch/view) provide end-to-end visibility into your API performance.
 
 ## Wrapping Up
 

@@ -355,4 +355,4 @@ aws iot create-topic-rule \
 
 DynamoDB is the go-to choice for real-time IoT data access. The IoT Core Rules Engine makes the integration seamless - no Lambda functions, no servers, just a SQL filter and a DynamoDB action. Design your table schema around your access patterns, use TTL to manage data lifecycle, and consider dual-routing to both DynamoDB and S3 for the best of both worlds.
 
-For routing to other destinations, see our guides on [routing messages to S3](https://oneuptime.com/blog/post/iot-core-rules-engine-route-messages-s3/view) and [routing messages to Lambda](https://oneuptime.com/blog/post/iot-core-rules-engine-route-messages-lambda/view).
+For routing to other destinations, see our guides on [routing messages to S3](https://oneuptime.com/blog/post/2026-02-12-iot-core-rules-engine-route-messages-s3/view) and [routing messages to Lambda](https://oneuptime.com/blog/post/2026-02-12-iot-core-rules-engine-route-messages-lambda/view).

@@ -245,4 +245,4 @@ The state should be `available`. If it's `pending` or `failed`, there might be a
 7. Test DNS resolution from the instance
 8. Verify the endpoint state is "available"
 
-VPC Endpoints are worth the setup effort for security and performance. Once you've got the connectivity sorted out, they're largely maintenance-free. For broader VPC networking troubleshooting, see our guide on [fixing NAT Gateway issues](https://oneuptime.com/blog/post/fix-vpc-nat-gateway-connectivity-issues/view).
+VPC Endpoints are worth the setup effort for security and performance. Once you've got the connectivity sorted out, they're largely maintenance-free. For broader VPC networking troubleshooting, see our guide on [fixing NAT Gateway issues](https://oneuptime.com/blog/post/2026-02-12-fix-vpc-nat-gateway-connectivity-issues/view).

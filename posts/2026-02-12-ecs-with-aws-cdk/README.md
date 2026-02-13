@@ -366,4 +366,4 @@ CloudFormation might still be better when:
 
 The AWS CDK makes ECS infrastructure management feel like writing application code. The high-level patterns handle the boilerplate, while the lower-level constructs give you full control when you need it. Combined with TypeScript's type system, you catch configuration errors at compile time rather than during deployment.
 
-Start with the `ApplicationLoadBalancedFargateService` pattern to get running quickly, then extract reusable constructs as your architecture grows. For monitoring the infrastructure you've deployed, check out our guide on [monitoring ECS with Container Insights](https://oneuptime.com/blog/post/monitor-ecs-container-insights/view).
+Start with the `ApplicationLoadBalancedFargateService` pattern to get running quickly, then extract reusable constructs as your architecture grows. For monitoring the infrastructure you've deployed, check out our guide on [monitoring ECS with Container Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-container-insights/view).

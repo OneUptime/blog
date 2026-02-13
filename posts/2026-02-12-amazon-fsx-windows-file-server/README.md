@@ -328,7 +328,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:ops-warning"
 ```
 
-For more on setting up comprehensive monitoring, see our guide on [monitoring EFS with CloudWatch](https://oneuptime.com/blog/post/monitor-efs-cloudwatch/view) - many of the same patterns apply to FSx.
+For more on setting up comprehensive monitoring, see our guide on [monitoring EFS with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-efs-cloudwatch/view) - many of the same patterns apply to FSx.
 
 ## Backups and Restore
 
@@ -366,7 +366,7 @@ aws fsx create-file-system-from-backup \
 5. **Enable data deduplication** for shares with lots of similar files.
 6. **Join to Active Directory** for proper access control. Don't rely on guest access.
 
-For Active Directory integration details, see our guide on [joining FSx for Windows to Active Directory](https://oneuptime.com/blog/post/fsx-windows-active-directory/view).
+For Active Directory integration details, see our guide on [joining FSx for Windows to Active Directory](https://oneuptime.com/blog/post/2026-02-12-fsx-windows-active-directory/view).
 
 ## Wrapping Up
 

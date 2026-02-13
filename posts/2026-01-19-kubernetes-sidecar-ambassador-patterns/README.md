@@ -781,5 +781,5 @@ For monitoring your sidecar-enabled applications, check out [OneUptime's contain
 ## Related Resources
 
 - [How to Ship Logs with Fluent Bit](https://oneuptime.com/blog/post/kubernetes-fluent-bit-log-forwarding/view)
-- [How to Set Up Jaeger for Distributed Tracing](https://oneuptime.com/blog/post/kubernetes-jaeger-distributed-tracing/view)
-- [How to Set Up Prometheus ServiceMonitor](https://oneuptime.com/blog/post/kubernetes-prometheus-servicemonitor/view)
+- [How to Set Up Jaeger for Distributed Tracing](https://oneuptime.com/blog/post/2026-01-19-kubernetes-jaeger-distributed-tracing/view)
+- [How to Set Up Prometheus ServiceMonitor](https://oneuptime.com/blog/post/2026-01-19-kubernetes-prometheus-servicemonitor/view)

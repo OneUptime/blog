@@ -479,7 +479,7 @@ aws s3api put-bucket-intelligent-tiering-configuration \
 
 **Small objects**: Objects smaller than 128 KB in Standard-IA are charged as 128 KB. Don't transition small objects to IA tiers - the minimum charge makes it more expensive.
 
-For more on managing S3 and other AWS costs, see our guides on [setting up Cost Explorer](https://oneuptime.com/blog/post/setup-aws-cost-explorer-cost-analysis/view) and [setting up AWS Budgets](https://oneuptime.com/blog/post/setup-aws-budgets-cost-alerts/view).
+For more on managing S3 and other AWS costs, see our guides on [setting up Cost Explorer](https://oneuptime.com/blog/post/2026-02-12-setup-aws-cost-explorer-cost-analysis/view) and [setting up AWS Budgets](https://oneuptime.com/blog/post/2026-02-12-setup-aws-budgets-cost-alerts/view).
 
 ## Wrapping Up
 

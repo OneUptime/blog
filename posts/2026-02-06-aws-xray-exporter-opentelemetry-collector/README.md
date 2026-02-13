@@ -726,4 +726,4 @@ The AWS X-Ray exporter enables you to leverage OpenTelemetry's vendor-neutral in
 
 By centralizing trace collection in the OpenTelemetry Collector, you gain powerful processing capabilities, cost optimization through sampling and filtering, and the ability to correlate telemetry across your entire AWS infrastructure. The service graphs and analytics in X-Ray provide valuable insights into your application's behavior and dependencies.
 
-For information about other AWS exporters, see our guides on the [AWS CloudWatch Logs exporter](https://oneuptime.com/blog/post/aws-cloudwatch-logs-exporter-opentelemetry-collector/view) and [AWS Kinesis exporter](https://oneuptime.com/blog/post/aws-kinesis-exporter-opentelemetry-collector/view).
+For information about other AWS exporters, see our guides on the [AWS CloudWatch Logs exporter](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) and [AWS Kinesis exporter](https://oneuptime.com/blog/post/2026-02-06-aws-kinesis-exporter-opentelemetry-collector/view).

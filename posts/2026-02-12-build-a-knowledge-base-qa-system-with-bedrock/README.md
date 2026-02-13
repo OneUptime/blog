@@ -422,7 +422,7 @@ def conversational_qa(event, context):
 
 ## Monitoring the Q&A System
 
-Knowledge base Q&A systems need monitoring at multiple levels: ingestion job success (are documents being indexed?), query latency (are answers coming back fast enough?), citation quality (are the sources relevant?), and the underlying vector search health. Use [OneUptime](https://oneuptime.com/blog/post/build-a-chatbot-with-amazon-bedrock-and-lambda/view) to track the entire pipeline from document ingestion to answer delivery.
+Knowledge base Q&A systems need monitoring at multiple levels: ingestion job success (are documents being indexed?), query latency (are answers coming back fast enough?), citation quality (are the sources relevant?), and the underlying vector search health. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-chatbot-with-amazon-bedrock-and-lambda/view) to track the entire pipeline from document ingestion to answer delivery.
 
 ## Cost Breakdown
 
@@ -438,4 +438,4 @@ For a knowledge base with 10,000 documents, queried 1,000 times per day, expect 
 
 Amazon Bedrock Knowledge Bases turn the complex RAG pipeline into a managed service. You upload documents to S3, point the knowledge base at them, and get a Q&A API with citations. No embedding pipeline to manage, no vector database to operate, and no chunking logic to debug.
 
-The managed approach trades flexibility for simplicity. If you need custom chunking strategies, advanced re-ranking, or fine-grained control over the retrieval pipeline, building RAG from scratch with Bedrock and OpenSearch (as covered in our [RAG application guide](https://oneuptime.com/blog/post/build-a-rag-application-with-amazon-bedrock-and-opensearch/view)) gives you more control. But for most use cases, the managed approach gets you 80% of the way with 20% of the effort.
+The managed approach trades flexibility for simplicity. If you need custom chunking strategies, advanced re-ranking, or fine-grained control over the retrieval pipeline, building RAG from scratch with Bedrock and OpenSearch (as covered in our [RAG application guide](https://oneuptime.com/blog/post/2026-02-12-build-a-rag-application-with-amazon-bedrock-and-opensearch/view)) gives you more control. But for most use cases, the managed approach gets you 80% of the way with 20% of the effort.

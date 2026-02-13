@@ -355,13 +355,13 @@ month_over_month()
 After running these analyses, look for these common savings opportunities:
 
 1. **Idle EC2 instances**: Terminate or stop them.
-2. **Oversized instances**: Right-size based on actual usage. See our guide on [reducing EC2 costs with right-sizing](https://oneuptime.com/blog/post/reduce-ec2-costs-right-sizing/view).
+2. **Oversized instances**: Right-size based on actual usage. See our guide on [reducing EC2 costs with right-sizing](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-right-sizing/view).
 3. **Unattached EBS volumes**: Delete volumes not attached to any instance.
 4. **Old snapshots**: Clean up EBS snapshots you no longer need.
 5. **Data transfer**: Consider using VPC endpoints, CloudFront, or moving services to the same AZ.
-6. **On-Demand to Reserved/Savings Plans**: If usage is stable, switch to [Savings Plans](https://oneuptime.com/blog/post/reduce-ec2-costs-savings-plans/view) or [Reserved Instances](https://oneuptime.com/blog/post/reduce-ec2-costs-reserved-instances/view).
+6. **On-Demand to Reserved/Savings Plans**: If usage is stable, switch to [Savings Plans](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-savings-plans/view) or [Reserved Instances](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-reserved-instances/view).
 
-For automated right-sizing recommendations, check out our post on [using AWS Compute Optimizer](https://oneuptime.com/blog/post/use-aws-compute-optimizer-right-sizing/view).
+For automated right-sizing recommendations, check out our post on [using AWS Compute Optimizer](https://oneuptime.com/blog/post/2026-02-12-use-aws-compute-optimizer-right-sizing/view).
 
 ## Wrapping Up
 

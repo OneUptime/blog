@@ -287,4 +287,4 @@ public class AwsConfig {
 - **Use StsAssumeRoleCredentialsProvider** for cross-account access. It handles credential refresh automatically.
 - **Test credentials early.** Call `getCallerIdentity()` at startup to fail fast if credentials are misconfigured.
 
-For more on using these configured clients with the Java SDK, see the [AWS SDK for Java v2 guide](https://oneuptime.com/blog/post/aws-sdk-java-v2/view). And for local testing without real credentials, [LocalStack](https://oneuptime.com/blog/post/localstack-test-aws-services-locally/view) lets you test AWS operations with dummy credentials.
+For more on using these configured clients with the Java SDK, see the [AWS SDK for Java v2 guide](https://oneuptime.com/blog/post/2026-02-12-aws-sdk-java-v2/view). And for local testing without real credentials, [LocalStack](https://oneuptime.com/blog/post/2026-02-12-localstack-test-aws-services-locally/view) lets you test AWS operations with dummy credentials.

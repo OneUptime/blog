@@ -192,7 +192,7 @@ ORDER_COUNT=$(psql -h new-db.cluster-abc123.us-east-1.rds.amazonaws.com -U appus
 echo "   Orders in last 24h: $ORDER_COUNT"
 ```
 
-For more thorough validation strategies, see our guide on [validating data integrity after AWS migration](https://oneuptime.com/blog/post/validate-data-integrity-after-aws-migration/view).
+For more thorough validation strategies, see our guide on [validating data integrity after AWS migration](https://oneuptime.com/blog/post/2026-02-12-validate-data-integrity-after-aws-migration/view).
 
 ## Section 6: Rollback Plan
 

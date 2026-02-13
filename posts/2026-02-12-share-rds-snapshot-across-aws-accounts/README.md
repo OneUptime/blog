@@ -249,6 +249,6 @@ This doesn't affect any RDS instances already created from the snapshot - it jus
 
 Be thoughtful about what you're sharing. Production database snapshots contain real data, which might include PII, credentials, or other sensitive information. Before sharing snapshots with development or testing accounts, consider whether the data needs to be sanitized first.
 
-For monitoring your cross-account snapshot sharing setup, you can track snapshot events through CloudWatch and set up alerts when sharing permissions change. Check out our guide on [setting up CloudWatch alarms for RDS](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view) for more on that.
+For monitoring your cross-account snapshot sharing setup, you can track snapshot events through CloudWatch and set up alerts when sharing permissions change. Check out our guide on [setting up CloudWatch alarms for RDS](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view) for more on that.
 
 Snapshot sharing is a powerful feature that makes multi-account AWS architectures much more manageable. Once you understand the encryption constraints and automate the workflow, it becomes a reliable part of your database operations toolkit.

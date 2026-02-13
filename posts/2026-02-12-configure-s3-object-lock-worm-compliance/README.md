@@ -235,7 +235,7 @@ Objects under retention can't be deleted. If you set a 7-year compliance retenti
 
 **4. Not using legal holds alongside retention**
 
-Legal holds and retention serve different purposes. Retention has an expiration date. Legal holds don't. For litigation purposes, you often need both. For more on this, see our post on [using S3 Legal Hold for compliance](https://oneuptime.com/blog/post/s3-legal-hold-compliance/view).
+Legal holds and retention serve different purposes. Retention has an expiration date. Legal holds don't. For litigation purposes, you often need both. For more on this, see our post on [using S3 Legal Hold for compliance](https://oneuptime.com/blog/post/2026-02-12-s3-legal-hold-compliance/view).
 
 ## Monitoring Object Lock
 

@@ -358,7 +358,7 @@ In Managed Grafana, navigate to **Alerting > Alert rules** to see the status of 
     description: "Prometheus is not receiving metrics from order-api. The service may be down or scraping may be broken."
 ```
 
-For more PromQL patterns to use in your rules, see our guide on [using PromQL queries in Amazon Managed Prometheus](https://oneuptime.com/blog/post/use-promql-queries-in-amazon-managed-prometheus/view).
+For more PromQL patterns to use in your rules, see our guide on [using PromQL queries in Amazon Managed Prometheus](https://oneuptime.com/blog/post/2026-02-12-use-promql-queries-in-amazon-managed-prometheus/view).
 
 ## Wrapping Up
 

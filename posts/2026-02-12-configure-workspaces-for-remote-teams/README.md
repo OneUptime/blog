@@ -325,4 +325,4 @@ Remote teams often have unpredictable usage patterns. Optimize costs with these 
 
 Configuring WorkSpaces for remote teams requires thinking beyond the basic setup. Protocol choice, multi-region deployment, security controls, and bandwidth optimization all matter when users are connecting from home networks around the world. Start with WSP, deploy in regions close to your users, lock down data transfer with appropriate policies, and monitor usage to keep costs under control.
 
-For the initial WorkSpaces setup process, refer to our guide on [setting up Amazon WorkSpaces](https://oneuptime.com/blog/post/set-up-amazon-workspaces-for-virtual-desktops/view).
+For the initial WorkSpaces setup process, refer to our guide on [setting up Amazon WorkSpaces](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-workspaces-for-virtual-desktops/view).

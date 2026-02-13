@@ -445,4 +445,4 @@ curl -X POST \
 
 ## Wrapping Up
 
-Cognito authentication with AppSync gives you a production-ready auth system without writing auth middleware. Use schema directives for declarative access control, groups for role-based authorization, and resolver logic for owner-based access. The combination of API key for public access and Cognito for authenticated access covers most application needs. For more on building the underlying auth flow, see our post on [building serverless authentication with Lambda and Cognito](https://oneuptime.com/blog/post/serverless-authentication-flow-lambda-cognito/view).
+Cognito authentication with AppSync gives you a production-ready auth system without writing auth middleware. Use schema directives for declarative access control, groups for role-based authorization, and resolver logic for owner-based access. The combination of API key for public access and Cognito for authenticated access covers most application needs. For more on building the underlying auth flow, see our post on [building serverless authentication with Lambda and Cognito](https://oneuptime.com/blog/post/2026-02-12-serverless-authentication-flow-lambda-cognito/view).

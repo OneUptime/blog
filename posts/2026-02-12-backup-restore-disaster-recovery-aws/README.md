@@ -22,7 +22,7 @@ This strategy fits when:
 - Budget is limited
 - You're just getting started with DR planning
 
-If your business can't survive a few hours of downtime, look at [pilot light](https://oneuptime.com/blog/post/multi-region-active-passive-pilot-light-aws/view) or [active-active](https://oneuptime.com/blog/post/multi-region-active-active-architecture-aws/view) instead.
+If your business can't survive a few hours of downtime, look at [pilot light](https://oneuptime.com/blog/post/2026-02-12-multi-region-active-passive-pilot-light-aws/view) or [active-active](https://oneuptime.com/blog/post/2026-02-12-multi-region-active-active-architecture-aws/view) instead.
 
 ## Architecture
 

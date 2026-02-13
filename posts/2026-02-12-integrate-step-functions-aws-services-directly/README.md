@@ -242,7 +242,7 @@ This publishes a custom event to EventBridge:
 }
 ```
 
-For more on EventBridge, check out our post on [setting up EventBridge rules for event-driven architecture](https://oneuptime.com/blog/post/eventbridge-rules-event-driven-architecture/view).
+For more on EventBridge, check out our post on [setting up EventBridge rules for event-driven architecture](https://oneuptime.com/blog/post/2026-02-12-eventbridge-rules-event-driven-architecture/view).
 
 ## SDK Integrations for Any Service
 

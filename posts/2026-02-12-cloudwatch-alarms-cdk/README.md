@@ -288,7 +288,7 @@ new LambdaAlarms(this, 'ApiHandlerAlarms', {
 });
 ```
 
-For more on creating SNS topics and subscriptions with CDK, check out our post on [SNS topics and subscriptions](https://oneuptime.com/blog/post/sns-topics-subscriptions-cdk/view). If you're also interested in building event-driven architectures, have a look at [EventBridge rules with CDK](https://oneuptime.com/blog/post/eventbridge-rules-cdk/view).
+For more on creating SNS topics and subscriptions with CDK, check out our post on [SNS topics and subscriptions](https://oneuptime.com/blog/post/2026-02-12-sns-topics-subscriptions-cdk/view). If you're also interested in building event-driven architectures, have a look at [EventBridge rules with CDK](https://oneuptime.com/blog/post/2026-02-12-eventbridge-rules-cdk/view).
 
 ## Wrapping Up
 

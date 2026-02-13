@@ -404,7 +404,7 @@ databrew.create_schedule(
 | Joins | Limited | Full | Yes |
 | Best for | Data cleaning | Complex ETL | Standard ETL |
 
-Use DataBrew for data preparation and profiling. Use Glue ETL or Glue Studio for complex multi-source pipelines. They work well together - clean data with DataBrew, then transform and load with [Glue ETL](https://oneuptime.com/blog/post/create-aws-glue-etl-jobs/view).
+Use DataBrew for data preparation and profiling. Use Glue ETL or Glue Studio for complex multi-source pipelines. They work well together - clean data with DataBrew, then transform and load with [Glue ETL](https://oneuptime.com/blog/post/2026-02-12-create-aws-glue-etl-jobs/view).
 
 ## Cost Considerations
 

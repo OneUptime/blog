@@ -663,4 +663,4 @@ Monitoring these metrics helps track forwarding performance, identify bottleneck
 
 The HTTP Forwarder extension transforms the OpenTelemetry Collector into a powerful HTTP proxy capable of intelligent routing, load balancing, and traffic management. By leveraging its features, you can build sophisticated telemetry pipelines that scale horizontally, handle failures gracefully, and route data efficiently.
 
-For related topics on collector extensions, explore [Storage Extension configuration](https://oneuptime.com/blog/post/storage-extension-opentelemetry-collector/view) and [Jaeger Remote Sampling](https://oneuptime.com/blog/post/jaeger-remote-sampling-extension-opentelemetry-collector/view).
+For related topics on collector extensions, explore [Storage Extension configuration](https://oneuptime.com/blog/post/2026-02-06-storage-extension-opentelemetry-collector/view) and [Jaeger Remote Sampling](https://oneuptime.com/blog/post/2026-02-06-jaeger-remote-sampling-extension-opentelemetry-collector/view).

@@ -372,4 +372,4 @@ aws cloudformation update-stack \
 
 CloudFormation will show you a change set before applying. Always review it carefully, especially for RDS changes that might cause downtime.
 
-For the Terraform alternative, see our guide on [setting up RDS with Terraform](https://oneuptime.com/blog/post/set-up-rds-with-terraform/view). And once your instance is running, make sure you're using [Performance Insights](https://oneuptime.com/blog/post/monitor-rds-with-performance-insights/view) to keep an eye on query performance.
+For the Terraform alternative, see our guide on [setting up RDS with Terraform](https://oneuptime.com/blog/post/2026-02-12-set-up-rds-with-terraform/view). And once your instance is running, make sure you're using [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view) to keep an eye on query performance.

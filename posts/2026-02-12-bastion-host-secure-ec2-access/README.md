@@ -338,8 +338,8 @@ systemctl start amazon-cloudwatch-agent
 
 While bastion hosts work well, consider these newer alternatives:
 
-- **[Session Manager](https://oneuptime.com/blog/post/session-manager-ec2-access-without-ssh/view)** - No port 22, no keys, full session logging, IAM-based access
-- **[EC2 Instance Connect Endpoint](https://oneuptime.com/blog/post/ec2-instance-connect-browser-based-ssh/view)** - SSH to private instances without a bastion
+- **[Session Manager](https://oneuptime.com/blog/post/2026-02-12-session-manager-ec2-access-without-ssh/view)** - No port 22, no keys, full session logging, IAM-based access
+- **[EC2 Instance Connect Endpoint](https://oneuptime.com/blog/post/2026-02-12-ec2-instance-connect-browser-based-ssh/view)** - SSH to private instances without a bastion
 - **AWS Client VPN** - Full VPN access to your VPC
 
 If you're starting fresh, Session Manager is usually the better choice. But if you have existing tooling that requires SSH, or compliance requirements that mandate a jump box, a properly hardened bastion host is still a solid solution.

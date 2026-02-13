@@ -839,6 +839,6 @@ Start with simple attribute filtering to reduce cardinality, then expand to more
 
 **Related Reading:**
 
-- [What are Metrics in OpenTelemetry?](https://oneuptime.com/blog/post/what-are-metrics-in-opentelemetry/view)
-- [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/how-to-reduce-noise-in-opentelemetry/view)
-- [How to Collect OpenTelemetry Collector Internal Metrics](https://oneuptime.com/blog/post/how-to-collect-opentelemetry-collector-internal-metrics/view)
+- [What are Metrics in OpenTelemetry?](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view)
+- [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view)
+- [How to Collect OpenTelemetry Collector Internal Metrics](https://oneuptime.com/blog/post/2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics/view)

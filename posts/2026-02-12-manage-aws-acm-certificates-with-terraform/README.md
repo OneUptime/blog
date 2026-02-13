@@ -215,7 +215,7 @@ resource "aws_acm_certificate_validation" "cloudfront" {
 }
 ```
 
-For using this certificate with CloudFront, see our post on [creating CloudFront distributions with Terraform](https://oneuptime.com/blog/post/create-cloudfront-distributions-with-terraform/view).
+For using this certificate with CloudFront, see our post on [creating CloudFront distributions with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-cloudfront-distributions-with-terraform/view).
 
 ## Using the Certificate
 

@@ -389,7 +389,7 @@ resource "aws_cloudwatch_metric_alarm" "io_limit" {
 }
 ```
 
-For a deeper dive on EFS monitoring, see our post on [monitoring EFS with CloudWatch](https://oneuptime.com/blog/post/monitor-efs-cloudwatch/view).
+For a deeper dive on EFS monitoring, see our post on [monitoring EFS with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-efs-cloudwatch/view).
 
 ## Outputs
 
@@ -499,7 +499,7 @@ resource "aws_efs_replication_configuration" "main" {
 }
 ```
 
-For more on replication, see our post on [EFS replication for disaster recovery](https://oneuptime.com/blog/post/efs-replication-disaster-recovery/view).
+For more on replication, see our post on [EFS replication for disaster recovery](https://oneuptime.com/blog/post/2026-02-12-efs-replication-disaster-recovery/view).
 
 ## Common Terraform Patterns
 

@@ -352,7 +352,7 @@ This workflow resizes and generates thumbnails for every image in a folder:
 
 ## Monitoring Map State Performance
 
-Keep an eye on how your Map state iterations are performing. CloudWatch gives you metrics on running, succeeded, and failed iterations. If you're seeing a lot of failures, check whether you're hitting Lambda concurrency limits or downstream rate limits. For more on monitoring, check out our post on [monitoring Step Functions executions](https://oneuptime.com/blog/post/monitor-step-functions-executions-console/view).
+Keep an eye on how your Map state iterations are performing. CloudWatch gives you metrics on running, succeeded, and failed iterations. If you're seeing a lot of failures, check whether you're hitting Lambda concurrency limits or downstream rate limits. For more on monitoring, check out our post on [monitoring Step Functions executions](https://oneuptime.com/blog/post/2026-02-12-monitor-step-functions-executions-console/view).
 
 ## Wrapping Up
 

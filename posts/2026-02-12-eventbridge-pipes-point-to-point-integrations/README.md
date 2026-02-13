@@ -299,7 +299,7 @@ Resources:
 
 Use Pipes when you have a single source and single target, when your source isn't an event bus (SQS, DynamoDB Streams, Kinesis), or when you need the enrichment step. Use Rules when you need fan-out to multiple targets or when your events are already on an EventBridge bus.
 
-For more on EventBridge rules, see our post on [setting up EventBridge rules for event-driven architecture](https://oneuptime.com/blog/post/eventbridge-rules-event-driven-architecture/view).
+For more on EventBridge rules, see our post on [setting up EventBridge rules for event-driven architecture](https://oneuptime.com/blog/post/2026-02-12-eventbridge-rules-event-driven-architecture/view).
 
 ## Monitoring Pipes
 

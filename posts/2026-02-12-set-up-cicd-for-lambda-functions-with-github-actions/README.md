@@ -367,7 +367,7 @@ If the smoke test fails after deployment, roll back to the previous version:
     exit 1
 ```
 
-For more advanced deployment strategies, check out our guide on [implementing canary deployments for Lambda functions](https://oneuptime.com/blog/post/implement-canary-deployments-for-lambda-functions/view).
+For more advanced deployment strategies, check out our guide on [implementing canary deployments for Lambda functions](https://oneuptime.com/blog/post/2026-02-12-implement-canary-deployments-for-lambda-functions/view).
 
 ## Pipeline for Python Lambda Functions
 

@@ -1042,6 +1042,6 @@ Creating OpenTelemetry attribute limits is essential for maintaining a healthy o
 
 **Related Resources:**
 
-- [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/how-to-reduce-noise-in-opentelemetry/view)
-- [How to Structure Logs Properly in OpenTelemetry](https://oneuptime.com/blog/post/how-to-structure-logs-properly-in-opentelemetry/view)
-- [Traces and Spans in OpenTelemetry: A Practical Guide](https://oneuptime.com/blog/post/traces-and-spans-in-opentelemetry/view)
+- [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view)
+- [How to Structure Logs Properly in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view)
+- [Traces and Spans in OpenTelemetry: A Practical Guide](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)

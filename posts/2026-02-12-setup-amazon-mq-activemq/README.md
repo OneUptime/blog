@@ -243,7 +243,7 @@ Once you have messages flowing, you'll want to keep an eye on things. Amazon MQ 
 - **TotalMessageCount**: Useful for spotting message buildups.
 - **StorePercentUsage**: If your broker's storage fills up, it'll stop accepting messages.
 
-For a deeper dive into monitoring messaging infrastructure, check out our post on [monitoring AWS services with CloudWatch](https://oneuptime.com/blog/post/monitor-sns-cloudwatch/view).
+For a deeper dive into monitoring messaging infrastructure, check out our post on [monitoring AWS services with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-sns-cloudwatch/view).
 
 ## Common Pitfalls
 

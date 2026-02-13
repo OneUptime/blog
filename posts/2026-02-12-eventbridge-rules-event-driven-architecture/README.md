@@ -243,7 +243,7 @@ aws events put-rule \
   --description "Runs daily report at 9 AM UTC"
 ```
 
-For more advanced scheduling, check out our post on [using EventBridge Scheduler for cron and one-time events](https://oneuptime.com/blog/post/eventbridge-scheduler-cron-one-time-events/view).
+For more advanced scheduling, check out our post on [using EventBridge Scheduler for cron and one-time events](https://oneuptime.com/blog/post/2026-02-12-eventbridge-scheduler-cron-one-time-events/view).
 
 ## SAM Template Example
 

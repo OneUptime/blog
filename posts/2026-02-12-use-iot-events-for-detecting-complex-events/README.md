@@ -217,7 +217,7 @@ You can also use timers to detect the absence of data. If a device stops reporti
 
 Once deployed, you will want to keep an eye on how your detector models are performing. IoT Events publishes metrics to CloudWatch, and you can set up dashboards to track things like the number of active detector instances, state transitions, and error rates.
 
-For deeper monitoring of your entire IoT infrastructure, consider setting up a comprehensive observability solution. You can learn more about monitoring strategies in our post on [monitoring IoT devices with CloudWatch](https://oneuptime.com/blog/post/monitor-iot-devices-with-cloudwatch/view).
+For deeper monitoring of your entire IoT infrastructure, consider setting up a comprehensive observability solution. You can learn more about monitoring strategies in our post on [monitoring IoT devices with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-iot-devices-with-cloudwatch/view).
 
 ```bash
 # List all detector model instances and their current states

@@ -701,4 +701,4 @@ The AWS Kinesis exporter enables real-time streaming of OpenTelemetry telemetry 
 
 The configuration patterns shown here provide a foundation for building scalable real-time telemetry infrastructure on AWS. Whether you're processing data with Lambda, analyzing it with Kinesis Data Analytics, or archiving it to S3 with Firehose, the Kinesis exporter offers a robust starting point for your streaming observability architecture.
 
-For information about other AWS exporters, check out our guides on the [AWS X-Ray exporter](https://oneuptime.com/blog/post/aws-xray-exporter-opentelemetry-collector/view) and [AWS CloudWatch Logs exporter](https://oneuptime.com/blog/post/aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
+For information about other AWS exporters, check out our guides on the [AWS X-Ray exporter](https://oneuptime.com/blog/post/2026-02-06-aws-xray-exporter-opentelemetry-collector/view) and [AWS CloudWatch Logs exporter](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).

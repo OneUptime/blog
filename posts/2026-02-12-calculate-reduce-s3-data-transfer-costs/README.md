@@ -107,7 +107,7 @@ aws cloudfront create-distribution \
   }'
 ```
 
-For static assets, images, and any content that's read repeatedly, CloudFront caching alone can cut your transfer costs by 50-90%. See our detailed guide on [setting up S3 with CloudFront](https://oneuptime.com/blog/post/s3-cloudfront-cdn-backed-static-site/view).
+For static assets, images, and any content that's read repeatedly, CloudFront caching alone can cut your transfer costs by 50-90%. See our detailed guide on [setting up S3 with CloudFront](https://oneuptime.com/blog/post/2026-02-12-s3-cloudfront-cdn-backed-static-site/view).
 
 ## Step 3: Use VPC Endpoints for Same-Region Access
 
@@ -220,7 +220,7 @@ s3.put_object(
 
 ## Step 7: Use Requester Pays for Shared Data
 
-If you're sharing datasets with external parties, let them pay for their own downloads. See our guide on [setting up Requester Pays buckets](https://oneuptime.com/blog/post/s3-requester-pays-buckets/view).
+If you're sharing datasets with external parties, let them pay for their own downloads. See our guide on [setting up Requester Pays buckets](https://oneuptime.com/blog/post/2026-02-12-s3-requester-pays-buckets/view).
 
 ## Cost Reduction Strategy Overview
 

@@ -294,7 +294,7 @@ This is a common question. Here's the quick comparison:
 - You need both fan-out and guaranteed delivery
 - You want each subscriber to process at its own pace
 
-The SNS-to-SQS-to-Lambda pattern is extremely common. SNS fans out to multiple SQS queues, and each queue has its own Lambda consumer. For SQS trigger setup, see our guide on [triggering Lambda from SQS queues](https://oneuptime.com/blog/post/trigger-lambda-sqs-queues/view).
+The SNS-to-SQS-to-Lambda pattern is extremely common. SNS fans out to multiple SQS queues, and each queue has its own Lambda consumer. For SQS trigger setup, see our guide on [triggering Lambda from SQS queues](https://oneuptime.com/blog/post/2026-02-12-trigger-lambda-sqs-queues/view).
 
 ## FIFO Topics
 

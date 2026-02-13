@@ -314,4 +314,4 @@ print(f"Upload URL: {url}")
 - **Track progress for large files.** Users need feedback during long uploads.
 - **Handle errors with retries.** Network issues happen; don't let one failure kill your whole pipeline.
 
-For more on working with S3 via Boto3, check out how to handle [Boto3 errors and exceptions](https://oneuptime.com/blog/post/boto3-errors-and-exceptions/view) for robust error handling in your upload pipelines.
+For more on working with S3 via Boto3, check out how to handle [Boto3 errors and exceptions](https://oneuptime.com/blog/post/2026-02-12-boto3-errors-and-exceptions/view) for robust error handling in your upload pipelines.

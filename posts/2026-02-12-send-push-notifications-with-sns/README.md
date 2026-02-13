@@ -349,4 +349,4 @@ aws cloudwatch get-metric-statistics \
   --statistics Sum
 ```
 
-For setting up comprehensive alerting, see [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/use-sns-with-cloudwatch-alarms/view). Push notifications through SNS work well at scale - you handle device registration and message formatting, and SNS takes care of the delivery to APNs, FCM, and other services.
+For setting up comprehensive alerting, see [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-use-sns-with-cloudwatch-alarms/view). Push notifications through SNS work well at scale - you handle device registration and message formatting, and SNS takes care of the delivery to APNs, FCM, and other services.

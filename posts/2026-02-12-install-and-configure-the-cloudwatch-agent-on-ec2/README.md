@@ -309,13 +309,13 @@ Common issues:
 - **Agent not running**: Check with `systemctl status amazon-cloudwatch-agent`
 - **Network issues**: The instance can't reach the CloudWatch endpoint (check VPC endpoints or NAT gateway)
 
-For instances in private subnets, you'll need either a NAT gateway or VPC endpoints for CloudWatch and CloudWatch Logs. See [setting up EC2 instances in a private subnet with NAT](https://oneuptime.com/blog/post/set-up-ec2-instances-in-a-private-subnet-with-nat/view) for details.
+For instances in private subnets, you'll need either a NAT gateway or VPC endpoints for CloudWatch and CloudWatch Logs. See [setting up EC2 instances in a private subnet with NAT](https://oneuptime.com/blog/post/2026-02-12-set-up-ec2-instances-in-a-private-subnet-with-nat/view) for details.
 
 ## Next Steps
 
 Once the agent is collecting metrics, you'll want to:
-- Set up [CloudWatch alarms for CPU and memory](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) to get alerted on issues
-- Enable [detailed monitoring](https://oneuptime.com/blog/post/monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) for 1-minute metric granularity on the built-in metrics
+- Set up [CloudWatch alarms for CPU and memory](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) to get alerted on issues
+- Enable [detailed monitoring](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) for 1-minute metric granularity on the built-in metrics
 - Build CloudWatch dashboards to visualize your fleet's health
 
 The CloudWatch agent is the foundation of EC2 monitoring. Without it, you're flying blind on memory and disk - two of the most common causes of instance problems.

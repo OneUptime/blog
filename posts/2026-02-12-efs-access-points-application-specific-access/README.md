@@ -150,7 +150,7 @@ In your ECS task definition, specify the access point in the EFS volume configur
 }
 ```
 
-For the full ECS Fargate setup with EFS, see [mounting EFS on ECS Fargate tasks](https://oneuptime.com/blog/post/mount-efs-ecs-fargate-tasks/view).
+For the full ECS Fargate setup with EFS, see [mounting EFS on ECS Fargate tasks](https://oneuptime.com/blog/post/2026-02-12-mount-efs-ecs-fargate-tasks/view).
 
 ## Using Access Points with Lambda
 
@@ -166,7 +166,7 @@ aws lambda update-function-configuration \
   }]'
 ```
 
-For the complete Lambda + EFS setup, see [mounting EFS on Lambda functions](https://oneuptime.com/blog/post/mount-efs-lambda-functions/view).
+For the complete Lambda + EFS setup, see [mounting EFS on Lambda functions](https://oneuptime.com/blog/post/2026-02-12-mount-efs-lambda-functions/view).
 
 ## IAM Policies for Access Point Restriction
 

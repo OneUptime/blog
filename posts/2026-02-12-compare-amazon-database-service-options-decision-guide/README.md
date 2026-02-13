@@ -206,7 +206,7 @@ For most teams building a new application, the decision comes down to:
 
 Do not over-engineer your database selection. Start with what your team knows. A well-operated PostgreSQL database on Aurora will serve 95% of applications just fine. You can always add specialized databases later for specific use cases.
 
-If you are migrating from one database engine to another, check out our guide on [setting up DMS Serverless](https://oneuptime.com/blog/post/set-up-dms-serverless-for-database-migration/view). For cross-engine migrations, the [Schema Conversion Tool guide](https://oneuptime.com/blog/post/use-schema-conversion-tool-for-heterogeneous-migrations/view) covers the schema translation process.
+If you are migrating from one database engine to another, check out our guide on [setting up DMS Serverless](https://oneuptime.com/blog/post/2026-02-12-set-up-dms-serverless-for-database-migration/view). For cross-engine migrations, the [Schema Conversion Tool guide](https://oneuptime.com/blog/post/2026-02-12-use-schema-conversion-tool-for-heterogeneous-migrations/view) covers the schema translation process.
 
 ## Wrapping Up
 

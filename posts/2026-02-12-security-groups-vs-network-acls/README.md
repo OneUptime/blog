@@ -151,7 +151,7 @@ The NACLs provide broad subnet-level filtering, and the security groups provide 
 
 ## Debugging Traffic Flow
 
-When traffic isn't flowing, you need to check both layers. VPC Flow Logs will tell you if traffic was accepted or rejected, but they won't tell you which layer did the rejecting. See our guide on flow logs at https://oneuptime.com/blog/post/enable-and-analyze-vpc-flow-logs/view.
+When traffic isn't flowing, you need to check both layers. VPC Flow Logs will tell you if traffic was accepted or rejected, but they won't tell you which layer did the rejecting. See our guide on flow logs at https://oneuptime.com/blog/post/2026-02-12-enable-and-analyze-vpc-flow-logs/view.
 
 Here's my debugging workflow:
 

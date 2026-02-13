@@ -418,7 +418,7 @@ GO
 
 ### Migrate Linked Servers
 
-If your source uses linked servers, set them up on RDS (or consider using [RDS Custom for SQL Server](https://oneuptime.com/blog/post/set-up-rds-custom-for-sql-server-workloads/view) if you need linked servers to on-premises databases).
+If your source uses linked servers, set them up on RDS (or consider using [RDS Custom for SQL Server](https://oneuptime.com/blog/post/2026-02-12-set-up-rds-custom-for-sql-server-workloads/view) if you need linked servers to on-premises databases).
 
 ## Step 8: Validate and Cutover
 
@@ -508,4 +508,4 @@ The downtime window is typically under 5 minutes for a well-planned cutover.
 
 Migrating SQL Server to RDS with DMS follows a proven pattern: enable CDC on the source, configure DMS with appropriate endpoints and settings, let the full load complete, monitor CDC replication until it catches up, and then cut over with minimal downtime. The biggest preparation tasks are enabling MS-CDC on all source tables, ensuring SQL Server Agent is running, and planning for the recreation of indexes, jobs, and linked servers on the target.
 
-For more on SQL Server migrations, see our guides on [RDS Custom for SQL Server](https://oneuptime.com/blog/post/set-up-rds-custom-for-sql-server-workloads/view) and [DMS for Oracle to PostgreSQL migration](https://oneuptime.com/blog/post/set-up-dms-for-oracle-to-postgresql-migration/view).
+For more on SQL Server migrations, see our guides on [RDS Custom for SQL Server](https://oneuptime.com/blog/post/2026-02-12-set-up-rds-custom-for-sql-server-workloads/view) and [DMS for Oracle to PostgreSQL migration](https://oneuptime.com/blog/post/2026-02-12-set-up-dms-for-oracle-to-postgresql-migration/view).

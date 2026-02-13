@@ -540,6 +540,6 @@ For monitoring memory usage and OOM events, check out [OneUptime's container mon
 
 ## Related Resources
 
-- [How to Manage Pod Evictions](https://oneuptime.com/blog/post/kubernetes-pod-evictions-resource-pressure/view)
-- [How to Configure Resource Quotas](https://oneuptime.com/blog/post/kubernetes-resource-quotas-limit-ranges/view)
-- [How to Profile CPU and Memory Usage](https://oneuptime.com/blog/post/kubernetes-profile-cpu-memory-usage/view)
+- [How to Manage Pod Evictions](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-evictions-resource-pressure/view)
+- [How to Configure Resource Quotas](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-quotas-limit-ranges/view)
+- [How to Profile CPU and Memory Usage](https://oneuptime.com/blog/post/2026-01-19-kubernetes-profile-cpu-memory-usage/view)

@@ -487,8 +487,8 @@ Example alert configuration in OneUptime for high CPU usage:
 
 You can also correlate container metrics with application traces and logs for complete observability. Learn more about setting up comprehensive monitoring in our related posts:
 
-- [OpenTelemetry Collector: What It Is and When You Need It](https://oneuptime.com/blog/post/what-is-opentelemetry-collector-and-why-use-one/view)
-- [How to Collect OpenTelemetry Collector Internal Metrics](https://oneuptime.com/blog/post/how-to-collect-opentelemetry-collector-internal-metrics/view)
+- [OpenTelemetry Collector: What It Is and When You Need It](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
+- [How to Collect OpenTelemetry Collector Internal Metrics](https://oneuptime.com/blog/post/2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics/view)
 
 ---
 
@@ -552,9 +552,9 @@ Never hardcode tokens. Use AWS Secrets Manager or Parameter Store:
 
 Understanding ECS container metrics is just one piece of the observability puzzle. Check out these related topics:
 
-- [How to Configure the AWS S3 Receiver in OpenTelemetry Collector](https://oneuptime.com/blog/post/aws-s3-receiver-opentelemetry-collector/view)
-- [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/how-to-reduce-noise-in-opentelemetry/view)
-- [Three Pillars of Observability: Logs, Metrics, and Traces](https://oneuptime.com/blog/post/three-pillars-of-observability-logs-metrics-traces/view)
+- [How to Configure the AWS S3 Receiver in OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-aws-s3-receiver-opentelemetry-collector/view)
+- [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view)
+- [Three Pillars of Observability: Logs, Metrics, and Traces](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)
 
 ---
 

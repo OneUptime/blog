@@ -244,7 +244,7 @@ resource "aws_instance" "app_graviton" {
 }
 ```
 
-For more on Terraform with EC2, see our guide on [creating EC2 instances with Terraform](https://oneuptime.com/blog/post/create-ec2-instance-terraform/view).
+For more on Terraform with EC2, see our guide on [creating EC2 instances with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-ec2-instance-terraform/view).
 
 ## Java on Graviton
 

@@ -40,7 +40,7 @@ aws ssm put-parameter \
   --value "my-secret-password-123"
 ```
 
-For more on SecureString parameters, see our dedicated guide on [storing secrets in Parameter Store](https://oneuptime.com/blog/post/parameter-store-securestring/view).
+For more on SecureString parameters, see our dedicated guide on [storing secrets in Parameter Store](https://oneuptime.com/blog/post/2026-02-12-parameter-store-securestring/view).
 
 ## Organizing Parameters with Hierarchies
 
@@ -61,7 +61,7 @@ Parameter Store supports hierarchical paths, which is the key to keeping things 
 /myapp/shared/log-level
 ```
 
-For a deep dive into hierarchies, check our guide on [Parameter Store hierarchies and paths](https://oneuptime.com/blog/post/parameter-store-hierarchies-paths/view).
+For a deep dive into hierarchies, check our guide on [Parameter Store hierarchies and paths](https://oneuptime.com/blog/post/2026-02-12-parameter-store-hierarchies-paths/view).
 
 ## Reading Parameters
 
@@ -343,4 +343,4 @@ For most applications, standard tier is more than enough.
 
 Track parameter access and changes using CloudTrail. And for monitoring the applications that depend on these configurations, [OneUptime](https://oneuptime.com) can help you correlate configuration changes with application behavior.
 
-For using parameters in your infrastructure code, see our guide on [referencing Parameter Store values in CloudFormation](https://oneuptime.com/blog/post/parameter-store-cloudformation/view).
+For using parameters in your infrastructure code, see our guide on [referencing Parameter Store values in CloudFormation](https://oneuptime.com/blog/post/2026-02-12-parameter-store-cloudformation/view).

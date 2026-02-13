@@ -37,7 +37,7 @@ awscurl --service aps \
 
 ### From Grafana
 
-In Managed Grafana with a Prometheus data source connected to AMP, you write PromQL directly in the panel query editor. See [connecting Managed Grafana to Prometheus](https://oneuptime.com/blog/post/connect-amazon-managed-grafana-to-prometheus/view) for setup details.
+In Managed Grafana with a Prometheus data source connected to AMP, you write PromQL directly in the panel query editor. See [connecting Managed Grafana to Prometheus](https://oneuptime.com/blog/post/2026-02-12-connect-amazon-managed-grafana-to-prometheus/view) for setup details.
 
 ## PromQL Fundamentals
 
@@ -289,7 +289,7 @@ sum(kube_pod_container_resource_limits{resource="memory"}) by (pod, namespace)
 > 0.9
 ```
 
-For setting up these alerting rules in AMP, see our guide on [setting up alerting rules in Amazon Managed Prometheus](https://oneuptime.com/blog/post/set-up-alerting-rules-in-amazon-managed-prometheus/view).
+For setting up these alerting rules in AMP, see our guide on [setting up alerting rules in Amazon Managed Prometheus](https://oneuptime.com/blog/post/2026-02-12-set-up-alerting-rules-in-amazon-managed-prometheus/view).
 
 ## Performance Tips for AMP Queries
 

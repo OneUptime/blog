@@ -127,7 +127,7 @@ Password authentication is simplest. IAM authentication is great for Lambda func
 Expand this section for more options:
 
 - **Initial database name**: Specify a database name to create when the instance launches. If you leave this blank, no database is created and you'll need to create one manually after connecting.
-- **DB parameter group**: Stick with the default unless you need custom MySQL configuration. You can change it later. For more details, see [configuring RDS parameter groups](https://oneuptime.com/blog/post/configure-rds-parameter-groups/view).
+- **DB parameter group**: Stick with the default unless you need custom MySQL configuration. You can change it later. For more details, see [configuring RDS parameter groups](https://oneuptime.com/blog/post/2026-02-12-configure-rds-parameter-groups/view).
 - **Backup**: Set the backup retention period (1-35 days). For production, 7 days is a reasonable default. Automated backups are critical for disaster recovery.
 - **Backup window**: Choose a time with low traffic for the daily backup snapshot.
 - **Monitoring**: Enable Enhanced Monitoring with a 60-second granularity. This gives you OS-level metrics that CloudWatch basic monitoring doesn't provide.

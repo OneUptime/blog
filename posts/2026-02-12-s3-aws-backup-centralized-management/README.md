@@ -314,4 +314,4 @@ AWS Backup for S3 charges based on:
 
 Continuous backup costs more than periodic snapshots because it maintains a complete change log. Use periodic backups for data that doesn't change frequently and continuous backup for critical data where you need point-in-time recovery.
 
-For optimizing your S3 storage costs overall, take a look at our guide on [S3 storage class analysis](https://oneuptime.com/blog/post/s3-storage-class-analysis-optimize-costs/view).
+For optimizing your S3 storage costs overall, take a look at our guide on [S3 storage class analysis](https://oneuptime.com/blog/post/2026-02-12-s3-storage-class-analysis-optimize-costs/view).

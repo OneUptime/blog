@@ -353,7 +353,7 @@ function quickDecode(token) {
 }
 ```
 
-For managing what goes into these tokens before they're issued, check out [using Cognito Lambda triggers for Pre Token Generation](https://oneuptime.com/blog/post/cognito-lambda-triggers-pre-token-generation/view). And if you need to handle token refresh when they expire, see the guide on [handling Cognito token refresh in applications](https://oneuptime.com/blog/post/cognito-token-refresh-applications/view).
+For managing what goes into these tokens before they're issued, check out [using Cognito Lambda triggers for Pre Token Generation](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-pre-token-generation/view). And if you need to handle token refresh when they expire, see the guide on [handling Cognito token refresh in applications](https://oneuptime.com/blog/post/2026-02-12-cognito-token-refresh-applications/view).
 
 ## Wrapping Up
 

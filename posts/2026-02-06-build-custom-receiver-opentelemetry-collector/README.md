@@ -725,7 +725,7 @@ go install go.opentelemetry.io/collector/cmd/builder@latest
 builder --config=builder-config.yaml
 ```
 
-For details on building custom distributions, see https://oneuptime.com/blog/post/build-custom-opentelemetry-collector-distribution-ocb/view.
+For details on building custom distributions, see https://oneuptime.com/blog/post/2026-02-06-build-custom-opentelemetry-collector-distribution-ocb/view.
 
 ## Configure the Collector
 
@@ -913,6 +913,6 @@ Verify:
 Building custom receivers for the OpenTelemetry Collector enables you to integrate any data source into your observability pipeline. By following the receiver interface and using the pdata APIs, you can create robust, production-ready receivers that collect telemetry from proprietary systems, legacy tools, or specialized data sources. Combined with custom processors and exporters, custom receivers provide complete flexibility in building your telemetry pipeline.
 
 For related topics, see:
-- https://oneuptime.com/blog/post/build-custom-processor-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/build-custom-exporter-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/build-custom-extension-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-processor-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-extension-opentelemetry-collector/view

@@ -423,7 +423,7 @@ def respond(status, body):
 
 ## Monitoring the Transcription Pipeline
 
-Transcription jobs can fail due to unsupported audio formats, corrupted files, or service throttling. Monitor job completion rates, processing times, and error types. If episodes queue up without being transcribed, your publishing workflow stalls. Use [OneUptime](https://oneuptime.com/blog/post/build-a-document-search-system-with-amazon-kendra/view) to track pipeline health and alert on failures.
+Transcription jobs can fail due to unsupported audio formats, corrupted files, or service throttling. Monitor job completion rates, processing times, and error types. If episodes queue up without being transcribed, your publishing workflow stalls. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-document-search-system-with-amazon-kendra/view) to track pipeline health and alert on failures.
 
 ## Wrapping Up
 

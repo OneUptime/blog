@@ -306,4 +306,4 @@ aws glue delete-session --id "session-abc123"
 
 Set the idle timeout appropriately. The default is 480 minutes (8 hours), which is way too long. Set it to 30 minutes for development work - you can always start a new session quickly.
 
-Interactive sessions changed how I develop Glue ETL. What used to take a full day of submit-wait-debug cycles now takes a couple of hours. For reducing the cost of running these jobs in production, check out [Glue Flex execution](https://oneuptime.com/blog/post/aws-glue-flex-execution-cost-savings/view).
+Interactive sessions changed how I develop Glue ETL. What used to take a full day of submit-wait-debug cycles now takes a couple of hours. For reducing the cost of running these jobs in production, check out [Glue Flex execution](https://oneuptime.com/blog/post/2026-02-12-aws-glue-flex-execution-cost-savings/view).

@@ -277,7 +277,7 @@ A few tips to keep costs manageable:
 - Don't create a new dimension value for every unique request ID or user ID. Use categories instead.
 - Aggregate data locally before publishing when possible.
 - Use the `put_metric_data` batch API to reduce the number of API calls (you're charged per API call too, though it's cheap).
-- Consider using the CloudWatch Embedded Metric Format in Lambda functions, which we cover in [this post](https://oneuptime.com/blog/post/cloudwatch-embedded-metric-format-lambda/view).
+- Consider using the CloudWatch Embedded Metric Format in Lambda functions, which we cover in [this post](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-embedded-metric-format-lambda/view).
 
 ## Setting Up Alarms on Custom Metrics
 
@@ -308,4 +308,4 @@ Also, be aware of the `PutMetricData` API limits. You can include up to 1,000 da
 
 Custom CloudWatch metrics are a fundamental building block for monitoring AWS applications. Whether you're tracking business KPIs, application performance, or infrastructure health, the ability to push your own metrics into CloudWatch means you can use one unified platform for alerting and dashboarding. Start simple with the CLI, move to SDK-based publishing as your needs grow, and keep an eye on costs by being thoughtful about your dimension cardinality.
 
-For a deeper dive into monitoring strategies, check out our post on [creating CloudWatch dashboards](https://oneuptime.com/blog/post/create-cloudwatch-dashboards-application-monitoring/view) and [setting up metric filters from log data](https://oneuptime.com/blog/post/create-cloudwatch-metric-filters-log-data/view).
+For a deeper dive into monitoring strategies, check out our post on [creating CloudWatch dashboards](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-dashboards-application-monitoring/view) and [setting up metric filters from log data](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-metric-filters-log-data/view).

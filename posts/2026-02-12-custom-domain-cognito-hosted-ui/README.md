@@ -298,7 +298,7 @@ data "aws_route53_zone" "main" {
 
 **SSL errors after setup** - DNS propagation can take up to 48 hours. Check with `dig auth.myapp.com` to verify the CNAME is resolving.
 
-For styling the hosted UI pages themselves, see [customizing the Cognito hosted UI](https://oneuptime.com/blog/post/customize-cognito-hosted-ui/view).
+For styling the hosted UI pages themselves, see [customizing the Cognito hosted UI](https://oneuptime.com/blog/post/2026-02-12-customize-cognito-hosted-ui/view).
 
 ## Summary
 

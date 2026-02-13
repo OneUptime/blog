@@ -536,8 +536,8 @@ Monitor for authentication failures which could indicate token expiration, misco
 
 For more information about OpenTelemetry Collector authentication, check out these related posts:
 
-- [How to Configure Basic Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/basic-auth-extension-opentelemetry-collector/view)
-- [How to Configure OIDC Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/oidc-auth-extension-opentelemetry-collector/view)
-- [How to Configure OAuth2 Client Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/oauth2-client-auth-extension-opentelemetry-collector/view)
+- [How to Configure Basic Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-basic-auth-extension-opentelemetry-collector/view)
+- [How to Configure OIDC Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-oidc-auth-extension-opentelemetry-collector/view)
+- [How to Configure OAuth2 Client Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-oauth2-client-auth-extension-opentelemetry-collector/view)
 
 Bearer token authentication provides a straightforward yet effective method for securing OpenTelemetry Collector communications. By properly configuring the bearer token auth extension and following security best practices, you can ensure that your telemetry data remains protected throughout its journey from applications to observability backends.

@@ -354,4 +354,4 @@ aws cloudwatch set-alarm-state \
 
 ## Wrapping Up
 
-Getting CloudWatch alarms into Slack keeps your team informed without anyone needing to watch the AWS console. AWS Chatbot is the easiest path if you want something managed. The Lambda approach gives you beautiful, customized messages. Either way, pair your Slack notifications with [PagerDuty integration](https://oneuptime.com/blog/post/cloudwatch-alarms-pagerduty/view) for critical alerts that need guaranteed acknowledgment. Slack messages are easy to miss, but they're perfect for team awareness and non-urgent monitoring.
+Getting CloudWatch alarms into Slack keeps your team informed without anyone needing to watch the AWS console. AWS Chatbot is the easiest path if you want something managed. The Lambda approach gives you beautiful, customized messages. Either way, pair your Slack notifications with [PagerDuty integration](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-pagerduty/view) for critical alerts that need guaranteed acknowledgment. Slack messages are easy to miss, but they're perfect for team awareness and non-urgent monitoring.

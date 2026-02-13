@@ -367,4 +367,4 @@ Database migration between engines is inherently complex. SCT handles the bulk o
 
 The most important advice: test thoroughly. Run your application's full test suite against the target database, compare query plans for critical queries, and validate data integrity. Don't rush the cutover - you only get one shot at production.
 
-For tracking the overall migration including servers and databases, see our guide on [AWS Migration Hub](https://oneuptime.com/blog/post/use-aws-migration-hub-for-application-migration/view).
+For tracking the overall migration including servers and databases, see our guide on [AWS Migration Hub](https://oneuptime.com/blog/post/2026-02-12-use-aws-migration-hub-for-application-migration/view).

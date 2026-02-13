@@ -426,4 +426,4 @@ Follow these guidelines:
 
 Debugging CoreDNS plugin chains requires understanding how plugins interact and execute in sequence. By using logging, monitoring, and systematic testing, you can quickly identify and resolve configuration issues. Proper plugin ordering and configuration ensure reliable DNS resolution for your Kubernetes clusters.
 
-For more CoreDNS troubleshooting, explore our guides on [DNS resolution debugging](https://oneuptime.com/blog/post/debug-dns-resolution-dnsutils/view) and [CoreDNS monitoring](https://oneuptime.com/blog/post/coredns-prometheus-dns-performance/view).
+For more CoreDNS troubleshooting, explore our guides on [DNS resolution debugging](https://oneuptime.com/blog/post/2026-02-09-debug-dns-resolution-dnsutils/view) and [CoreDNS monitoring](https://oneuptime.com/blog/post/2026-02-09-coredns-prometheus-dns-performance/view).

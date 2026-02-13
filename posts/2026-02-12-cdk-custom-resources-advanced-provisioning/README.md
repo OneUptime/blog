@@ -301,7 +301,7 @@ Custom resources are most useful for:
 - **Pre-deployment validation** (checking prerequisites)
 - **Post-deployment smoke tests**
 
-For post-deployment actions specifically, CDK also offers [triggers](https://oneuptime.com/blog/post/cdk-triggers-post-deployment-actions/view) which are a simpler alternative for some use cases.
+For post-deployment actions specifically, CDK also offers [triggers](https://oneuptime.com/blog/post/2026-02-12-cdk-triggers-post-deployment-actions/view) which are a simpler alternative for some use cases.
 
 ## Wrapping Up
 

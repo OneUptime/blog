@@ -386,7 +386,7 @@ npx serverless logs -f api --tail
 
 For monitoring your Flask Lambda API, CloudWatch gives you invocation counts, error rates, and duration metrics automatically. For more comprehensive monitoring with uptime checks and incident management, check out [OneUptime's approach to AWS monitoring](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view).
 
-If you're also building a Flask app for a traditional server deployment, take a look at our guide on [deploying Flask to AWS](https://oneuptime.com/blog/post/deploy-flask-app-to-aws/view).
+If you're also building a Flask app for a traditional server deployment, take a look at our guide on [deploying Flask to AWS](https://oneuptime.com/blog/post/2026-02-12-deploy-flask-app-to-aws/view).
 
 ## Summary
 

@@ -278,7 +278,7 @@ The choice comes down to your priorities:
 | Geographic restrictions | Geolocation routing |
 | Regulatory requirements | Geolocation routing |
 
-You can't combine geolocation and latency-based routing on the same record name directly, but you can nest them using alias records. For example, geolocation routing at the top level, then latency-based routing within a region. For advanced routing like this, consider Route 53 Traffic Flow - see https://oneuptime.com/blog/post/route-53-geoproximity-routing-traffic-flow/view.
+You can't combine geolocation and latency-based routing on the same record name directly, but you can nest them using alias records. For example, geolocation routing at the top level, then latency-based routing within a region. For advanced routing like this, consider Route 53 Traffic Flow - see https://oneuptime.com/blog/post/2026-02-12-route-53-geoproximity-routing-traffic-flow/view.
 
 ## Testing
 

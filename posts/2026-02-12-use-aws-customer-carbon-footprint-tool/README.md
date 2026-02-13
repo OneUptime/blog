@@ -169,11 +169,11 @@ aws compute-optimizer get-ec2-instance-recommendations \
 
 ### 2. Use Graviton Instances
 
-AWS Graviton processors deliver better performance per watt than x86 alternatives. Switching to Graviton can reduce energy consumption by up to 60% for the same workload. See our detailed guide on [using Graviton instances to reduce energy consumption](https://oneuptime.com/blog/post/use-graviton-instances-to-reduce-energy-consumption/view).
+AWS Graviton processors deliver better performance per watt than x86 alternatives. Switching to Graviton can reduce energy consumption by up to 60% for the same workload. See our detailed guide on [using Graviton instances to reduce energy consumption](https://oneuptime.com/blog/post/2026-02-12-use-graviton-instances-to-reduce-energy-consumption/view).
 
 ### 3. Choose Low-Carbon Regions
 
-Move workloads that do not have strict latency requirements to regions with cleaner energy grids. We cover this in depth in our post on [choosing AWS regions for lower carbon footprint](https://oneuptime.com/blog/post/choose-aws-regions-for-lower-carbon-footprint/view).
+Move workloads that do not have strict latency requirements to regions with cleaner energy grids. We cover this in depth in our post on [choosing AWS regions for lower carbon footprint](https://oneuptime.com/blog/post/2026-02-12-choose-aws-regions-for-lower-carbon-footprint/view).
 
 ### 4. Shut Down Idle Resources
 
@@ -265,6 +265,6 @@ When preparing reports, always note:
 
 The AWS Customer Carbon Footprint Tool is your starting point for understanding and reducing the environmental impact of your cloud workloads. It is free, requires no setup, and provides the data you need for both operational optimization and ESG reporting.
 
-The key actions are: access the tool regularly, export data for trend analysis, right-size your instances, choose low-carbon regions where possible, and shut down what you are not using. For a deeper dive into optimizing your AWS workloads for sustainability, check out our guide on [optimizing AWS workloads for sustainability](https://oneuptime.com/blog/post/optimize-aws-workloads-for-sustainability/view).
+The key actions are: access the tool regularly, export data for trend analysis, right-size your instances, choose low-carbon regions where possible, and shut down what you are not using. For a deeper dive into optimizing your AWS workloads for sustainability, check out our guide on [optimizing AWS workloads for sustainability](https://oneuptime.com/blog/post/2026-02-12-optimize-aws-workloads-for-sustainability/view).
 
 Small changes across many workloads add up. And in most cases, reducing your carbon footprint also reduces your AWS bill - sustainability and cost optimization go hand in hand.

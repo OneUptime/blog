@@ -246,7 +246,7 @@ resource "aws_cognito_user_pool_domain" "main" {
 
 ## Groups
 
-Create groups for role-based access control. For more on RBAC with Cognito groups, see [using Cognito groups for role-based access control](https://oneuptime.com/blog/post/cognito-groups-role-based-access-control/view).
+Create groups for role-based access control. For more on RBAC with Cognito groups, see [using Cognito groups for role-based access control](https://oneuptime.com/blog/post/2026-02-12-cognito-groups-role-based-access-control/view).
 
 Define groups with IAM role associations:
 
@@ -276,7 +276,7 @@ resource "aws_cognito_user_group" "users" {
 
 ## Lambda Triggers
 
-Set up Lambda triggers for customizing the auth flow. For details on specific triggers, see [Cognito Lambda triggers for Pre Token Generation](https://oneuptime.com/blog/post/cognito-lambda-triggers-pre-token-generation/view).
+Set up Lambda triggers for customizing the auth flow. For details on specific triggers, see [Cognito Lambda triggers for Pre Token Generation](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-pre-token-generation/view).
 
 Configure Lambda functions and attach them as triggers:
 
@@ -423,7 +423,7 @@ terraform plan -var-file="environments/prod.tfvars"
 terraform apply -var-file="environments/prod.tfvars"
 ```
 
-If you prefer CDK over Terraform, check out [setting up Cognito with CDK](https://oneuptime.com/blog/post/cognito-cdk/view).
+If you prefer CDK over Terraform, check out [setting up Cognito with CDK](https://oneuptime.com/blog/post/2026-02-12-cognito-cdk/view).
 
 ## Wrapping Up
 

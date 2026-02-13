@@ -344,6 +344,6 @@ aws cloudwatch put-metric-alarm \
 
 Also monitor the `ExecuteProcessing.Duration` and `ExecuteProcessing.Success` metrics on the Firehose delivery stream to see how the transformation is performing.
 
-For more on delivering transformed data to different destinations, check out our guides on [Firehose delivery to S3](https://oneuptime.com/blog/post/kinesis-data-firehose-data-delivery-to-s3/view) and [Firehose delivery to OpenSearch](https://oneuptime.com/blog/post/kinesis-firehose-data-delivery-to-opensearch/view).
+For more on delivering transformed data to different destinations, check out our guides on [Firehose delivery to S3](https://oneuptime.com/blog/post/2026-02-12-kinesis-data-firehose-data-delivery-to-s3/view) and [Firehose delivery to OpenSearch](https://oneuptime.com/blog/post/2026-02-12-kinesis-firehose-data-delivery-to-opensearch/view).
 
 Lambda transformation turns Firehose from a simple pipe into a flexible data processing pipeline. The key is keeping your transformations fast and handling errors gracefully - a slow or buggy Lambda function can back up your entire delivery stream.

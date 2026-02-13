@@ -444,7 +444,7 @@ aws fsx update-file-system \
 6. **Rotate the service account password** periodically and update it in FSx.
 7. **Document your security group rules** - the port requirements are extensive and easy to get wrong.
 
-For the complete FSx for Windows setup including storage configuration and features, see our guide on [setting up FSx for Windows File Server](https://oneuptime.com/blog/post/amazon-fsx-windows-file-server/view).
+For the complete FSx for Windows setup including storage configuration and features, see our guide on [setting up FSx for Windows File Server](https://oneuptime.com/blog/post/2026-02-12-amazon-fsx-windows-file-server/view).
 
 ## Wrapping Up
 

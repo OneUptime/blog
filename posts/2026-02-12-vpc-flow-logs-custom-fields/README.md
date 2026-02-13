@@ -397,4 +397,4 @@ Trust policy:
 
 **Monitor log delivery.** Flow log delivery can fail silently. Track it with CloudWatch metrics and alert on gaps.
 
-For firewall-level traffic analysis, see our guide on [AWS Network Firewall logging](https://oneuptime.com/blog/post/aws-network-firewall-logging/view). Combine flow logs with [OneUptime](https://oneuptime.com) monitoring for a complete picture of your network health and security.
+For firewall-level traffic analysis, see our guide on [AWS Network Firewall logging](https://oneuptime.com/blog/post/2026-02-12-aws-network-firewall-logging/view). Combine flow logs with [OneUptime](https://oneuptime.com) monitoring for a complete picture of your network health and security.

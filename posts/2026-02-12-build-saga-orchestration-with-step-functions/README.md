@@ -356,7 +356,7 @@ aws stepfunctions start-execution \
 
 The trickiest part of the saga pattern is when a compensating transaction itself fails. If the refund fails, you cannot just ignore it. The state machine above handles this by routing to an `alert-manual-intervention` Lambda that notifies your operations team.
 
-For critical sagas, make compensating transactions idempotent. This way, you can safely retry them. See our guide on [implementing idempotent Lambda functions](https://oneuptime.com/blog/post/implement-idempotent-lambda-functions/view) for the pattern.
+For critical sagas, make compensating transactions idempotent. This way, you can safely retry them. See our guide on [implementing idempotent Lambda functions](https://oneuptime.com/blog/post/2026-02-12-implement-idempotent-lambda-functions/view) for the pattern.
 
 ## Adding Timeouts
 
@@ -388,4 +388,4 @@ Each step should have a timeout to prevent the saga from hanging indefinitely:
 
 The saga pattern with Step Functions gives you reliable distributed transactions without the complexity of two-phase commit. Step Functions handles the orchestration, error catching, and state management. Your Lambda functions focus on business logic and compensating actions. The visual workflow in the Step Functions console makes it easy to see exactly where a saga succeeded or failed.
 
-For sagas that require human review before proceeding, check out our guide on [building human approval workflows with Step Functions](https://oneuptime.com/blog/post/build-human-approval-workflows-with-step-functions/view).
+For sagas that require human review before proceeding, check out our guide on [building human approval workflows with Step Functions](https://oneuptime.com/blog/post/2026-02-12-build-human-approval-workflows-with-step-functions/view).

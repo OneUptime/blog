@@ -1240,6 +1240,6 @@ Start small with well-defined module boundaries, document your interfaces clearl
 
 **Related Reading:**
 
-- [Introducing the OneUptime Terraform Provider](https://oneuptime.com/blog/post/introducing-terraform-provider-for-oneuptime/view)
-- [The Five Stages of SRE Maturity](https://oneuptime.com/blog/post/the-five-stages-of-sre-maturity/view)
-- [SRE Best Practices](https://oneuptime.com/blog/post/sre-best-practices/view)
+- [Introducing the OneUptime Terraform Provider](https://oneuptime.com/blog/post/2025-07-01-introducing-terraform-provider-for-oneuptime/view)
+- [The Five Stages of SRE Maturity](https://oneuptime.com/blog/post/2025-09-01-the-five-stages-of-sre-maturity/view)
+- [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view)

@@ -177,7 +177,7 @@ Understanding the architecture helps you optimize performance:
 
 **Write throughput**: Aurora's log-structured writes reduce I/O amplification, but the writer is still a single instance. If you need more write throughput, you need to shard at the application level.
 
-**Read throughput**: Scale horizontally by adding reader instances. They're cheap to add since they share storage. See our guide on [setting up Aurora read replicas](https://oneuptime.com/blog/post/set-up-aurora-read-replicas/view).
+**Read throughput**: Scale horizontally by adding reader instances. They're cheap to add since they share storage. See our guide on [setting up Aurora read replicas](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-read-replicas/view).
 
 **Latency**: Aurora's read latency depends heavily on buffer cache hit ratio. Monitor this metric. If it drops below 95-99%, your working set is larger than available memory and you should consider a larger instance class.
 

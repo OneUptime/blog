@@ -295,7 +295,7 @@ Common issues and solutions:
 
 For more information on OpenTelemetry Collector processors and data processing, check out these related posts:
 
-- [How to Write OTTL Statements for the Transform Processor](https://oneuptime.com/blog/post/ottl-statements-transform-processor-opentelemetry-collector/view)
-- [How to Filter Spans Using OTTL](https://oneuptime.com/blog/post/filter-spans-ottl-opentelemetry-collector/view)
+- [How to Write OTTL Statements for the Transform Processor](https://oneuptime.com/blog/post/2026-02-06-ottl-statements-transform-processor-opentelemetry-collector/view)
+- [How to Filter Spans Using OTTL](https://oneuptime.com/blog/post/2026-02-06-filter-spans-ottl-opentelemetry-collector/view)
 
 The Remote Tap processor provides a non-intrusive way to observe and analyze telemetry data flowing through your OpenTelemetry Collector. By duplicating data to additional endpoints, you can debug issues, validate transformations, and implement parallel processing workflows without disrupting production data pipelines. Configure taps carefully considering performance impacts, and always secure tap endpoints in production environments.

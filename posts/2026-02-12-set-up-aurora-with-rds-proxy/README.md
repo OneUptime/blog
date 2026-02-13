@@ -357,4 +357,4 @@ SET SESSION wait_timeout = 300;
 
 RDS Proxy is essential for serverless applications connecting to Aurora and highly valuable for any workload with bursty connection patterns. The setup involves a few steps - Secrets Manager, IAM roles, proxy creation, target registration - but once it's running, your applications get better connection management, faster failover, and protection against connection exhaustion.
 
-For more on optimizing your Aurora setup, check out how to [configure Aurora endpoints](https://oneuptime.com/blog/post/configure-aurora-endpoints-writer-reader-custom/view) for read/write splitting, and how to [troubleshoot Aurora failover events](https://oneuptime.com/blog/post/troubleshoot-aurora-failover-events/view) when things go wrong.
+For more on optimizing your Aurora setup, check out how to [configure Aurora endpoints](https://oneuptime.com/blog/post/2026-02-12-configure-aurora-endpoints-writer-reader-custom/view) for read/write splitting, and how to [troubleshoot Aurora failover events](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-aurora-failover-events/view) when things go wrong.

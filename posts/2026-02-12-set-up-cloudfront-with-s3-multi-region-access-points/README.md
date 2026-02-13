@@ -376,7 +376,7 @@ This architecture adds costs in several areas:
 - MRAP request processing
 - CloudFront data transfer and requests
 
-However, the latency improvement for global users and the availability improvement from multi-region failover often justify the cost. For cost optimization strategies, see our post on [implementing post-migration optimization on AWS](https://oneuptime.com/blog/post/implement-post-migration-optimization-on-aws/view).
+However, the latency improvement for global users and the availability improvement from multi-region failover often justify the cost. For cost optimization strategies, see our post on [implementing post-migration optimization on AWS](https://oneuptime.com/blog/post/2026-02-12-implement-post-migration-optimization-on-aws/view).
 
 ## Conclusion
 

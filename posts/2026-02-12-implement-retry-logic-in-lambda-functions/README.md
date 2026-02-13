@@ -354,7 +354,7 @@ function logRetryMetric(operation, attempt, success, error) {
 }
 ```
 
-Create CloudWatch metric filters to build dashboards showing retry rates across your Lambda functions. If retry rates spike, something is degrading. For monitoring setup details, see [creating custom CloudWatch metrics from Lambda](https://oneuptime.com/blog/post/create-custom-cloudwatch-metrics-from-lambda/view).
+Create CloudWatch metric filters to build dashboards showing retry rates across your Lambda functions. If retry rates spike, something is degrading. For monitoring setup details, see [creating custom CloudWatch metrics from Lambda](https://oneuptime.com/blog/post/2026-02-12-create-custom-cloudwatch-metrics-from-lambda/view).
 
 ## Wrapping Up
 

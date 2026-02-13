@@ -181,7 +181,7 @@ When you're done testing, delete the endpoint to stop charges:
 predictor.delete_endpoint()
 ```
 
-This is important - endpoints run continuously and charge by the hour. For the notebook guide, see our post on [creating a SageMaker notebook instance](https://oneuptime.com/blog/post/create-a-sagemaker-notebook-instance/view).
+This is important - endpoints run continuously and charge by the hour. For the notebook guide, see our post on [creating a SageMaker notebook instance](https://oneuptime.com/blog/post/2026-02-12-create-a-sagemaker-notebook-instance/view).
 
 ## Using SageMaker with Your Own Code
 
@@ -330,4 +330,4 @@ Once you're comfortable with the basics, explore:
 
 Start small with a notebook instance and a simple training job. Get familiar with the data flow (S3 to training to model artifact to endpoint), and then expand to more complex workflows.
 
-For setting up your first notebook, head over to our guide on [creating a SageMaker notebook instance](https://oneuptime.com/blog/post/create-a-sagemaker-notebook-instance/view). And to keep your SageMaker costs under control, check out [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/create-a-cost-optimization-strategy-for-aws/view).
+For setting up your first notebook, head over to our guide on [creating a SageMaker notebook instance](https://oneuptime.com/blog/post/2026-02-12-create-a-sagemaker-notebook-instance/view). And to keep your SageMaker costs under control, check out [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/2026-02-12-create-a-cost-optimization-strategy-for-aws/view).

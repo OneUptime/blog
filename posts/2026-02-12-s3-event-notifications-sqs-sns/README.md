@@ -8,7 +8,7 @@ Description: Configure S3 to send event notifications to SQS queues and SNS topi
 
 ---
 
-While [triggering Lambda directly from S3](https://oneuptime.com/blog/post/s3-event-notifications-trigger-lambda/view) works great for simple processing, sometimes you need more flexibility. Maybe you want to decouple the event producer from the consumer. Maybe you need to fan out events to multiple subscribers. Maybe you need a buffer to handle bursts. That's where SQS and SNS come in.
+While [triggering Lambda directly from S3](https://oneuptime.com/blog/post/2026-02-12-s3-event-notifications-trigger-lambda/view) works great for simple processing, sometimes you need more flexibility. Maybe you want to decouple the event producer from the consumer. Maybe you need to fan out events to multiple subscribers. Maybe you need a buffer to handle bursts. That's where SQS and SNS come in.
 
 S3 can send event notifications directly to SQS queues (for buffered processing) and SNS topics (for fan-out to multiple subscribers). Let's set up both.
 

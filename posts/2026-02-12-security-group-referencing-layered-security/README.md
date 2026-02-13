@@ -291,4 +291,4 @@ aws ec2 describe-security-groups \
 
 Security group referencing is the right way to handle inter-tier communication in AWS. It's dynamic, scales with auto-scaling, works across accounts via peering, and creates clear, auditable relationships between your application tiers. Every multi-tier architecture should use this pattern instead of CIDR-based rules for internal traffic.
 
-For the broader picture on securing your network, see our guides on [security group configurations for common architectures](https://oneuptime.com/blog/post/security-group-rules-common-architectures/view) and [Network ACLs for subnet-level security](https://oneuptime.com/blog/post/network-acls-subnet-level-security/view).
+For the broader picture on securing your network, see our guides on [security group configurations for common architectures](https://oneuptime.com/blog/post/2026-02-12-security-group-rules-common-architectures/view) and [Network ACLs for subnet-level security](https://oneuptime.com/blog/post/2026-02-12-network-acls-subnet-level-security/view).

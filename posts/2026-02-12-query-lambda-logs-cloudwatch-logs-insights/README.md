@@ -266,8 +266,8 @@ If `coldStarts` is consistently 0, your provisioned concurrency is sufficient. I
 
 ## Creating Dashboards from Lambda Queries
 
-You can add any Logs Insights query directly to a CloudWatch dashboard. In the dashboard editor, add a "Logs table" or "Logs" widget and paste your query. This is great for a Lambda operations dashboard. See our [dashboard creation guide](https://oneuptime.com/blog/post/create-cloudwatch-dashboards-application-monitoring/view) for more details.
+You can add any Logs Insights query directly to a CloudWatch dashboard. In the dashboard editor, add a "Logs table" or "Logs" widget and paste your query. This is great for a Lambda operations dashboard. See our [dashboard creation guide](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-dashboards-application-monitoring/view) for more details.
 
 ## Wrapping Up
 
-Lambda logs in CloudWatch are rich with performance and operational data. The `REPORT` line alone gives you duration, memory, billing, and cold start information. Combined with your application's own log output, Logs Insights queries let you build a comprehensive picture of your Lambda function's behavior. Start with the basic duration and error queries, then build up to cold start analysis and cost estimation as your needs grow. For more query patterns applicable to any AWS service, check out our [common Logs Insights queries](https://oneuptime.com/blog/post/common-cloudwatch-logs-insights-queries/view) post.
+Lambda logs in CloudWatch are rich with performance and operational data. The `REPORT` line alone gives you duration, memory, billing, and cold start information. Combined with your application's own log output, Logs Insights queries let you build a comprehensive picture of your Lambda function's behavior. Start with the basic duration and error queries, then build up to cold start analysis and cost estimation as your needs grow. For more query patterns applicable to any AWS service, check out our [common Logs Insights queries](https://oneuptime.com/blog/post/2026-02-12-common-cloudwatch-logs-insights-queries/view) post.

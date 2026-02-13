@@ -51,7 +51,7 @@ You need these components already in place:
 2. A Transit Gateway with VPCs attached
 3. A Direct Connect Gateway
 
-If you haven't set these up yet, check out [setting up Direct Connect](https://oneuptime.com/blog/post/set-up-aws-direct-connect-dedicated-connectivity/view) and [using Transit Gateway for multi-VPC connectivity](https://oneuptime.com/blog/post/aws-transit-gateway-multi-vpc-connectivity/view).
+If you haven't set these up yet, check out [setting up Direct Connect](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-direct-connect-dedicated-connectivity/view) and [using Transit Gateway for multi-VPC connectivity](https://oneuptime.com/blog/post/2026-02-12-aws-transit-gateway-multi-vpc-connectivity/view).
 
 ## Step 1: Create a Direct Connect Gateway
 

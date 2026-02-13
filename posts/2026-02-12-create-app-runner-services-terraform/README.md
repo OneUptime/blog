@@ -385,7 +385,7 @@ resource "aws_wafv2_web_acl_association" "apprunner" {
 }
 ```
 
-For details on creating the Web ACL itself, see our guide on [creating WAF Web ACLs with Terraform](https://oneuptime.com/blog/post/create-waf-web-acls-terraform/view).
+For details on creating the Web ACL itself, see our guide on [creating WAF Web ACLs with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-waf-web-acls-terraform/view).
 
 ## Outputs
 

@@ -404,6 +404,6 @@ Avoid these common pitfalls:
 Right-sizing the OpenTelemetry Collector requires understanding your throughput, pipeline complexity, and deployment pattern. Start with the formulas and guidelines provided, deploy with comprehensive monitoring, and adjust based on observed metrics. Remember to set the memory_limiter processor to prevent OOM conditions, and always provision some headroom for traffic spikes.
 
 For more information on collector performance, see the [OpenTelemetry Collector Performance documentation](https://opentelemetry.io/docs/collector/performance/) and related posts:
-- https://oneuptime.com/blog/post/benchmark-collector-telemetrygen/view
-- https://oneuptime.com/blog/post/persistent-queue-storage-collector-reliability/view
-- https://oneuptime.com/blog/post/troubleshoot-collector-not-exporting-data/view
+- https://oneuptime.com/blog/post/2026-02-06-benchmark-collector-telemetrygen/view
+- https://oneuptime.com/blog/post/2026-02-06-persistent-queue-storage-collector-reliability/view
+- https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-not-exporting-data/view

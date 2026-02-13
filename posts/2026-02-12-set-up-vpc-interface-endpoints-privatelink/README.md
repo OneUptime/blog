@@ -333,7 +333,7 @@ aws sqs list-queues --region us-east-1
 
 If DNS still resolves to public IPs, verify that private DNS is enabled and your VPC has DNS hostnames and DNS support enabled.
 
-For a broader overview of private service access, see [accessing AWS services privately using VPC endpoints](https://oneuptime.com/blog/post/access-aws-services-privately-vpc-endpoints/view). For S3 and DynamoDB specifically, [gateway endpoints](https://oneuptime.com/blog/post/set-up-vpc-gateway-endpoints-s3-dynamodb/view) are the better option since they're free.
+For a broader overview of private service access, see [accessing AWS services privately using VPC endpoints](https://oneuptime.com/blog/post/2026-02-12-access-aws-services-privately-vpc-endpoints/view). For S3 and DynamoDB specifically, [gateway endpoints](https://oneuptime.com/blog/post/2026-02-12-set-up-vpc-gateway-endpoints-s3-dynamodb/view) are the better option since they're free.
 
 ## Wrapping Up
 

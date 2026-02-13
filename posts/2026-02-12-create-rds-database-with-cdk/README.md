@@ -267,4 +267,4 @@ RDS provides CloudWatch metrics for CPU, memory, disk I/O, and connection count.
 
 CDK makes RDS setup reproducible and safe. Define your instance in code, store credentials in Secrets Manager, encrypt everything, and enable automated backups. Start with a small instance type and scale up as needed - it's easy to modify instance types through CDK.
 
-For the networking layer, pair this with proper VPC design. And if your application runs on ECS, check out our guide on [creating an ECS Fargate service with CDK](https://oneuptime.com/blog/post/create-ecs-fargate-service-with-cdk/view).
+For the networking layer, pair this with proper VPC design. And if your application runs on ECS, check out our guide on [creating an ECS Fargate service with CDK](https://oneuptime.com/blog/post/2026-02-12-create-ecs-fargate-service-with-cdk/view).

@@ -251,7 +251,7 @@ new cloudwatch.Alarm(this, 'CleanupMissingAlarm', {
 });
 ```
 
-For more comprehensive monitoring, take a look at our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/build-logging-and-monitoring-stack-on-aws/view) which covers CloudWatch dashboards and alerting.
+For more comprehensive monitoring, take a look at our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view) which covers CloudWatch dashboards and alerting.
 
 ## Handling Long-Running Jobs
 

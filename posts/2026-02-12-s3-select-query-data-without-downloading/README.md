@@ -313,4 +313,4 @@ S3 Select is the right tool when:
 - Your query is simple (WHERE + LIMIT)
 - You're doing this programmatically in an application or Lambda function
 
-For event-driven use cases, combine S3 Select with [S3 event notifications triggering Lambda](https://oneuptime.com/blog/post/s3-event-notifications-trigger-lambda/view) for powerful serverless data processing pipelines.
+For event-driven use cases, combine S3 Select with [S3 event notifications triggering Lambda](https://oneuptime.com/blog/post/2026-02-12-s3-event-notifications-trigger-lambda/view) for powerful serverless data processing pipelines.

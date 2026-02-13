@@ -285,7 +285,7 @@ A few tips to get the best upload speed:
 
 **Match concurrency to your bandwidth.** If you have a 1 Gbps connection, you can push about 125 MB/s. With 64 MB chunks and 10 concurrent threads, you'll keep that pipe full.
 
-**Use Transfer Acceleration for distant uploads.** If your bucket is in us-east-1 but you're uploading from Asia, [S3 Transfer Acceleration](https://oneuptime.com/blog/post/enable-s3-transfer-acceleration-faster-uploads/view) routes traffic through CloudFront edge locations for faster transfers.
+**Use Transfer Acceleration for distant uploads.** If your bucket is in us-east-1 but you're uploading from Asia, [S3 Transfer Acceleration](https://oneuptime.com/blog/post/2026-02-12-enable-s3-transfer-acceleration-faster-uploads/view) routes traffic through CloudFront edge locations for faster transfers.
 
 Calculate optimal settings for your network:
 

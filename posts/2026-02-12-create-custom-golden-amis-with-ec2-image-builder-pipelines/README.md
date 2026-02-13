@@ -430,6 +430,6 @@ aws imagebuilder create-lifecycle-policy \
 
 The pipeline should run automatically, but you also want notifications when things change. Here's a pattern for getting alerted when a new golden AMI is available, so teams can update their launch configurations.
 
-If you're managing many instances across your org, pair your golden AMI pipeline with proper [EC2 resource tagging](https://oneuptime.com/blog/post/tag-ec2-resources-for-cost-allocation-and-organization/view) to track which instances are running which AMI version. This makes it easy to identify instances that need updating.
+If you're managing many instances across your org, pair your golden AMI pipeline with proper [EC2 resource tagging](https://oneuptime.com/blog/post/2026-02-12-tag-ec2-resources-for-cost-allocation-and-organization/view) to track which instances are running which AMI version. This makes it easy to identify instances that need updating.
 
 Golden AMIs are a foundational piece of your cloud security posture. Get the pipeline right, automate the testing, and you'll spend a lot less time worrying about whether your instances meet compliance requirements.

@@ -872,6 +872,6 @@ Start with a simple community scheme, document it thoroughly, and expand as your
 
 **Related Reading:**
 
-- [Why Software Engineers Don't Understand Networking](https://oneuptime.com/blog/post/why-software-engineers-dont-understand-networking/view)
-- [Monitoring IP Addresses with OneUptime](https://oneuptime.com/blog/post/monitor-ip-addresses-with-oneuptime/view)
-- [Monitoring Service Ports with OneUptime](https://oneuptime.com/blog/post/monitor-service-ports-with-oneuptime/view)
+- [Why Software Engineers Don't Understand Networking](https://oneuptime.com/blog/post/2025-12-12-why-software-engineers-dont-understand-networking/view)
+- [Monitoring IP Addresses with OneUptime](https://oneuptime.com/blog/post/2025-10-27-monitor-ip-addresses-with-oneuptime/view)
+- [Monitoring Service Ports with OneUptime](https://oneuptime.com/blog/post/2025-10-27-monitor-service-ports-with-oneuptime/view)

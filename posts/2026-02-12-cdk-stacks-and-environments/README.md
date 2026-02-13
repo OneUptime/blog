@@ -269,4 +269,4 @@ cdk.Tags.of(stack).add('Team', 'platform');
 cdk.Tags.of(stack).add('CostCenter', 'eng-123');
 ```
 
-Understanding stacks and environments is foundational for everything else in CDK. For deploying across multiple accounts, check out the guide on [deploying CDK apps to multiple accounts and regions](https://oneuptime.com/blog/post/deploy-cdk-apps-multiple-aws-accounts-regions/view). To learn about using CDK Pipelines for automated deployments across environments, see the post on [CDK Pipelines](https://oneuptime.com/blog/post/cdk-pipelines-automated-deployments/view).
+Understanding stacks and environments is foundational for everything else in CDK. For deploying across multiple accounts, check out the guide on [deploying CDK apps to multiple accounts and regions](https://oneuptime.com/blog/post/2026-02-12-deploy-cdk-apps-multiple-aws-accounts-regions/view). To learn about using CDK Pipelines for automated deployments across environments, see the post on [CDK Pipelines](https://oneuptime.com/blog/post/2026-02-12-cdk-pipelines-automated-deployments/view).

@@ -16,8 +16,8 @@ This is also the fastest way to test a new task definition before wrapping it in
 
 You'll need:
 
-- An ECS cluster (see [creating your first ECS cluster](https://oneuptime.com/blog/post/first-ecs-cluster/view))
-- A task definition (see [creating an ECS task definition](https://oneuptime.com/blog/post/ecs-task-definition/view))
+- An ECS cluster (see [creating your first ECS cluster](https://oneuptime.com/blog/post/2026-02-12-first-ecs-cluster/view))
+- A task definition (see [creating an ECS task definition](https://oneuptime.com/blog/post/2026-02-12-ecs-task-definition/view))
 - Proper networking (VPC, subnets, security groups)
 
 ## Running a Task on Fargate
@@ -301,4 +301,4 @@ aws logs tail /ecs/web-app --since 1h --format short
 
 ## Wrapping Up
 
-Running tasks manually is essential for testing, debugging, and one-off jobs. The override capability means you can reuse the same task definition for different scenarios without creating separate definitions for each. Master this workflow and you'll be able to quickly validate changes before deploying them as services. When you're ready for always-running workloads, check out our guide on [creating ECS services](https://oneuptime.com/blog/post/ecs-service-long-running-containers/view).
+Running tasks manually is essential for testing, debugging, and one-off jobs. The override capability means you can reuse the same task definition for different scenarios without creating separate definitions for each. Master this workflow and you'll be able to quickly validate changes before deploying them as services. When you're ready for always-running workloads, check out our guide on [creating ECS services](https://oneuptime.com/blog/post/2026-02-12-ecs-service-long-running-containers/view).

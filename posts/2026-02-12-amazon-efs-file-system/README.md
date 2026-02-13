@@ -269,7 +269,7 @@ resource "aws_efs_mount_target" "mount" {
 }
 ```
 
-For a complete Terraform setup including lifecycle policies and access points, see our post on [setting up EFS with Terraform](https://oneuptime.com/blog/post/efs-terraform-setup/view).
+For a complete Terraform setup including lifecycle policies and access points, see our post on [setting up EFS with Terraform](https://oneuptime.com/blog/post/2026-02-12-efs-terraform-setup/view).
 
 ## Verifying the File System
 
@@ -297,15 +297,15 @@ EFS pricing is based on how much data you store. As of this writing:
 - **Infrequent Access (IA) storage**: ~$0.016/GB/month
 - **Data transfer**: Free within the same AZ, small charge across AZs
 
-For cost optimization, enable lifecycle management to automatically move infrequently accessed files to IA storage. We cover this in detail in our post on [EFS lifecycle management for cost optimization](https://oneuptime.com/blog/post/efs-lifecycle-management-cost-optimization/view).
+For cost optimization, enable lifecycle management to automatically move infrequently accessed files to IA storage. We cover this in detail in our post on [EFS lifecycle management for cost optimization](https://oneuptime.com/blog/post/2026-02-12-efs-lifecycle-management-cost-optimization/view).
 
 ## What's Next
 
 With your EFS file system created and mount targets ready, you can now mount it on your compute resources. Check out our guides on:
 
-- [Mounting EFS on EC2 instances](https://oneuptime.com/blog/post/mount-efs-ec2-instances/view)
-- [Mounting EFS on ECS Fargate tasks](https://oneuptime.com/blog/post/mount-efs-ecs-fargate-tasks/view)
-- [Mounting EFS on Lambda functions](https://oneuptime.com/blog/post/mount-efs-lambda-functions/view)
+- [Mounting EFS on EC2 instances](https://oneuptime.com/blog/post/2026-02-12-mount-efs-ec2-instances/view)
+- [Mounting EFS on ECS Fargate tasks](https://oneuptime.com/blog/post/2026-02-12-mount-efs-ecs-fargate-tasks/view)
+- [Mounting EFS on Lambda functions](https://oneuptime.com/blog/post/2026-02-12-mount-efs-lambda-functions/view)
 
 ## Wrapping Up
 

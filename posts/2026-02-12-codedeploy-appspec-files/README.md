@@ -271,7 +271,7 @@ Hooks:
   - AfterAllowTraffic: "LambdaFunctionToValidateAfterTraffic"
 ```
 
-For more on ECS deployments, see our guide on [setting up CodeDeploy for ECS](https://oneuptime.com/blog/post/codedeploy-ecs-deployments/view).
+For more on ECS deployments, see our guide on [setting up CodeDeploy for ECS](https://oneuptime.com/blog/post/2026-02-12-codedeploy-ecs-deployments/view).
 
 ## Lambda AppSpec
 
@@ -295,7 +295,7 @@ Hooks:
   - AfterAllowTraffic: "CodeDeployHookAfterTraffic"
 ```
 
-Check out our detailed guide on [CodeDeploy for Lambda deployments](https://oneuptime.com/blog/post/codedeploy-lambda-deployments/view) for more.
+Check out our detailed guide on [CodeDeploy for Lambda deployments](https://oneuptime.com/blog/post/2026-02-12-codedeploy-lambda-deployments/view) for more.
 
 ## JSON Format
 

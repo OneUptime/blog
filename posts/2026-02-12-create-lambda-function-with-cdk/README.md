@@ -330,4 +330,4 @@ prodAlias.addAutoScaling({
 }).scaleOnUtilization({ utilizationTarget: 0.7 });
 ```
 
-Lambda with CDK removes all the boilerplate. The automatic IAM role creation, log group management, and event source wiring let you focus on your business logic instead of AWS plumbing. For bundling Lambda code with CDK assets, see the post on [CDK assets for bundling Lambda code](https://oneuptime.com/blog/post/cdk-assets-bundling-lambda-code/view). For Docker-based Lambda functions, check out [using CDK with Docker assets](https://oneuptime.com/blog/post/cdk-with-docker-assets/view).
+Lambda with CDK removes all the boilerplate. The automatic IAM role creation, log group management, and event source wiring let you focus on your business logic instead of AWS plumbing. For bundling Lambda code with CDK assets, see the post on [CDK assets for bundling Lambda code](https://oneuptime.com/blog/post/2026-02-12-cdk-assets-bundling-lambda-code/view). For Docker-based Lambda functions, check out [using CDK with Docker assets](https://oneuptime.com/blog/post/2026-02-12-cdk-with-docker-assets/view).

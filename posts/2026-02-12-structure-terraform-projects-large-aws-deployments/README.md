@@ -326,7 +326,7 @@ terraform/
 
 Each team gets their own state files, their own CI pipelines, and their own blast radius.
 
-For automating these deployments through CI, check out [running Terraform plan as a pull request check](https://oneuptime.com/blog/post/terraform-plan-pull-request-check/view).
+For automating these deployments through CI, check out [running Terraform plan as a pull request check](https://oneuptime.com/blog/post/2026-02-12-terraform-plan-pull-request-check/view).
 
 ## Summary
 

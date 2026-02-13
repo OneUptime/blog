@@ -201,7 +201,7 @@ eksctl upgrade nodegroup \
 
 ## Step 7: Update Self-Managed Components
 
-If you're running the [Cluster Autoscaler](https://oneuptime.com/blog/post/configure-eks-cluster-autoscaler/view), [Karpenter](https://oneuptime.com/blog/post/use-karpenter-for-eks-node-provisioning/view), or other controllers, update them to versions compatible with the new Kubernetes version.
+If you're running the [Cluster Autoscaler](https://oneuptime.com/blog/post/2026-02-12-configure-eks-cluster-autoscaler/view), [Karpenter](https://oneuptime.com/blog/post/2026-02-12-use-karpenter-for-eks-node-provisioning/view), or other controllers, update them to versions compatible with the new Kubernetes version.
 
 ```bash
 # Update Cluster Autoscaler image tag to match new K8s version

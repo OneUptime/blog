@@ -124,7 +124,7 @@ db_password = os.environ["DB_PASSWORD"]
 api_key = os.environ["API_KEY"]
 ```
 
-For a deeper dive into Secrets Manager integration, check out our post on [passing secrets to ECS tasks](https://oneuptime.com/blog/post/pass-secrets-ecs-tasks-secrets-manager/view).
+For a deeper dive into Secrets Manager integration, check out our post on [passing secrets to ECS tasks](https://oneuptime.com/blog/post/2026-02-12-pass-secrets-ecs-tasks-secrets-manager/view).
 
 ## Method 3: SSM Parameter Store
 

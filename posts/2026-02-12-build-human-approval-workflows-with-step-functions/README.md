@@ -341,4 +341,4 @@ A 24-hour timeout (`86400` seconds) is a reasonable default. For urgent operatio
 
 Human approval workflows with Step Functions are surprisingly straightforward. The task token pattern handles the hard part - pausing an execution and resuming it later based on external input. Whether you use email, Slack, or a custom web interface for the approval UI, the underlying pattern is the same: generate a token, present it to a human, and call back when they decide.
 
-For workflows that also need parallel processing steps, check out our guide on [building parallel processing pipelines with Step Functions](https://oneuptime.com/blog/post/build-parallel-processing-pipelines-with-step-functions/view).
+For workflows that also need parallel processing steps, check out our guide on [building parallel processing pipelines with Step Functions](https://oneuptime.com/blog/post/2026-02-12-build-parallel-processing-pipelines-with-step-functions/view).

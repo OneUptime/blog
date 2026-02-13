@@ -416,7 +416,7 @@ function emitMetric(metricName, value, dimensions = {}) {
 emitMetric('OrderProcessed', 1, { Status: 'success', Region: 'us-east-1' });
 ```
 
-For more on CloudWatch-based debugging, see our guide on [debugging Lambda functions with CloudWatch Logs](https://oneuptime.com/blog/post/debug-lambda-functions-cloudwatch-logs/view).
+For more on CloudWatch-based debugging, see our guide on [debugging Lambda functions with CloudWatch Logs](https://oneuptime.com/blog/post/2026-02-12-debug-lambda-functions-cloudwatch-logs/view).
 
 ## Wrapping Up
 

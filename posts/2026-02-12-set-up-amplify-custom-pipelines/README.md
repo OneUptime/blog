@@ -395,4 +395,4 @@ curl -X POST \
 
 ## Wrapping Up
 
-Custom pipelines give you the flexibility to enforce quality gates, manage multi-environment deployments, and integrate with your existing toolchain. Start with customizing the `amplify.yml` build spec, and graduate to CodePipeline or GitHub Actions as your needs grow. For setting up the backend infrastructure these pipelines deploy, check out [Amplify backend with CDK](https://oneuptime.com/blog/post/set-up-amplify-backend-with-cdk/view).
+Custom pipelines give you the flexibility to enforce quality gates, manage multi-environment deployments, and integrate with your existing toolchain. Start with customizing the `amplify.yml` build spec, and graduate to CodePipeline or GitHub Actions as your needs grow. For setting up the backend infrastructure these pipelines deploy, check out [Amplify backend with CDK](https://oneuptime.com/blog/post/2026-02-12-set-up-amplify-backend-with-cdk/view).

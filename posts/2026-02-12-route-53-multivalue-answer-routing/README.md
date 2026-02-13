@@ -122,7 +122,7 @@ done
 
 I recommend a short `RequestInterval` (10 seconds) and a low `FailureThreshold` (2) for multivalue answer records. Since the whole point is fast removal of unhealthy endpoints, you want Route 53 to detect failures quickly.
 
-For more on health check configuration, see https://oneuptime.com/blog/post/route-53-health-checks/view.
+For more on health check configuration, see https://oneuptime.com/blog/post/2026-02-12-route-53-health-checks/view.
 
 ## Terraform Configuration
 

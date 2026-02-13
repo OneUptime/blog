@@ -346,4 +346,4 @@ reprocess_failed_messages(
 
 Delivery policies are about matching your retry strategy to your system's reliability requirements. Aggressive retries for critical real-time integrations, patient retries for endpoints with maintenance windows, and always a DLQ to catch what falls through.
 
-For monitoring delivery health, see [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/use-sns-with-cloudwatch-alarms/view).
+For monitoring delivery health, see [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-use-sns-with-cloudwatch-alarms/view).

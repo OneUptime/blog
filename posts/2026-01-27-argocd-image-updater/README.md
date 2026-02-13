@@ -40,7 +40,7 @@ The workflow is simple:
 
 ### Prerequisites
 
-You need ArgoCD running in your cluster. If you don't have it yet, check out our [ArgoCD GitOps guide](https://oneuptime.com/blog/post/kubernetes-gitops-argocd).
+You need ArgoCD running in your cluster. If you don't have it yet, check out our [ArgoCD GitOps guide](https://oneuptime.com/blog/post/2026-01-06-kubernetes-gitops-argocd).
 
 ### Install with Kubectl
 

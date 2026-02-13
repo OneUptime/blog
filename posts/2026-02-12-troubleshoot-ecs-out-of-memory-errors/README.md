@@ -290,4 +290,4 @@ In your application code:
 
 OOM errors in ECS usually come down to one of five things: limits too low, memory leaks, misconfigured JVM settings, sidecar memory consumption, or traffic spikes without autoscaling. Identify which category you're in using Container Insights metrics and stopped task information, then apply the appropriate fix.
 
-The best defense is proactive monitoring. Set up memory alarms at 80% utilization, review memory trends weekly, and scale automatically based on memory pressure. For more on monitoring, see our [Container Insights guide](https://oneuptime.com/blog/post/monitor-ecs-container-insights/view).
+The best defense is proactive monitoring. Set up memory alarms at 80% utilization, review memory trends weekly, and scale automatically based on memory pressure. For more on monitoring, see our [Container Insights guide](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-container-insights/view).

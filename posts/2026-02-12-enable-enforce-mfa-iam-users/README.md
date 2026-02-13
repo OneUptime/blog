@@ -22,7 +22,7 @@ AWS supports three types of MFA:
 - **Hardware MFA devices** (physical key fobs or YubiKeys)
 - **FIDO2 security keys** (WebAuthn-compatible keys)
 
-For most teams, virtual MFA is the quickest to deploy. For the root account, hardware MFA is strongly recommended. Check our guide on [setting up virtual MFA for the root account](https://oneuptime.com/blog/post/set-up-virtual-mfa-aws-root-account/view) for that specific case.
+For most teams, virtual MFA is the quickest to deploy. For the root account, hardware MFA is strongly recommended. Check our guide on [setting up virtual MFA for the root account](https://oneuptime.com/blog/post/2026-02-12-set-up-virtual-mfa-aws-root-account/view) for that specific case.
 
 ## Enabling MFA for a Single User via Console
 
@@ -284,6 +284,6 @@ You can also integrate this with your monitoring stack. If you're using OneUptim
 - The root account should always have hardware MFA
 - Handle programmatic access carefully with `sts:GetSessionToken`
 - Monitor compliance continuously with AWS Config or credential reports
-- Consider moving to [IAM Identity Center (SSO)](https://oneuptime.com/blog/post/set-up-aws-iam-identity-center-sso/view) for centralized MFA management
+- Consider moving to [IAM Identity Center (SSO)](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-iam-identity-center-sso/view) for centralized MFA management
 
 MFA enforcement isn't optional anymore. It's a baseline security control that every AWS account should have in place.

@@ -119,7 +119,7 @@ To know if a property change causes replacement, check the CloudFormation docume
 
 ## Using Change Sets to Catch Replacements
 
-Before updating, create a [change set](https://oneuptime.com/blog/post/cloudformation-change-sets-safe-updates/view) to preview whether any resources will be replaced:
+Before updating, create a [change set](https://oneuptime.com/blog/post/2026-02-12-cloudformation-change-sets-safe-updates/view) to preview whether any resources will be replaced:
 
 ```bash
 # Create a change set to see if replacements will happen

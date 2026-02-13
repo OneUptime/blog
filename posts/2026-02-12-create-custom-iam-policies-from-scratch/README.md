@@ -287,7 +287,7 @@ aws iam simulate-custom-policy \
   --resource-arns arn:aws:s3:::my-app-assets/image.png
 ```
 
-For a deeper dive into testing, check out our guide on [using the IAM Policy Simulator to test permissions](https://oneuptime.com/blog/post/use-iam-policy-simulator-to-test-permissions/view).
+For a deeper dive into testing, check out our guide on [using the IAM Policy Simulator to test permissions](https://oneuptime.com/blog/post/2026-02-12-use-iam-policy-simulator-to-test-permissions/view).
 
 ## Common Mistakes
 

@@ -255,7 +255,7 @@ Another useful diagnostic command.
 aws sts get-caller-identity
 ```
 
-If `get-caller-identity` works, the issue isn't credentials - it's permissions. Check [fixing IAM authorization errors](https://oneuptime.com/blog/post/fix-you-are-not-authorized-to-perform-this-operation-iam-errors/view) instead.
+If `get-caller-identity` works, the issue isn't credentials - it's permissions. Check [fixing IAM authorization errors](https://oneuptime.com/blog/post/2026-02-12-fix-you-are-not-authorized-to-perform-this-operation-iam-errors/view) instead.
 
 ## Summary
 

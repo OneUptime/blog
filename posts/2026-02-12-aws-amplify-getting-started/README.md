@@ -138,7 +138,7 @@ export default withAuthenticator(App);
 
 That gives you a complete authentication flow with zero custom UI code. If you want to customize it, you can use the lower-level `Auth` API instead.
 
-For more control over the authentication flow, see [using Amplify Authentication with Cognito](https://oneuptime.com/blog/post/amplify-authentication-cognito/view).
+For more control over the authentication flow, see [using Amplify Authentication with Cognito](https://oneuptime.com/blog/post/2026-02-12-amplify-authentication-cognito/view).
 
 ## Adding an API
 
@@ -198,7 +198,7 @@ async function createItem(item) {
 }
 ```
 
-For more on REST APIs with Amplify, see [using Amplify API (REST) with API Gateway](https://oneuptime.com/blog/post/amplify-api-rest-api-gateway/view).
+For more on REST APIs with Amplify, see [using Amplify API (REST) with API Gateway](https://oneuptime.com/blog/post/2026-02-12-amplify-api-rest-api-gateway/view).
 
 ## Adding Storage
 
@@ -256,7 +256,7 @@ async function listFiles(prefix) {
 }
 ```
 
-For an in-depth look at S3 storage with Amplify, see [using Amplify Storage with S3](https://oneuptime.com/blog/post/amplify-storage-s3/view).
+For an in-depth look at S3 storage with Amplify, see [using Amplify Storage with S3](https://oneuptime.com/blog/post/2026-02-12-amplify-storage-s3/view).
 
 ## Adding Hosting
 
@@ -273,7 +273,7 @@ amplify add hosting
 amplify publish
 ```
 
-Or connect a Git repository for automatic deployments. For framework-specific hosting guides, check out [Amplify Hosting for React](https://oneuptime.com/blog/post/amplify-hosting-react-app/view) or [Amplify Hosting for Next.js](https://oneuptime.com/blog/post/amplify-hosting-nextjs-app/view).
+Or connect a Git repository for automatic deployments. For framework-specific hosting guides, check out [Amplify Hosting for React](https://oneuptime.com/blog/post/2026-02-12-amplify-hosting-react-app/view) or [Amplify Hosting for Next.js](https://oneuptime.com/blog/post/2026-02-12-amplify-hosting-nextjs-app/view).
 
 ## Amplify Project Structure
 

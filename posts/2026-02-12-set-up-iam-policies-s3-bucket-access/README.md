@@ -233,7 +233,7 @@ For sharing a bucket with another account, you can use either identity-based pol
 }
 ```
 
-For the identity-based approach, see our guide on [cross-account IAM roles](https://oneuptime.com/blog/post/set-up-cross-account-iam-roles-shared-services/view). For a deeper comparison, check [resource-based vs identity-based policies](https://oneuptime.com/blog/post/resource-based-policies-vs-identity-based-policies/view).
+For the identity-based approach, see our guide on [cross-account IAM roles](https://oneuptime.com/blog/post/2026-02-12-set-up-cross-account-iam-roles-shared-services/view). For a deeper comparison, check [resource-based vs identity-based policies](https://oneuptime.com/blog/post/2026-02-12-resource-based-policies-vs-identity-based-policies/view).
 
 ## IP-Based Restrictions
 

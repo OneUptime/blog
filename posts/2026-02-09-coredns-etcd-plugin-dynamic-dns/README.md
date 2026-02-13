@@ -516,4 +516,4 @@ Follow these guidelines for etcd-backed DNS:
 
 The CoreDNS etcd plugin enables dynamic DNS record management that adapts to changing infrastructure without restarts. By leveraging etcd's reliability and watch capabilities, you can build sophisticated DNS automation systems that integrate seamlessly with Kubernetes workloads and external services.
 
-For more CoreDNS patterns, explore our guides on [CoreDNS federation](https://oneuptime.com/blog/post/coredns-federation-multi-cluster/view) and [custom DNS configuration](https://oneuptime.com/blog/post/custom-dns-resolvers-pod-dnsconfig/view).
+For more CoreDNS patterns, explore our guides on [CoreDNS federation](https://oneuptime.com/blog/post/2026-02-09-coredns-federation-multi-cluster/view) and [custom DNS configuration](https://oneuptime.com/blog/post/2026-02-09-custom-dns-resolvers-pod-dnsconfig/view).

@@ -313,7 +313,7 @@ aws cloudwatch put-metric-alarm \
 
 Also check CloudFront access logs (standard or real-time) for the `x-edge-result-type` field. When failover happens, you'll see `Error` results from the primary followed by `Miss` results as requests go to the secondary.
 
-For more on real-time monitoring, see our guide on [CloudFront real-time logging](https://oneuptime.com/blog/post/cloudfront-real-time-logging/view).
+For more on real-time monitoring, see our guide on [CloudFront real-time logging](https://oneuptime.com/blog/post/2026-02-12-cloudfront-real-time-logging/view).
 
 ## Limitations to Know
 

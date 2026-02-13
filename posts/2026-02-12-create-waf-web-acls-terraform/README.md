@@ -429,7 +429,7 @@ override_action {
 
 Once you're confident the rules aren't catching legitimate traffic, switch to `none {}` to enforce the rule group's native actions.
 
-For monitoring your WAF alongside other infrastructure, check out our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/create-cloudwatch-alarms-terraform/view).
+For monitoring your WAF alongside other infrastructure, check out our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-terraform/view).
 
 ## Wrapping Up
 

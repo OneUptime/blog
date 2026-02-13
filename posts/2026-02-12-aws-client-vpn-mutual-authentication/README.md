@@ -315,7 +315,7 @@ aws logs filter-log-events \
   --start-time $(date -d '1 hour ago' +%s000)
 ```
 
-For more advanced networking setups where VPN traffic needs to reach resources across regions, check out [Transit Gateway inter-region peering](https://oneuptime.com/blog/post/transit-gateway-inter-region-peering/view).
+For more advanced networking setups where VPN traffic needs to reach resources across regions, check out [Transit Gateway inter-region peering](https://oneuptime.com/blog/post/2026-02-12-transit-gateway-inter-region-peering/view).
 
 ## Wrapping Up
 

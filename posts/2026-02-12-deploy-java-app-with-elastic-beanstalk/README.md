@@ -229,7 +229,7 @@ spring.jpa.hibernate.ddl-auto=${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
 ```
 
-For detailed guidance on environment variable management, see our post on [configuring Elastic Beanstalk environment variables](https://oneuptime.com/blog/post/configure-elastic-beanstalk-environment-variables/view).
+For detailed guidance on environment variable management, see our post on [configuring Elastic Beanstalk environment variables](https://oneuptime.com/blog/post/2026-02-12-configure-elastic-beanstalk-environment-variables/view).
 
 ## Health Checks and Monitoring
 
@@ -322,4 +322,4 @@ node_modules/
 
 Deploying Java to Elastic Beanstalk is solid once you get the initial configuration right. The Corretto platform with JAR deployment is the simplest path for Spring Boot apps. For legacy applications, the Tomcat platform works well.
 
-Make sure you tune JVM settings for your instance size, configure health checks with adequate timeouts, and set environment variables for anything sensitive. If you run into deployment issues, check out our guide on [troubleshooting Elastic Beanstalk deployment failures](https://oneuptime.com/blog/post/troubleshoot-elastic-beanstalk-deployment-failures/view) for common solutions.
+Make sure you tune JVM settings for your instance size, configure health checks with adequate timeouts, and set environment variables for anything sensitive. If you run into deployment issues, check out our guide on [troubleshooting Elastic Beanstalk deployment failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-elastic-beanstalk-deployment-failures/view) for common solutions.

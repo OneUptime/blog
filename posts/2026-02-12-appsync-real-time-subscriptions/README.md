@@ -362,7 +362,7 @@ type Subscription {
 
 AppSync publishes CloudWatch metrics for subscriptions including `ConnectSuccess`, `ConnectClientError`, `SubscribeSuccess`, and `ActiveConnections`. Monitor `ActiveConnections` to understand your real-time usage and `ConnectClientError` to catch authentication issues.
 
-For overall GraphQL API monitoring, check out our post on [authenticating AppSync APIs with Cognito](https://oneuptime.com/blog/post/authenticate-appsync-apis-cognito/view).
+For overall GraphQL API monitoring, check out our post on [authenticating AppSync APIs with Cognito](https://oneuptime.com/blog/post/2026-02-12-authenticate-appsync-apis-cognito/view).
 
 ## Performance Considerations
 

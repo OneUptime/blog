@@ -268,4 +268,4 @@ For recurring CTAS operations, automate them with Step Functions calling the Ath
 }
 ```
 
-CTAS is one of the most practical tools in the Athena toolkit. Combined with [proper partitioning](https://oneuptime.com/blog/post/partition-data-s3-efficient-athena-queries/view) and [Parquet format](https://oneuptime.com/blog/post/convert-csv-to-parquet-aws/view), it gives you a highly optimized data lake. For parameterized queries against these optimized tables, see [Athena prepared statements](https://oneuptime.com/blog/post/athena-prepared-statements-parameterized-queries/view).
+CTAS is one of the most practical tools in the Athena toolkit. Combined with [proper partitioning](https://oneuptime.com/blog/post/2026-02-12-partition-data-s3-efficient-athena-queries/view) and [Parquet format](https://oneuptime.com/blog/post/2026-02-12-convert-csv-to-parquet-aws/view), it gives you a highly optimized data lake. For parameterized queries against these optimized tables, see [Athena prepared statements](https://oneuptime.com/blog/post/2026-02-12-athena-prepared-statements-parameterized-queries/view).

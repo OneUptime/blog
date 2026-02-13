@@ -405,4 +405,4 @@ fi
 
 This keeps monitoring systems informed of deployment status.
 
-kubectl wait eliminates timing issues in Kubernetes automation. Replace sleep commands and polling loops with condition-based blocking for reliable scripts and pipelines. Set appropriate timeouts, handle failures gracefully, and your automation becomes more robust and predictable. For more automation techniques, check out https://oneuptime.com/blog/post/kubectl-rollout-deployment-management/view.
+kubectl wait eliminates timing issues in Kubernetes automation. Replace sleep commands and polling loops with condition-based blocking for reliable scripts and pipelines. Set appropriate timeouts, handle failures gracefully, and your automation becomes more robust and predictable. For more automation techniques, check out https://oneuptime.com/blog/post/2026-01-25-kubectl-rollout-deployment-management/view.

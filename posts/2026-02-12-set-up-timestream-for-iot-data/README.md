@@ -332,4 +332,4 @@ aws cloudwatch get-metric-statistics \
 
 Timestream is built for the exact workload pattern that IoT generates - high-volume writes, time-range queries, and automatic data lifecycle management. The two-tier storage model keeps recent data fast while making historical analysis affordable. Combined with direct integration from AWS IoT Core, you can have an end-to-end IoT data pipeline running in under an hour.
 
-For more on Timestream, check out our guides on [querying Timestream with SQL](https://oneuptime.com/blog/post/query-timestream-with-sql/view) and [setting up Timestream scheduled queries](https://oneuptime.com/blog/post/set-up-timestream-scheduled-queries/view).
+For more on Timestream, check out our guides on [querying Timestream with SQL](https://oneuptime.com/blog/post/2026-02-12-query-timestream-with-sql/view) and [setting up Timestream scheduled queries](https://oneuptime.com/blog/post/2026-02-12-set-up-timestream-scheduled-queries/view).

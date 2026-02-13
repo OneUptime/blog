@@ -235,7 +235,7 @@ After running Audit Manager through several audit cycles, here's what works well
 
 ## Integration with AWS Config
 
-Audit Manager works best when AWS Config is properly configured. Make sure you're running the Config rules that map to your compliance controls. For the CIS benchmarks specifically, check out our post on [implementing CIS AWS Foundations Benchmark](https://oneuptime.com/blog/post/cis-aws-foundations-benchmark/view).
+Audit Manager works best when AWS Config is properly configured. Make sure you're running the Config rules that map to your compliance controls. For the CIS benchmarks specifically, check out our post on [implementing CIS AWS Foundations Benchmark](https://oneuptime.com/blog/post/2026-02-12-cis-aws-foundations-benchmark/view).
 
 ## Costs
 

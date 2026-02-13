@@ -355,4 +355,4 @@ terraform state show aws_vpc.main
 
 Terraform Cloud removes the operational burden of managing state, locking, and execution environments. For teams, the VCS integration, policy enforcement, and access controls make it significantly easier to collaborate on infrastructure. Start with the free tier, migrate your state from S3, and add policies and team controls as your organization grows.
 
-For self-managed alternatives, check out our guides on [Terraform CI/CD with GitHub Actions](https://oneuptime.com/blog/post/terraform-cicd-github-actions-for-aws/view) and [Terragrunt for DRY configurations](https://oneuptime.com/blog/post/terragrunt-for-dry-terraform-aws-configurations/view).
+For self-managed alternatives, check out our guides on [Terraform CI/CD with GitHub Actions](https://oneuptime.com/blog/post/2026-02-12-terraform-cicd-github-actions-for-aws/view) and [Terragrunt for DRY configurations](https://oneuptime.com/blog/post/2026-02-12-terragrunt-for-dry-terraform-aws-configurations/view).

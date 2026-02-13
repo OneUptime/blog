@@ -294,4 +294,4 @@ aws cloudwatch get-metric-data \
 
 Watch `ClientTLSNegotiationErrorCount` closely after changing your security policy. A spike means some clients can't connect with the new TLS requirements. This is common when dropping TLS 1.0/1.1 support.
 
-For more load balancing options, see our guide on [Gateway Load Balancer](https://oneuptime.com/blog/post/gateway-load-balancer-third-party-appliances/view).
+For more load balancing options, see our guide on [Gateway Load Balancer](https://oneuptime.com/blog/post/2026-02-12-gateway-load-balancer-third-party-appliances/view).

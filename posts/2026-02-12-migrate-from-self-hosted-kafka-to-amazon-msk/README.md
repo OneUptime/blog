@@ -330,7 +330,7 @@ msk.update_broker_storage(
 
 ## Monitoring MSK
 
-MSK publishes detailed metrics to CloudWatch. For comprehensive monitoring of your Kafka migration and ongoing cluster health, check out [OneUptime](https://oneuptime.com/blog/post/build-an-anomaly-detection-system-on-aws/view) for anomaly detection across your streaming infrastructure.
+MSK publishes detailed metrics to CloudWatch. For comprehensive monitoring of your Kafka migration and ongoing cluster health, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-an-anomaly-detection-system-on-aws/view) for anomaly detection across your streaming infrastructure.
 
 ## Wrapping Up
 

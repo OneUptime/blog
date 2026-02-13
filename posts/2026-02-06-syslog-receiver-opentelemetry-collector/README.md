@@ -768,9 +768,9 @@ service:
 
 Explore related OpenTelemetry Collector configurations:
 
-- https://oneuptime.com/blog/post/tcp-log-receiver-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/statsd-receiver-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/kafka-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-tcp-log-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-statsd-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-kafka-receiver-opentelemetry-collector/view
 
 ## Conclusion
 

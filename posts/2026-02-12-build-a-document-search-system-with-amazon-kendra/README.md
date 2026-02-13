@@ -434,7 +434,7 @@ def tune_relevance(index_id):
 
 ## Monitoring Search Quality
 
-Search quality degrades silently. Track query success rates (did users click a result?), zero-result queries (what are people searching for that you do not have?), and index sync health. Kendra publishes metrics to CloudWatch, but for end-to-end monitoring including API availability and latency, use [OneUptime](https://oneuptime.com/blog/post/build-a-rag-application-with-amazon-bedrock-and-opensearch/view) to get the complete picture.
+Search quality degrades silently. Track query success rates (did users click a result?), zero-result queries (what are people searching for that you do not have?), and index sync health. Kendra publishes metrics to CloudWatch, but for end-to-end monitoring including API availability and latency, use [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-rag-application-with-amazon-bedrock-and-opensearch/view) to get the complete picture.
 
 ## Cost Considerations
 

@@ -122,11 +122,11 @@ aws rds describe-events \
 
 These features aren't available on standard RDS:
 
-- **Backtrack** - Rewind the database to a previous point in time in seconds. See the guide on [Aurora Backtrack](https://oneuptime.com/blog/post/aurora-backtrack-to-rewind-a-database/view).
-- **Cloning** - Create instant copies of your database using copy-on-write. See the guide on [Aurora Cloning](https://oneuptime.com/blog/post/aurora-cloning-for-fast-database-copies/view).
-- **Global Databases** - Sub-second cross-region replication. See the guide on [Aurora Global Databases](https://oneuptime.com/blog/post/set-up-aurora-global-databases-for-multi-region/view).
-- **Parallel Query** - Push query processing to the storage layer. See the guide on [Aurora Parallel Query](https://oneuptime.com/blog/post/aurora-parallel-query-for-analytics/view).
-- **Machine Learning Integration** - Call ML services from SQL. See the guide on [Aurora ML](https://oneuptime.com/blog/post/aurora-machine-learning-ml-integration/view).
+- **Backtrack** - Rewind the database to a previous point in time in seconds. See the guide on [Aurora Backtrack](https://oneuptime.com/blog/post/2026-02-12-aurora-backtrack-to-rewind-a-database/view).
+- **Cloning** - Create instant copies of your database using copy-on-write. See the guide on [Aurora Cloning](https://oneuptime.com/blog/post/2026-02-12-aurora-cloning-for-fast-database-copies/view).
+- **Global Databases** - Sub-second cross-region replication. See the guide on [Aurora Global Databases](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-global-databases-for-multi-region/view).
+- **Parallel Query** - Push query processing to the storage layer. See the guide on [Aurora Parallel Query](https://oneuptime.com/blog/post/2026-02-12-aurora-parallel-query-for-analytics/view).
+- **Machine Learning Integration** - Call ML services from SQL. See the guide on [Aurora ML](https://oneuptime.com/blog/post/2026-02-12-aurora-machine-learning-ml-integration/view).
 
 ### Standard RDS Advantages
 
@@ -222,7 +222,7 @@ graph TD
 
 ## Migration Path
 
-If you start with standard RDS and later decide you need Aurora, the migration is straightforward. Check out the guide on [migrating from RDS MySQL to Aurora MySQL](https://oneuptime.com/blog/post/migrate-from-rds-mysql-to-aurora-mysql/view) for the step-by-step process. The read-replica promotion method gives you near-zero downtime.
+If you start with standard RDS and later decide you need Aurora, the migration is straightforward. Check out the guide on [migrating from RDS MySQL to Aurora MySQL](https://oneuptime.com/blog/post/2026-02-12-migrate-from-rds-mysql-to-aurora-mysql/view) for the step-by-step process. The read-replica promotion method gives you near-zero downtime.
 
 ## Wrapping Up
 

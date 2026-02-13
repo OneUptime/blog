@@ -442,4 +442,4 @@ The Identity Pool role needs permissions for each service. Here is a policy that
 
 Amplify Predictions makes it surprisingly easy to add AI and ML capabilities to your application. The API is consistent across all categories, so once you learn the pattern for one feature, the rest follow the same structure. You do not need to be an ML engineer to add image recognition, translation, or sentiment analysis to your app.
 
-For more Amplify features, check out our guides on [Amplify PubSub for real-time data](https://oneuptime.com/blog/post/use-amplify-pubsub-for-real-time-data/view) and [Amplify In-App Messaging](https://oneuptime.com/blog/post/use-amplify-in-app-messaging/view).
+For more Amplify features, check out our guides on [Amplify PubSub for real-time data](https://oneuptime.com/blog/post/2026-02-12-use-amplify-pubsub-for-real-time-data/view) and [Amplify In-App Messaging](https://oneuptime.com/blog/post/2026-02-12-use-amplify-in-app-messaging/view).

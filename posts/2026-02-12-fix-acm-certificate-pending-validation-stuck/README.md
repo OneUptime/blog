@@ -214,4 +214,4 @@ aws acm request-certificate \
 7. Wait at least 30 minutes after DNS changes
 8. If stuck for 72+ hours, delete and recreate
 
-Getting SSL certificates working is a prerequisite for any production service. Once you're past this hurdle, make sure you also set up [monitoring to track certificate expiration](https://oneuptime.com/blog/post/fix-kms-accessdeniedexception-errors/view) so you don't get caught off guard by renewal failures.
+Getting SSL certificates working is a prerequisite for any production service. Once you're past this hurdle, make sure you also set up [monitoring to track certificate expiration](https://oneuptime.com/blog/post/2026-02-12-fix-kms-accessdeniedexception-errors/view) so you don't get caught off guard by renewal failures.

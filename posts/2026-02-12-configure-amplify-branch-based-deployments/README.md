@@ -220,7 +220,7 @@ When a branch deployment fails, check these common issues:
 
 **Backend resource conflicts**: If multiple branches share a backend environment, concurrent deployments can cause CloudFormation conflicts. Stagger your pushes or give each branch its own backend.
 
-For more on handling build issues, see our guide on [troubleshooting Amplify build failures](https://oneuptime.com/blog/post/troubleshoot-amplify-build-failures/view).
+For more on handling build issues, see our guide on [troubleshooting Amplify build failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-amplify-build-failures/view).
 
 ## Cost Considerations
 

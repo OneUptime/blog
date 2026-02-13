@@ -8,7 +8,7 @@ Description: Learn how to write Gremlin queries against Amazon Neptune, covering
 
 ---
 
-Gremlin is the query language you'll reach for when working with property graphs in Amazon Neptune. If you've already [set up your Neptune cluster](https://oneuptime.com/blog/post/amazon-neptune-graph-databases/view), the next step is learning how to actually query your data. Gremlin takes a different approach compared to SQL - instead of declaring what data you want, you describe how to traverse the graph to find it.
+Gremlin is the query language you'll reach for when working with property graphs in Amazon Neptune. If you've already [set up your Neptune cluster](https://oneuptime.com/blog/post/2026-02-12-amazon-neptune-graph-databases/view), the next step is learning how to actually query your data. Gremlin takes a different approach compared to SQL - instead of declaring what data you want, you describe how to traverse the graph to find it.
 
 This post covers everything from basic vertex and edge operations to complex traversals that'll handle real production queries.
 

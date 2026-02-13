@@ -272,7 +272,7 @@ This campaign only collects data when the coolant temperature exceeds 105 degree
 
 The FleetWise Edge Agent runs on vehicle gateway hardware. AWS provides reference implementations for common platforms. You deploy it along with the decoder manifest configuration.
 
-The agent communicates with the FleetWise cloud service over MQTT through IoT Core. It receives campaign updates, collects data according to the active campaigns, buffers it locally, and uploads when connectivity is available. For more about configuring IoT Core connections, see our post on [setting up IoT Core custom domains](https://oneuptime.com/blog/post/set-up-iot-core-custom-domains/view).
+The agent communicates with the FleetWise cloud service over MQTT through IoT Core. It receives campaign updates, collects data according to the active campaigns, buffers it locally, and uploads when connectivity is available. For more about configuring IoT Core connections, see our post on [setting up IoT Core custom domains](https://oneuptime.com/blog/post/2026-02-12-set-up-iot-core-custom-domains/view).
 
 ## Monitoring Your Fleet
 

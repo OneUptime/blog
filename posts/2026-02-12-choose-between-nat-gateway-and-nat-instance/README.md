@@ -223,7 +223,7 @@ For dev/test: NAT instances are fine. Save the money, accept the trade-offs.
 
 For staging: NAT gateway with a single instance (no per-AZ HA). It's a compromise between cost and reliability.
 
-For more on the complete VPC networking setup, see [creating a VPC from scratch](https://oneuptime.com/blog/post/create-vpc-from-scratch-in-aws/view).
+For more on the complete VPC networking setup, see [creating a VPC from scratch](https://oneuptime.com/blog/post/2026-02-12-create-vpc-from-scratch-in-aws/view).
 
 ## Wrapping Up
 

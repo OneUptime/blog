@@ -359,7 +359,7 @@ resource "aws_cloudwatch_metric_alarm" "io_limit" {
 }
 ```
 
-For a deeper look at monitoring your AWS storage and other infrastructure, check out our post on [setting up CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/create-cloudwatch-alarms-terraform/view).
+For a deeper look at monitoring your AWS storage and other infrastructure, check out our post on [setting up CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-terraform/view).
 
 ## Outputs
 

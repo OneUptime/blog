@@ -210,7 +210,7 @@ VPC-connected Lambda functions used to have significantly longer cold starts - s
 
 Today, VPC-connected Lambdas have cold starts that are only marginally longer than non-VPC ones. You'll see maybe 1-2 seconds of additional latency on a cold start. For most use cases, this is perfectly acceptable.
 
-If cold starts matter a lot, consider using [Provisioned Concurrency](https://oneuptime.com/blog/post/implement-canary-deployments-for-lambda-functions/view) to keep warm instances ready.
+If cold starts matter a lot, consider using [Provisioned Concurrency](https://oneuptime.com/blog/post/2026-02-12-implement-canary-deployments-for-lambda-functions/view) to keep warm instances ready.
 
 ## Monitoring VPC-Connected Lambdas
 
@@ -226,7 +226,7 @@ aws ec2 describe-network-interfaces \
   --output text | wc -w
 ```
 
-You can also set up CloudWatch alarms to track this. For more on Lambda monitoring, check out our post on [monitoring Lambda function performance with CloudWatch](https://oneuptime.com/blog/post/monitor-lambda-function-performance-with-cloudwatch/view).
+You can also set up CloudWatch alarms to track this. For more on Lambda monitoring, check out our post on [monitoring Lambda function performance with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-lambda-function-performance-with-cloudwatch/view).
 
 ## Common Mistakes to Avoid
 

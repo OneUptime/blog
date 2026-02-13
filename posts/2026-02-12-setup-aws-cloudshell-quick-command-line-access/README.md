@@ -214,4 +214,4 @@ Use local CLI when:
 4. If you need more storage, use S3 as overflow
 5. If commands are slow, check if you're in the right region for your resources
 
-CloudShell is a fantastic tool for quick AWS interactions. Keep your most-used scripts in `~/scripts/`, set up your `~/.bashrc` with useful aliases, and you'll have a productive environment ready in seconds. For more CLI tips, check out our guide on [common CloudShell administrative tasks](https://oneuptime.com/blog/post/use-aws-cloudshell-common-administrative-tasks/view).
+CloudShell is a fantastic tool for quick AWS interactions. Keep your most-used scripts in `~/scripts/`, set up your `~/.bashrc` with useful aliases, and you'll have a productive environment ready in seconds. For more CLI tips, check out our guide on [common CloudShell administrative tasks](https://oneuptime.com/blog/post/2026-02-12-use-aws-cloudshell-common-administrative-tasks/view).

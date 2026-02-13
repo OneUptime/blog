@@ -251,8 +251,8 @@ aws s3api put-bucket-lifecycle-configuration \
 
 Setting up CUR is just the first step. The real value comes from querying it. Here's where to go from here:
 
-- **Query with Athena**: Run SQL queries against your billing data. See our guide on [analyzing CUR with Athena](https://oneuptime.com/blog/post/analyze-aws-cost-usage-reports-athena/view).
-- **Visualize with QuickSight**: Build interactive dashboards. See [visualizing AWS costs with QuickSight](https://oneuptime.com/blog/post/visualize-aws-costs-quicksight/view).
+- **Query with Athena**: Run SQL queries against your billing data. See our guide on [analyzing CUR with Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-aws-cost-usage-reports-athena/view).
+- **Visualize with QuickSight**: Build interactive dashboards. See [visualizing AWS costs with QuickSight](https://oneuptime.com/blog/post/2026-02-12-visualize-aws-costs-quicksight/view).
 - **Automate reports**: Build Lambda functions that query CUR data and send summaries.
 
 For organizations with many accounts, CUR from the management account includes all linked account data. You don't need to set up CUR in every account - just the management account covers everything.

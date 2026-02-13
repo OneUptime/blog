@@ -297,7 +297,7 @@ for bucket in response['Buckets']:
 
 ## Querying Logs at Scale
 
-For large volumes of logs, parsing with Python scripts doesn't scale. Use Amazon Athena instead. See our detailed guide on [analyzing S3 access logs with Athena](https://oneuptime.com/blog/post/analyze-s3-access-logs-athena/view).
+For large volumes of logs, parsing with Python scripts doesn't scale. Use Amazon Athena instead. See our detailed guide on [analyzing S3 access logs with Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-s3-access-logs-athena/view).
 
 ## Alerting on Suspicious Activity
 

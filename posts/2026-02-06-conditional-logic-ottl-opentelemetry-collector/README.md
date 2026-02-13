@@ -540,7 +540,7 @@ processors:
 
 4. **Order Matters**: Place more specific conditions before general ones in cascading logic.
 
-5. **Test Edge Cases**: Use the [OTTL Playground](https://oneuptime.com/blog/post/ottl-playground-test-opentelemetry-collector/view) to test conditions with various inputs.
+5. **Test Edge Cases**: Use the [OTTL Playground](https://oneuptime.com/blog/post/2026-02-06-ottl-playground-test-opentelemetry-collector/view) to test conditions with various inputs.
 
 6. **Document Complex Logic**: Add comments explaining why certain conditions exist.
 
@@ -548,7 +548,7 @@ processors:
 
 8. **Use Type Conversion**: Convert strings to integers when doing numeric comparisons.
 
-9. **Combine with Other Features**: Use conditional logic with [attribute modification](https://oneuptime.com/blog/post/rename-modify-attributes-ottl-opentelemetry-collector/view) and [log transformation](https://oneuptime.com/blog/post/transform-log-bodies-ottl-opentelemetry-collector/view).
+9. **Combine with Other Features**: Use conditional logic with [attribute modification](https://oneuptime.com/blog/post/2026-02-06-rename-modify-attributes-ottl-opentelemetry-collector/view) and [log transformation](https://oneuptime.com/blog/post/2026-02-06-transform-log-bodies-ottl-opentelemetry-collector/view).
 
 ## Common Pitfalls to Avoid
 
@@ -568,6 +568,6 @@ Conditional logic in OTTL enables sophisticated, context-aware telemetry process
 
 Whether you're routing high-priority alerts, redacting sensitive data conditionally, or applying service-specific transformations, OTTL's conditional capabilities provide the flexibility needed for production-grade observability pipelines.
 
-Combined with [attribute modification](https://oneuptime.com/blog/post/rename-modify-attributes-ottl-opentelemetry-collector/view), [JSON parsing](https://oneuptime.com/blog/post/parse-json-logs-ottl-opentelemetry-collector/view), and [log body transformation](https://oneuptime.com/blog/post/transform-log-bodies-ottl-opentelemetry-collector/view), conditional logic forms the foundation of powerful telemetry processing pipelines.
+Combined with [attribute modification](https://oneuptime.com/blog/post/2026-02-06-rename-modify-attributes-ottl-opentelemetry-collector/view), [JSON parsing](https://oneuptime.com/blog/post/2026-02-06-parse-json-logs-ottl-opentelemetry-collector/view), and [log body transformation](https://oneuptime.com/blog/post/2026-02-06-transform-log-bodies-ottl-opentelemetry-collector/view), conditional logic forms the foundation of powerful telemetry processing pipelines.
 
 For more information on OTTL and conditional logic, refer to the [OpenTelemetry Collector documentation](https://opentelemetry.io/docs/collector/transforming-telemetry/).

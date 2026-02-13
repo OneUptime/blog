@@ -302,7 +302,7 @@ aws cloudwatch get-metric-statistics \
 
 5. **Use dedicated transit subnets**: Create small `/28` subnets in each VPC specifically for the transit gateway attachment.
 
-For the basics of transit gateway setup, see [using AWS Transit Gateway for multi-VPC connectivity](https://oneuptime.com/blog/post/aws-transit-gateway-multi-vpc-connectivity/view). For advanced routing, see [configuring transit gateway route tables](https://oneuptime.com/blog/post/configure-transit-gateway-route-tables/view).
+For the basics of transit gateway setup, see [using AWS Transit Gateway for multi-VPC connectivity](https://oneuptime.com/blog/post/2026-02-12-aws-transit-gateway-multi-vpc-connectivity/view). For advanced routing, see [configuring transit gateway route tables](https://oneuptime.com/blog/post/2026-02-12-configure-transit-gateway-route-tables/view).
 
 ## Wrapping Up
 

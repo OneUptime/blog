@@ -328,7 +328,7 @@ def lambda_handler(event, context):
     )
 ```
 
-For a more event-driven approach to detecting device issues, check out our guide on [using IoT Events for detecting complex events](https://oneuptime.com/blog/post/use-iot-events-for-detecting-complex-events/view).
+For a more event-driven approach to detecting device issues, check out our guide on [using IoT Events for detecting complex events](https://oneuptime.com/blog/post/2026-02-12-use-iot-events-for-detecting-complex-events/view).
 
 ## Wrapping Up
 

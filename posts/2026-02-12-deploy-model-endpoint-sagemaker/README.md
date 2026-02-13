@@ -301,4 +301,4 @@ Key metrics to watch:
 
 ## Wrapping Up
 
-Deploying models with SageMaker is one of those things that's simple in concept but has a lot of depth when you need it. Start with the basic `.deploy()` call for quick experiments, and layer on custom inference code, auto-scaling, and blue/green deployments as your requirements grow. If you're considering alternatives to real-time endpoints, check out our guide on [SageMaker inference options](https://oneuptime.com/blog/post/sagemaker-real-time-vs-batch-vs-async-inference/view) to see what fits your use case best.
+Deploying models with SageMaker is one of those things that's simple in concept but has a lot of depth when you need it. Start with the basic `.deploy()` call for quick experiments, and layer on custom inference code, auto-scaling, and blue/green deployments as your requirements grow. If you're considering alternatives to real-time endpoints, check out our guide on [SageMaker inference options](https://oneuptime.com/blog/post/2026-02-12-sagemaker-real-time-vs-batch-vs-async-inference/view) to see what fits your use case best.

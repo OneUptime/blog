@@ -341,4 +341,4 @@ def update_prefix_list(prefix_list_id, new_entries):
     print(f"Added {len(to_add)}, removed {len(to_remove)} entries")
 ```
 
-Prefix lists are one of those AWS features that seem simple but make a huge operational difference. Once you start using them, you'll wonder how you ever managed security groups without them. For related IP management techniques, see our post on [managed prefix lists for IP whitelisting](https://oneuptime.com/blog/post/managed-prefix-lists-ip-whitelisting/view).
+Prefix lists are one of those AWS features that seem simple but make a huge operational difference. Once you start using them, you'll wonder how you ever managed security groups without them. For related IP management techniques, see our post on [managed prefix lists for IP whitelisting](https://oneuptime.com/blog/post/2026-02-12-managed-prefix-lists-ip-whitelisting/view).

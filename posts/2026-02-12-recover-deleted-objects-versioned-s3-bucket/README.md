@@ -329,4 +329,4 @@ aws s3api copy-object --bucket BUCKET --key KEY \
     --copy-source "BUCKET/KEY?versionId=VID"
 ```
 
-The key takeaway: if you have [versioning enabled](https://oneuptime.com/blog/post/enable-s3-bucket-versioning/view), your data is recoverable. The "delete" operation in S3 versioned buckets is really just a "hide" operation. Your data is still there, waiting for you to bring it back.
+The key takeaway: if you have [versioning enabled](https://oneuptime.com/blog/post/2026-02-12-enable-s3-bucket-versioning/view), your data is recoverable. The "delete" operation in S3 versioned buckets is really just a "hide" operation. Your data is still there, waiting for you to bring it back.

@@ -14,7 +14,7 @@ This guide walks you through setting up virtual MFA on the root account using an
 
 ## Why Virtual MFA?
 
-AWS supports virtual MFA, hardware MFA tokens, and FIDO2 security keys for the root account. Virtual MFA using an authenticator app is the most accessible option - you probably already have an app on your phone. It's not as secure as a dedicated hardware token (see our guide on [using hardware MFA devices with AWS](https://oneuptime.com/blog/post/use-hardware-mfa-devices-aws/view)), but it's infinitely better than no MFA at all.
+AWS supports virtual MFA, hardware MFA tokens, and FIDO2 security keys for the root account. Virtual MFA using an authenticator app is the most accessible option - you probably already have an app on your phone. It's not as secure as a dedicated hardware token (see our guide on [using hardware MFA devices with AWS](https://oneuptime.com/blog/post/2026-02-12-use-hardware-mfa-devices-aws/view)), but it's infinitely better than no MFA at all.
 
 Popular authenticator apps that work with AWS:
 
@@ -125,7 +125,7 @@ When AWS shows you the QR code, it also displays a text secret key. Save this in
 
 ### Don't Use Root for Daily Work
 
-After setting up MFA, stop using the root account for daily tasks. Create IAM users or use [IAM Identity Center](https://oneuptime.com/blog/post/set-up-aws-iam-identity-center-sso/view) for everyday access. The root account should only be used for:
+After setting up MFA, stop using the root account for daily tasks. Create IAM users or use [IAM Identity Center](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-iam-identity-center-sso/view) for everyday access. The root account should only be used for:
 
 - Changing account settings
 - Closing the account

@@ -20,7 +20,7 @@ ARM architecture inherently requires fewer transistors to execute instructions c
 - Up to 40% better price-performance than x86-based instances
 - Up to 25% better raw compute performance than Graviton2
 
-The energy savings are not theoretical. They show up in your AWS Customer Carbon Footprint Tool data when you migrate workloads. For details on tracking your emissions, see our guide on [using the AWS Customer Carbon Footprint Tool](https://oneuptime.com/blog/post/use-aws-customer-carbon-footprint-tool/view).
+The energy savings are not theoretical. They show up in your AWS Customer Carbon Footprint Tool data when you migrate workloads. For details on tracking your emissions, see our guide on [using the AWS Customer Carbon Footprint Tool](https://oneuptime.com/blog/post/2026-02-12-use-aws-customer-carbon-footprint-tool/view).
 
 ## Graviton Instance Families
 
@@ -387,6 +387,6 @@ print(f"Energy reduction: ~60% for equivalent workloads")
 
 Migrating to Graviton instances is one of the few optimizations that improves performance, reduces costs, and lowers your carbon footprint all at the same time. The ARM ecosystem has matured to the point where most workloads can migrate with minimal or zero code changes.
 
-Start with your non-production environments, validate compatibility, benchmark performance, and progressively migrate production workloads. Use the phased approach outlined above to minimize risk. And track your progress using both cost metrics and the [AWS Customer Carbon Footprint Tool](https://oneuptime.com/blog/post/use-aws-customer-carbon-footprint-tool/view) to quantify the impact.
+Start with your non-production environments, validate compatibility, benchmark performance, and progressively migrate production workloads. Use the phased approach outlined above to minimize risk. And track your progress using both cost metrics and the [AWS Customer Carbon Footprint Tool](https://oneuptime.com/blog/post/2026-02-12-use-aws-customer-carbon-footprint-tool/view) to quantify the impact.
 
 The 20% cost reduction alone typically justifies the migration effort. The energy savings and sustainability benefits are a substantial bonus that makes the case even stronger.

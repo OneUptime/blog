@@ -463,7 +463,7 @@ terraform import aws_amplify_branch.main d1234abcde/main
 
 **Domain verification timeout**: SSL certificate verification can take up to 48 hours. Set `wait_for_verification = false` initially and verify separately.
 
-For related infrastructure-as-code patterns, see our guide on [building a full-stack app with Amplify Gen 2](https://oneuptime.com/blog/post/build-a-full-stack-app-with-amplify-gen-2/view).
+For related infrastructure-as-code patterns, see our guide on [building a full-stack app with Amplify Gen 2](https://oneuptime.com/blog/post/2026-02-12-build-a-full-stack-app-with-amplify-gen-2/view).
 
 ## Wrapping Up
 

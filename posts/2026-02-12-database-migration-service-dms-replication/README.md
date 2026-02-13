@@ -326,4 +326,4 @@ aws dms describe-replication-task-assessment-results \
 
 ## Wrapping Up
 
-DMS ongoing replication is a robust way to keep databases in sync across different engines and regions. The setup takes some effort, but once running, it's largely hands-off. Monitor your CDC latency, set up alerts for when lag exceeds your tolerance, and keep the replication instance sized appropriately. For migrating database schemas alongside the data, check out our guide on using the [Schema Conversion Tool](https://oneuptime.com/blog/post/schema-conversion-tool-sct-migration/view).
+DMS ongoing replication is a robust way to keep databases in sync across different engines and regions. The setup takes some effort, but once running, it's largely hands-off. Monitor your CDC latency, set up alerts for when lag exceeds your tolerance, and keep the replication instance sized appropriately. For migrating database schemas alongside the data, check out our guide on using the [Schema Conversion Tool](https://oneuptime.com/blog/post/2026-02-12-schema-conversion-tool-sct-migration/view).

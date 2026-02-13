@@ -178,7 +178,7 @@ When flow logs go to S3, they're organized in a specific path structure:
 s3://bucket-name/AWSLogs/account-id/vpcflowlogs/region/year/month/day/
 ```
 
-Each file is gzipped and contains roughly 5-10 minutes of data. For busy VPCs, this can mean hundreds of files per day. That's where Athena comes in handy for querying - check out our post on [analyzing VPC Flow Logs with Athena](https://oneuptime.com/blog/post/analyze-vpc-flow-logs-athena/view).
+Each file is gzipped and contains roughly 5-10 minutes of data. For busy VPCs, this can mean hundreds of files per day. That's where Athena comes in handy for querying - check out our post on [analyzing VPC Flow Logs with Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-vpc-flow-logs-athena/view).
 
 ## Monitoring with CloudWatch
 
@@ -224,4 +224,4 @@ A typical cost estimate for a moderately busy VPC (50 GB/month of flow log data)
 
 VPC Flow Logs are one of those services you should enable everywhere. The cost is minimal compared to the visibility they provide. Start with VPC-level flow logs to S3 for everything, add CloudWatch destinations for VPCs that need real-time alerting, and use custom log formats when you need deeper network analysis.
 
-For analyzing the data you collect, see our guides on [CloudWatch Logs Insights](https://oneuptime.com/blog/post/analyze-vpc-flow-logs-cloudwatch-logs-insights/view) and [Athena](https://oneuptime.com/blog/post/analyze-vpc-flow-logs-athena/view).
+For analyzing the data you collect, see our guides on [CloudWatch Logs Insights](https://oneuptime.com/blog/post/2026-02-12-analyze-vpc-flow-logs-cloudwatch-logs-insights/view) and [Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-vpc-flow-logs-athena/view).

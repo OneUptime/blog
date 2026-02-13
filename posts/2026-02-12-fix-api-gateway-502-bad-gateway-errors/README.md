@@ -165,7 +165,7 @@ aws lambda get-function-configuration \
 
 If your Lambda timeout is longer than 29 seconds, reduce it or optimize your function. API Gateway has a hard limit of 29 seconds that you can't increase.
 
-For more on fixing Lambda timeouts, see our guide on [Lambda Task Timed Out errors](https://oneuptime.com/blog/post/fix-lambda-task-timed-out-errors/view).
+For more on fixing Lambda timeouts, see our guide on [Lambda Task Timed Out errors](https://oneuptime.com/blog/post/2026-02-12-fix-lambda-task-timed-out-errors/view).
 
 ## Cause 4: Response Body Too Large
 

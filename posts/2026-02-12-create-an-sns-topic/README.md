@@ -287,8 +287,8 @@ aws sns list-subscriptions-by-topic \
 
 Once you've created a topic, the next steps are:
 
-1. [Publishing messages to your topic](https://oneuptime.com/blog/post/publish-messages-to-sns-topics/view)
-2. [Subscribing endpoints like email](https://oneuptime.com/blog/post/subscribe-an-email-endpoint-to-sns/view), [Lambda functions](https://oneuptime.com/blog/post/subscribe-a-lambda-function-to-sns/view), or [SQS queues](https://oneuptime.com/blog/post/subscribe-an-sqs-queue-to-sns/view)
-3. [Setting up encryption with KMS](https://oneuptime.com/blog/post/enable-sns-message-encryption-with-kms/view)
+1. [Publishing messages to your topic](https://oneuptime.com/blog/post/2026-02-12-publish-messages-to-sns-topics/view)
+2. [Subscribing endpoints like email](https://oneuptime.com/blog/post/2026-02-12-subscribe-an-email-endpoint-to-sns/view), [Lambda functions](https://oneuptime.com/blog/post/2026-02-12-subscribe-a-lambda-function-to-sns/view), or [SQS queues](https://oneuptime.com/blog/post/2026-02-12-subscribe-an-sqs-queue-to-sns/view)
+3. [Setting up encryption with KMS](https://oneuptime.com/blog/post/2026-02-12-enable-sns-message-encryption-with-kms/view)
 
 Creating the topic is just the starting point - the real power comes from the subscriber patterns you build on top of it.

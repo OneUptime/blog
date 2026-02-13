@@ -313,6 +313,6 @@ Always add verbose logging to your enclave application during development. The c
 
 Monitor your enclave-enabled instances like any other EC2 instance, but pay attention to the memory and CPU allocation split. If you give 4 GB to the enclave on an 8 GB instance, the parent only has 4 GB left.
 
-For comprehensive EC2 monitoring, see [monitoring EC2 instances with CloudWatch detailed monitoring](https://oneuptime.com/blog/post/monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view).
+For comprehensive EC2 monitoring, see [monitoring EC2 instances with CloudWatch detailed monitoring](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view).
 
 Nitro Enclaves add a meaningful layer of protection for your most sensitive workloads. The setup takes some effort, but for applications handling financial data, healthcare records, or cryptographic keys, the isolation guarantee is worth it.

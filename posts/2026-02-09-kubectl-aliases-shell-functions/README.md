@@ -410,4 +410,4 @@ klog() {
 
 Optimize functions to minimize API calls and search scope.
 
-Aliases and functions multiply your kubectl efficiency. Start with basic shortcuts, add functions as patterns emerge, and refine based on your workflow. Your future self will thank you for every keystroke saved. Learn more about extending kubectl at https://oneuptime.com/blog/post/kubectl-plugins-krew-package-manager/view.
+Aliases and functions multiply your kubectl efficiency. Start with basic shortcuts, add functions as patterns emerge, and refine based on your workflow. Your future self will thank you for every keystroke saved. Learn more about extending kubectl at https://oneuptime.com/blog/post/2026-02-09-kubectl-plugins-krew-package-manager/view.

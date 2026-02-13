@@ -362,7 +362,7 @@ def submit_review(event, context):
 
 ## Monitoring Moderation Health
 
-A broken moderation pipeline means unsafe content goes live. Monitor the review queue depth (if it grows, you need more moderators), auto-rejection rates (sudden spikes might indicate a spam attack), and API latency. Use [OneUptime](https://oneuptime.com/blog/post/build-a-sentiment-analysis-dashboard-on-aws/view) to set up alerts on these metrics and ensure moderation is always operational.
+A broken moderation pipeline means unsafe content goes live. Monitor the review queue depth (if it grows, you need more moderators), auto-rejection rates (sudden spikes might indicate a spam attack), and API latency. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-sentiment-analysis-dashboard-on-aws/view) to set up alerts on these metrics and ensure moderation is always operational.
 
 ## Wrapping Up
 

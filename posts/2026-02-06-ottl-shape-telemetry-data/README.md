@@ -515,6 +515,6 @@ OTTL transformations add processing overhead. Follow these best practices:
 4. **Use error_mode wisely**: Set to `ignore` to prevent transformation errors from blocking data flow
 5. **Test under load**: Benchmark transformation performance with realistic data volumes
 
-For more performance optimization techniques, see [How to Benchmark OpenTelemetry SDK Overhead in Go, Java, and Python](https://oneuptime.com/blog/post/benchmark-opentelemetry-sdk-overhead-go-java-python/view) and [How to Aggregate Metrics at the Source to Reduce Data Volume](https://oneuptime.com/blog/post/aggregate-metrics-source-reduce-data-volume/view).
+For more performance optimization techniques, see [How to Benchmark OpenTelemetry SDK Overhead in Go, Java, and Python](https://oneuptime.com/blog/post/2026-02-06-benchmark-opentelemetry-sdk-overhead-go-java-python/view) and [How to Aggregate Metrics at the Source to Reduce Data Volume](https://oneuptime.com/blog/post/2026-02-06-aggregate-metrics-source-reduce-data-volume/view).
 
 OTTL provides flexible, powerful telemetry transformation capabilities at the collector level, enabling you to shape data before it reaches your backend, reducing costs and improving observability quality.

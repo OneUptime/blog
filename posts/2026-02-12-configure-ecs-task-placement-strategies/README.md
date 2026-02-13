@@ -30,7 +30,7 @@ graph TD
     E --> F[Task Placed]
 ```
 
-Placement strategies are about ranking and selection. Placement constraints are about hard filtering. This post focuses on strategies. For constraints, see our guide on [configuring ECS task placement constraints](https://oneuptime.com/blog/post/configure-ecs-task-placement-constraints/view).
+Placement strategies are about ranking and selection. Placement constraints are about hard filtering. This post focuses on strategies. For constraints, see our guide on [configuring ECS task placement constraints](https://oneuptime.com/blog/post/2026-02-12-configure-ecs-task-placement-constraints/view).
 
 ## The Three Placement Strategy Types
 
@@ -305,7 +305,7 @@ aws ecs create-service \
 
 When using binpack, cluster auto-scaling becomes more efficient. Tasks pack onto fewer instances, so idle instances are detected and terminated faster. With spread, auto-scaling needs to maintain instances across all AZs even if some are underutilized.
 
-For more on auto-scaling, see our guide on [using ECS capacity provider auto-scaling](https://oneuptime.com/blog/post/use-ecs-capacity-provider-auto-scaling/view).
+For more on auto-scaling, see our guide on [using ECS capacity provider auto-scaling](https://oneuptime.com/blog/post/2026-02-12-use-ecs-capacity-provider-auto-scaling/view).
 
 ## Wrapping Up
 

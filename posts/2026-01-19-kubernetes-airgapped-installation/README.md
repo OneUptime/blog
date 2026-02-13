@@ -552,6 +552,6 @@ For monitoring your air-gapped Kubernetes clusters, check out [OneUptime's on-pr
 
 ## Related Resources
 
-- [How to Backup with Velero](https://oneuptime.com/blog/post/kubernetes-velero-backup-restore/view)
-- [How to Upgrade Kubernetes with Zero Downtime](https://oneuptime.com/blog/post/kubernetes-upgrade-zero-downtime/view)
-- [How to Build Helm Charts](https://oneuptime.com/blog/post/kubernetes-helm-charts-from-scratch/view)
+- [How to Backup with Velero](https://oneuptime.com/blog/post/2026-01-19-kubernetes-velero-backup-restore/view)
+- [How to Upgrade Kubernetes with Zero Downtime](https://oneuptime.com/blog/post/2026-01-19-kubernetes-upgrade-zero-downtime/view)
+- [How to Build Helm Charts](https://oneuptime.com/blog/post/2026-01-19-kubernetes-helm-charts-from-scratch/view)

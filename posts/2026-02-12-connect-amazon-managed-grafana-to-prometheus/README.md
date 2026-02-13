@@ -18,8 +18,8 @@ This guide walks through connecting Managed Grafana to Managed Prometheus, writi
 
 You need:
 
-- An Amazon Managed Grafana workspace. See our guide on [setting up Amazon Managed Grafana](https://oneuptime.com/blog/post/set-up-amazon-managed-grafana/view).
-- An Amazon Managed Prometheus workspace with metrics flowing in. See our guide on [setting up Amazon Managed Prometheus](https://oneuptime.com/blog/post/set-up-amazon-managed-prometheus-amp/view).
+- An Amazon Managed Grafana workspace. See our guide on [setting up Amazon Managed Grafana](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-managed-grafana/view).
+- An Amazon Managed Prometheus workspace with metrics flowing in. See our guide on [setting up Amazon Managed Prometheus](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-managed-prometheus-amp/view).
 - IAM permissions configured for cross-service access.
 
 ## Step 1: Configure IAM Permissions
@@ -258,7 +258,7 @@ groups:
 
 Recording rules reduce query load on both AMP and Grafana by pre-computing expensive queries into simple metrics.
 
-For more on PromQL queries, see our guide on [using PromQL queries in Amazon Managed Prometheus](https://oneuptime.com/blog/post/use-promql-queries-in-amazon-managed-prometheus/view).
+For more on PromQL queries, see our guide on [using PromQL queries in Amazon Managed Prometheus](https://oneuptime.com/blog/post/2026-02-12-use-promql-queries-in-amazon-managed-prometheus/view).
 
 ## Multi-Account and Multi-Region Setup
 

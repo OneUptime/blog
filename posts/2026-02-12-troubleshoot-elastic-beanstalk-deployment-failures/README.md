@@ -334,7 +334,7 @@ The best fix is not needing to troubleshoot in the first place.
 
 **Use immutable deployments**: They're slower but automatically roll back on failure, leaving your production environment untouched.
 
-**Set up monitoring**: Catch issues before they become deployment failures. Tools like [OneUptime](https://oneuptime.com/blog/post/set-up-aws-resilience-hub-for-application-resilience/view) can alert you to health degradation before it impacts deployments.
+**Set up monitoring**: Catch issues before they become deployment failures. Tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-resilience-hub-for-application-resilience/view) can alert you to health degradation before it impacts deployments.
 
 **Keep a deployment runbook**: Document the steps to diagnose and fix common issues. Future you (or your on-call teammate at 2 AM) will appreciate it.
 

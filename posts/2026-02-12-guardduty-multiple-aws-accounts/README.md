@@ -240,7 +240,7 @@ resource "aws_guardduty_organization_configuration" "org" {
 
 ## Setting Up Cross-Account Notifications
 
-Since findings aggregate in the administrator account, set up your [notification pipeline](https://oneuptime.com/blog/post/configure-guardduty-findings-notifications/view) there. EventBridge rules in the admin account will capture findings from all member accounts.
+Since findings aggregate in the administrator account, set up your [notification pipeline](https://oneuptime.com/blog/post/2026-02-12-configure-guardduty-findings-notifications/view) there. EventBridge rules in the admin account will capture findings from all member accounts.
 
 ```bash
 # In the admin account - capture all high-severity findings
@@ -286,7 +286,7 @@ aws guardduty create-filter \
   --description "Suppress port probe findings from NAT gateways across all accounts"
 ```
 
-For more on suppression, see [suppressing GuardDuty false positives](https://oneuptime.com/blog/post/suppress-guardduty-false-positives/view).
+For more on suppression, see [suppressing GuardDuty false positives](https://oneuptime.com/blog/post/2026-02-12-suppress-guardduty-false-positives/view).
 
 ## Multi-Region Considerations
 
@@ -320,4 +320,4 @@ aws guardduty get-usage-statistics \
 
 This shows you which accounts are generating the most GuardDuty costs, so you can investigate whether the data volume is expected.
 
-For the complete security picture, [integrate GuardDuty with Security Hub](https://oneuptime.com/blog/post/integrate-guardduty-security-hub/view) to see GuardDuty findings alongside Config rules, CloudTrail Insights, and other security services in one unified dashboard.
+For the complete security picture, [integrate GuardDuty with Security Hub](https://oneuptime.com/blog/post/2026-02-12-integrate-guardduty-security-hub/view) to see GuardDuty findings alongside Config rules, CloudTrail Insights, and other security services in one unified dashboard.

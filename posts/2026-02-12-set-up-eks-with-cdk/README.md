@@ -141,7 +141,7 @@ cluster.addNodegroupCapacity('ComputeNodes', {
 
 ## Configuring IRSA
 
-CDK makes [IRSA](https://oneuptime.com/blog/post/set-up-iam-roles-for-eks-service-accounts-irsa/view) setup straightforward:
+CDK makes [IRSA](https://oneuptime.com/blog/post/2026-02-12-set-up-iam-roles-for-eks-service-accounts-irsa/view) setup straightforward:
 
 ```typescript
 // Create a service account with S3 read access
@@ -316,7 +316,7 @@ const cluster = new eks.Cluster(this, 'MyCluster', {
 });
 ```
 
-For more on cluster logging, see our [EKS logging guide](https://oneuptime.com/blog/post/configure-eks-cluster-logging/view).
+For more on cluster logging, see our [EKS logging guide](https://oneuptime.com/blog/post/2026-02-12-configure-eks-cluster-logging/view).
 
 ## Granting Cluster Access
 

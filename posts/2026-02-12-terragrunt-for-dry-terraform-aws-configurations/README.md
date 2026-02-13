@@ -428,7 +428,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 ```
 
-For more CI/CD patterns, see our guides on [Terraform CI/CD with GitHub Actions](https://oneuptime.com/blog/post/terraform-cicd-github-actions-for-aws/view) and [GitLab CI](https://oneuptime.com/blog/post/terraform-cicd-gitlab-ci-for-aws/view).
+For more CI/CD patterns, see our guides on [Terraform CI/CD with GitHub Actions](https://oneuptime.com/blog/post/2026-02-12-terraform-cicd-github-actions-for-aws/view) and [GitLab CI](https://oneuptime.com/blog/post/2026-02-12-terraform-cicd-gitlab-ci-for-aws/view).
 
 ## Wrapping Up
 
@@ -436,4 +436,4 @@ Terragrunt shines when you have multiple environments with similar infrastructur
 
 The learning curve is worth it if you manage more than two environments or have dependencies between infrastructure components.
 
-For the state backend that Terragrunt configures, see our guide on [Terraform state with S3 and DynamoDB](https://oneuptime.com/blog/post/terraform-state-with-s3-backend-and-dynamodb-locking/view).
+For the state backend that Terragrunt configures, see our guide on [Terraform state with S3 and DynamoDB](https://oneuptime.com/blog/post/2026-02-12-terraform-state-with-s3-backend-and-dynamodb-locking/view).

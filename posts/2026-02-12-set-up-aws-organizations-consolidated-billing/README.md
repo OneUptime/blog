@@ -263,4 +263,4 @@ After setup, you'll have:
 - Per-account budgets and alerts
 - Organizational structure for policy management
 
-For more on managing your AWS costs effectively, check out our guide on [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/create-a-cost-optimization-strategy-for-aws/view) and [using AWS Pricing Calculator for cost estimation](https://oneuptime.com/blog/post/use-aws-pricing-calculator-for-cost-estimation/view).
+For more on managing your AWS costs effectively, check out our guide on [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/2026-02-12-create-a-cost-optimization-strategy-for-aws/view) and [using AWS Pricing Calculator for cost estimation](https://oneuptime.com/blog/post/2026-02-12-use-aws-pricing-calculator-for-cost-estimation/view).

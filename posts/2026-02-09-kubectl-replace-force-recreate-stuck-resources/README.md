@@ -470,4 +470,4 @@ kubectl apply -f ./k8s-manifests/webapp.yaml
 
 Always keep backups before force replacing.
 
-kubectl replace --force provides a powerful recovery mechanism for stuck resources. Use it when normal operations fail, but understand the consequences: immediate deletion, downtime, and potential data loss. Try gentler approaches first, validate before forcing, and maintain backups. Reserve this tool for emergency recovery situations. For gentler update methods, see https://oneuptime.com/blog/post/kubectl-apply-vs-create/view.
+kubectl replace --force provides a powerful recovery mechanism for stuck resources. Use it when normal operations fail, but understand the consequences: immediate deletion, downtime, and potential data loss. Try gentler approaches first, validate before forcing, and maintain backups. Reserve this tool for emergency recovery situations. For gentler update methods, see https://oneuptime.com/blog/post/2026-01-25-kubectl-apply-vs-create/view.

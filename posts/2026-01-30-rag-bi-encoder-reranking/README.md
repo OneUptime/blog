@@ -1737,7 +1737,7 @@ The key insight is that bi-encoders trade some accuracy for dramatically better 
 
 ## Related Resources
 
-- [Understanding Cross-Encoders for Maximum Accuracy](/blog/post/cross-encoder-reranking/)
+- [Understanding Cross-Encoders for Maximum Accuracy](/blog/post/2026-01-30-cross-encoder-reranking/)
 - [Building Production RAG Pipelines](/blog/post/production-rag-architecture/)
 - [Vector Database Selection Guide](/blog/post/vector-database-comparison/)
 

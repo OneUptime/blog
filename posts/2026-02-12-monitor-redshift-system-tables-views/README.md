@@ -114,7 +114,7 @@ GROUP BY DATE_TRUNC('hour', starttime), service_class
 ORDER BY hour DESC, service_class;
 ```
 
-If wait times are consistently high, you need to either increase WLM concurrency or enable concurrency scaling for that queue. Check our guide on [configuring Redshift concurrency scaling](https://oneuptime.com/blog/post/configure-redshift-concurrency-scaling/view) for details.
+If wait times are consistently high, you need to either increase WLM concurrency or enable concurrency scaling for that queue. Check our guide on [configuring Redshift concurrency scaling](https://oneuptime.com/blog/post/2026-02-12-configure-redshift-concurrency-scaling/view) for details.
 
 ## Disk Usage and Storage
 

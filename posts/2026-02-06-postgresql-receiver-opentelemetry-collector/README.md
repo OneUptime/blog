@@ -697,7 +697,7 @@ service:
       exporters: [otlp]
 ```
 
-OneUptime provides pre-built PostgreSQL dashboards and intelligent alerting based on industry best practices. For monitoring other databases alongside PostgreSQL, see our guides on [MySQL receiver](https://oneuptime.com/blog/post/mysql-receiver-opentelemetry-collector/view) and [MongoDB receiver](https://oneuptime.com/blog/post/mongodb-receiver-opentelemetry-collector/view).
+OneUptime provides pre-built PostgreSQL dashboards and intelligent alerting based on industry best practices. For monitoring other databases alongside PostgreSQL, see our guides on [MySQL receiver](https://oneuptime.com/blog/post/2026-02-06-mysql-receiver-opentelemetry-collector/view) and [MongoDB receiver](https://oneuptime.com/blog/post/2026-02-06-mongodb-receiver-opentelemetry-collector/view).
 
 ## Conclusion
 
@@ -705,4 +705,4 @@ The PostgreSQL receiver provides comprehensive database monitoring through the O
 
 Start with basic configuration to establish baseline metrics, then progressively add custom queries, table-level monitoring, and replication tracking as your needs grow. Use the collected metrics to optimize queries, tune configuration parameters, and maintain healthy PostgreSQL operations.
 
-For container-based PostgreSQL deployments, combine this receiver with the [Docker Stats receiver](https://oneuptime.com/blog/post/docker-stats-receiver-opentelemetry-collector/view) for full-stack observability.
+For container-based PostgreSQL deployments, combine this receiver with the [Docker Stats receiver](https://oneuptime.com/blog/post/2026-02-06-docker-stats-receiver-opentelemetry-collector/view) for full-stack observability.

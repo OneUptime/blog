@@ -350,6 +350,6 @@ estimate_savings('my-data-bucket')
 4. **Set minimum object size** - IA has a 128 KB minimum charge, so tiny objects don't benefit
 5. **Monitor after transitions** - Watch for increased retrieval costs that might indicate you transitioned too aggressively
 
-For tagging objects to track costs by department or project, see our guide on [S3 object tagging for organization and billing](https://oneuptime.com/blog/post/s3-object-tagging-organization-billing/view).
+For tagging objects to track costs by department or project, see our guide on [S3 object tagging for organization and billing](https://oneuptime.com/blog/post/2026-02-12-s3-object-tagging-organization-billing/view).
 
 Track your S3 costs and savings trends over time with [OneUptime](https://oneuptime.com) to make sure your optimization efforts are paying off.

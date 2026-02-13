@@ -259,7 +259,7 @@ To prevent this:
 
 1. Enable `reportBatchItemFailures` to only retry failed records
 2. Enable `bisectBatchOnError` to isolate problematic records
-3. Configure `maxRetryAttempts` and set up a [destination for failures](https://oneuptime.com/blog/post/lambda-destinations-asynchronous-invocation/view)
+3. Configure `maxRetryAttempts` and set up a [destination for failures](https://oneuptime.com/blog/post/2026-02-12-lambda-destinations-asynchronous-invocation/view)
 4. Make your processing idempotent - records may be delivered more than once
 
 ## Monitoring Stream Processing
@@ -270,7 +270,7 @@ Monitor these CloudWatch metrics for your event source mapping:
 - `ConcurrentExecutions` - how many instances of your function are running
 - `Errors` - function invocation errors
 
-Set a CloudWatch alarm on `IteratorAge`. If it exceeds a few seconds consistently, increase the `parallelizationFactor` or optimize your function's processing time. For monitoring strategies, check out our post on [debugging Lambda with CloudWatch Logs](https://oneuptime.com/blog/post/debug-lambda-functions-cloudwatch-logs/view).
+Set a CloudWatch alarm on `IteratorAge`. If it exceeds a few seconds consistently, increase the `parallelizationFactor` or optimize your function's processing time. For monitoring strategies, check out our post on [debugging Lambda with CloudWatch Logs](https://oneuptime.com/blog/post/2026-02-12-debug-lambda-functions-cloudwatch-logs/view).
 
 ## Wrapping Up
 

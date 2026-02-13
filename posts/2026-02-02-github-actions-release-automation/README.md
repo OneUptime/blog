@@ -884,4 +884,4 @@ jobs:
 
 Automated releases eliminate the friction between writing code and shipping it to users. By combining semantic versioning, changelog generation, multi-platform builds, and approval workflows, you create a release process that scales with your team. Start with a simple semantic-release setup, then add complexity as your needs grow.
 
-For monitoring your release pipelines and deployment health, [OneUptime](https://oneuptime.com/blog/post/sre-best-practices/view) provides comprehensive observability that integrates seamlessly with GitHub Actions webhooks.
+For monitoring your release pipelines and deployment health, [OneUptime](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view) provides comprehensive observability that integrates seamlessly with GitHub Actions webhooks.

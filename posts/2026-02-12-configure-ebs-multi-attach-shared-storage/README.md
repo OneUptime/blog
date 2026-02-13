@@ -20,7 +20,7 @@ Multi-Attach makes sense in a few specific scenarios:
 - **Cluster-aware filesystems** like GFS2 or OCFS2 where the filesystem handles concurrent access
 - **Failover scenarios** where a standby instance needs immediate access to the primary's data volume
 
-It does not make sense for general file sharing between instances. If you need that, use [EFS instead](https://oneuptime.com/blog/post/set-up-nfs-on-ec2-using-efs/view). Multi-Attach provides no built-in coordination - if two instances write to the same blocks without coordination, you'll corrupt your data.
+It does not make sense for general file sharing between instances. If you need that, use [EFS instead](https://oneuptime.com/blog/post/2026-02-12-set-up-nfs-on-ec2-using-efs/view). Multi-Attach provides no built-in coordination - if two instances write to the same blocks without coordination, you'll corrupt your data.
 
 ## Prerequisites
 
@@ -236,4 +236,4 @@ Multi-Attach is a niche feature. For most shared storage needs, there are simple
 
 Multi-Attach is really the right choice only when you need shared block-level access with cluster-aware applications. For anything else, the managed filesystem services are going to be easier to operate and more reliable in the long run.
 
-If you need high-performance storage but only for a single instance, check out our guide on [io2 Block Express volumes](https://oneuptime.com/blog/post/io2-block-express-ebs-volumes-high-performance-storage/view) instead.
+If you need high-performance storage but only for a single instance, check out our guide on [io2 Block Express volumes](https://oneuptime.com/blog/post/2026-02-12-io2-block-express-ebs-volumes-high-performance-storage/view) instead.

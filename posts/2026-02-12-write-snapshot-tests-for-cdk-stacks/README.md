@@ -250,4 +250,4 @@ describe('StorageStack', () => {
 });
 ```
 
-For more on specific property assertions, see the post on [writing unit tests for CDK stacks](https://oneuptime.com/blog/post/write-unit-tests-for-cdk-stacks/view). For testing the actual deployed behavior, check out [integration tests for CDK stacks](https://oneuptime.com/blog/post/write-integration-tests-for-cdk-stacks/view).
+For more on specific property assertions, see the post on [writing unit tests for CDK stacks](https://oneuptime.com/blog/post/2026-02-12-write-unit-tests-for-cdk-stacks/view). For testing the actual deployed behavior, check out [integration tests for CDK stacks](https://oneuptime.com/blog/post/2026-02-12-write-integration-tests-for-cdk-stacks/view).

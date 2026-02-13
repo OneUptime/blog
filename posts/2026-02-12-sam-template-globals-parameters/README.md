@@ -436,7 +436,7 @@ Put everything that's shared across most functions in Globals. Only override in 
 
 Don't put secrets in parameters - use AWS Secrets Manager or Parameter Store and reference them with `{{resolve:secretsmanager:secret-name}}` or `{{resolve:ssm:parameter-name}}`.
 
-For more on building complete SAM applications, check out our post on [building a serverless application with AWS SAM](https://oneuptime.com/blog/post/serverless-application-aws-sam/view).
+For more on building complete SAM applications, check out our post on [building a serverless application with AWS SAM](https://oneuptime.com/blog/post/2026-02-12-serverless-application-aws-sam/view).
 
 ## Wrapping Up
 

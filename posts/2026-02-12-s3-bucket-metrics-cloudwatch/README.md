@@ -345,4 +345,4 @@ aws cloudwatch put-metric-alarm \
 4. **Combine with CloudTrail** for a complete picture - CloudWatch shows you the "what," CloudTrail shows you the "who."
 5. **Use a monitoring platform** like [OneUptime](https://oneuptime.com) to aggregate S3 metrics alongside your application metrics for end-to-end visibility.
 
-For related monitoring setups, check out our guide on [S3 bucket notifications to EventBridge](https://oneuptime.com/blog/post/s3-bucket-notifications-eventbridge/view) which lets you react to events in real time rather than just tracking metrics.
+For related monitoring setups, check out our guide on [S3 bucket notifications to EventBridge](https://oneuptime.com/blog/post/2026-02-12-s3-bucket-notifications-eventbridge/view) which lets you react to events in real time rather than just tracking metrics.

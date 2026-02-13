@@ -324,4 +324,4 @@ Then consumers can install and use your constructs like any other CDK module.
 npm install @mycompany/cdk-constructs
 ```
 
-Custom constructs are what turn CDK from "CloudFormation with better syntax" into a real infrastructure platform for your organization. Start small with wrappers around individual resources, then build up to multi-resource patterns as you identify common architectures. For testing these constructs, check out the guide on [writing unit tests for CDK stacks](https://oneuptime.com/blog/post/write-unit-tests-for-cdk-stacks/view).
+Custom constructs are what turn CDK from "CloudFormation with better syntax" into a real infrastructure platform for your organization. Start small with wrappers around individual resources, then build up to multi-resource patterns as you identify common architectures. For testing these constructs, check out the guide on [writing unit tests for CDK stacks](https://oneuptime.com/blog/post/2026-02-12-write-unit-tests-for-cdk-stacks/view).

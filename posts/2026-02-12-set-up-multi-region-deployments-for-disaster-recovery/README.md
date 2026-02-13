@@ -265,7 +265,7 @@ Test your failover regularly. A DR plan that hasn't been tested is just a hope.
 - Document everything that went wrong and fix it
 - Use AWS Fault Injection Simulator for controlled chaos testing
 
-For monitoring your multi-region deployment, see our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/build-logging-and-monitoring-stack-on-aws/view). Also check out [DNS failover with Route 53](https://oneuptime.com/blog/post/set-up-dns-failover-with-route-53/view) for the DNS layer.
+For monitoring your multi-region deployment, see our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view). Also check out [DNS failover with Route 53](https://oneuptime.com/blog/post/2026-02-12-set-up-dns-failover-with-route-53/view) for the DNS layer.
 
 ## Summary
 

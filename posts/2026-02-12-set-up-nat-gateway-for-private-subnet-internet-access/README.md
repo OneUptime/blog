@@ -222,7 +222,7 @@ NAT gateways aren't free, and the costs can sneak up on you:
 - **Data processing**: $0.045 per GB processed
 - **Two NAT gateways for HA**: ~$64/month baseline
 
-The data processing charge is what gets expensive. If your private instances are downloading large datasets or serving lots of traffic through the NAT, costs add up quickly. Consider using VPC endpoints for AWS services like S3 and DynamoDB - they bypass the NAT gateway entirely and are free for gateway endpoints. See [setting up VPC gateway endpoints for S3 and DynamoDB](https://oneuptime.com/blog/post/set-up-vpc-gateway-endpoints-s3-dynamodb/view) for more.
+The data processing charge is what gets expensive. If your private instances are downloading large datasets or serving lots of traffic through the NAT, costs add up quickly. Consider using VPC endpoints for AWS services like S3 and DynamoDB - they bypass the NAT gateway entirely and are free for gateway endpoints. See [setting up VPC gateway endpoints for S3 and DynamoDB](https://oneuptime.com/blog/post/2026-02-12-set-up-vpc-gateway-endpoints-s3-dynamodb/view) for more.
 
 ## Monitoring NAT Gateway
 
@@ -242,7 +242,7 @@ aws cloudwatch get-metric-statistics \
 
 Set up CloudWatch alarms for `ErrorPortAllocation` - this means the NAT gateway is running out of ports and can't create new connections. It happens under very heavy load and can cause connection failures.
 
-If cost is a concern and you can tolerate some risk, check out [choosing between NAT gateway and NAT instance](https://oneuptime.com/blog/post/choose-between-nat-gateway-and-nat-instance/view) for a cheaper alternative.
+If cost is a concern and you can tolerate some risk, check out [choosing between NAT gateway and NAT instance](https://oneuptime.com/blog/post/2026-02-12-choose-between-nat-gateway-and-nat-instance/view) for a cheaper alternative.
 
 ## Wrapping Up
 

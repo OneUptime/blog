@@ -78,7 +78,7 @@ for TYPE in m5.xlarge m5a.xlarge m5n.xlarge m6i.xlarge m6a.xlarge; do
 done
 ```
 
-For guaranteed capacity, consider [Capacity Reservations](https://oneuptime.com/blog/post/configure-ec2-capacity-reservations/view).
+For guaranteed capacity, consider [Capacity Reservations](https://oneuptime.com/blog/post/2026-02-12-configure-ec2-capacity-reservations/view).
 
 ## InstanceLimitExceeded
 
@@ -352,6 +352,6 @@ aws ec2 run-instances \
   --dry-run 2>&1
 ```
 
-For instances that launch but then have issues, check out [troubleshooting status check failures](https://oneuptime.com/blog/post/troubleshoot-ec2-instance-status-check-failures/view) for the next layer of debugging.
+For instances that launch but then have issues, check out [troubleshooting status check failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-ec2-instance-status-check-failures/view) for the next layer of debugging.
 
 Most launch failures come down to a few common causes: wrong region, wrong VPC, missing permissions, or capacity limits. The systematic debugging script above catches the majority of issues in under a minute. Keep it handy, and launch failures won't slow you down for long.

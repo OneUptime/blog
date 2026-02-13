@@ -356,6 +356,6 @@ Track these metrics for your Lambda-MSK integration:
 - **Errors** - Failed invocations
 - **ConnectionCount** on MSK - Total client connections
 
-For more on MSK security configuration, check out our guide on [configuring MSK cluster security](https://oneuptime.com/blog/post/configure-msk-cluster-security/view). For Kinesis-Lambda integration as an alternative, see [processing Kinesis streams with Lambda](https://oneuptime.com/blog/post/process-kinesis-streams-with-lambda/view).
+For more on MSK security configuration, check out our guide on [configuring MSK cluster security](https://oneuptime.com/blog/post/2026-02-12-configure-msk-cluster-security/view). For Kinesis-Lambda integration as an alternative, see [processing Kinesis streams with Lambda](https://oneuptime.com/blog/post/2026-02-12-process-kinesis-streams-with-lambda/view).
 
 Lambda and MSK work well together, but it's not a zero-configuration setup. Get the VPC networking right, choose the right authentication mechanism, handle cold starts for the producer pattern, and monitor your connection counts. Once those pieces are in place, you get a solid serverless Kafka processing pipeline.

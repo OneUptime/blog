@@ -27,7 +27,7 @@ graph LR
     E --> F[Output to S3/DB/etc]
 ```
 
-Because the invocation is asynchronous, Lambda handles retries automatically. If your function fails, Lambda retries it twice. You can also configure a [Dead Letter Queue](https://oneuptime.com/blog/post/configure-dead-letter-queues-lambda-functions/view) to capture events that fail all retry attempts.
+Because the invocation is asynchronous, Lambda handles retries automatically. If your function fails, Lambda retries it twice. You can also configure a [Dead Letter Queue](https://oneuptime.com/blog/post/2026-02-12-configure-dead-letter-queues-lambda-functions/view) to capture events that fail all retry attempts.
 
 ## Supported Event Types
 
@@ -273,7 +273,7 @@ aws s3api put-bucket-notification-configuration \
   }'
 ```
 
-Then create an EventBridge rule to route to Lambda. For more on this pattern, see our guide on [triggering Lambda from EventBridge rules](https://oneuptime.com/blog/post/trigger-lambda-eventbridge-rules/view).
+Then create an EventBridge rule to route to Lambda. For more on this pattern, see our guide on [triggering Lambda from EventBridge rules](https://oneuptime.com/blog/post/2026-02-12-trigger-lambda-eventbridge-rules/view).
 
 ## Performance Considerations
 
@@ -283,7 +283,7 @@ S3 can invoke your Lambda function thousands of times per second. Make sure your
 - Use provisioned concurrency if cold starts are a concern for latency-sensitive processing
 - Consider routing S3 events through SQS first if you need to control the processing rate
 
-For high-volume workloads, the SQS approach gives you built-in buffering and controlled concurrency. Check our post on [triggering Lambda from SQS queues](https://oneuptime.com/blog/post/trigger-lambda-sqs-queues/view) for that pattern.
+For high-volume workloads, the SQS approach gives you built-in buffering and controlled concurrency. Check our post on [triggering Lambda from SQS queues](https://oneuptime.com/blog/post/2026-02-12-trigger-lambda-sqs-queues/view) for that pattern.
 
 ## Wrapping Up
 

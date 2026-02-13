@@ -167,7 +167,7 @@ aws backup create-backup-plan \
   }'
 ```
 
-For more details on cross-region backup setup, check out our dedicated guide on [cross-region backup with AWS Backup](https://oneuptime.com/blog/post/set-up-cross-region-backup-aws-backup/view).
+For more details on cross-region backup setup, check out our dedicated guide on [cross-region backup with AWS Backup](https://oneuptime.com/blog/post/2026-02-12-set-up-cross-region-backup-aws-backup/view).
 
 ## Plan 4: Compliance-Focused Plan (7-Year Retention)
 

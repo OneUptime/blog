@@ -414,7 +414,7 @@ def handle_order_created(event, context):
 
 When saga steps fail repeatedly, messages end up in dead letter queues. You need to monitor these actively because a stuck message means a saga is incomplete - the customer's order is in limbo.
 
-Set up CloudWatch alarms on your DLQs to get notified immediately when messages land there. For comprehensive monitoring strategies, see our post on [monitoring SNS with CloudWatch](https://oneuptime.com/blog/post/monitor-sns-cloudwatch/view).
+Set up CloudWatch alarms on your DLQs to get notified immediately when messages land there. For comprehensive monitoring strategies, see our post on [monitoring SNS with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-sns-cloudwatch/view).
 
 ## Wrapping Up
 

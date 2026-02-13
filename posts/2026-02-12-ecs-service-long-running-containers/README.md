@@ -27,7 +27,7 @@ graph TD
 
 ## Creating a Basic Service
 
-You'll need a [cluster](https://oneuptime.com/blog/post/first-ecs-cluster/view) and a [task definition](https://oneuptime.com/blog/post/ecs-task-definition/view) already in place.
+You'll need a [cluster](https://oneuptime.com/blog/post/2026-02-12-first-ecs-cluster/view) and a [task definition](https://oneuptime.com/blog/post/2026-02-12-ecs-task-definition/view) already in place.
 
 ```bash
 # Create a Fargate service with 3 replicas
@@ -123,7 +123,7 @@ If ECS detects that new tasks keep failing to start or failing health checks, it
 
 For web-facing services, you'll almost always want a load balancer in front. ECS integrates natively with Application Load Balancers.
 
-First, create the ALB and target group (or see our detailed [ECS with ALB guide](https://oneuptime.com/blog/post/ecs-application-load-balancer/view)).
+First, create the ALB and target group (or see our detailed [ECS with ALB guide](https://oneuptime.com/blog/post/2026-02-12-ecs-application-load-balancer/view)).
 
 ```bash
 # Create a service that registers tasks with an ALB target group
@@ -239,7 +239,7 @@ aws ecs update-service \
   --desired-count 2
 ```
 
-For automatic scaling based on metrics, see our [ECS auto scaling guide](https://oneuptime.com/blog/post/ecs-service-auto-scaling/view).
+For automatic scaling based on metrics, see our [ECS auto scaling guide](https://oneuptime.com/blog/post/2026-02-12-ecs-service-auto-scaling/view).
 
 ## Force New Deployment
 
@@ -284,4 +284,4 @@ aws ecs delete-service \
 
 ## Wrapping Up
 
-ECS services are the backbone of running production containers on AWS. They handle the hard parts - keeping tasks running, rolling out updates safely, and integrating with load balancers and service discovery. Start with a basic service, add a load balancer for web traffic, enable the circuit breaker for safety, and use service discovery for internal communication. Once you've got services running, set up [health checks](https://oneuptime.com/blog/post/ecs-health-checks/view) and [auto scaling](https://oneuptime.com/blog/post/ecs-service-auto-scaling/view) to make them production-ready.
+ECS services are the backbone of running production containers on AWS. They handle the hard parts - keeping tasks running, rolling out updates safely, and integrating with load balancers and service discovery. Start with a basic service, add a load balancer for web traffic, enable the circuit breaker for safety, and use service discovery for internal communication. Once you've got services running, set up [health checks](https://oneuptime.com/blog/post/2026-02-12-ecs-health-checks/view) and [auto scaling](https://oneuptime.com/blog/post/2026-02-12-ecs-service-auto-scaling/view) to make them production-ready.

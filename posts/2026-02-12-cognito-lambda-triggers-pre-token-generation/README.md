@@ -165,7 +165,7 @@ Note that you can't suppress the `sub` claim - Cognito requires it in every toke
 
 ## Working with Groups
 
-Cognito groups can be mapped to IAM roles, and the Pre Token Generation trigger gives you control over which groups appear in the token. For more on Cognito groups, check out [this post on role-based access control with Cognito groups](https://oneuptime.com/blog/post/cognito-groups-role-based-access-control/view).
+Cognito groups can be mapped to IAM roles, and the Pre Token Generation trigger gives you control over which groups appear in the token. For more on Cognito groups, check out [this post on role-based access control with Cognito groups](https://oneuptime.com/blog/post/2026-02-12-cognito-groups-role-based-access-control/view).
 
 Here's how to override group information in the token:
 
@@ -209,7 +209,7 @@ aws lambda add-permission \
     --source-arn arn:aws:cognito-idp:us-east-1:123456789012:userpool/us-east-1_XXXXXXXXX
 ```
 
-If you're managing infrastructure with Terraform, check out the [Cognito Terraform setup guide](https://oneuptime.com/blog/post/cognito-terraform/view) for a more structured approach.
+If you're managing infrastructure with Terraform, check out the [Cognito Terraform setup guide](https://oneuptime.com/blog/post/2026-02-12-cognito-terraform/view) for a more structured approach.
 
 ## Token Size Limits
 
@@ -221,7 +221,7 @@ Stick to essential claims. If you need to store complex permission structures, c
 
 Lambda trigger failures can block authentication entirely. If your function throws an unhandled error, Cognito will return a generic error to the user and they won't be able to sign in.
 
-Always wrap your logic in try-catch blocks and return the event even when something goes wrong. You should also set up monitoring - CloudWatch alarms on Lambda errors and duration are a good start. For broader application monitoring, tools like [OneUptime](https://oneuptime.com/blog/post/aws-amplify-getting-started/view) can help you keep track of authentication health across your stack.
+Always wrap your logic in try-catch blocks and return the event even when something goes wrong. You should also set up monitoring - CloudWatch alarms on Lambda errors and duration are a good start. For broader application monitoring, tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-aws-amplify-getting-started/view) can help you keep track of authentication health across your stack.
 
 ## Testing the Trigger Locally
 

@@ -272,7 +272,7 @@ For a database with moderate write activity (say 10GB/day of replication data), 
 
 ## Connection Pooling
 
-When running replicas across regions, connection pooling becomes even more important. Each region should have its own connection pool. Check out our guide on [implementing database connection pooling on AWS](https://oneuptime.com/blog/post/implement-database-connection-pooling-on-aws/view) for the details.
+When running replicas across regions, connection pooling becomes even more important. Each region should have its own connection pool. Check out our guide on [implementing database connection pooling on AWS](https://oneuptime.com/blog/post/2026-02-12-implement-database-connection-pooling-on-aws/view) for the details.
 
 ## Wrapping Up
 

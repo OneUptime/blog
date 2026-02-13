@@ -380,4 +380,4 @@ Hooks:
   - AfterAllowTraffic: "arn:aws:lambda:us-east-1:123456789:function:post-deploy-checks"
 ```
 
-Blue/green deployments add complexity compared to rolling updates, but the safety net is worth it for critical services. The ability to validate the new version with test traffic and roll back instantly if something goes wrong can save you from production incidents. For a simpler alternative, check out our post on [rolling deployments in ECS](https://oneuptime.com/blog/post/rolling-deployments-ecs/view).
+Blue/green deployments add complexity compared to rolling updates, but the safety net is worth it for critical services. The ability to validate the new version with test traffic and roll back instantly if something goes wrong can save you from production incidents. For a simpler alternative, check out our post on [rolling deployments in ECS](https://oneuptime.com/blog/post/2026-02-12-rolling-deployments-ecs/view).

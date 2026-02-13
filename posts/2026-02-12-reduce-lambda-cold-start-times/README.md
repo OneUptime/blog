@@ -198,7 +198,7 @@ def lambda_handler(event, context):
 
 ## Technique 7: Use Lambda SnapStart (Java)
 
-For Java functions, SnapStart dramatically reduces cold starts by taking a snapshot of the initialized execution environment. See our detailed guide on [Lambda SnapStart for Java](https://oneuptime.com/blog/post/lambda-snapstart-java-functions/view).
+For Java functions, SnapStart dramatically reduces cold starts by taking a snapshot of the initialized execution environment. See our detailed guide on [Lambda SnapStart for Java](https://oneuptime.com/blog/post/2026-02-12-lambda-snapstart-java-functions/view).
 
 ## Technique 8: Use Provisioned Concurrency
 
@@ -212,7 +212,7 @@ aws lambda put-provisioned-concurrency-config \
   --provisioned-concurrent-executions 5
 ```
 
-This eliminates cold starts for up to 5 concurrent invocations. But it costs money even when the function isn't running. Check out our guide on [provisioned concurrency](https://oneuptime.com/blog/post/lambda-provisioned-concurrency-eliminate-cold-starts/view) for details.
+This eliminates cold starts for up to 5 concurrent invocations. But it costs money even when the function isn't running. Check out our guide on [provisioned concurrency](https://oneuptime.com/blog/post/2026-02-12-lambda-provisioned-concurrency-eliminate-cold-starts/view) for details.
 
 ## Technique 9: Keep Functions Warm
 

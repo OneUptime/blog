@@ -256,7 +256,7 @@ aws iot describe-job-execution \
   --thing-name "sensor-hub-001"
 ```
 
-Set up CloudWatch alarms to watch for job failures. For comprehensive device monitoring, see our guide on [monitoring IoT devices with CloudWatch](https://oneuptime.com/blog/post/monitor-iot-devices-with-cloudwatch/view).
+Set up CloudWatch alarms to watch for job failures. For comprehensive device monitoring, see our guide on [monitoring IoT devices with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-iot-devices-with-cloudwatch/view).
 
 ## Best Practices for Safe OTA Updates
 

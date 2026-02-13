@@ -271,4 +271,4 @@ This ensures every new instance in your Auto Scaling group comes up with the dae
 
 ## Wrapping Up
 
-The X-Ray daemon on EC2 is a simple but essential piece of the distributed tracing puzzle on AWS. It is lightweight, easy to install, and works reliably once configured. If you are running containers instead of bare EC2, check out our guide on [using X-Ray with ECS sidecar containers](https://oneuptime.com/blog/post/use-x-ray-with-ecs-sidecar-container/view). For more advanced trace analysis, see [X-Ray Insights for automated analysis](https://oneuptime.com/blog/post/use-x-ray-insights-for-automated-analysis/view).
+The X-Ray daemon on EC2 is a simple but essential piece of the distributed tracing puzzle on AWS. It is lightweight, easy to install, and works reliably once configured. If you are running containers instead of bare EC2, check out our guide on [using X-Ray with ECS sidecar containers](https://oneuptime.com/blog/post/2026-02-12-use-x-ray-with-ecs-sidecar-container/view). For more advanced trace analysis, see [X-Ray Insights for automated analysis](https://oneuptime.com/blog/post/2026-02-12-use-x-ray-insights-for-automated-analysis/view).

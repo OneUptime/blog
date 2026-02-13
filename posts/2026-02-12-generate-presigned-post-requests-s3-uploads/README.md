@@ -20,7 +20,7 @@ Here's the key difference:
 
 **Presigned POST**: Form-based upload with a policy document. You can enforce conditions on file size, content type, key prefix, metadata, and more. The upload uses HTTP POST with multipart/form-data encoding.
 
-For more on presigned PUT URLs, see our post on [generating presigned URLs for temporary S3 access](https://oneuptime.com/blog/post/generate-presigned-urls-temporary-s3-access/view).
+For more on presigned PUT URLs, see our post on [generating presigned URLs for temporary S3 access](https://oneuptime.com/blog/post/2026-02-12-generate-presigned-urls-temporary-s3-access/view).
 
 ## Generating a Basic Presigned POST
 
@@ -246,7 +246,7 @@ aws s3api put-bucket-cors \
   --cors-configuration file://cors-config.json
 ```
 
-For more details on CORS setup, see our post on [configuring CORS on S3 buckets](https://oneuptime.com/blog/post/configure-cors-s3-bucket/view).
+For more details on CORS setup, see our post on [configuring CORS on S3 buckets](https://oneuptime.com/blog/post/2026-02-12-configure-cors-s3-bucket/view).
 
 ## Advanced: Upload with Server-Side Encryption
 

@@ -560,6 +560,6 @@ For monitoring your applications during development, check out [OneUptime's loca
 
 ## Related Resources
 
-- [How to Use Skaffold for Development Workflow](https://oneuptime.com/blog/post/kubernetes-skaffold-development-workflow/view)
-- [How to Implement Sidecar Patterns](https://oneuptime.com/blog/post/kubernetes-sidecar-ambassador-patterns/view)
-- [How to Set Up Distributed Tracing with Jaeger](https://oneuptime.com/blog/post/kubernetes-jaeger-distributed-tracing/view)
+- [How to Use Skaffold for Development Workflow](https://oneuptime.com/blog/post/2026-01-19-kubernetes-skaffold-development-workflow/view)
+- [How to Implement Sidecar Patterns](https://oneuptime.com/blog/post/2026-01-19-kubernetes-sidecar-ambassador-patterns/view)
+- [How to Set Up Distributed Tracing with Jaeger](https://oneuptime.com/blog/post/2026-01-19-kubernetes-jaeger-distributed-tracing/view)

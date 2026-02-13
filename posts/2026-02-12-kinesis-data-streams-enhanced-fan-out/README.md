@@ -282,4 +282,4 @@ Enhanced fan-out pricing has two components:
 
 For a stream with 10 shards and 3 enhanced fan-out consumers, you're paying for 30 consumer-shard hours per hour. That adds up. Do the math before enabling it on every consumer.
 
-For monitoring your Kinesis streams and enhanced fan-out consumers, check out [monitoring Kinesis with CloudWatch](https://oneuptime.com/blog/post/monitor-kinesis-data-streams-cloudwatch/view).
+For monitoring your Kinesis streams and enhanced fan-out consumers, check out [monitoring Kinesis with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-kinesis-data-streams-cloudwatch/view).

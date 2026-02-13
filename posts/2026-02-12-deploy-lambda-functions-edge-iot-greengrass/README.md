@@ -464,4 +464,4 @@ aws greengrassv2 list-installed-components \
 
 Deploying Lambda functions to the edge with Greengrass gives you the best of both worlds - the simplicity of serverless with the benefits of local execution. Use pinned Lambda functions for continuous processing, on-demand functions for event-driven logic, and take advantage of local pub/sub for inter-component communication. Start with simple data filtering at the edge and gradually move more processing closer to your devices.
 
-For setting up the Greengrass runtime itself, see our guide on [setting up IoT Greengrass v2 on edge devices](https://oneuptime.com/blog/post/iot-greengrass-v2-edge-devices/view). For the cloud side, see our guide on [using the IoT Core message broker with MQTT](https://oneuptime.com/blog/post/iot-core-message-broker-mqtt/view).
+For setting up the Greengrass runtime itself, see our guide on [setting up IoT Greengrass v2 on edge devices](https://oneuptime.com/blog/post/2026-02-12-iot-greengrass-v2-edge-devices/view). For the cloud side, see our guide on [using the IoT Core message broker with MQTT](https://oneuptime.com/blog/post/2026-02-12-iot-core-message-broker-mqtt/view).

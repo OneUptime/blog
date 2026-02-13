@@ -80,7 +80,7 @@ Open http://localhost:9090 to see cost breakdowns by namespace, controller, and 
 
 Overprovisioned resource requests are the number one source of waste. Pods requesting 1 CPU and 2GB memory but only using 100m CPU and 200MB memory are blocking resources that other pods could use.
 
-Use kubectl top or [Prometheus metrics](https://oneuptime.com/blog/post/set-up-prometheus-and-grafana-on-eks/view) to find overprovisioned workloads:
+Use kubectl top or [Prometheus metrics](https://oneuptime.com/blog/post/2026-02-12-set-up-prometheus-and-grafana-on-eks/view) to find overprovisioned workloads:
 
 ```bash
 # Check actual resource usage vs. requests
@@ -139,7 +139,7 @@ eksctl create nodegroup \
   --nodes-max 20
 ```
 
-For [Karpenter](https://oneuptime.com/blog/post/use-karpenter-for-eks-node-provisioning/view), configure your NodePool to prefer spot:
+For [Karpenter](https://oneuptime.com/blog/post/2026-02-12-use-karpenter-for-eks-node-provisioning/view), configure your NodePool to prefer spot:
 
 ```yaml
 # Karpenter NodePool with spot preference
@@ -217,7 +217,7 @@ aws ec2 create-vpc-endpoint \
 
 ## Step 7: Implement Pod Autoscaling
 
-Scale workloads down when demand drops. Horizontal Pod Autoscaler (HPA) reduces pods during low-traffic periods, which in turn allows the [Cluster Autoscaler](https://oneuptime.com/blog/post/configure-eks-cluster-autoscaler/view) or Karpenter to remove underutilized nodes.
+Scale workloads down when demand drops. Horizontal Pod Autoscaler (HPA) reduces pods during low-traffic periods, which in turn allows the [Cluster Autoscaler](https://oneuptime.com/blog/post/2026-02-12-configure-eks-cluster-autoscaler/view) or Karpenter to remove underutilized nodes.
 
 ```yaml
 # hpa.yaml - Scale based on CPU utilization

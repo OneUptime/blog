@@ -701,6 +701,6 @@ Place the transform processor after the filter processor to minimize the number 
 
 **Related Reading:**
 
-- [How to Configure the Attributes Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/attributes-processor-opentelemetry-collector/view)
-- [How to Configure the Filter Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/filter-processor-opentelemetry-collector/view)
+- [How to Configure the Attributes Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-attributes-processor-opentelemetry-collector/view)
+- [How to Configure the Filter Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-filter-processor-opentelemetry-collector/view)
 - [How to reduce noise in OpenTelemetry?](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view)

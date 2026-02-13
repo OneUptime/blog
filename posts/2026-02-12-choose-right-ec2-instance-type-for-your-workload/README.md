@@ -122,7 +122,7 @@ Don't try to guess the perfect size upfront. Here's what actually works:
 
 4. **Use AWS Compute Optimizer.** After running for a few days, Compute Optimizer analyzes your usage patterns and recommends the right instance type and size.
 
-You can change your instance type without losing data - just stop the instance, change the type, and start it again. See our guide on [resizing EC2 instances](https://oneuptime.com/blog/post/resize-ec2-instance-change-instance-type/view) for the step-by-step process.
+You can change your instance type without losing data - just stop the instance, change the type, and start it again. See our guide on [resizing EC2 instances](https://oneuptime.com/blog/post/2026-02-12-resize-ec2-instance-change-instance-type/view) for the step-by-step process.
 
 ## Graviton vs Intel vs AMD
 

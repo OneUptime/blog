@@ -356,4 +356,4 @@ This ensures that any resource a user creates is automatically tagged with their
 
 ABAC shines when you have many teams and projects with similar access patterns. If you only have 3 teams and 2 accounts, RBAC is simpler and perfectly fine.
 
-For more on IAM policies in general, check out our guide on [resource-based vs identity-based policies](https://oneuptime.com/blog/post/resource-based-policies-vs-identity-based-policies/view).
+For more on IAM policies in general, check out our guide on [resource-based vs identity-based policies](https://oneuptime.com/blog/post/2026-02-12-resource-based-policies-vs-identity-based-policies/view).

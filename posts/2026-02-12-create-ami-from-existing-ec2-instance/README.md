@@ -255,7 +255,7 @@ done
 
 ## Sharing and Copying AMIs
 
-Once you have an AMI, you can share it with other accounts or copy it to other regions. Check out our guides on [sharing AMIs across accounts](https://oneuptime.com/blog/post/share-ami-across-aws-accounts/view) and [copying AMIs to other regions](https://oneuptime.com/blog/post/copy-ami-to-another-aws-region/view) for detailed instructions.
+Once you have an AMI, you can share it with other accounts or copy it to other regions. Check out our guides on [sharing AMIs across accounts](https://oneuptime.com/blog/post/2026-02-12-share-ami-across-aws-accounts/view) and [copying AMIs to other regions](https://oneuptime.com/blog/post/2026-02-12-copy-ami-to-another-aws-region/view) for detailed instructions.
 
 ## Best Practices
 

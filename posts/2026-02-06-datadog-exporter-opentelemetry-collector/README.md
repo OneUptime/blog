@@ -674,4 +674,4 @@ The Datadog exporter enables you to modernize your instrumentation with OpenTele
 
 By centralizing telemetry collection in the OpenTelemetry Collector, you gain the ability to route data to multiple backends, apply sophisticated processing, and maintain vendor independence while still leveraging Datadog's powerful analysis and visualization capabilities.
 
-For information about other cloud exporters, check out our guides on the [AWS X-Ray exporter](https://oneuptime.com/blog/post/aws-xray-exporter-opentelemetry-collector/view) and [AWS CloudWatch Logs exporter](https://oneuptime.com/blog/post/aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
+For information about other cloud exporters, check out our guides on the [AWS X-Ray exporter](https://oneuptime.com/blog/post/2026-02-06-aws-xray-exporter-opentelemetry-collector/view) and [AWS CloudWatch Logs exporter](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).

@@ -274,10 +274,10 @@ def lambda_handler(event, context):
     return {'statusCode': 200, 'body': json.dumps({'status': status})}
 ```
 
-Schedule this with EventBridge to run every 5 minutes. For more on building scheduled Lambda functions, see our guide on [building serverless cron jobs](https://oneuptime.com/blog/post/build-a-serverless-cron-job-with-eventbridge-and-lambda/view).
+Schedule this with EventBridge to run every 5 minutes. For more on building scheduled Lambda functions, see our guide on [building serverless cron jobs](https://oneuptime.com/blog/post/2026-02-12-build-a-serverless-cron-job-with-eventbridge-and-lambda/view).
 
 ## Wrapping Up
 
 Monitoring DMS replication tasks is not optional - it is essential. Set up CloudWatch alarms for latency, enable task logging, track table statistics, and build automated health checks. The few hours you invest in monitoring upfront will save you from discovering problems after they have already caused data inconsistencies.
 
-If you are seeing latency numbers that keep climbing, head over to our guide on [handling DMS CDC latency issues](https://oneuptime.com/blog/post/handle-dms-cdc-latency-issues/view) for specific troubleshooting steps.
+If you are seeing latency numbers that keep climbing, head over to our guide on [handling DMS CDC latency issues](https://oneuptime.com/blog/post/2026-02-12-handle-dms-cdc-latency-issues/view) for specific troubleshooting steps.

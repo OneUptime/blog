@@ -421,7 +421,7 @@ curl -X POST \
 
 ## Monitoring
 
-AppSync publishes CloudWatch metrics including `4XXError`, `5XXError`, `Latency`, and request counts. Set up alarms on error rates and latency. For DynamoDB direct resolvers without Lambda, see our post on [AppSync with DynamoDB direct resolvers](https://oneuptime.com/blog/post/appsync-dynamodb-direct-resolvers/view).
+AppSync publishes CloudWatch metrics including `4XXError`, `5XXError`, `Latency`, and request counts. Set up alarms on error rates and latency. For DynamoDB direct resolvers without Lambda, see our post on [AppSync with DynamoDB direct resolvers](https://oneuptime.com/blog/post/2026-02-12-appsync-dynamodb-direct-resolvers/view).
 
 ## Wrapping Up
 

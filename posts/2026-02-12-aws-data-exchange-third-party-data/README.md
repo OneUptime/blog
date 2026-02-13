@@ -32,7 +32,7 @@ Before you get started, make sure you have:
 
 - An AWS account with appropriate IAM permissions
 - An S3 bucket where you want to store imported datasets
-- The AWS CLI installed and configured (see our post on [setting up AWS CLI named profiles](https://oneuptime.com/blog/post/aws-cli-named-profiles/view))
+- The AWS CLI installed and configured (see our post on [setting up AWS CLI named profiles](https://oneuptime.com/blog/post/2026-02-12-aws-cli-named-profiles/view))
 
 You'll need these IAM permissions at minimum:
 

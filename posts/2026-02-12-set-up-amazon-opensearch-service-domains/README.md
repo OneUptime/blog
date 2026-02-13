@@ -380,6 +380,6 @@ Resources:
           - !Ref OpenSearchSecurityGroup
 ```
 
-Once your domain is up, the next step is indexing data. Check out our guide on [indexing data into Amazon OpenSearch](https://oneuptime.com/blog/post/index-data-into-amazon-opensearch/view) and [using OpenSearch Dashboards for visualization](https://oneuptime.com/blog/post/opensearch-dashboards-for-visualization/view).
+Once your domain is up, the next step is indexing data. Check out our guide on [indexing data into Amazon OpenSearch](https://oneuptime.com/blog/post/2026-02-12-index-data-into-amazon-opensearch/view) and [using OpenSearch Dashboards for visualization](https://oneuptime.com/blog/post/2026-02-12-opensearch-dashboards-for-visualization/view).
 
 Getting the domain setup right is the foundation for everything else. Take the time to plan your instance types, storage, and network configuration - changing these later often requires a blue-green deployment, which means downtime and data migration.

@@ -375,4 +375,4 @@ const data = await s3.send(new GetObjectCommand({ Bucket: 'b', Key: 'k' }));
 
 The command pattern in v3 is more verbose but gives you better type safety and tree-shaking.
 
-For streaming large files from S3, check out our dedicated guide on [streaming large files from S3 in Node.js](https://oneuptime.com/blog/post/stream-large-files-s3-nodejs/view). And for a complete monitoring solution for your S3 operations, take a look at [OneUptime](https://oneuptime.com).
+For streaming large files from S3, check out our dedicated guide on [streaming large files from S3 in Node.js](https://oneuptime.com/blog/post/2026-02-12-stream-large-files-s3-nodejs/view). And for a complete monitoring solution for your S3 operations, take a look at [OneUptime](https://oneuptime.com).

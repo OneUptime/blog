@@ -14,7 +14,7 @@ If you've been running the Cluster Autoscaler and found it slow or inflexible, K
 
 ## How Karpenter Differs from Cluster Autoscaler
 
-The key difference is architecture. The [Cluster Autoscaler](https://oneuptime.com/blog/post/configure-eks-cluster-autoscaler/view) works with Auto Scaling Groups - you define node groups ahead of time, and the autoscaler adjusts their size. Karpenter skips ASGs entirely. It watches for unschedulable pods, determines what instance type would best fit the workload, and launches EC2 instances directly.
+The key difference is architecture. The [Cluster Autoscaler](https://oneuptime.com/blog/post/2026-02-12-configure-eks-cluster-autoscaler/view) works with Auto Scaling Groups - you define node groups ahead of time, and the autoscaler adjusts their size. Karpenter skips ASGs entirely. It watches for unschedulable pods, determines what instance type would best fit the workload, and launches EC2 instances directly.
 
 This means:
 - Faster provisioning (typically under 60 seconds vs. several minutes)
@@ -285,6 +285,6 @@ disruption:
 
 Karpenter handles spot interruptions gracefully. When AWS sends a spot interruption notice, Karpenter cordons and drains the node, then provisions a replacement. To enable this, make sure you've set up an SQS queue for interruption events.
 
-The combination of spot instances and Karpenter's fast provisioning makes it one of the most cost-effective ways to run Kubernetes on AWS. For more on optimizing costs, see our guide on [monitoring EKS costs](https://oneuptime.com/blog/post/monitor-eks-costs-and-optimize-spending/view).
+The combination of spot instances and Karpenter's fast provisioning makes it one of the most cost-effective ways to run Kubernetes on AWS. For more on optimizing costs, see our guide on [monitoring EKS costs](https://oneuptime.com/blog/post/2026-02-12-monitor-eks-costs-and-optimize-spending/view).
 
 Karpenter has become the preferred node provisioning solution for EKS, and once you see how quickly it responds to scaling demands, it's easy to understand why.

@@ -372,13 +372,13 @@ You should see traces in the X-Ray console within a minute of making requests to
 
 **Lambda cold starts.** The first invocation of a Lambda function takes longer due to initialization. X-Ray shows this as initialization time in the trace, which is helpful for understanding cold start impact.
 
-**Sampling.** By default, X-Ray samples 1 request per second plus 5% of additional requests. If you're testing with low traffic, you might not see every request. See our guide on [X-Ray sampling rules](https://oneuptime.com/blog/post/xray-sampling-rules/view) to customize this.
+**Sampling.** By default, X-Ray samples 1 request per second plus 5% of additional requests. If you're testing with low traffic, you might not see every request. See our guide on [X-Ray sampling rules](https://oneuptime.com/blog/post/2026-02-12-xray-sampling-rules/view) to customize this.
 
 ## Best Practices
 
 **Instrument at the edges first.** Start with your API gateway or load balancer, then work inward. You don't need to instrument every service on day one.
 
-**Use meaningful segment names.** The segment name becomes the service name in the [X-Ray service map](https://oneuptime.com/blog/post/xray-service-map-application-dependencies/view). Make it descriptive.
+**Use meaningful segment names.** The segment name becomes the service name in the [X-Ray service map](https://oneuptime.com/blog/post/2026-02-12-xray-service-map-application-dependencies/view). Make it descriptive.
 
 **Add annotations for key business attributes.** Customer ID, order ID, and request type are all great annotations. They let you find specific traces when debugging customer-reported issues.
 

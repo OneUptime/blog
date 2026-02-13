@@ -238,7 +238,7 @@ aws batch register-job-definition \
   }'
 ```
 
-For more on Spot Instance resilience, see [using Batch with Spot Instances](https://oneuptime.com/blog/post/use-aws-batch-with-spot-instances-for-cost-savings/view).
+For more on Spot Instance resilience, see [using Batch with Spot Instances](https://oneuptime.com/blog/post/2026-02-12-use-aws-batch-with-spot-instances-for-cost-savings/view).
 
 ## Problem: IAM Permission Errors
 
@@ -305,4 +305,4 @@ When a job fails, work through this checklist:
 
 ## Wrapping Up
 
-Most AWS Batch job failures fall into a few categories: resource mismatches, permission errors, container issues, or infrastructure problems. The key to fast debugging is a systematic approach: get the error details, check the logs, and work through the likely causes methodically. Setting up proper monitoring and alerting (see [monitoring Batch with CloudWatch](https://oneuptime.com/blog/post/monitor-aws-batch-jobs-with-cloudwatch/view)) helps you catch issues early before they pile up. And adding retry strategies to your job definitions handles the transient failures that are inevitable in any cloud environment.
+Most AWS Batch job failures fall into a few categories: resource mismatches, permission errors, container issues, or infrastructure problems. The key to fast debugging is a systematic approach: get the error details, check the logs, and work through the likely causes methodically. Setting up proper monitoring and alerting (see [monitoring Batch with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-aws-batch-jobs-with-cloudwatch/view)) helps you catch issues early before they pile up. And adding retry strategies to your job definitions handles the transient failures that are inevitable in any cloud environment.

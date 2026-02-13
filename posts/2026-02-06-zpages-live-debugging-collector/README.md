@@ -325,7 +325,7 @@ Processors:
     Data Refused: 2,500 spans   <- Memory pressure causing refusals
 ```
 
-**Diagnosis**: Memory limiter activating due to memory pressure. Increase memory allocation or reduce data volume. See https://oneuptime.com/blog/post/troubleshoot-memory-issues-oom-kills-collector/view for details.
+**Diagnosis**: Memory limiter activating due to memory pressure. Increase memory allocation or reduce data volume. See https://oneuptime.com/blog/post/2026-02-06-troubleshoot-memory-issues-oom-kills-collector/view for details.
 
 **Issue: Processing bottleneck**
 
@@ -576,9 +576,9 @@ service:
 Use this comprehensive setup for troubleshooting:
 
 1. **zPages** for real-time pipeline statistics
-2. **pprof** for performance profiling: https://oneuptime.com/blog/post/profile-collector-pprof-extension/view
-3. **Debug exporter** for data inspection: https://oneuptime.com/blog/post/debug-exporter-troubleshoot-collector-pipelines/view
-4. **Internal logs** for detailed event history: https://oneuptime.com/blog/post/read-interpret-collector-internal-logs/view
+2. **pprof** for performance profiling: https://oneuptime.com/blog/post/2026-02-06-profile-collector-pprof-extension/view
+3. **Debug exporter** for data inspection: https://oneuptime.com/blog/post/2026-02-06-debug-exporter-troubleshoot-collector-pipelines/view
+4. **Internal logs** for detailed event history: https://oneuptime.com/blog/post/2026-02-06-read-interpret-collector-internal-logs/view
 5. **Internal metrics** for time-series performance data
 
 ## Accessing zPages in Different Environments
@@ -833,4 +833,4 @@ This configuration uses zPages for live debugging while exporting metrics for hi
 
 The zPages extension provides real-time visibility into OpenTelemetry Collector operations, making it an essential tool for troubleshooting and monitoring. PipelineZ's detailed statistics reveal data flow issues, queue buildups, and processing bottlenecks immediately, without requiring log analysis or metric queries. Combined with other debugging tools like pprof, debug exporters, and internal logs, zPages enable comprehensive collector observability.
 
-For complementary troubleshooting techniques, see https://oneuptime.com/blog/post/profile-collector-pprof-extension/view for performance profiling, https://oneuptime.com/blog/post/debug-exporter-troubleshoot-collector-pipelines/view for data inspection, and https://oneuptime.com/blog/post/read-interpret-collector-internal-logs/view for log analysis.
+For complementary troubleshooting techniques, see https://oneuptime.com/blog/post/2026-02-06-profile-collector-pprof-extension/view for performance profiling, https://oneuptime.com/blog/post/2026-02-06-debug-exporter-troubleshoot-collector-pipelines/view for data inspection, and https://oneuptime.com/blog/post/2026-02-06-read-interpret-collector-internal-logs/view for log analysis.

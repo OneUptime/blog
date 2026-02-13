@@ -287,4 +287,4 @@ aws lightsail put-alarm \
 4. DNS not resolving? Verify nameservers at your registrar match Lightsail's
 5. Running out of disk? Check with `df -h` and consider upgrading
 
-Lightsail is the easiest way to get a web application running on AWS. For the step-by-step of creating an instance, see our guide on [creating a Lightsail instance and connecting to it](https://oneuptime.com/blog/post/create-lightsail-instance-connect/view).
+Lightsail is the easiest way to get a web application running on AWS. For the step-by-step of creating an instance, see our guide on [creating a Lightsail instance and connecting to it](https://oneuptime.com/blog/post/2026-02-12-create-lightsail-instance-connect/view).

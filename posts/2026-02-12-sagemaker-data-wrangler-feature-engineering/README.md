@@ -294,11 +294,11 @@ processor.run(
 
 ### Export to SageMaker Feature Store
 
-You can push your engineered features directly to [SageMaker Feature Store](https://oneuptime.com/blog/post/sagemaker-feature-store/view) for centralized management and serving.
+You can push your engineered features directly to [SageMaker Feature Store](https://oneuptime.com/blog/post/2026-02-12-sagemaker-feature-store/view) for centralized management and serving.
 
 ### Export as a Pipeline Step
 
-Integrate your Data Wrangler transformations into a [SageMaker Pipeline](https://oneuptime.com/blog/post/sagemaker-pipelines-mlops/view) for automated reprocessing.
+Integrate your Data Wrangler transformations into a [SageMaker Pipeline](https://oneuptime.com/blog/post/2026-02-12-sagemaker-pipelines-mlops/view) for automated reprocessing.
 
 ## Custom Transformations
 
@@ -353,4 +353,4 @@ def custom_transform(df):
 
 ## Wrapping Up
 
-Data Wrangler makes feature engineering accessible and visual while still producing production-ready code. The visual interface is perfect for exploration - you can quickly try different transformations and see the results. When you're ready to productionize, export your transformations as code and integrate them into your [SageMaker Pipeline](https://oneuptime.com/blog/post/sagemaker-pipelines-mlops/view). For features that need to be shared across projects, push them to [SageMaker Feature Store](https://oneuptime.com/blog/post/sagemaker-feature-store/view). The combination of visual exploration and code export gives you the best of both worlds.
+Data Wrangler makes feature engineering accessible and visual while still producing production-ready code. The visual interface is perfect for exploration - you can quickly try different transformations and see the results. When you're ready to productionize, export your transformations as code and integrate them into your [SageMaker Pipeline](https://oneuptime.com/blog/post/2026-02-12-sagemaker-pipelines-mlops/view). For features that need to be shared across projects, push them to [SageMaker Feature Store](https://oneuptime.com/blog/post/2026-02-12-sagemaker-feature-store/view). The combination of visual exploration and code export gives you the best of both worlds.

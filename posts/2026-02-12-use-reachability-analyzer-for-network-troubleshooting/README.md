@@ -277,7 +277,7 @@ There are some limits to be aware of:
 These tools complement each other well:
 
 - Use **Reachability Analyzer** when you want to verify that your network configuration allows a specific path. It answers "can traffic flow?" based on configuration alone.
-- Use **[VPC Flow Logs](https://oneuptime.com/blog/post/monitor-network-performance-with-vpc-flow-logs/view)** when you want to see what traffic is actually flowing. It answers "what traffic did flow?" based on observed data.
+- Use **[VPC Flow Logs](https://oneuptime.com/blog/post/2026-02-12-monitor-network-performance-with-vpc-flow-logs/view)** when you want to see what traffic is actually flowing. It answers "what traffic did flow?" based on observed data.
 
 If something is not connecting, start with Reachability Analyzer. If the configuration looks correct but you are still seeing issues, check flow logs for rejected packets that might indicate a problem at a different layer.
 
@@ -285,4 +285,4 @@ If something is not connecting, start with Reachability Analyzer. If the configu
 
 Reachability Analyzer removes the guesswork from network troubleshooting in AWS. Instead of manually inspecting every security group, NACL, and route table, you point it at two endpoints and it tells you exactly where the path breaks. Combined with automation through the CLI or SDK, you can build connectivity validation into your deployment pipeline and catch issues before they cause outages.
 
-The tool pays for itself the first time it saves you an hour of manual debugging. Make it part of your standard troubleshooting toolkit alongside [VPC Flow Logs](https://oneuptime.com/blog/post/monitor-network-performance-with-vpc-flow-logs/view) and [Site-to-Site VPN monitoring](https://oneuptime.com/blog/post/set-up-aws-site-to-site-vpn-with-bgp-routing/view).
+The tool pays for itself the first time it saves you an hour of manual debugging. Make it part of your standard troubleshooting toolkit alongside [VPC Flow Logs](https://oneuptime.com/blog/post/2026-02-12-monitor-network-performance-with-vpc-flow-logs/view) and [Site-to-Site VPN monitoring](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-site-to-site-vpn-with-bgp-routing/view).

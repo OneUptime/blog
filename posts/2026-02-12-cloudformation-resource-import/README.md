@@ -281,7 +281,7 @@ aws cloudformation describe-stack-resource-drifts \
   --stack-resource-drift-status-filters MODIFIED
 ```
 
-If there's drift, update your template to match the actual resource state, or update the stack to bring the resource in line with your template. See our [drift detection guide](https://oneuptime.com/blog/post/detect-fix-cloudformation-drift/view) for details.
+If there's drift, update your template to match the actual resource state, or update the stack to bring the resource in line with your template. See our [drift detection guide](https://oneuptime.com/blog/post/2026-02-12-detect-fix-cloudformation-drift/view) for details.
 
 ## Limitations
 

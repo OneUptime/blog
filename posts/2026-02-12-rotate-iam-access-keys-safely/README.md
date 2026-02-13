@@ -301,7 +301,7 @@ The best access key rotation strategy is eliminating access keys entirely. For m
 - **Lambda functions**: Use execution roles
 - **EKS pods**: Use IRSA (IAM Roles for Service Accounts)
 - **CI/CD**: Use OIDC federation (GitHub Actions, GitLab CI both support this)
-- **Human users**: Use [IAM Identity Center](https://oneuptime.com/blog/post/set-up-aws-iam-identity-center-sso/view)
+- **Human users**: Use [IAM Identity Center](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-iam-identity-center-sso/view)
 
 Temporary credentials from IAM roles automatically rotate and expire. No manual rotation needed.
 

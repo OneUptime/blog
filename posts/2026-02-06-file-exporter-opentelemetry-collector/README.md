@@ -728,8 +728,8 @@ otel-telemetry-generator --rate 10000 --duration 60s
 ## Related Resources
 
 - [What is the OpenTelemetry Collector and Why Use One?](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
-- [How to Configure the Debug Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/debug-exporter-opentelemetry-collector/view)
-- [How to Configure the Kafka Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/kafka-exporter-opentelemetry-collector/view)
+- [How to Configure the Debug Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-debug-exporter-opentelemetry-collector/view)
+- [How to Configure the Kafka Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-kafka-exporter-opentelemetry-collector/view)
 
 ---
 

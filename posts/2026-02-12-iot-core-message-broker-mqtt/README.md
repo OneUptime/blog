@@ -355,4 +355,4 @@ mosquitto_pub \
 
 The IoT Core message broker gives you a fully managed MQTT infrastructure that scales to millions of devices. Design your topic hierarchy carefully from the start, use QoS 1 for critical messages and QoS 0 for frequent telemetry, and take advantage of retained messages and LWT for device presence tracking. Once your devices are publishing messages, you can use the IoT Core Rules Engine to route them to other AWS services for processing and storage.
 
-For next steps, see our guides on [routing messages to S3 with the Rules Engine](https://oneuptime.com/blog/post/iot-core-rules-engine-route-messages-s3/view) and [routing messages to DynamoDB](https://oneuptime.com/blog/post/iot-core-rules-engine-route-messages-dynamodb/view).
+For next steps, see our guides on [routing messages to S3 with the Rules Engine](https://oneuptime.com/blog/post/2026-02-12-iot-core-rules-engine-route-messages-s3/view) and [routing messages to DynamoDB](https://oneuptime.com/blog/post/2026-02-12-iot-core-rules-engine-route-messages-dynamodb/view).

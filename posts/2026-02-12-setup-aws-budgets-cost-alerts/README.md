@@ -351,7 +351,7 @@ Set thresholds at multiple levels:
 - 100% forecasted: Take action now
 - 100% actual: Budget exceeded
 
-For taking automated action when budgets are exceeded, check out our post on [creating AWS Budget Actions for automatic cost control](https://oneuptime.com/blog/post/create-aws-budget-actions-automatic-cost-control/view).
+For taking automated action when budgets are exceeded, check out our post on [creating AWS Budget Actions for automatic cost control](https://oneuptime.com/blog/post/2026-02-12-create-aws-budget-actions-automatic-cost-control/view).
 
 ## Wrapping Up
 

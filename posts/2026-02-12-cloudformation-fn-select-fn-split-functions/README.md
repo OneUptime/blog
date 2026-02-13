@@ -163,7 +163,7 @@ Resources:
       InstanceType: t3.micro
 ```
 
-For more on cross-stack imports, see our post on [Fn::ImportValue for stack dependencies](https://oneuptime.com/blog/post/cloudformation-fn-importvalue-stack-dependencies/view).
+For more on cross-stack imports, see our post on [Fn::ImportValue for stack dependencies](https://oneuptime.com/blog/post/2026-02-12-cloudformation-fn-importvalue-stack-dependencies/view).
 
 ### Extracting parts of resource identifiers
 
@@ -280,6 +280,6 @@ BadExample:
 
 **Comment your Split/Select chains.** Complex `!Select [2, !Split [':', !Ref SomeArn]]` expressions aren't self-documenting. Add a comment explaining what you're extracting.
 
-**Consider Fn::Sub for simple string assembly.** If you're splitting and selecting just to reassemble a string differently, `Fn::Sub` might be simpler. See our guide on [Ref, Fn::Sub, and Fn::Join](https://oneuptime.com/blog/post/cloudformation-intrinsic-functions-ref-sub-join/view).
+**Consider Fn::Sub for simple string assembly.** If you're splitting and selecting just to reassemble a string differently, `Fn::Sub` might be simpler. See our guide on [Ref, Fn::Sub, and Fn::Join](https://oneuptime.com/blog/post/2026-02-12-cloudformation-intrinsic-functions-ref-sub-join/view).
 
 These functions are small but essential. They let you work with the lists and strings that CloudFormation naturally produces, turning raw resource outputs into usable values throughout your templates.

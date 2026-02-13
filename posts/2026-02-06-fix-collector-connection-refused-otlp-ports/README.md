@@ -613,10 +613,10 @@ graph TB
 
 For more OpenTelemetry Collector troubleshooting:
 
-- [What is OpenTelemetry Collector and Why Use One?](https://oneuptime.com/blog/post/what-is-opentelemetry-collector-and-why-use-one/view)
+- [What is OpenTelemetry Collector and Why Use One?](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
 - [How to Collect OpenTelemetry Collector Internal Metrics](https://oneuptime.com/blog/post/2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics/view)
-- [How to Troubleshoot Collector Pipeline Blocked Errors](https://oneuptime.com/blog/post/troubleshoot-collector-pipeline-blocked-errors/view)
-- [How to Fix "Invalid Configuration" Errors in the OpenTelemetry Collector](https://oneuptime.com/blog/post/fix-invalid-configuration-errors-collector/view)
+- [How to Troubleshoot Collector Pipeline Blocked Errors](https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-pipeline-blocked-errors/view)
+- [How to Fix "Invalid Configuration" Errors in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-fix-invalid-configuration-errors-collector/view)
 
 ---
 

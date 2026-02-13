@@ -309,6 +309,6 @@ EFS is the go-to choice for most shared storage needs on AWS, but it's worth kno
 - **EFS** - Best for general-purpose shared file access. Simple NFS interface. Scales automatically.
 - **FSx for Lustre** - Best for HPC and ML workloads. Massive throughput (hundreds of GB/s).
 - **FSx for NetApp ONTAP** - Enterprise features like snapshots, cloning, multiprotocol access.
-- **EBS Multi-Attach** - Shared block storage for cluster-aware applications. See our [Multi-Attach guide](https://oneuptime.com/blog/post/configure-ebs-multi-attach-shared-storage/view).
+- **EBS Multi-Attach** - Shared block storage for cluster-aware applications. See our [Multi-Attach guide](https://oneuptime.com/blog/post/2026-02-12-configure-ebs-multi-attach-shared-storage/view).
 
 For most teams, EFS hits the sweet spot of simplicity, reliability, and performance. Set it up once, and it just works.

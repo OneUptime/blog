@@ -327,4 +327,4 @@ handler(test_event, None)
 
 Lambda-to-SNS subscriptions are the backbone of serverless event-driven systems on AWS. Combine them with message filtering to build efficient pub/sub patterns, and always configure a DLQ so you don't lose messages when things go wrong.
 
-For other subscription types, check out [subscribing SQS queues for fan-out](https://oneuptime.com/blog/post/subscribe-an-sqs-queue-to-sns/view) and [subscribing HTTP endpoints](https://oneuptime.com/blog/post/subscribe-an-http-https-endpoint-to-sns/view).
+For other subscription types, check out [subscribing SQS queues for fan-out](https://oneuptime.com/blog/post/2026-02-12-subscribe-an-sqs-queue-to-sns/view) and [subscribing HTTP endpoints](https://oneuptime.com/blog/post/2026-02-12-subscribe-an-http-https-endpoint-to-sns/view).

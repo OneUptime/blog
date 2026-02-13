@@ -256,7 +256,7 @@ resource "aws_elasticache_replication_group" "redis" {
 
 **Test scaling in a non-production environment first.** Resharding and node type changes can behave differently depending on your data patterns.
 
-**Monitor during and after scaling.** Keep an eye on CloudWatch metrics during the operation. Check for increased latency, connection errors, or failed operations. See the guide on [monitoring ElastiCache with CloudWatch](https://oneuptime.com/blog/post/monitor-elasticache-with-cloudwatch/view).
+**Monitor during and after scaling.** Keep an eye on CloudWatch metrics during the operation. Check for increased latency, connection errors, or failed operations. See the guide on [monitoring ElastiCache with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-elasticache-with-cloudwatch/view).
 
 **Scale before you need to.** If memory is at 80% and growing, scale now. Don't wait until 95%.
 
@@ -300,4 +300,4 @@ aws application-autoscaling put-scaling-policy \
 
 Scaling ElastiCache Redis comes down to understanding your bottleneck. Memory-bound? Scale up or add shards. Read-heavy? Add replicas. Write-heavy? Add shards. Connection-heavy? Scale up. Start with the right architecture (cluster mode enabled) and you'll have the flexibility to handle whatever growth throws at you.
 
-For more ElastiCache management, check out the guide on [configuring ElastiCache Redis replication](https://oneuptime.com/blog/post/configure-elasticache-redis-replication/view) and [enabling encryption](https://oneuptime.com/blog/post/enable-elasticache-redis-encryption/view) for security.
+For more ElastiCache management, check out the guide on [configuring ElastiCache Redis replication](https://oneuptime.com/blog/post/2026-02-12-configure-elasticache-redis-replication/view) and [enabling encryption](https://oneuptime.com/blog/post/2026-02-12-enable-elasticache-redis-encryption/view) for security.

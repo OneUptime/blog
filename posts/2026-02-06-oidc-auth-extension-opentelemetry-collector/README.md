@@ -745,8 +745,8 @@ Use the groups_claim to implement authorization logic, ensuring clients can only
 
 For more information about OpenTelemetry Collector authentication, check out these related posts:
 
-- [How to Configure Bearer Token Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/bearer-token-auth-extension-opentelemetry-collector/view)
-- [How to Configure Basic Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/basic-auth-extension-opentelemetry-collector/view)
-- [How to Configure OAuth2 Client Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/oauth2-client-auth-extension-opentelemetry-collector/view)
+- [How to Configure Bearer Token Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-bearer-token-auth-extension-opentelemetry-collector/view)
+- [How to Configure Basic Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-basic-auth-extension-opentelemetry-collector/view)
+- [How to Configure OAuth2 Client Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-oauth2-client-auth-extension-opentelemetry-collector/view)
 
 OIDC authentication provides enterprise-grade security for OpenTelemetry Collector deployments. By integrating with existing identity infrastructure and validating cryptographically signed tokens, you can ensure that only authenticated and authorized clients can send telemetry data to your collectors.

@@ -235,7 +235,7 @@ network_configuration {
 
 ## Inter-Service Communication
 
-With `awsvpc`, services can communicate using their private IPs. Combined with service discovery (see our [Cloud Map guide](https://oneuptime.com/blog/post/ecs-service-discovery-cloud-map/view)), this gives you clean service-to-service networking.
+With `awsvpc`, services can communicate using their private IPs. Combined with service discovery (see our [Cloud Map guide](https://oneuptime.com/blog/post/2026-02-12-ecs-service-discovery-cloud-map/view)), this gives you clean service-to-service networking.
 
 ```hcl
 # Allow API service to reach the cache service

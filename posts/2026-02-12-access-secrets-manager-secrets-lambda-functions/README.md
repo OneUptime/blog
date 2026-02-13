@@ -350,7 +350,7 @@ def get_secret_safe(secret_name):
             raise
 ```
 
-For more on secret rotation, see our guide on [automatic secret rotation](https://oneuptime.com/blog/post/rotate-secrets-automatically-secrets-manager/view). And if you're running containers instead of Lambda, check out [accessing secrets from ECS](https://oneuptime.com/blog/post/access-secrets-manager-secrets-ecs-tasks/view).
+For more on secret rotation, see our guide on [automatic secret rotation](https://oneuptime.com/blog/post/2026-02-12-rotate-secrets-automatically-secrets-manager/view). And if you're running containers instead of Lambda, check out [accessing secrets from ECS](https://oneuptime.com/blog/post/2026-02-12-access-secrets-manager-secrets-ecs-tasks/view).
 
 ## Wrapping Up
 

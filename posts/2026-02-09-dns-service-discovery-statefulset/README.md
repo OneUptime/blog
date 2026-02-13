@@ -612,4 +612,4 @@ Follow these guidelines for StatefulSet DNS:
 
 DNS-based service discovery for StatefulSets provides the foundation for reliable stateful applications in Kubernetes. By leveraging stable network identities and predictable DNS names, you enable sophisticated peer discovery patterns for databases, distributed systems, and clustered applications. Proper configuration and monitoring ensure your stateful workloads maintain reliable communication.
 
-For more StatefulSet patterns, explore our guides on [headless services](https://oneuptime.com/blog/post/headless-services-pod-ip-discovery/view) and [CoreDNS kubernetes plugin](https://oneuptime.com/blog/post/coredns-kubernetes-plugin-discovery/view).
+For more StatefulSet patterns, explore our guides on [headless services](https://oneuptime.com/blog/post/2026-02-09-headless-services-pod-ip-discovery/view) and [CoreDNS kubernetes plugin](https://oneuptime.com/blog/post/2026-02-09-coredns-kubernetes-plugin-discovery/view).

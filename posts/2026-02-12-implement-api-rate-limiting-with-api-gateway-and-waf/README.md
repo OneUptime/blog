@@ -348,7 +348,7 @@ new cloudwatch.Alarm(this, 'RateLimitAlarm', {
 });
 ```
 
-For a complete observability setup, see our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/build-logging-and-monitoring-stack-on-aws/view).
+For a complete observability setup, see our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view).
 
 ## Summary
 

@@ -8,7 +8,7 @@ Description: Learn how to set up automatic and manual remediation actions for no
 
 ---
 
-Finding non-compliant resources is only half the battle. You've got [AWS Config rules](https://oneuptime.com/blog/post/aws-config-managed-rules-security/view) flagging security groups with open SSH, unencrypted S3 buckets, and IAM users without MFA. Great. But if nobody does anything about those findings, you've just built an expensive compliance report that nobody reads.
+Finding non-compliant resources is only half the battle. You've got [AWS Config rules](https://oneuptime.com/blog/post/2026-02-12-aws-config-managed-rules-security/view) flagging security groups with open SSH, unencrypted S3 buckets, and IAM users without MFA. Great. But if nobody does anything about those findings, you've just built an expensive compliance report that nobody reads.
 
 AWS Config remediation actions let you fix non-compliant resources automatically - or with a single click for manual review. You can use AWS-provided SSM automation documents or write your own Lambda-backed remediation logic. Let's walk through both approaches.
 
@@ -306,4 +306,4 @@ Auto-remediation is powerful but dangerous if not handled carefully. Follow thes
 5. **Use SNS notifications** alongside remediation so your team knows what's being changed
 6. **Exclude critical resources** from auto-remediation using resource exceptions
 
-For a complete compliance monitoring setup, combine remediation with [conformance packs](https://oneuptime.com/blog/post/aws-config-conformance-packs/view) to manage rules in bulk, and use [Config aggregators](https://oneuptime.com/blog/post/aws-config-aggregators-multi-account/view) to track compliance across all your accounts from one place.
+For a complete compliance monitoring setup, combine remediation with [conformance packs](https://oneuptime.com/blog/post/2026-02-12-aws-config-conformance-packs/view) to manage rules in bulk, and use [Config aggregators](https://oneuptime.com/blog/post/2026-02-12-aws-config-aggregators-multi-account/view) to track compliance across all your accounts from one place.

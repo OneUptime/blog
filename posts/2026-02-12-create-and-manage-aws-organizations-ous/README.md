@@ -244,7 +244,7 @@ aws organizations attach-policy \
 # No instance type restrictions - let people experiment
 ```
 
-For more on SCP policies, see our guide on [using Service Control Policies in AWS Organizations](https://oneuptime.com/blog/post/use-service-control-policies-scps-in-aws-organizations/view).
+For more on SCP policies, see our guide on [using Service Control Policies in AWS Organizations](https://oneuptime.com/blog/post/2026-02-12-use-service-control-policies-scps-in-aws-organizations/view).
 
 ## Listing and Inspecting OUs
 

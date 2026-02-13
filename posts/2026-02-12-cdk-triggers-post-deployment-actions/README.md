@@ -318,7 +318,7 @@ When should you use triggers instead of custom resources?
 - You need to return data to other CDK constructs
 - You need cleanup on stack deletion
 
-For custom resources, check out our post on [CDK custom resources for advanced provisioning](https://oneuptime.com/blog/post/cdk-custom-resources-advanced-provisioning/view).
+For custom resources, check out our post on [CDK custom resources for advanced provisioning](https://oneuptime.com/blog/post/2026-02-12-cdk-custom-resources-advanced-provisioning/view).
 
 ## Wrapping Up
 

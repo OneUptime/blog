@@ -299,7 +299,7 @@ ORDER BY total_cost DESC;
 
 Application Cost Profiler gives you the highest accuracy because you define the exact allocation logic, but it requires the most instrumentation effort.
 
-For container-specific cost allocation, you might also want to look at [AWS Split Cost Allocation for containers](https://oneuptime.com/blog/post/use-aws-split-cost-allocation-for-containers/view).
+For container-specific cost allocation, you might also want to look at [AWS Split Cost Allocation for containers](https://oneuptime.com/blog/post/2026-02-12-use-aws-split-cost-allocation-for-containers/view).
 
 ## Best Practices
 

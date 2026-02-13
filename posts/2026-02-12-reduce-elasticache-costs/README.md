@@ -76,7 +76,7 @@ aws elasticache purchase-reserved-cache-nodes-offering \
   --cache-node-count 2
 ```
 
-For stable production workloads, 1-year All Upfront reservations are typically the best balance of savings and flexibility. See our detailed guide on [reducing RDS costs with reserved instances](https://oneuptime.com/blog/post/reduce-rds-costs-with-reserved-instances/view) for more on reservation strategies - the same principles apply.
+For stable production workloads, 1-year All Upfront reservations are typically the best balance of savings and flexibility. See our detailed guide on [reducing RDS costs with reserved instances](https://oneuptime.com/blog/post/2026-02-12-reduce-rds-costs-with-reserved-instances/view) for more on reservation strategies - the same principles apply.
 
 ## Use Data Tiering with r6gd Nodes
 
@@ -256,7 +256,7 @@ def start_dev_cache(event, context):
         print(f"Error: {e}")
 ```
 
-Running caches only during business hours (10 hours/day, weekdays only) cuts costs by roughly 70% for non-production environments. Learn more about this approach in our post on [scheduling non-production resources to save costs](https://oneuptime.com/blog/post/schedule-non-production-resources-to-save-costs/view).
+Running caches only during business hours (10 hours/day, weekdays only) cuts costs by roughly 70% for non-production environments. Learn more about this approach in our post on [scheduling non-production resources to save costs](https://oneuptime.com/blog/post/2026-02-12-schedule-non-production-resources-to-save-costs/view).
 
 ## Summary
 

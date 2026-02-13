@@ -32,7 +32,7 @@ SES receives the email, stores it in S3, and triggers Lambda. Lambda fetches the
 
 ## Setting Up the Infrastructure
 
-I'll assume you've already configured SES for receiving emails (if not, see our guide on [using SES for receiving emails](https://oneuptime.com/blog/post/use-ses-for-receiving-emails/view)). Let's focus on the Lambda side.
+I'll assume you've already configured SES for receiving emails (if not, see our guide on [using SES for receiving emails](https://oneuptime.com/blog/post/2026-02-12-use-ses-for-receiving-emails/view)). Let's focus on the Lambda side.
 
 First, create the Lambda function with the right permissions.
 

@@ -145,7 +145,7 @@ aws rds create-db-cluster-endpoint \
   --excluded-members analytics-reader-1 analytics-reader-2
 ```
 
-The excluded members approach is useful when you use [auto scaling](https://oneuptime.com/blog/post/configure-aurora-auto-scaling-for-read-replicas/view) because new instances get automatically included.
+The excluded members approach is useful when you use [auto scaling](https://oneuptime.com/blog/post/2026-02-12-configure-aurora-auto-scaling-for-read-replicas/view) because new instances get automatically included.
 
 ## Configuring Your Application
 
@@ -299,7 +299,7 @@ resource "aws_rds_cluster_endpoint" "app_reads" {
 
 **Not using the reader endpoint at all.** I've seen production setups where all traffic hits the writer endpoint, while reader instances sit completely idle. If your application does any reads that can tolerate sub-second lag, use the reader endpoint.
 
-**Ignoring DNS caching.** Aurora endpoints use DNS. If your application caches DNS for too long, it won't pick up endpoint changes during failover. Set DNS TTL to 30 seconds or less in your connection library. You can also use [RDS Proxy](https://oneuptime.com/blog/post/set-up-aurora-with-rds-proxy/view) to eliminate this issue entirely.
+**Ignoring DNS caching.** Aurora endpoints use DNS. If your application caches DNS for too long, it won't pick up endpoint changes during failover. Set DNS TTL to 30 seconds or less in your connection library. You can also use [RDS Proxy](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-with-rds-proxy/view) to eliminate this issue entirely.
 
 ## Wrapping Up
 

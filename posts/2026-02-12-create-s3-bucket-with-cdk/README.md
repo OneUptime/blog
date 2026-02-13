@@ -321,4 +321,4 @@ const bucket = new s3.Bucket(this, 'AppBucket', {
 });
 ```
 
-S3 buckets are straightforward with CDK, but the secure defaults and grant methods save you from a lot of common mistakes. For using S3 with Lambda event processing, see the post on [creating a Lambda function with CDK](https://oneuptime.com/blog/post/create-lambda-function-with-cdk/view). For understanding how CDK L2 constructs set these defaults, check out [CDK L2 constructs for common AWS resources](https://oneuptime.com/blog/post/cdk-l2-constructs-common-aws-resources/view).
+S3 buckets are straightforward with CDK, but the secure defaults and grant methods save you from a lot of common mistakes. For using S3 with Lambda event processing, see the post on [creating a Lambda function with CDK](https://oneuptime.com/blog/post/2026-02-12-create-lambda-function-with-cdk/view). For understanding how CDK L2 constructs set these defaults, check out [CDK L2 constructs for common AWS resources](https://oneuptime.com/blog/post/2026-02-12-cdk-l2-constructs-common-aws-resources/view).

@@ -334,7 +334,7 @@ Use semantic versioning and be disciplined about it:
 - **Minor** (1.1.0): New constructs or optional properties
 - **Major** (2.0.0): Breaking changes to existing construct APIs
 
-For more on publishing your constructs publicly, see our post on [publishing CDK constructs to Construct Hub](https://oneuptime.com/blog/post/publish-cdk-constructs-construct-hub/view). If you're using Projen to manage your construct library project, check out [CDK with Projen](https://oneuptime.com/blog/post/cdk-projen-project-management/view).
+For more on publishing your constructs publicly, see our post on [publishing CDK constructs to Construct Hub](https://oneuptime.com/blog/post/2026-02-12-publish-cdk-constructs-construct-hub/view). If you're using Projen to manage your construct library project, check out [CDK with Projen](https://oneuptime.com/blog/post/2026-02-12-cdk-projen-project-management/view).
 
 ## Wrapping Up
 

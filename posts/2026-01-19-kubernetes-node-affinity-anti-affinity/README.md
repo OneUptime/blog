@@ -722,6 +722,6 @@ For monitoring your distributed applications, check out [OneUptime's infrastruct
 
 ## Related Resources
 
-- [How to Configure Taints and Tolerations](https://oneuptime.com/blog/post/kubernetes-taints-tolerations-scheduling/view)
-- [How to Set Up Pod Priority and Preemption](https://oneuptime.com/blog/post/kubernetes-pod-priority-preemption/view)
-- [How to Manage Resource Quotas](https://oneuptime.com/blog/post/kubernetes-resource-quotas-limit-ranges/view)
+- [How to Configure Taints and Tolerations](https://oneuptime.com/blog/post/2026-01-19-kubernetes-taints-tolerations-scheduling/view)
+- [How to Set Up Pod Priority and Preemption](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-priority-preemption/view)
+- [How to Manage Resource Quotas](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-quotas-limit-ranges/view)

@@ -379,4 +379,4 @@ You can build a scheduled Lambda that checks for active health events and update
 
 A health-aware dashboard transforms your monitoring from "what is my application doing?" to "what is happening across my entire stack, including AWS?" When AWS itself has issues, your team knows immediately instead of spending 30 minutes debugging something they cannot fix.
 
-For more on CloudWatch dashboards across multiple accounts, see [CloudWatch cross-account dashboards](https://oneuptime.com/blog/post/use-cloudwatch-cross-account-dashboards/view). And for centralizing monitoring across your organization, check out [centralized monitoring for multi-account AWS](https://oneuptime.com/blog/post/set-up-centralized-monitoring-for-multi-account-aws/view).
+For more on CloudWatch dashboards across multiple accounts, see [CloudWatch cross-account dashboards](https://oneuptime.com/blog/post/2026-02-12-use-cloudwatch-cross-account-dashboards/view). And for centralizing monitoring across your organization, check out [centralized monitoring for multi-account AWS](https://oneuptime.com/blog/post/2026-02-12-set-up-centralized-monitoring-for-multi-account-aws/view).

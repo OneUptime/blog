@@ -697,6 +697,6 @@ For comprehensive log monitoring and alerting, check out [OneUptime's log manage
 
 ## Related Resources
 
-- [How to Send Python Logs to OneUptime](https://oneuptime.com/blog/post/python-logs-oneuptime/view)
-- [How to Set Up Prometheus and Grafana on Kubernetes](https://oneuptime.com/blog/post/kubernetes-prometheus-grafana-setup/view)
-- [How to Implement Structured Logging with OpenTelemetry](https://oneuptime.com/blog/post/python-structured-logging-opentelemetry/view)
+- [How to Send Python Logs to OneUptime](https://oneuptime.com/blog/post/2025-01-06-python-logs-oneuptime/view)
+- [How to Set Up Prometheus and Grafana on Kubernetes](https://oneuptime.com/blog/post/2026-01-19-kubernetes-prometheus-grafana-setup/view)
+- [How to Implement Structured Logging with OpenTelemetry](https://oneuptime.com/blog/post/2025-01-06-python-structured-logging-opentelemetry/view)

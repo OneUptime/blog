@@ -231,7 +231,7 @@ aws s3api put-bucket-logging \
   }'
 ```
 
-Then analyze the logs to see which accounts are accessing your data. See our guide on [analyzing S3 access logs with Athena](https://oneuptime.com/blog/post/analyze-s3-access-logs-athena/view) for setting up log analysis.
+Then analyze the logs to see which accounts are accessing your data. See our guide on [analyzing S3 access logs with Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-s3-access-logs-athena/view) for setting up log analysis.
 
 ## Practical Example: Sharing a Machine Learning Dataset
 

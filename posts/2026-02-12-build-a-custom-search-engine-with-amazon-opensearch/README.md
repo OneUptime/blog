@@ -396,7 +396,7 @@ function_score_query = {
 
 ## Monitoring and Performance
 
-OpenSearch publishes metrics to CloudWatch. Monitor cluster health, search latency, indexing rate, and JVM memory pressure. For end-to-end monitoring of your search infrastructure, check out [OneUptime](https://oneuptime.com/blog/post/build-an-anomaly-detection-system-on-aws/view) for tracking performance anomalies across your stack.
+OpenSearch publishes metrics to CloudWatch. Monitor cluster health, search latency, indexing rate, and JVM memory pressure. For end-to-end monitoring of your search infrastructure, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-an-anomaly-detection-system-on-aws/view) for tracking performance anomalies across your stack.
 
 ## Wrapping Up
 

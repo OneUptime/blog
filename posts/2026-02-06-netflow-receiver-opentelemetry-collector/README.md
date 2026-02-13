@@ -722,4 +722,4 @@ set forwarding-options sampling instance netflow-instance family inet output flo
 
 The Netflow Receiver enables comprehensive network traffic analysis by collecting flow data from routers and switches. By processing network flows, you can identify traffic patterns, detect security threats, perform capacity planning, and troubleshoot network issues. Combined with transform processors and security filters, you can build powerful network monitoring and security solutions.
 
-For more on network monitoring, see our guides on [SNMP receiver](https://oneuptime.com/blog/post/snmp-receiver-opentelemetry-collector/view) and [network metrics](https://oneuptime.com/blog/post/network-metrics-opentelemetry/view).
+For more on network monitoring, see our guides on [SNMP receiver](https://oneuptime.com/blog/post/2026-02-06-snmp-receiver-opentelemetry-collector/view) and [network metrics](https://oneuptime.com/blog/post/network-metrics-opentelemetry/view).

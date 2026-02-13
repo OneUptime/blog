@@ -342,4 +342,4 @@ Resources:
 
 ## Wrapping Up
 
-Streaming CloudWatch Logs to Lambda opens up a world of possibilities beyond what CloudWatch's built-in features offer. Real-time alerting with rich context, log enrichment, custom routing, forwarding to third-party services - Lambda gives you complete control over how you handle your log data. Start with error alerting, and expand from there as you identify more use cases. For the broader picture of CloudWatch log subscriptions, see our post on [setting up CloudWatch Log subscriptions](https://oneuptime.com/blog/post/cloudwatch-log-subscriptions/view).
+Streaming CloudWatch Logs to Lambda opens up a world of possibilities beyond what CloudWatch's built-in features offer. Real-time alerting with rich context, log enrichment, custom routing, forwarding to third-party services - Lambda gives you complete control over how you handle your log data. Start with error alerting, and expand from there as you identify more use cases. For the broader picture of CloudWatch log subscriptions, see our post on [setting up CloudWatch Log subscriptions](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-log-subscriptions/view).

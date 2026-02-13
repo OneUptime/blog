@@ -549,4 +549,4 @@ Follow these guidelines for fallthrough configuration:
 
 Proper fallthrough configuration is critical for reliable DNS resolution in Kubernetes. By understanding how queries flow through the CoreDNS plugin chain and configuring fallthrough appropriately, you ensure external domains resolve correctly while maintaining cluster DNS functionality. Testing and monitoring fallthrough behavior helps prevent common DNS issues.
 
-For more CoreDNS configuration patterns, explore our guides on [debugging DNS resolution](https://oneuptime.com/blog/post/debug-dns-resolution-dnsutils/view) and [CoreDNS plugin chain debugging](https://oneuptime.com/blog/post/debug-coredns-plugin-chain/view).
+For more CoreDNS configuration patterns, explore our guides on [debugging DNS resolution](https://oneuptime.com/blog/post/2026-02-09-debug-dns-resolution-dnsutils/view) and [CoreDNS plugin chain debugging](https://oneuptime.com/blog/post/2026-02-09-debug-coredns-plugin-chain/view).

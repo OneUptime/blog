@@ -220,6 +220,6 @@ for (const name of queueNames) {
 
 ## Next Steps
 
-Once you're comfortable with the basics, there's a lot more to explore. You can dive deeper into [CDK constructs and the L1/L2/L3 abstraction levels](https://oneuptime.com/blog/post/understand-cdk-constructs-l1-l2-l3/view), learn about [CDK stacks and environments](https://oneuptime.com/blog/post/cdk-stacks-and-environments/view), or explore how to [write unit tests for your CDK stacks](https://oneuptime.com/blog/post/write-unit-tests-for-cdk-stacks/view).
+Once you're comfortable with the basics, there's a lot more to explore. You can dive deeper into [CDK constructs and the L1/L2/L3 abstraction levels](https://oneuptime.com/blog/post/2026-02-12-understand-cdk-constructs-l1-l2-l3/view), learn about [CDK stacks and environments](https://oneuptime.com/blog/post/2026-02-12-cdk-stacks-and-environments/view), or explore how to [write unit tests for your CDK stacks](https://oneuptime.com/blog/post/2026-02-12-write-unit-tests-for-cdk-stacks/view).
 
 CDK isn't perfect - the abstraction can sometimes hide what's really happening at the CloudFormation level, and debugging synthesis errors can be confusing at first. But for most teams, the productivity gains far outweigh the learning curve. Give it a try on a small project and see how it feels. You probably won't go back to raw CloudFormation.

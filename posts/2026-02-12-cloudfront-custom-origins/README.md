@@ -271,7 +271,7 @@ CloudFront lets you configure how many times it tries to connect to an origin:
 
 **ConnectionAttempts** (1-3) is how many times CloudFront tries to connect. **ConnectionTimeout** (1-10 seconds) is how long each attempt waits.
 
-For high availability, pair this with origin groups for automatic failover. Check our guide on [CloudFront origin failover](https://oneuptime.com/blog/post/cloudfront-origin-failover-high-availability/view) for the full setup.
+For high availability, pair this with origin groups for automatic failover. Check our guide on [CloudFront origin failover](https://oneuptime.com/blog/post/2026-02-12-cloudfront-origin-failover-high-availability/view) for the full setup.
 
 ## Monitoring Custom Origins
 

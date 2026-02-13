@@ -337,7 +337,7 @@ aws ec2 create-network-acl-entry \
 
 **Undersizing CIDR blocks.** You can't resize subnets after creation. Plan for growth. A `/24` subnet gives you 251 usable addresses (AWS reserves 5). That might seem like a lot until you're running Kubernetes with multiple pods per node.
 
-For a deeper dive into multi-AZ deployments, see [creating subnets across multiple availability zones](https://oneuptime.com/blog/post/create-subnets-across-multiple-availability-zones/view).
+For a deeper dive into multi-AZ deployments, see [creating subnets across multiple availability zones](https://oneuptime.com/blog/post/2026-02-12-create-subnets-across-multiple-availability-zones/view).
 
 ## Wrapping Up
 

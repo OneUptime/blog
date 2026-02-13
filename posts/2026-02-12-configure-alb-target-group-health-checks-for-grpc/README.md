@@ -319,7 +319,7 @@ aws elbv2 modify-target-group \
     --health-check-timeout-seconds 10
 ```
 
-For combining gRPC health checks with gradual traffic shifting during deployments, see our guide on [using weighted target groups with ALB](https://oneuptime.com/blog/post/use-weighted-target-groups-with-alb/view).
+For combining gRPC health checks with gradual traffic shifting during deployments, see our guide on [using weighted target groups with ALB](https://oneuptime.com/blog/post/2026-02-12-use-weighted-target-groups-with-alb/view).
 
 ## Conclusion
 

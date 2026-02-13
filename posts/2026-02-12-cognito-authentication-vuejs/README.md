@@ -437,7 +437,7 @@ export function useApi(): AxiosInstance {
 }
 ```
 
-For more on how Cognito tokens work and how to validate them on the server side, see [decoding and validating Cognito JWT tokens](https://oneuptime.com/blog/post/decode-validate-cognito-jwt-tokens/view). If you prefer a higher-level abstraction, check out [using Amplify Authentication with Cognito](https://oneuptime.com/blog/post/amplify-authentication-cognito/view).
+For more on how Cognito tokens work and how to validate them on the server side, see [decoding and validating Cognito JWT tokens](https://oneuptime.com/blog/post/2026-02-12-decode-validate-cognito-jwt-tokens/view). If you prefer a higher-level abstraction, check out [using Amplify Authentication with Cognito](https://oneuptime.com/blog/post/2026-02-12-amplify-authentication-cognito/view).
 
 ## Wrapping Up
 

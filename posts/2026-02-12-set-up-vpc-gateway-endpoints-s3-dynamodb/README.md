@@ -36,7 +36,7 @@ graph LR
 
 The route table has two paths: S3 traffic goes through the gateway endpoint (free), and everything else goes through the NAT gateway (paid).
 
-Only two services support gateway endpoints: **Amazon S3** and **Amazon DynamoDB**. For all other AWS services, you need interface endpoints (PrivateLink). See [setting up VPC interface endpoints](https://oneuptime.com/blog/post/set-up-vpc-interface-endpoints-privatelink/view) for those.
+Only two services support gateway endpoints: **Amazon S3** and **Amazon DynamoDB**. For all other AWS services, you need interface endpoints (PrivateLink). See [setting up VPC interface endpoints](https://oneuptime.com/blog/post/2026-02-12-set-up-vpc-interface-endpoints-privatelink/view) for those.
 
 ## Creating an S3 Gateway Endpoint
 
@@ -295,7 +295,7 @@ If everything is working, you should see a significant drop in NAT gateway data 
 
 **Restrictive endpoint policies breaking things**: If you set a restrictive policy, make sure you include access to ECR, CodeDeploy, or any other service that stores artifacts in S3. A surprisingly large number of AWS services use S3 under the hood.
 
-For VPC endpoints to other AWS services, check out [accessing AWS services privately using VPC endpoints](https://oneuptime.com/blog/post/access-aws-services-privately-vpc-endpoints/view).
+For VPC endpoints to other AWS services, check out [accessing AWS services privately using VPC endpoints](https://oneuptime.com/blog/post/2026-02-12-access-aws-services-privately-vpc-endpoints/view).
 
 ## Wrapping Up
 

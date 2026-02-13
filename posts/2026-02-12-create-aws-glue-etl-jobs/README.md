@@ -340,8 +340,8 @@ Tips to keep costs down:
 - Use push-down predicates to limit data read
 - Set reasonable timeouts to prevent runaway jobs
 
-For more on optimizing Glue job performance and costs, check our guide on [configuring Glue ETL jobs for performance](https://oneuptime.com/blog/post/configure-glue-etl-jobs-for-performance/view).
+For more on optimizing Glue job performance and costs, check our guide on [configuring Glue ETL jobs for performance](https://oneuptime.com/blog/post/2026-02-12-configure-glue-etl-jobs-for-performance/view).
 
 ## Wrapping Up
 
-AWS Glue ETL gives you Spark's processing power without the operational burden. Write your transformation logic in PySpark, configure the job parameters, and let Glue handle the infrastructure. Start with simple transforms, use the Data Catalog for schema management, and build up to more complex pipelines with [workflows](https://oneuptime.com/blog/post/schedule-glue-etl-jobs-with-workflows/view) and [job bookmarks](https://oneuptime.com/blog/post/use-glue-job-bookmarks-for-incremental-data-processing/view).
+AWS Glue ETL gives you Spark's processing power without the operational burden. Write your transformation logic in PySpark, configure the job parameters, and let Glue handle the infrastructure. Start with simple transforms, use the Data Catalog for schema management, and build up to more complex pipelines with [workflows](https://oneuptime.com/blog/post/2026-02-12-schedule-glue-etl-jobs-with-workflows/view) and [job bookmarks](https://oneuptime.com/blog/post/2026-02-12-use-glue-job-bookmarks-for-incremental-data-processing/view).

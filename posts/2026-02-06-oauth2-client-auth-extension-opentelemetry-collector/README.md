@@ -798,8 +798,8 @@ Use HTTPS for all communications with authorization servers to prevent credentia
 
 For more information about OpenTelemetry Collector authentication, check out these related posts:
 
-- [How to Configure Bearer Token Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/bearer-token-auth-extension-opentelemetry-collector/view)
-- [How to Configure Basic Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/basic-auth-extension-opentelemetry-collector/view)
-- [How to Configure OIDC Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/oidc-auth-extension-opentelemetry-collector/view)
+- [How to Configure Bearer Token Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-bearer-token-auth-extension-opentelemetry-collector/view)
+- [How to Configure Basic Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-basic-auth-extension-opentelemetry-collector/view)
+- [How to Configure OIDC Auth Extension in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-oidc-auth-extension-opentelemetry-collector/view)
 
 The OAuth2 Client Auth extension provides automated, standards-based authentication for OpenTelemetry Collector deployments. By handling token acquisition, caching, and renewal automatically, it eliminates manual token management while ensuring secure, authenticated communication with backend services.

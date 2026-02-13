@@ -137,7 +137,7 @@ aws ec2 describe-volumes \
   --output table
 ```
 
-For a deeper dive on cleaning these up, see our guide on [reducing EBS costs by deleting unused volumes and snapshots](https://oneuptime.com/blog/post/reduce-ebs-costs-by-deleting-unused-volumes-and-snapshots/view).
+For a deeper dive on cleaning these up, see our guide on [reducing EBS costs by deleting unused volumes and snapshots](https://oneuptime.com/blog/post/2026-02-12-reduce-ebs-costs-by-deleting-unused-volumes-and-snapshots/view).
 
 ## Unused Elastic Load Balancers
 
@@ -398,6 +398,6 @@ full_idle_resource_audit()
 
 ## Next Steps
 
-Finding idle resources is just the beginning. For automated cleanup, see our post on [automating cost optimization with Lambda and CloudWatch](https://oneuptime.com/blog/post/automate-cost-optimization-with-lambda-and-cloudwatch/view). For AWS's built-in recommendations, check out [using Trusted Advisor for cost optimization](https://oneuptime.com/blog/post/use-trusted-advisor-for-cost-optimization-recommendations/view).
+Finding idle resources is just the beginning. For automated cleanup, see our post on [automating cost optimization with Lambda and CloudWatch](https://oneuptime.com/blog/post/2026-02-12-automate-cost-optimization-with-lambda-and-cloudwatch/view). For AWS's built-in recommendations, check out [using Trusted Advisor for cost optimization](https://oneuptime.com/blog/post/2026-02-12-use-trusted-advisor-for-cost-optimization-recommendations/view).
 
 The most important habit is running these audits regularly - weekly or monthly. The waste accumulates slowly, and without consistent checks, it just keeps growing.

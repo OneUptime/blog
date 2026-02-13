@@ -335,7 +335,7 @@ new eks.CfnAddon(this, 'KubeProxy', {
 });
 ```
 
-For securing your cluster's secrets with customer-managed encryption, check out [creating KMS keys with CDK](https://oneuptime.com/blog/post/kms-keys-cdk/view). If you need to set up DNS records for your cluster's ingress, see [Route 53 records with CDK](https://oneuptime.com/blog/post/route-53-records-cdk/view).
+For securing your cluster's secrets with customer-managed encryption, check out [creating KMS keys with CDK](https://oneuptime.com/blog/post/2026-02-12-kms-keys-cdk/view). If you need to set up DNS records for your cluster's ingress, see [Route 53 records with CDK](https://oneuptime.com/blog/post/2026-02-12-route-53-records-cdk/view).
 
 ## Wrapping Up
 

@@ -330,4 +330,4 @@ aws vpc-lattice update-rule \
 
 This sends 90% of traffic to your stable version and 10% to the canary. Gradually increase the canary weight as you gain confidence.
 
-VPC Lattice simplifies what used to be a multi-service, multi-configuration task into a clean, policy-driven model. If you're building microservices across VPCs or accounts, it's worth evaluating. For more on service networking patterns, see our post on [VPC Lattice service networks](https://oneuptime.com/blog/post/vpc-lattice-service-networks/view).
+VPC Lattice simplifies what used to be a multi-service, multi-configuration task into a clean, policy-driven model. If you're building microservices across VPCs or accounts, it's worth evaluating. For more on service networking patterns, see our post on [VPC Lattice service networks](https://oneuptime.com/blog/post/2026-02-12-vpc-lattice-service-networks/view).

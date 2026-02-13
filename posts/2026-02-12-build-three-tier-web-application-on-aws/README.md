@@ -171,7 +171,7 @@ aws s3 cp build/index.html s3://my-app-frontend-production/index.html \
 
 The frontend communicates with the application tier through the ALB. Configure your frontend to point API calls to the ALB's domain or a custom API subdomain.
 
-For more details on the static hosting part, check out our guide on [deploying React to S3 and CloudFront](https://oneuptime.com/blog/post/deploy-react-app-to-aws-s3-and-cloudfront/view).
+For more details on the static hosting part, check out our guide on [deploying React to S3 and CloudFront](https://oneuptime.com/blog/post/2026-02-12-deploy-react-app-to-aws-s3-and-cloudfront/view).
 
 ## Tier 3: Application Layer
 

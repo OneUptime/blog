@@ -27,7 +27,7 @@ GitOps flips this model. The cluster pulls its desired state from Git. Credentia
 
 You'll need:
 
-- An EKS cluster (see our [eksctl guide](https://oneuptime.com/blog/post/create-eks-cluster-with-eksctl/view))
+- An EKS cluster (see our [eksctl guide](https://oneuptime.com/blog/post/2026-02-12-create-eks-cluster-with-eksctl/view))
 - kubectl configured
 - A Git repository for your application manifests
 
@@ -73,7 +73,7 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443
 
 Open https://localhost:8080 in your browser. Log in with username `admin` and the password from above.
 
-For production access, set up an [ALB Ingress](https://oneuptime.com/blog/post/set-up-ingress-with-alb-on-eks/view) with TLS.
+For production access, set up an [ALB Ingress](https://oneuptime.com/blog/post/2026-02-12-set-up-ingress-with-alb-on-eks/view) with TLS.
 
 ## Step 3: Install the ArgoCD CLI
 
@@ -209,7 +209,7 @@ spec:
         - values-production.yaml
 ```
 
-For more on using Helm, see our [Helm deployment guide](https://oneuptime.com/blog/post/deploy-applications-on-eks-with-helm/view).
+For more on using Helm, see our [Helm deployment guide](https://oneuptime.com/blog/post/2026-02-12-deploy-applications-on-eks-with-helm/view).
 
 ## Setting Up App of Apps Pattern
 
@@ -269,7 +269,7 @@ spec:
 
 ## Monitoring ArgoCD
 
-ArgoCD exposes Prometheus metrics. If you've set up [Prometheus on EKS](https://oneuptime.com/blog/post/set-up-prometheus-and-grafana-on-eks/view), add a ServiceMonitor:
+ArgoCD exposes Prometheus metrics. If you've set up [Prometheus on EKS](https://oneuptime.com/blog/post/2026-02-12-set-up-prometheus-and-grafana-on-eks/view), add a ServiceMonitor:
 
 ```yaml
 # argocd-servicemonitor.yaml - Prometheus monitoring for ArgoCD

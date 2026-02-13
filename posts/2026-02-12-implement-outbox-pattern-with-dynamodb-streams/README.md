@@ -323,7 +323,7 @@ dynamodb.transact_write_items(
 )
 ```
 
-The tradeoff is that your DynamoDB Stream Lambda needs to filter for outbox records (identified by the `OUTBOX#` prefix) and ignore regular data changes. You can use [Lambda event source mapping filters](https://oneuptime.com/blog/post/configure-lambda-event-source-mapping-filters/view) to handle this filtering efficiently.
+The tradeoff is that your DynamoDB Stream Lambda needs to filter for outbox records (identified by the `OUTBOX#` prefix) and ignore regular data changes. You can use [Lambda event source mapping filters](https://oneuptime.com/blog/post/2026-02-12-configure-lambda-event-source-mapping-filters/view) to handle this filtering efficiently.
 
 ## Monitoring the Outbox
 

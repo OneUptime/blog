@@ -274,7 +274,7 @@ new cloudwatch.Alarm(this, 'DLQAlarm', {
 });
 ```
 
-For a full observability setup, check out [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/build-logging-and-monitoring-stack-on-aws/view).
+For a full observability setup, check out [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view).
 
 ## Scaling the Consumer
 

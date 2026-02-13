@@ -269,7 +269,7 @@ This state definition only passes relevant fields to the Lambda and merges the r
 
 The Step Functions console shows you a visual representation of each execution, highlighting which state is running, which succeeded, and which failed. It's one of the best debugging experiences in AWS.
 
-For production workloads, you'll want to set up CloudWatch alarms on execution failures and timeouts. Check out our post on [monitoring serverless workflows](https://oneuptime.com/blog/post/monitor-step-functions-executions-console/view) for more details on setting this up properly.
+For production workloads, you'll want to set up CloudWatch alarms on execution failures and timeouts. Check out our post on [monitoring serverless workflows](https://oneuptime.com/blog/post/2026-02-12-monitor-step-functions-executions-console/view) for more details on setting this up properly.
 
 ## When to Use Step Functions
 

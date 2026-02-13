@@ -280,7 +280,7 @@ resource "aws_lb_target_group_attachment" "app" {
 }
 ```
 
-For a more comprehensive approach, look into [multi-AZ deployments for high availability](https://oneuptime.com/blog/post/set-up-multi-az-ec2-deployments-for-high-availability/view).
+For a more comprehensive approach, look into [multi-AZ deployments for high availability](https://oneuptime.com/blog/post/2026-02-12-set-up-multi-az-ec2-deployments-for-high-availability/view).
 
 ## Monitoring Recovery Events
 

@@ -39,7 +39,7 @@ Each node in the real X-Ray service map is clickable. You can drill into any ser
 
 The service map is populated by X-Ray traces. For it to be useful, you need:
 
-1. X-Ray tracing enabled on your services (see our [X-Ray tracing setup guide](https://oneuptime.com/blog/post/xray-tracing-application-requests/view))
+1. X-Ray tracing enabled on your services (see our [X-Ray tracing setup guide](https://oneuptime.com/blog/post/2026-02-12-xray-tracing-application-requests/view))
 2. The X-Ray daemon running alongside your application
 3. Sufficient traffic to generate traces (at least a few requests per minute)
 
@@ -183,7 +183,7 @@ aws xray create-group \
   --filter-expression 'service("order-service") OR service("payment-service") OR service("inventory-service")'
 ```
 
-Then select the group in the service map dropdown to see only the relevant services. For more details on groups, see our guide on [X-Ray groups for filtering traces](https://oneuptime.com/blog/post/xray-groups-filtering-traces/view).
+Then select the group in the service map dropdown to see only the relevant services. For more details on groups, see our guide on [X-Ray groups for filtering traces](https://oneuptime.com/blog/post/2026-02-12-xray-groups-filtering-traces/view).
 
 ## Discovering Dependencies You Didn't Know About
 
@@ -250,7 +250,7 @@ for dep in sorted(deps, key=lambda d: d['requests'], reverse=True):
 
 ## Service Map with CloudWatch ServiceLens
 
-The X-Ray service map is also accessible through [CloudWatch ServiceLens](https://oneuptime.com/blog/post/cloudwatch-servicelens-application-monitoring/view), which adds CloudWatch metrics and logs to the view. When you access the service map through ServiceLens, clicking a node shows you:
+The X-Ray service map is also accessible through [CloudWatch ServiceLens](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-servicelens-application-monitoring/view), which adds CloudWatch metrics and logs to the view. When you access the service map through ServiceLens, clicking a node shows you:
 
 - X-Ray trace data (same as standalone X-Ray)
 - CloudWatch metrics for that service (CPU, memory, etc.)

@@ -313,7 +313,7 @@ const expressWorkflow = new sfn.StateMachine(this, 'DataTransform', {
 
 Express workflows are great for data processing pipelines where you're running thousands of executions per second. Standard workflows are better for long-running processes that need exactly-once execution.
 
-For connecting your state machines to event-driven triggers, check out [creating EventBridge rules with CDK](https://oneuptime.com/blog/post/eventbridge-rules-cdk/view). If your workflows need queue-based input, see [creating SQS queues with CDK](https://oneuptime.com/blog/post/sqs-queues-cdk/view).
+For connecting your state machines to event-driven triggers, check out [creating EventBridge rules with CDK](https://oneuptime.com/blog/post/2026-02-12-eventbridge-rules-cdk/view). If your workflows need queue-based input, see [creating SQS queues with CDK](https://oneuptime.com/blog/post/2026-02-12-sqs-queues-cdk/view).
 
 ## Wrapping Up
 

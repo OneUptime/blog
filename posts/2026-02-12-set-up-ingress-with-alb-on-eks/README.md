@@ -37,7 +37,7 @@ You'll need:
 - An EKS cluster with the VPC CNI plugin (default)
 - kubectl and Helm installed
 - Subnets tagged for ALB discovery
-- An OIDC provider configured for IRSA (see our [IRSA guide](https://oneuptime.com/blog/post/set-up-iam-roles-for-eks-service-accounts-irsa/view))
+- An OIDC provider configured for IRSA (see our [IRSA guide](https://oneuptime.com/blog/post/2026-02-12-set-up-iam-roles-for-eks-service-accounts-irsa/view))
 
 ## Step 1: Tag Your Subnets
 
@@ -217,7 +217,7 @@ spec:
                   number: 80
 ```
 
-For automatic certificate management, look at our guide on [cert-manager with ACM on EKS](https://oneuptime.com/blog/post/set-up-cert-manager-on-eks-with-acm/view).
+For automatic certificate management, look at our guide on [cert-manager with ACM on EKS](https://oneuptime.com/blog/post/2026-02-12-set-up-cert-manager-on-eks-with-acm/view).
 
 ## Path-Based Routing
 
@@ -291,4 +291,4 @@ Common issues include missing subnet tags, incorrect IAM permissions, and using 
 
 If the ALB is created but targets show unhealthy, verify your pods are running and the health check path returns a 200 response. Also make sure the security groups allow traffic from the ALB to your pods.
 
-The ALB Ingress Controller handles most of the heavy lifting for getting traffic into your EKS cluster. Combined with [External DNS](https://oneuptime.com/blog/post/set-up-external-dns-on-eks-with-route-53/view) for automatic DNS management, it creates a fully automated path from domain name to pod.
+The ALB Ingress Controller handles most of the heavy lifting for getting traffic into your EKS cluster. Combined with [External DNS](https://oneuptime.com/blog/post/2026-02-12-set-up-external-dns-on-eks-with-route-53/view) for automatic DNS management, it creates a fully automated path from domain name to pod.

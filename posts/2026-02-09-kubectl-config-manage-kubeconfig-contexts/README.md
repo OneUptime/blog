@@ -511,6 +511,6 @@ kubectl config view --flatten > ~/.kube/merged-config
 export KUBECONFIG=~/.kube/merged-config
 ```
 
-See https://oneuptime.com/blog/post/merge-multiple-kubeconfig-files/view for detailed merging instructions.
+See https://oneuptime.com/blog/post/2026-02-09-merge-multiple-kubeconfig-files/view for detailed merging instructions.
 
-kubectl config commands organize multi-cluster complexity into manageable operations. Define contexts for each environment, switch between them confidently, and set default namespaces to streamline workflows. Master these commands and cluster management becomes second nature. For more context management techniques, check out https://oneuptime.com/blog/post/kubectl-aliases-shell-functions/view.
+kubectl config commands organize multi-cluster complexity into manageable operations. Define contexts for each environment, switch between them confidently, and set default namespaces to streamline workflows. Master these commands and cluster management becomes second nature. For more context management techniques, check out https://oneuptime.com/blog/post/2026-02-09-kubectl-aliases-shell-functions/view.

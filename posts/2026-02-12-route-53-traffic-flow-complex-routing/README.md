@@ -328,4 +328,4 @@ Health checks are billed separately at $0.50-$2.00 per health check per month de
 
 **Version control your policy JSON.** Store traffic policy documents in Git alongside your infrastructure code. They're just JSON files - treat them like any other configuration.
 
-For DR-specific routing, check out our guide on [Route 53 Application Recovery Controller](https://oneuptime.com/blog/post/route-53-application-recovery-controller/view) which integrates well with Traffic Flow policies.
+For DR-specific routing, check out our guide on [Route 53 Application Recovery Controller](https://oneuptime.com/blog/post/2026-02-12-route-53-application-recovery-controller/view) which integrates well with Traffic Flow policies.

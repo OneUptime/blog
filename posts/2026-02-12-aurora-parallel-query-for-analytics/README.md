@@ -256,8 +256,8 @@ aws cloudwatch get-metric-statistics \
 
 Parallel Query doesn't have a separate charge. You pay the normal Aurora pricing for compute and storage. However, Parallel Query can increase I/O costs because it reads data from storage rather than the buffer pool. For frequently-run analytical queries, this trade-off is usually worth it because the speed improvement is significant.
 
-If you need heavy analytics regularly, consider creating a [custom endpoint](https://oneuptime.com/blog/post/configure-aurora-endpoints-writer-reader-custom/view) that routes analytical queries to specific reader instances with Parallel Query enabled, keeping your OLTP readers unaffected.
+If you need heavy analytics regularly, consider creating a [custom endpoint](https://oneuptime.com/blog/post/2026-02-12-configure-aurora-endpoints-writer-reader-custom/view) that routes analytical queries to specific reader instances with Parallel Query enabled, keeping your OLTP readers unaffected.
 
 ## Wrapping Up
 
-Aurora Parallel Query is one of those features that can turn Aurora from "okay for light analytics" into "genuinely useful for analytical workloads." Enable it, test your heaviest queries, and watch the execution times drop. Just remember that it works best for large scans and aggregations - it won't help with simple primary key lookups. For more Aurora optimization strategies, check out the guide on [comparing Aurora vs Standard RDS](https://oneuptime.com/blog/post/compare-aurora-vs-standard-rds/view) to understand when these features matter most.
+Aurora Parallel Query is one of those features that can turn Aurora from "okay for light analytics" into "genuinely useful for analytical workloads." Enable it, test your heaviest queries, and watch the execution times drop. Just remember that it works best for large scans and aggregations - it won't help with simple primary key lookups. For more Aurora optimization strategies, check out the guide on [comparing Aurora vs Standard RDS](https://oneuptime.com/blog/post/2026-02-12-compare-aurora-vs-standard-rds/view) to understand when these features matter most.

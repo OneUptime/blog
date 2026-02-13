@@ -360,4 +360,4 @@ new TextFile(project, '.env.example', {
 
 Projen eliminates the "configuration drift" problem that plagues multi-project setups. Define your project standards once in TypeScript, and every project stays consistent. The initial learning curve is worth it, especially if you're managing more than a couple of CDK projects.
 
-For the CDK-specific best practices that Projen helps enforce, check out our guide on [CDK Nag for security checks](https://oneuptime.com/blog/post/use-cdk-nag-for-security-best-practice-checks/view) and [synthesizing and diffing changes](https://oneuptime.com/blog/post/synthesize-and-diff-cdk-changes-before-deployment/view).
+For the CDK-specific best practices that Projen helps enforce, check out our guide on [CDK Nag for security checks](https://oneuptime.com/blog/post/2026-02-12-use-cdk-nag-for-security-best-practice-checks/view) and [synthesizing and diffing changes](https://oneuptime.com/blog/post/2026-02-12-synthesize-and-diff-cdk-changes-before-deployment/view).

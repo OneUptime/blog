@@ -220,7 +220,7 @@ Getting auto scaling right takes some iteration. Here are a few things I've lear
 
 **Don't set the target too low.** A target of 30% CPU means Aurora will constantly try to keep utilization at 30%, which means you'll have way more instances than necessary. 60-75% is usually the sweet spot.
 
-**Watch for uneven read distribution.** If your application doesn't use the reader endpoint properly, some replicas might be overloaded while others sit idle. Auto scaling won't fix a bad connection strategy. Check out how to [configure Aurora endpoints](https://oneuptime.com/blog/post/configure-aurora-endpoints-writer-reader-custom/view) to make sure reads are distributed evenly.
+**Watch for uneven read distribution.** If your application doesn't use the reader endpoint properly, some replicas might be overloaded while others sit idle. Auto scaling won't fix a bad connection strategy. Check out how to [configure Aurora endpoints](https://oneuptime.com/blog/post/2026-02-12-configure-aurora-endpoints-writer-reader-custom/view) to make sure reads are distributed evenly.
 
 **Monitor scaling events.** Check CloudWatch for `SuccessfulScaleOut` and `SuccessfulScaleIn` events to understand how often scaling happens. If it's thrashing (scaling up and down constantly), increase your cooldown periods.
 
@@ -259,4 +259,4 @@ aws application-autoscaling describe-scaling-activities \
 
 Aurora Auto Scaling takes the guesswork out of managing read replica counts. Set a target metric, define your min and max boundaries, and let AWS handle the rest. The biggest mistake people make is either setting it and forgetting it (never reviewing whether the target value is right) or not using it at all and manually managing replicas.
 
-Start with CPU-based target tracking at around 70%, monitor how it behaves for a week or two, and adjust from there. If you're also looking at scaling your overall database architecture, check out the guide on [setting up Aurora Global Databases](https://oneuptime.com/blog/post/set-up-aurora-global-databases-for-multi-region/view) for multi-region deployments.
+Start with CPU-based target tracking at around 70%, monitor how it behaves for a week or two, and adjust from there. If you're also looking at scaling your overall database architecture, check out the guide on [setting up Aurora Global Databases](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-global-databases-for-multi-region/view) for multi-region deployments.

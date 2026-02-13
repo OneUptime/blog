@@ -443,4 +443,4 @@ eb health --refresh
 5. Environment degraded? Check `eb logs` for application errors
 6. Slow deployments? Switch to rolling deployment with additional batch
 
-Elastic Beanstalk takes the infrastructure work out of deploying Node.js apps. Once your pipeline is set up, deployments are a simple `git push`. For the broader Beanstalk setup, see our guide on [setting up Elastic Beanstalk for web applications](https://oneuptime.com/blog/post/setup-elastic-beanstalk-web-application-deployment/view).
+Elastic Beanstalk takes the infrastructure work out of deploying Node.js apps. Once your pipeline is set up, deployments are a simple `git push`. For the broader Beanstalk setup, see our guide on [setting up Elastic Beanstalk for web applications](https://oneuptime.com/blog/post/2026-02-12-setup-elastic-beanstalk-web-application-deployment/view).

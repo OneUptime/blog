@@ -245,4 +245,4 @@ For a small organization with 10-20 accounts, expect roughly $50-100/month in su
 
 Control Tower is the fastest path to a well-governed multi-account environment. It takes about an hour to set up and saves you weeks of manual configuration. Once it's running, every new account starts life with the right security controls, logging, and access management already in place.
 
-For managing security policies across your accounts, combine Control Tower with [AWS Firewall Manager](https://oneuptime.com/blog/post/aws-firewall-manager-organization-wide-security/view). And for fine-grained governance controls, check out our guide on [Control Tower guardrails](https://oneuptime.com/blog/post/control-tower-guardrails-account-governance/view).
+For managing security policies across your accounts, combine Control Tower with [AWS Firewall Manager](https://oneuptime.com/blog/post/2026-02-12-aws-firewall-manager-organization-wide-security/view). And for fine-grained governance controls, check out our guide on [Control Tower guardrails](https://oneuptime.com/blog/post/2026-02-12-control-tower-guardrails-account-governance/view).

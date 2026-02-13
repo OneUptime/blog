@@ -242,7 +242,7 @@ cfnBucket.analyticsConfigurations = [
 ];
 ```
 
-This technique of accessing the L1 construct from an L2 construct is called an "escape hatch." It's covered in more detail in the post about [CDK escape hatches](https://oneuptime.com/blog/post/cdk-escape-hatches-access-l1-constructs/view).
+This technique of accessing the L1 construct from an L2 construct is called an "escape hatch." It's covered in more detail in the post about [CDK escape hatches](https://oneuptime.com/blog/post/2026-02-12-cdk-escape-hatches-access-l1-constructs/view).
 
 ## The Decision Framework
 
@@ -254,4 +254,4 @@ Drop to L2 constructs when you need more customization than the pattern allows. 
 
 Use L1 constructs only when L2 doesn't expose what you need, or when working with brand-new AWS services.
 
-The construct levels aren't about skill - they're about choosing the right tool for the job. A senior engineer uses L3 patterns for standard architectures and L1 constructs when precision matters. For a hands-on introduction to CDK, check out the [getting started guide](https://oneuptime.com/blog/post/get-started-with-aws-cdk/view). To learn about building your own reusable constructs, read about [creating custom CDK constructs](https://oneuptime.com/blog/post/create-custom-cdk-constructs/view).
+The construct levels aren't about skill - they're about choosing the right tool for the job. A senior engineer uses L3 patterns for standard architectures and L1 constructs when precision matters. For a hands-on introduction to CDK, check out the [getting started guide](https://oneuptime.com/blog/post/2026-02-12-get-started-with-aws-cdk/view). To learn about building your own reusable constructs, read about [creating custom CDK constructs](https://oneuptime.com/blog/post/2026-02-12-create-custom-cdk-constructs/view).

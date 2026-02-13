@@ -244,7 +244,7 @@ aws cloudwatch get-metric-statistics \
   --statistics Average
 ```
 
-For end-to-end monitoring of your ALB's behavior with sticky sessions, including request distribution across targets and session-related errors, set up monitoring that tracks per-target metrics. See [configuring health checks](https://oneuptime.com/blog/post/configure-health-checks-ec2-load-balancer/view) for more on monitoring your load balancer setup.
+For end-to-end monitoring of your ALB's behavior with sticky sessions, including request distribution across targets and session-related errors, set up monitoring that tracks per-target metrics. See [configuring health checks](https://oneuptime.com/blog/post/2026-02-12-configure-health-checks-ec2-load-balancer/view) for more on monitoring your load balancer setup.
 
 ## Summary
 

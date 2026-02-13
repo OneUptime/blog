@@ -231,7 +231,7 @@ aws cloudwatch put-managed-insight-rule \
   --rule-name "DynamoDB-Users-HotKeyAlert"
 ```
 
-A more practical approach is to combine Contributor Insights data with your existing alarm framework. Check out [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/monitor-dynamodb-with-cloudwatch-alarms/view) for the full alarm setup.
+A more practical approach is to combine Contributor Insights data with your existing alarm framework. Check out [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-monitor-dynamodb-with-cloudwatch-alarms/view) for the full alarm setup.
 
 ## Cost and Limitations
 

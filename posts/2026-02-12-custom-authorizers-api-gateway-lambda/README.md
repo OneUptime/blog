@@ -315,7 +315,7 @@ api.addGatewayResponse('AccessDeniedResponse', {
 });
 ```
 
-Don't forget the CORS headers in your gateway responses. If a preflight request succeeds but the authorizer fails, the browser needs CORS headers on the 401/403 response to show the actual error. For more on CORS, see our post on [handling CORS in Lambda behind API Gateway](https://oneuptime.com/blog/post/handle-cors-lambda-api-gateway/view).
+Don't forget the CORS headers in your gateway responses. If a preflight request succeeds but the authorizer fails, the browser needs CORS headers on the 401/403 response to show the actual error. For more on CORS, see our post on [handling CORS in Lambda behind API Gateway](https://oneuptime.com/blog/post/2026-02-12-handle-cors-lambda-api-gateway/view).
 
 ## Wrapping Up
 

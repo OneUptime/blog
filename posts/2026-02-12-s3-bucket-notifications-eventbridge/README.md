@@ -328,4 +328,4 @@ For production event pipelines, set up comprehensive monitoring with [OneUptime]
 3. **Latency** - EventBridge adds a few seconds of latency compared to direct S3 notifications. For most use cases this doesn't matter.
 4. **Cost** - EventBridge charges per event published. High-volume buckets can generate significant costs. Filter aggressively.
 
-For more on building event-driven S3 architectures, check out our guide on [configuring S3 bucket metrics in CloudWatch](https://oneuptime.com/blog/post/s3-bucket-metrics-cloudwatch/view).
+For more on building event-driven S3 architectures, check out our guide on [configuring S3 bucket metrics in CloudWatch](https://oneuptime.com/blog/post/2026-02-12-s3-bucket-metrics-cloudwatch/view).

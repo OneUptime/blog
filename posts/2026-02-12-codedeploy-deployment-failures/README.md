@@ -310,4 +310,4 @@ The best way to handle deployment failures is to prevent them:
 - Monitor deployment metrics with [OneUptime](https://oneuptime.com) to catch trends before they become outages
 - Enable auto-rollback from day one
 
-For more details on writing solid AppSpec files, check our guide on [creating CodeDeploy AppSpec files](https://oneuptime.com/blog/post/codedeploy-appspec-files/view). And if you're using CodePipeline, see our guide on [troubleshooting CodePipeline failures](https://oneuptime.com/blog/post/troubleshoot-codepipeline-failures/view) for pipeline-level debugging.
+For more details on writing solid AppSpec files, check our guide on [creating CodeDeploy AppSpec files](https://oneuptime.com/blog/post/2026-02-12-codedeploy-appspec-files/view). And if you're using CodePipeline, see our guide on [troubleshooting CodePipeline failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-codepipeline-failures/view) for pipeline-level debugging.

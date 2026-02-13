@@ -271,7 +271,7 @@ new cloudwatch.Alarm(this, 'PrimaryHealthAlarm', {
 });
 ```
 
-For a more comprehensive monitoring setup, check out [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/build-logging-and-monitoring-stack-on-aws/view).
+For a more comprehensive monitoring setup, check out [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view).
 
 ## Testing Failover
 
@@ -293,4 +293,4 @@ curl -X POST https://app-primary.example.com/admin/restore-health
 
 ## Summary
 
-DNS failover with Route 53 is your first line of defense against region-level failures. Set up health checks that accurately reflect your application's state, configure failover routing between primary and secondary endpoints, keep TTL values low for faster failover, and test the whole thing regularly. It's not a perfect solution - DNS caching means failover isn't instant - but combined with other techniques like [multi-region deployments](https://oneuptime.com/blog/post/set-up-multi-region-deployments-for-disaster-recovery/view), it forms the foundation of a resilient architecture.
+DNS failover with Route 53 is your first line of defense against region-level failures. Set up health checks that accurately reflect your application's state, configure failover routing between primary and secondary endpoints, keep TTL values low for faster failover, and test the whole thing regularly. It's not a perfect solution - DNS caching means failover isn't instant - but combined with other techniques like [multi-region deployments](https://oneuptime.com/blog/post/2026-02-12-set-up-multi-region-deployments-for-disaster-recovery/view), it forms the foundation of a resilient architecture.

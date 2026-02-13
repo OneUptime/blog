@@ -276,4 +276,4 @@ cdk.Tags.of(stack).add('Purpose', 'integration-test');
 cdk.Tags.of(stack).add('AutoDelete', 'true');
 ```
 
-Integration tests complement unit tests and snapshot tests to give you full coverage of your infrastructure code. For unit test patterns, see the post on [writing unit tests for CDK stacks](https://oneuptime.com/blog/post/write-unit-tests-for-cdk-stacks/view). For snapshot testing, check out [snapshot tests for CDK stacks](https://oneuptime.com/blog/post/write-snapshot-tests-for-cdk-stacks/view).
+Integration tests complement unit tests and snapshot tests to give you full coverage of your infrastructure code. For unit test patterns, see the post on [writing unit tests for CDK stacks](https://oneuptime.com/blog/post/2026-02-12-write-unit-tests-for-cdk-stacks/view). For snapshot testing, check out [snapshot tests for CDK stacks](https://oneuptime.com/blog/post/2026-02-12-write-snapshot-tests-for-cdk-stacks/view).

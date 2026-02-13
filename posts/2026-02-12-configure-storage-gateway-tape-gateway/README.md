@@ -30,7 +30,7 @@ graph TD
 ## Prerequisites
 
 You'll need:
-- An activated Storage Gateway of type VTL (see [setting up Storage Gateway](https://oneuptime.com/blog/post/set-up-aws-storage-gateway-hybrid-storage/view))
+- An activated Storage Gateway of type VTL (see [setting up Storage Gateway](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-storage-gateway-hybrid-storage/view))
 - Local disks for cache and upload buffer
 - iSCSI initiator software on the backup server
 - Compatible backup software (Veritas, Veeam, Commvault, DELL EMC NetWorker, etc.)

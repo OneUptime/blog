@@ -330,4 +330,4 @@ topic.addSubscription(
 - **Audit subscriptions regularly** to ensure only authorized accounts are subscribed.
 - **Enable delivery logging** to track cross-account message delivery.
 
-For encrypted cross-account messaging, see [enabling SNS message encryption with KMS](https://oneuptime.com/blog/post/enable-sns-message-encryption-with-kms/view). KMS key policies also need cross-account access when topics are encrypted.
+For encrypted cross-account messaging, see [enabling SNS message encryption with KMS](https://oneuptime.com/blog/post/2026-02-12-enable-sns-message-encryption-with-kms/view). KMS key policies also need cross-account access when topics are encrypted.

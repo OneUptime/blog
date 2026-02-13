@@ -431,7 +431,7 @@ service:
 
 ## Integration with Other Connectors
 
-The Count Connector works well alongside other OpenTelemetry connectors. For comprehensive observability, combine it with the Span Metrics Connector for RED metrics at https://oneuptime.com/blog/post/span-metrics-connector-red-metrics/view and the Service Graph Connector at https://oneuptime.com/blog/post/service-graph-connector-opentelemetry-collector/view.
+The Count Connector works well alongside other OpenTelemetry connectors. For comprehensive observability, combine it with the Span Metrics Connector for RED metrics at https://oneuptime.com/blog/post/2026-02-06-span-metrics-connector-red-metrics/view and the Service Graph Connector at https://oneuptime.com/blog/post/2026-02-06-service-graph-connector-opentelemetry-collector/view.
 
 ## Conclusion
 

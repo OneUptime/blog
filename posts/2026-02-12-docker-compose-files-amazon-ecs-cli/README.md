@@ -310,7 +310,7 @@ ecs-cli compose \
 
 This creates the task definition in ECS without starting any tasks, which is useful for inspecting the translation.
 
-For a more detailed approach to manual translation, see our guide on [migrating Docker Compose to ECS task definitions](https://oneuptime.com/blog/post/migrate-docker-compose-ecs-task-definitions/view).
+For a more detailed approach to manual translation, see our guide on [migrating Docker Compose to ECS task definitions](https://oneuptime.com/blog/post/2026-02-12-migrate-docker-compose-ecs-task-definitions/view).
 
 ## When to Use the ECS CLI vs Other Tools
 
@@ -328,4 +328,4 @@ The ECS CLI is best for teams transitioning from Docker Compose to ECS who want 
 
 The ECS CLI bridges the gap between local Docker Compose development and cloud deployment on ECS. While it does not support every Compose feature, it handles the most common patterns well and saves you from manually translating container definitions. Use it for development environments and quick deployments, and consider more robust tooling like CDK for production infrastructure.
 
-For more on deploying to ECS, see our guides on [deploying Docker containers to ECS on Fargate](https://oneuptime.com/blog/post/deploy-docker-ecs-fargate/view) and [deploying multi-container applications on ECS](https://oneuptime.com/blog/post/deploy-multi-container-applications-ecs/view).
+For more on deploying to ECS, see our guides on [deploying Docker containers to ECS on Fargate](https://oneuptime.com/blog/post/2026-02-12-deploy-docker-ecs-fargate/view) and [deploying multi-container applications on ECS](https://oneuptime.com/blog/post/2026-02-12-deploy-multi-container-applications-ecs/view).

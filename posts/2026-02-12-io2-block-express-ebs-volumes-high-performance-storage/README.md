@@ -175,7 +175,7 @@ sudo fio --name=seqread --ioengine=libaio --direct=1 \
     --filename=/dev/nvme1n1
 ```
 
-If you're not hitting your provisioned IOPS, check that your instance type's EBS bandwidth limit isn't the bottleneck. For more on benchmarking EC2 performance, see our guide on [benchmarking EC2 instances](https://oneuptime.com/blog/post/benchmark-ec2-instance-performance/view).
+If you're not hitting your provisioned IOPS, check that your instance type's EBS bandwidth limit isn't the bottleneck. For more on benchmarking EC2 performance, see our guide on [benchmarking EC2 instances](https://oneuptime.com/blog/post/2026-02-12-benchmark-ec2-instance-performance/view).
 
 ## Cost Considerations
 
@@ -217,7 +217,7 @@ io2 Block Express is the right choice for:
 
 For everything else, start with gp3 and only upgrade when you have data showing you need more. Premature optimization of storage costs real money on AWS.
 
-If you need even more performance than a single volume provides, consider [setting up RAID 0](https://oneuptime.com/blog/post/set-up-raid-on-ebs-volumes-for-ec2/view) across multiple io2 Block Express volumes - though that's rarely necessary given the per-volume limits.
+If you need even more performance than a single volume provides, consider [setting up RAID 0](https://oneuptime.com/blog/post/2026-02-12-set-up-raid-on-ebs-volumes-for-ec2/view) across multiple io2 Block Express volumes - though that's rarely necessary given the per-volume limits.
 
 ## Monitoring io2 Block Express Volumes
 

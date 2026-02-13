@@ -276,7 +276,7 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
-For help setting up your hosted zone records, see https://oneuptime.com/blog/post/route-53-public-hosted-zones/view.
+For help setting up your hosted zone records, see https://oneuptime.com/blog/post/2026-02-12-route-53-public-hosted-zones/view.
 
 ## Best Practices
 

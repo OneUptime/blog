@@ -597,4 +597,4 @@ Monitor metrics like sampling_requests_total, sampling_decisions_sampled, and sa
 
 The Jaeger Remote Sampling extension provides powerful centralized control over trace sampling in distributed systems. By implementing dynamic, service-specific, and operation-level sampling strategies, you can maintain observability for critical paths while optimizing storage and processing costs.
 
-For related topics, explore [OpAMP Extension for remote management](https://oneuptime.com/blog/post/opamp-extension-remote-collector-management/view) and [HTTP Forwarder configuration](https://oneuptime.com/blog/post/http-forwarder-extension-opentelemetry-collector/view).
+For related topics, explore [OpAMP Extension for remote management](https://oneuptime.com/blog/post/2026-02-06-opamp-extension-remote-collector-management/view) and [HTTP Forwarder configuration](https://oneuptime.com/blog/post/2026-02-06-http-forwarder-extension-opentelemetry-collector/view).

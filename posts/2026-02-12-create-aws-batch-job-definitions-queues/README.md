@@ -337,4 +337,4 @@ aws batch submit-job \
 6. Verify the job role has permissions for any AWS services the job uses
 7. Check that memory/vCPU requirements don't exceed instance capacity
 
-Well-designed job definitions and queues are the foundation of a reliable batch processing system. Spend time getting the retry logic, timeouts, and priorities right up front, and your pipeline will handle failures gracefully. For using Fargate instead of EC2, check out our guide on [AWS Batch with Fargate](https://oneuptime.com/blog/post/use-aws-batch-with-fargate/view).
+Well-designed job definitions and queues are the foundation of a reliable batch processing system. Spend time getting the retry logic, timeouts, and priorities right up front, and your pipeline will handle failures gracefully. For using Fargate instead of EC2, check out our guide on [AWS Batch with Fargate](https://oneuptime.com/blog/post/2026-02-12-use-aws-batch-with-fargate/view).

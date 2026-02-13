@@ -294,4 +294,4 @@ Watch these CloudWatch metrics for GWLB health:
 
 Set up alarms for unhealthy hosts - if an appliance goes down and you're running at capacity, you could start dropping traffic.
 
-For more on load balancing, see our guide on [ALB authentication](https://oneuptime.com/blog/post/alb-authentication-cognito-oidc/view).
+For more on load balancing, see our guide on [ALB authentication](https://oneuptime.com/blog/post/2026-02-12-alb-authentication-cognito-oidc/view).

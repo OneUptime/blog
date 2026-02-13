@@ -920,6 +920,6 @@ Start with security fundamentals like encryption and network access, then expand
 
 **Related Reading:**
 
-- [Introducing the OneUptime Terraform Provider: Infrastructure as Code for Complete Observability](https://oneuptime.com/blog/post/introducing-terraform-provider-for-oneuptime/view)
-- [How to Implement GitOps with ArgoCD in Kubernetes](https://oneuptime.com/blog/post/kubernetes-gitops-argocd/view)
-- [The Five Stages of SRE Maturity](https://oneuptime.com/blog/post/the-five-stages-of-sre-maturity/view)
+- [Introducing the OneUptime Terraform Provider: Infrastructure as Code for Complete Observability](https://oneuptime.com/blog/post/2025-07-01-introducing-terraform-provider-for-oneuptime/view)
+- [How to Implement GitOps with ArgoCD in Kubernetes](https://oneuptime.com/blog/post/2026-01-06-kubernetes-gitops-argocd/view)
+- [The Five Stages of SRE Maturity](https://oneuptime.com/blog/post/2025-09-01-the-five-stages-of-sre-maturity/view)

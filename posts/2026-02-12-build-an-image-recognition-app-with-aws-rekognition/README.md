@@ -415,7 +415,7 @@ def respond(status, body):
 
 ## Monitoring Your Image Recognition Pipeline
 
-Rekognition API calls can fail due to throttling, image format issues, or service disruptions. Monitor API error rates, response times, and processing costs. For applications where image analysis is user-facing, set up uptime monitoring with [OneUptime](https://oneuptime.com/blog/post/build-a-content-moderation-system-on-aws/view) to ensure the analysis pipeline stays responsive.
+Rekognition API calls can fail due to throttling, image format issues, or service disruptions. Monitor API error rates, response times, and processing costs. For applications where image analysis is user-facing, set up uptime monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-content-moderation-system-on-aws/view) to ensure the analysis pipeline stays responsive.
 
 ## Wrapping Up
 

@@ -10,7 +10,7 @@ Description: Learn how to share CloudWatch dashboards across AWS accounts so tea
 
 Most organizations that have been on AWS for a while end up with multiple accounts. Maybe you've got separate accounts for production, staging, and development. Or you're using AWS Organizations to isolate different business units. Either way, you eventually hit the same problem: your monitoring data is scattered across accounts, and nobody wants to log into five different consoles to check if things are healthy.
 
-CloudWatch dashboard sharing solves part of this problem. It lets you share a dashboard with people who don't have AWS credentials for the account that owns the dashboard. You can also pull metrics from multiple accounts into a single dashboard using cross-account observability, which we cover in a [separate post](https://oneuptime.com/blog/post/cloudwatch-cross-account-observability/view).
+CloudWatch dashboard sharing solves part of this problem. It lets you share a dashboard with people who don't have AWS credentials for the account that owns the dashboard. You can also pull metrics from multiple accounts into a single dashboard using cross-account observability, which we cover in a [separate post](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-cross-account-observability/view).
 
 ## Dashboard Sharing Options
 
@@ -160,7 +160,7 @@ graph LR
     M -->|Dashboard URL| V[Viewers]
 ```
 
-We have a detailed walkthrough of this setup in our [cross-account observability guide](https://oneuptime.com/blog/post/cloudwatch-cross-account-observability/view).
+We have a detailed walkthrough of this setup in our [cross-account observability guide](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-cross-account-observability/view).
 
 ## Building a Multi-Account Dashboard
 
@@ -225,4 +225,4 @@ aws cloudformation create-stack-set \
 
 ## Wrapping Up
 
-Sharing CloudWatch dashboards across accounts doesn't have to be complicated. For quick sharing with non-technical stakeholders, the public link option works great. For secure cross-account access within your organization, IAM role assumption or SSO integration is the way to go. And for truly centralized monitoring, combine dashboard sharing with cross-account observability to pull metrics from all your accounts into one place. Check out our guide on [creating effective CloudWatch dashboards](https://oneuptime.com/blog/post/create-cloudwatch-dashboards-application-monitoring/view) for tips on what to put on those shared dashboards.
+Sharing CloudWatch dashboards across accounts doesn't have to be complicated. For quick sharing with non-technical stakeholders, the public link option works great. For secure cross-account access within your organization, IAM role assumption or SSO integration is the way to go. And for truly centralized monitoring, combine dashboard sharing with cross-account observability to pull metrics from all your accounts into one place. Check out our guide on [creating effective CloudWatch dashboards](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-dashboards-application-monitoring/view) for tips on what to put on those shared dashboards.

@@ -317,4 +317,4 @@ The Parquet format is typically much smaller than the raw database storage becau
 
 Exporting Aurora snapshots to S3 bridges the gap between your operational database and your analytics infrastructure. The Parquet format makes the data immediately queryable with Athena, Redshift Spectrum, or Spark. Automate the process with EventBridge and Lambda, and you've got a hands-off pipeline from Aurora to your data lake.
 
-For more on managing your Aurora infrastructure, check out how [Aurora cloning](https://oneuptime.com/blog/post/aurora-cloning-for-fast-database-copies/view) can help you create quick copies for testing, or how to [configure Aurora endpoints](https://oneuptime.com/blog/post/configure-aurora-endpoints-writer-reader-custom/view) for optimal traffic routing.
+For more on managing your Aurora infrastructure, check out how [Aurora cloning](https://oneuptime.com/blog/post/2026-02-12-aurora-cloning-for-fast-database-copies/view) can help you create quick copies for testing, or how to [configure Aurora endpoints](https://oneuptime.com/blog/post/2026-02-12-configure-aurora-endpoints-writer-reader-custom/view) for optimal traffic routing.

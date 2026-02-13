@@ -600,7 +600,7 @@ The Debug and File exporters serve similar purposes but with different trade-off
 | Data persistence | No (lost on restart) | Yes (survives restarts) |
 | Best for | Development, quick debugging | Production debugging, archival |
 
-For production debugging, consider using the [File exporter](https://oneuptime.com/blog/post/file-exporter-opentelemetry-collector/view) instead, as it has lower performance impact and allows post-mortem analysis.
+For production debugging, consider using the [File exporter](https://oneuptime.com/blog/post/2026-02-06-file-exporter-opentelemetry-collector/view) instead, as it has lower performance impact and allows post-mortem analysis.
 
 ---
 
@@ -672,8 +672,8 @@ grep "POST /api/payment" /tmp/debug.log || exit 1
 ## Related Resources
 
 - [What is the OpenTelemetry Collector and Why Use One?](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
-- [How to Configure the File Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/file-exporter-opentelemetry-collector/view)
-- [How to Configure the OTLP HTTP Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/otlp-http-exporter-opentelemetry-collector/view)
+- [How to Configure the File Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-file-exporter-opentelemetry-collector/view)
+- [How to Configure the OTLP HTTP Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-otlp-http-exporter-opentelemetry-collector/view)
 
 ---
 

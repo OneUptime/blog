@@ -257,7 +257,7 @@ The Docker Compose to ECS path has some notable limitations:
 
 5. **No rolling updates.** The compose integration doesn't support gradual rollouts. Deployments replace all tasks at once.
 
-For teams that outgrow these limitations, the natural next step is to move to native ECS task definitions managed through CloudFormation or CDK. See our guide on [migrating from Docker Compose to ECS task definitions](https://oneuptime.com/blog/post/migrate-docker-compose-ecs-task-definitions/view).
+For teams that outgrow these limitations, the natural next step is to move to native ECS task definitions managed through CloudFormation or CDK. See our guide on [migrating from Docker Compose to ECS task definitions](https://oneuptime.com/blog/post/2026-02-12-migrate-docker-compose-ecs-task-definitions/view).
 
 ## When to Use Compose vs Native ECS
 

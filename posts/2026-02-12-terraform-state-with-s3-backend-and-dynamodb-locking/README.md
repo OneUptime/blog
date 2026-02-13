@@ -304,4 +304,4 @@ resource "aws_iam_policy" "terraform_state_access" {
 
 Remote state with S3 and DynamoDB is table stakes for team-based Terraform workflows. Set it up before you write your first real resource, organize your state files logically, and lock down access with IAM. The bucket versioning will save you when someone inevitably corrupts the state, and the DynamoDB locking will prevent the corruption in the first place.
 
-For managing authentication to this backend, see our guide on [configuring AWS provider authentication](https://oneuptime.com/blog/post/configure-aws-provider-authentication-in-terraform/view). And if you're using Terragrunt, check out how it [simplifies backend configuration](https://oneuptime.com/blog/post/terragrunt-for-dry-terraform-aws-configurations/view).
+For managing authentication to this backend, see our guide on [configuring AWS provider authentication](https://oneuptime.com/blog/post/2026-02-12-configure-aws-provider-authentication-in-terraform/view). And if you're using Terragrunt, check out how it [simplifies backend configuration](https://oneuptime.com/blog/post/2026-02-12-terragrunt-for-dry-terraform-aws-configurations/view).

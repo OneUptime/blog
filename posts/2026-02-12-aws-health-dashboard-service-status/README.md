@@ -294,7 +294,7 @@ def check_aws_health_for_service(service_name, region):
     return {'aws_issue_detected': False}
 ```
 
-For a comprehensive monitoring setup that includes AWS service health alongside your application metrics, check out our post on [setting up Personal Health Dashboard notifications](https://oneuptime.com/blog/post/aws-personal-health-dashboard-notifications/view).
+For a comprehensive monitoring setup that includes AWS service health alongside your application metrics, check out our post on [setting up Personal Health Dashboard notifications](https://oneuptime.com/blog/post/2026-02-12-aws-personal-health-dashboard-notifications/view).
 
 ## Best Practices
 

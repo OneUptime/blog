@@ -399,7 +399,7 @@ Critical metrics to track:
 - Usage metering lag (time between event and aggregation)
 - Invoice generation success rate
 
-For a thorough monitoring setup, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/build-a-metrics-collection-system-on-aws/view).
+For a thorough monitoring setup, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-metrics-collection-system-on-aws/view).
 
 ## Testing Billing
 

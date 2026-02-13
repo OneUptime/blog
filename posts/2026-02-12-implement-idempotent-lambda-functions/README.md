@@ -329,4 +329,4 @@ def test_idempotency():
 
 Idempotency is a fundamental requirement for Lambda functions. Every event source can deliver duplicates, and your functions need to handle that gracefully. Use DynamoDB with conditional writes for the idempotency store, choose appropriate keys for each event source, and consider AWS Lambda Powertools to avoid reinventing the wheel.
 
-For a related pattern that protects against cascading failures, see our guide on [implementing the circuit breaker pattern with Lambda and DynamoDB](https://oneuptime.com/blog/post/implement-circuit-breaker-pattern-with-lambda-and-dynamodb/view).
+For a related pattern that protects against cascading failures, see our guide on [implementing the circuit breaker pattern with Lambda and DynamoDB](https://oneuptime.com/blog/post/2026-02-12-implement-circuit-breaker-pattern-with-lambda-and-dynamodb/view).

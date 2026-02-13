@@ -326,7 +326,7 @@ Check PagerDuty to confirm the incident was created and then resolved.
 
 **Test regularly.** Schedule monthly integration tests. Services change, endpoints expire, and SNS subscriptions can get into weird states.
 
-For setting up SNS notifications themselves, check our [SNS notifications from CloudWatch Alarms](https://oneuptime.com/blog/post/sns-notifications-cloudwatch-alarms/view) guide. If you'd also like Slack notifications alongside PagerDuty, see our [CloudWatch to Slack integration](https://oneuptime.com/blog/post/cloudwatch-alarms-slack/view) guide.
+For setting up SNS notifications themselves, check our [SNS notifications from CloudWatch Alarms](https://oneuptime.com/blog/post/2026-02-12-sns-notifications-cloudwatch-alarms/view) guide. If you'd also like Slack notifications alongside PagerDuty, see our [CloudWatch to Slack integration](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-slack/view) guide.
 
 ## Wrapping Up
 

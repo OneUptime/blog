@@ -377,4 +377,4 @@ aws iot test-invoke-authorizer # for auth testing
 
 The Rules Engine is the glue between your IoT devices and the rest of your AWS infrastructure. SQL-based filtering keeps things simple for straightforward routing, while built-in functions handle data transformation. The ability to trigger multiple actions from a single rule means you can store, alert, and process data simultaneously without writing any glue code.
 
-Start with a simple rule that stores data in DynamoDB, then add more actions as your needs grow. For more on managing device state that rules can react to, see our guide on [IoT Core Thing Shadows](https://oneuptime.com/blog/post/create-iot-core-thing-shadows/view).
+Start with a simple rule that stores data in DynamoDB, then add more actions as your needs grow. For more on managing device state that rules can react to, see our guide on [IoT Core Thing Shadows](https://oneuptime.com/blog/post/2026-02-12-create-iot-core-thing-shadows/view).

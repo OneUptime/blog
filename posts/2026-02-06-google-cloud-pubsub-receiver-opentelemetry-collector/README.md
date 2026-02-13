@@ -945,9 +945,9 @@ gcp.resource.type = "gce_instance"
 
 ## Related Resources
 
-- [How to Configure Google Cloud Monitoring Receiver](https://oneuptime.com/blog/post/google-cloud-monitoring-receiver-opentelemetry-collector/view)
-- [How to Configure Azure Event Hub Receiver](https://oneuptime.com/blog/post/azure-event-hub-receiver-opentelemetry-collector/view)
-- [OpenTelemetry Collector: What It Is and When You Need It](https://oneuptime.com/blog/post/what-is-opentelemetry-collector-and-why-use-one/view)
+- [How to Configure Google Cloud Monitoring Receiver](https://oneuptime.com/blog/post/2026-02-06-google-cloud-monitoring-receiver-opentelemetry-collector/view)
+- [How to Configure Azure Event Hub Receiver](https://oneuptime.com/blog/post/2026-02-06-azure-event-hub-receiver-opentelemetry-collector/view)
+- [OpenTelemetry Collector: What It Is and When You Need It](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
 
 ---
 

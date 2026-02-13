@@ -314,7 +314,7 @@ terraform import aws_acm_certificate.main arn:aws:acm:us-east-1:123456789012:cer
 
 **Region matters**: ALB/NLB certificates must be in the same region as the load balancer. CloudFront certificates must be in us-east-1. API Gateway regional endpoints use the same region, while edge-optimized endpoints need us-east-1.
 
-For more on managing multi-region AWS resources with Terraform, check out our post on [Terraform AWS provider aliases for multi-region](https://oneuptime.com/blog/post/terraform-aws-provider-aliases-multi-region/view).
+For more on managing multi-region AWS resources with Terraform, check out our post on [Terraform AWS provider aliases for multi-region](https://oneuptime.com/blog/post/2026-02-12-terraform-aws-provider-aliases-multi-region/view).
 
 ## Wrapping Up
 

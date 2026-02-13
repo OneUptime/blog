@@ -425,4 +425,4 @@ def test_upload(s3_client, s3_bucket):
 - **Keep moto updated.** AWS adds features constantly, and moto needs updates to support them.
 - **Use region_name explicitly.** Moto sometimes behaves differently without an explicit region.
 
-For simpler unit testing without full service simulation, see the guide on [mocking AWS SDK calls](https://oneuptime.com/blog/post/mock-aws-sdk-calls-unit-tests/view). And for integration testing with a running service emulator, [LocalStack](https://oneuptime.com/blog/post/localstack-test-aws-services-locally/view) is a great complement to moto.
+For simpler unit testing without full service simulation, see the guide on [mocking AWS SDK calls](https://oneuptime.com/blog/post/2026-02-12-mock-aws-sdk-calls-unit-tests/view). And for integration testing with a running service emulator, [LocalStack](https://oneuptime.com/blog/post/2026-02-12-localstack-test-aws-services-locally/view) is a great complement to moto.

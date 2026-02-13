@@ -381,7 +381,7 @@ aws cloudwatch put-metric-alarm \
 
 5. **Monitor ingest health.** Set up alarms on ingest errors and latency. A broken ingest means no video for your viewers.
 
-For related streaming topics, check out our guide on [setting up AWS Interactive Video Service for live streaming](https://oneuptime.com/blog/post/set-up-aws-interactive-video-service-ivs-for-live-streaming/view).
+For related streaming topics, check out our guide on [setting up AWS Interactive Video Service for live streaming](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-interactive-video-service-ivs-for-live-streaming/view).
 
 ## Wrapping Up
 

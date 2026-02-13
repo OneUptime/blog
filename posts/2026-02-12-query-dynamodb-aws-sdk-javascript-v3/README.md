@@ -320,4 +320,4 @@ if (Object.keys(response.UnprocessedKeys || {}).length > 0) {
 - **Handle pagination in every query.** Even if you don't expect more than 1 MB of results today, your data will grow.
 - **Use GSIs for alternate access patterns**, but remember they cost additional storage and write capacity.
 
-For the Python equivalent of these operations, check out [querying DynamoDB with Boto3](https://oneuptime.com/blog/post/query-dynamodb-boto3/view). For general SDK setup, see the [AWS SDK v3 client configuration guide](https://oneuptime.com/blog/post/aws-sdk-v3-clients-nodejs/view).
+For the Python equivalent of these operations, check out [querying DynamoDB with Boto3](https://oneuptime.com/blog/post/2026-02-12-query-dynamodb-boto3/view). For general SDK setup, see the [AWS SDK v3 client configuration guide](https://oneuptime.com/blog/post/2026-02-12-aws-sdk-v3-clients-nodejs/view).

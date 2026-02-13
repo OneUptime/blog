@@ -326,7 +326,7 @@ OpenSearch provides built-in metrics through CloudWatch. Monitor these key metri
 - `JVMMemoryPressure` - High memory pressure causes slow queries
 - `SearchLatency` - User-facing performance
 
-For setting up comprehensive monitoring, see our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/build-logging-and-monitoring-stack-on-aws/view).
+For setting up comprehensive monitoring, see our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view).
 
 ## Cost Tips
 

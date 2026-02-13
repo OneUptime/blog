@@ -396,4 +396,4 @@ Here's what separates good IaC from a mess: use modules for reusability, variabl
 
 Infrastructure as Code is a discipline, not just a tool. Treat your infrastructure repository with the same care and rigor as your application code, and you'll save yourself countless hours of debugging, firefighting, and rebuilding.
 
-For CI/CD pipeline integration, check out [CI/CD best practices on AWS](https://oneuptime.com/blog/post/ci-cd-best-practices-aws/view). For multi-account infrastructure management, see [multi-account strategy on AWS](https://oneuptime.com/blog/post/multi-account-strategy-aws/view).
+For CI/CD pipeline integration, check out [CI/CD best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-ci-cd-best-practices-aws/view). For multi-account infrastructure management, see [multi-account strategy on AWS](https://oneuptime.com/blog/post/2026-02-12-multi-account-strategy-aws/view).

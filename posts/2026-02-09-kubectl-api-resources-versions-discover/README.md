@@ -468,4 +468,4 @@ kubectl get crds | grep <resource-name>
 
 This systematically identifies missing resources or incorrect apiVersion values.
 
-Understanding cluster capabilities prevents deployment failures and enables portable manifests. Use api-resources and api-versions to discover what your cluster supports, compare environments, and write version-aware automation. For more cluster exploration commands, see https://oneuptime.com/blog/post/kubectl-explain-api-resource-schemas/view.
+Understanding cluster capabilities prevents deployment failures and enables portable manifests. Use api-resources and api-versions to discover what your cluster supports, compare environments, and write version-aware automation. For more cluster exploration commands, see https://oneuptime.com/blog/post/2026-02-09-kubectl-explain-api-resource-schemas/view.

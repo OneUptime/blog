@@ -218,4 +218,4 @@ If DNS works but HTTP doesn't, the issue is likely in NACLs or route tables. If 
 7. Confirm the Elastic IP is properly associated
 8. Test from the instance using curl or netcat
 
-NAT Gateway issues are almost always routing problems. Work through the route tables methodically, and you'll find the gap. For setting up monitoring on your VPC infrastructure, check out our post on [fixing VPC endpoint issues](https://oneuptime.com/blog/post/fix-vpc-endpoint-connection-refused-errors/view).
+NAT Gateway issues are almost always routing problems. Work through the route tables methodically, and you'll find the gap. For setting up monitoring on your VPC infrastructure, check out our post on [fixing VPC endpoint issues](https://oneuptime.com/blog/post/2026-02-12-fix-vpc-endpoint-connection-refused-errors/view).

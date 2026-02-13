@@ -230,7 +230,7 @@ aws rds describe-db-instances \
   --query "DBInstances[].{ID: DBInstanceIdentifier, Class: DBInstanceClass, Status: DBInstanceStatus}"
 ```
 
-For a more automated approach to tracking free tier usage, see our guide on [tracking and avoiding AWS Free Tier overages](https://oneuptime.com/blog/post/track-and-avoid-aws-free-tier-overages/view).
+For a more automated approach to tracking free tier usage, see our guide on [tracking and avoiding AWS Free Tier overages](https://oneuptime.com/blog/post/2026-02-12-track-and-avoid-aws-free-tier-overages/view).
 
 ## Key Takeaways
 

@@ -188,7 +188,7 @@ You should also set up monitoring for remediation failures. Here's a quick Event
 }
 ```
 
-Route this to an SNS topic so your team gets notified when something can't be fixed automatically. For more on this pattern, check out our post on [security alerting with EventBridge and SNS](https://oneuptime.com/blog/post/security-alerting-eventbridge-sns/view).
+Route this to an SNS topic so your team gets notified when something can't be fixed automatically. For more on this pattern, check out our post on [security alerting with EventBridge and SNS](https://oneuptime.com/blog/post/2026-02-12-security-alerting-eventbridge-sns/view).
 
 ## Best Practices
 
@@ -204,7 +204,7 @@ Route this to an SNS topic so your team gets notified when something can't be fi
 
 ## Monitoring Your Remediation Pipeline
 
-You'll want visibility into what's being remediated and how often. AWS Config provides a compliance timeline for each resource, which shows you when it went non-compliant and when it was remediated. For broader monitoring of your AWS infrastructure, consider setting up [CloudWatch alarms](https://oneuptime.com/blog/post/cloudwatch-alarms-cdk/view) to track remediation metrics.
+You'll want visibility into what's being remediated and how often. AWS Config provides a compliance timeline for each resource, which shows you when it went non-compliant and when it was remediated. For broader monitoring of your AWS infrastructure, consider setting up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-cdk/view) to track remediation metrics.
 
 CloudWatch metrics like `RemediationExecutionSuccessful` and `RemediationExecutionFailed` give you aggregate data across all your rules. Build a dashboard from these metrics so your security team has a single pane of glass.
 

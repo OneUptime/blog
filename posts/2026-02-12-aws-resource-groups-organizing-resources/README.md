@@ -117,7 +117,7 @@ print(f'\nTotal: {len(types)} resources')
 
 The console experience for Resource Groups is quite good. Navigate to Resource Groups in the console and you'll see all your groups listed. Clicking into one shows you every resource in that group with direct links to each resource's console page.
 
-You can also use the "Tag Editor" from the Resource Groups console to find and fix tagging inconsistencies - which is essential for keeping your groups accurate. For more on bulk tagging, see our post on [using AWS Tag Editor for bulk tagging](https://oneuptime.com/blog/post/aws-tag-editor-bulk-tagging/view).
+You can also use the "Tag Editor" from the Resource Groups console to find and fix tagging inconsistencies - which is essential for keeping your groups accurate. For more on bulk tagging, see our post on [using AWS Tag Editor for bulk tagging](https://oneuptime.com/blog/post/2026-02-12-aws-tag-editor-bulk-tagging/view).
 
 ## Practical Grouping Strategies
 

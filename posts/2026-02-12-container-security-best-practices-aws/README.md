@@ -374,4 +374,4 @@ Container security on AWS isn't a single thing you enable - it's a set of practi
 
 The biggest mistake teams make is treating containers as black boxes. Just because something is packaged in a container doesn't mean it's automatically secure. Apply the same security rigor you'd use for any other workload.
 
-For more on AWS security practices, check out [serverless security best practices on AWS](https://oneuptime.com/blog/post/serverless-security-best-practices-aws/view) and [defense in depth on AWS](https://oneuptime.com/blog/post/defense-in-depth-aws/view).
+For more on AWS security practices, check out [serverless security best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-serverless-security-best-practices-aws/view) and [defense in depth on AWS](https://oneuptime.com/blog/post/2026-02-12-defense-in-depth-aws/view).

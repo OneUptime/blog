@@ -322,4 +322,4 @@ The environments will be cleaned up within minutes.
 
 Provisioned concurrency is the nuclear option for cold starts - it eliminates them completely for traffic within your provisioned capacity. Use it for latency-sensitive APIs, payment processing, real-time applications, and anything where consistent response times matter more than cost optimization. Pair it with auto scaling or scheduled scaling to keep costs under control.
 
-For a broader view of cold start optimization, see our guide on [reducing Lambda cold start times](https://oneuptime.com/blog/post/reduce-lambda-cold-start-times/view). And for managing concurrency limits more broadly, check out [configuring Lambda reserved concurrency](https://oneuptime.com/blog/post/configure-lambda-reserved-concurrency/view).
+For a broader view of cold start optimization, see our guide on [reducing Lambda cold start times](https://oneuptime.com/blog/post/2026-02-12-reduce-lambda-cold-start-times/view). And for managing concurrency limits more broadly, check out [configuring Lambda reserved concurrency](https://oneuptime.com/blog/post/2026-02-12-configure-lambda-reserved-concurrency/view).

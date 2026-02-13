@@ -295,6 +295,6 @@ apt-get install -y python3-pip
 pip3 install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz
 ```
 
-The helper scripts bridge an important gap in CloudFormation's capabilities. They let you treat instance configuration as code right inside your templates, and they give CloudFormation visibility into whether that configuration succeeded. For more about organizing the templates that use these scripts, check out the post on [organizing large CloudFormation projects](https://oneuptime.com/blog/post/organize-large-cloudformation-projects/view).
+The helper scripts bridge an important gap in CloudFormation's capabilities. They let you treat instance configuration as code right inside your templates, and they give CloudFormation visibility into whether that configuration succeeded. For more about organizing the templates that use these scripts, check out the post on [organizing large CloudFormation projects](https://oneuptime.com/blog/post/2026-02-12-organize-large-cloudformation-projects/view).
 
 Once your instances are configured and running, don't forget to set up proper monitoring. Knowing that your cfn-init succeeded during deployment is great, but you also need to know when things go sideways in production.

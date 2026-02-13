@@ -88,7 +88,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:ops-warning"
 ```
 
-If this alarm fires consistently, it's time to consider Max I/O performance mode. See our post on [EFS performance modes](https://oneuptime.com/blog/post/efs-performance-modes-general-purpose-max-io/view) for guidance.
+If this alarm fires consistently, it's time to consider Max I/O performance mode. See our post on [EFS performance modes](https://oneuptime.com/blog/post/2026-02-12-efs-performance-modes-general-purpose-max-io/view) for guidance.
 
 ### Client Connection Alarm
 

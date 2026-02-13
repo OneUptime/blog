@@ -746,7 +746,7 @@ exporters:
     compression: zstd
 ```
 
-For comprehensive cost optimization, see our guide on [building cost-effective observability platforms](https://oneuptime.com/blog/post/cost-effective-observability-platform-opentelemetry/view).
+For comprehensive cost optimization, see our guide on [building cost-effective observability platforms](https://oneuptime.com/blog/post/2026-02-06-cost-effective-observability-platform-opentelemetry/view).
 
 ## Troubleshooting Temporality Issues
 

@@ -365,6 +365,6 @@ pip freeze | grep -E "aws-cdk|constructs|cdk-nag" > requirements.txt
 cdk destroy
 ```
 
-For the TypeScript version of this tutorial, check out [creating your first CDK app with TypeScript](https://oneuptime.com/blog/post/create-first-cdk-app-with-typescript/view). To understand the different levels of CDK constructs used in this post, read about [CDK constructs L1, L2, and L3](https://oneuptime.com/blog/post/understand-cdk-constructs-l1-l2-l3/view).
+For the TypeScript version of this tutorial, check out [creating your first CDK app with TypeScript](https://oneuptime.com/blog/post/2026-02-12-create-first-cdk-app-with-typescript/view). To understand the different levels of CDK constructs used in this post, read about [CDK constructs L1, L2, and L3](https://oneuptime.com/blog/post/2026-02-12-understand-cdk-constructs-l1-l2-l3/view).
 
 Python CDK gives you the same power as TypeScript CDK with the added benefit of Python's extensive ecosystem. If your team already thinks in Python, there's no reason to switch languages just for infrastructure code.

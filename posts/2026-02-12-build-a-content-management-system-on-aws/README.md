@@ -441,7 +441,7 @@ Track CMS health with these metrics:
 - Media processing time
 - Search index freshness
 
-For a comprehensive approach, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/build-a-metrics-collection-system-on-aws/view).
+For a comprehensive approach, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-metrics-collection-system-on-aws/view).
 
 ## Wrapping Up
 

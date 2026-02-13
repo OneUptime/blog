@@ -331,7 +331,7 @@ resource "aws_lightsail_instance" "fleet" {
 
 Lightsail makes sense when you want simple, predictable pricing and don't need fine-grained control over networking. EC2 is better when you need VPC peering, detailed security group rules, auto-scaling groups, or specific instance types.
 
-For monitoring your Lightsail instances, check out our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/create-cloudwatch-alarms-terraform/view) - Lightsail publishes basic metrics to CloudWatch that you can alarm on.
+For monitoring your Lightsail instances, check out our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-terraform/view) - Lightsail publishes basic metrics to CloudWatch that you can alarm on.
 
 ## Wrapping Up
 

@@ -276,7 +276,7 @@ The console code editor works great for small functions, but it has limits:
 - No version control integration
 - Not suitable for multi-file projects
 
-For anything beyond quick prototyping, you'll want to switch to CLI-based or SAM-based deployments. See our guides on [deploying with the AWS CLI](https://oneuptime.com/blog/post/deploy-lambda-functions-aws-cli/view) and [deploying with AWS SAM](https://oneuptime.com/blog/post/deploy-lambda-functions-aws-sam/view).
+For anything beyond quick prototyping, you'll want to switch to CLI-based or SAM-based deployments. See our guides on [deploying with the AWS CLI](https://oneuptime.com/blog/post/2026-02-12-deploy-lambda-functions-aws-cli/view) and [deploying with AWS SAM](https://oneuptime.com/blog/post/2026-02-12-deploy-lambda-functions-aws-sam/view).
 
 ## Wrapping Up
 

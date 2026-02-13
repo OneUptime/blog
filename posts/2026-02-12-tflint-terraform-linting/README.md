@@ -329,7 +329,7 @@ checkov -d .
 echo "All checks passed."
 ```
 
-For security scanning specifics, check out [using Checkov for Terraform security scanning](https://oneuptime.com/blog/post/checkov-terraform-security-scanning/view).
+For security scanning specifics, check out [using Checkov for Terraform security scanning](https://oneuptime.com/blog/post/2026-02-12-checkov-terraform-security-scanning/view).
 
 ## Troubleshooting
 

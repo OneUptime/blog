@@ -251,7 +251,7 @@ This EventBridge rule triggers the restart runbook when a specific alarm fires:
 
 The target would be the SSM Automation execution with the relevant parameters. This way, when CPU stays pegged on your web server, Systems Manager automatically restarts it without anyone having to wake up.
 
-For more on setting up CloudWatch monitoring and alarms, check out our guide on [monitoring your infrastructure with CloudWatch](https://oneuptime.com/blog/post/monitor-efs-cloudwatch/view).
+For more on setting up CloudWatch monitoring and alarms, check out our guide on [monitoring your infrastructure with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-efs-cloudwatch/view).
 
 ## Best Practices
 

@@ -219,7 +219,7 @@ aws ecs wait services-stable \
 
 The `wait` command blocks until the service reaches a steady state or times out after 40 checks (10 minutes by default). It's useful in CI/CD pipelines to detect deployment failures.
 
-For continuous monitoring, check out our guide on [monitoring ECS tasks with CloudWatch metrics](https://oneuptime.com/blog/post/monitor-ecs-tasks-cloudwatch-metrics/view).
+For continuous monitoring, check out our guide on [monitoring ECS tasks with CloudWatch metrics](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-tasks-cloudwatch-metrics/view).
 
 ## Debugging Checklist for Stuck Deployments
 

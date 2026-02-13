@@ -348,7 +348,7 @@ for wave_name, servers in waves.items():
 - **Initial sync is slow**: Increase the bandwidth allocation in replication settings or use a dedicated replication network
 - **Test instance fails to boot**: Check that the boot mode (BIOS/UEFI) matches the source and that drivers are compatible
 
-For monitoring your migrated workloads, check out our guide on [migrating from on-premises to AWS step by step](https://oneuptime.com/blog/post/migrate-from-on-premises-to-aws-step-by-step/view) which covers post-migration monitoring setup.
+For monitoring your migrated workloads, check out our guide on [migrating from on-premises to AWS step by step](https://oneuptime.com/blog/post/2026-02-12-migrate-from-on-premises-to-aws-step-by-step/view) which covers post-migration monitoring setup.
 
 ## Wrapping Up
 

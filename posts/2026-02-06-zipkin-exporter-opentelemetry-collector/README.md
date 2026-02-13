@@ -565,7 +565,7 @@ The k8sattributes processor enriches spans with Kubernetes metadata, making it e
 
 For more information on OpenTelemetry exporters, check out these related posts:
 
-- [How to Configure the OpenSearch Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/opensearch-exporter-opentelemetry-collector/view)
-- [How to Configure the Sentry Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/sentry-exporter-opentelemetry-collector/view)
+- [How to Configure the OpenSearch Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-opensearch-exporter-opentelemetry-collector/view)
+- [How to Configure the Sentry Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-sentry-exporter-opentelemetry-collector/view)
 
 The Zipkin exporter provides a reliable, performant way to integrate OpenTelemetry with the Zipkin ecosystem. Whether you're migrating from native Zipkin instrumentation or building a new observability stack, this exporter offers the flexibility and features needed for production deployments.

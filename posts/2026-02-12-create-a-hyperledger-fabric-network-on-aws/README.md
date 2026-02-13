@@ -43,7 +43,7 @@ graph LR
 
 ## Option 1: Using Amazon Managed Blockchain
 
-This is the faster path. AWS handles the ordering service, certificate authorities, and infrastructure management. For a broader overview, see our post on [setting up Amazon Managed Blockchain](https://oneuptime.com/blog/post/set-up-amazon-managed-blockchain/view).
+This is the faster path. AWS handles the ordering service, certificate authorities, and infrastructure management. For a broader overview, see our post on [setting up Amazon Managed Blockchain](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-managed-blockchain/view).
 
 ### Create the Network and First Member
 

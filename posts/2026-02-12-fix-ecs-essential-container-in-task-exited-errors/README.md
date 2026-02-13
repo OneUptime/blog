@@ -158,7 +158,7 @@ For Fargate tasks, you also need to ensure the task-level memory is sufficient:
 }
 ```
 
-Check out our guide on [fixing ECS OutOfMemoryError](https://oneuptime.com/blog/post/fix-ecs-outofmemoryerror-container-tasks/view) for a deeper dive into memory issues.
+Check out our guide on [fixing ECS OutOfMemoryError](https://oneuptime.com/blog/post/2026-02-12-fix-ecs-outofmemoryerror-container-tasks/view) for a deeper dive into memory issues.
 
 ### Entrypoint or Command Errors
 

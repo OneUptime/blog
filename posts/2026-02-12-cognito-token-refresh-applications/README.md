@@ -343,7 +343,7 @@ async function logout(refreshToken) {
 }
 ```
 
-For a deeper understanding of how Cognito tokens are structured and validated, see [decoding and validating Cognito JWT tokens](https://oneuptime.com/blog/post/decode-validate-cognito-jwt-tokens/view).
+For a deeper understanding of how Cognito tokens are structured and validated, see [decoding and validating Cognito JWT tokens](https://oneuptime.com/blog/post/2026-02-12-decode-validate-cognito-jwt-tokens/view).
 
 ## Wrapping Up
 

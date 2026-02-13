@@ -28,7 +28,7 @@ Before diving in, let us clarify when to use each:
 - Secrets that need automatic rotation
 - High-sensitivity data requiring audit trails
 
-For database credentials specifically, see our guide on [using ECS with Secrets Manager for database credentials](https://oneuptime.com/blog/post/ecs-secrets-manager-database-credentials/view).
+For database credentials specifically, see our guide on [using ECS with Secrets Manager for database credentials](https://oneuptime.com/blog/post/2026-02-12-ecs-secrets-manager-database-credentials/view).
 
 ## Step 1: Create Parameters
 
@@ -349,4 +349,4 @@ You can reference a specific version in your task definition for pinned configur
 
 Parameter Store is the right choice for application configuration in ECS. It is free for standard parameters, supports hierarchical organization, and integrates natively with ECS task definitions. Use the `secrets` field in your container definitions to inject parameters as environment variables, organize them by environment path, and remember that running tasks need a redeployment to pick up parameter changes.
 
-For more on configuring ECS tasks, see our guide on [passing environment variables to ECS tasks](https://oneuptime.com/blog/post/pass-environment-variables-ecs-tasks/view).
+For more on configuring ECS tasks, see our guide on [passing environment variables to ECS tasks](https://oneuptime.com/blog/post/2026-02-12-pass-environment-variables-ecs-tasks/view).

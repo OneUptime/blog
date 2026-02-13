@@ -238,4 +238,4 @@ Your security score will likely start low - that's normal. Focus on improving it
 3. Disable controls with documented business reasons
 4. Set a quarterly goal to increase the score by a specific percentage
 
-For custom monitoring views, create [Security Hub insights](https://oneuptime.com/blog/post/custom-security-hub-insights/view). And for multi-account compliance tracking, set up [cross-account aggregation](https://oneuptime.com/blog/post/aggregate-security-hub-findings-across-accounts/view).
+For custom monitoring views, create [Security Hub insights](https://oneuptime.com/blog/post/2026-02-12-custom-security-hub-insights/view). And for multi-account compliance tracking, set up [cross-account aggregation](https://oneuptime.com/blog/post/2026-02-12-aggregate-security-hub-findings-across-accounts/view).

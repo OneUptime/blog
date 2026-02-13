@@ -362,4 +362,4 @@ table.update_item(
 
 The circuit breaker pattern is essential for building resilient serverless applications. Without it, a single downstream failure can cascade through your entire system. DynamoDB gives you a fast, scalable state store that all Lambda instances can share. The implementation is straightforward, and the payoff - preventing cascading failures - is enormous.
 
-For another critical Lambda resilience pattern, check out our guide on [implementing idempotent Lambda functions](https://oneuptime.com/blog/post/implement-idempotent-lambda-functions/view).
+For another critical Lambda resilience pattern, check out our guide on [implementing idempotent Lambda functions](https://oneuptime.com/blog/post/2026-02-12-implement-idempotent-lambda-functions/view).

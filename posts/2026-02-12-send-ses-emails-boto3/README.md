@@ -404,4 +404,4 @@ message_id = sender.send(
 - **Include unsubscribe links** in marketing emails to comply with regulations.
 - **Test with SES simulator addresses** before sending to real recipients.
 
-For handling the various errors SES can throw, see the guide on [Boto3 error handling](https://oneuptime.com/blog/post/boto3-errors-and-exceptions/view). Monitoring your email delivery metrics is critical for production systems - tracking bounce and complaint rates helps you maintain a good sender reputation.
+For handling the various errors SES can throw, see the guide on [Boto3 error handling](https://oneuptime.com/blog/post/2026-02-12-boto3-errors-and-exceptions/view). Monitoring your email delivery metrics is critical for production systems - tracking bounce and complaint rates helps you maintain a good sender reputation.

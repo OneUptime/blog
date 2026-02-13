@@ -211,7 +211,7 @@ For account-wide IP restrictions, attach the policy as a Service Control Policy 
 
 The `StringNotLike` condition excludes service-linked roles and the organization management role, which need to operate without IP restrictions.
 
-For more on SCPs, check out our guide on [using Service Control Policies in AWS Organizations](https://oneuptime.com/blog/post/use-service-control-policies-scps-in-aws-organizations/view).
+For more on SCPs, check out our guide on [using Service Control Policies in AWS Organizations](https://oneuptime.com/blog/post/2026-02-12-use-service-control-policies-scps-in-aws-organizations/view).
 
 ## Testing IP Conditions
 

@@ -729,4 +729,4 @@ Optimize by:
 
 The resource detection processor automatically discovers and adds infrastructure metadata to your telemetry, providing essential context about where your applications are running. This eliminates manual configuration and ensures consistent resource attributes across all traces, metrics, and logs.
 
-For more on enriching telemetry data, see our guides on [Kubernetes attributes processor](https://oneuptime.com/blog/post/k8s-attributes-processor-opentelemetry-collector/view) and [OpenTelemetry metrics](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view).
+For more on enriching telemetry data, see our guides on [Kubernetes attributes processor](https://oneuptime.com/blog/post/2026-02-06-k8s-attributes-processor-opentelemetry-collector/view) and [OpenTelemetry metrics](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view).

@@ -342,4 +342,4 @@ X-Ray tracing with Lambda Powertools Tracer gives you visibility into your serve
 
 Start by enabling tracing on all your Lambda functions and decorating your handler and key methods. Add annotations for the values you'll want to search by. Then use the X-Ray console to analyze performance patterns and debug issues.
 
-For structured logging that complements your traces, see [Lambda Powertools Logger](https://oneuptime.com/blog/post/lambda-powertools-logger-structured-logging/view). For custom metrics, check out [Lambda Powertools Metrics](https://oneuptime.com/blog/post/lambda-powertools-metrics-custom-cloudwatch/view).
+For structured logging that complements your traces, see [Lambda Powertools Logger](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-logger-structured-logging/view). For custom metrics, check out [Lambda Powertools Metrics](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-metrics-custom-cloudwatch/view).

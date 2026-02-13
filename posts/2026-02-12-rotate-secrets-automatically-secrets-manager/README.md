@@ -370,7 +370,7 @@ def get_db_credentials(secret_name):
 
 Don't cache secrets for too long. Five minutes is a reasonable default. After rotation, your app should pick up the new credentials within the cache TTL.
 
-For more on managing secrets in different compute environments, check out our guides on [accessing secrets from Lambda](https://oneuptime.com/blog/post/access-secrets-manager-secrets-lambda-functions/view) and [accessing secrets from ECS](https://oneuptime.com/blog/post/access-secrets-manager-secrets-ecs-tasks/view).
+For more on managing secrets in different compute environments, check out our guides on [accessing secrets from Lambda](https://oneuptime.com/blog/post/2026-02-12-access-secrets-manager-secrets-lambda-functions/view) and [accessing secrets from ECS](https://oneuptime.com/blog/post/2026-02-12-access-secrets-manager-secrets-ecs-tasks/view).
 
 ## Wrapping Up
 

@@ -341,7 +341,7 @@ def handler(event, context):
 
 ## Approach 3: CodeDeploy for Traffic Shifting
 
-If you want canary or linear traffic shifting without SAM, use CodeDeploy directly. See our dedicated guide on [setting up CodeDeploy for Lambda deployments](https://oneuptime.com/blog/post/codedeploy-lambda-deployments/view) for the full setup.
+If you want canary or linear traffic shifting without SAM, use CodeDeploy directly. See our dedicated guide on [setting up CodeDeploy for Lambda deployments](https://oneuptime.com/blog/post/2026-02-12-codedeploy-lambda-deployments/view) for the full setup.
 
 ## Running Integration Tests
 
@@ -389,4 +389,4 @@ test('Lambda function responds correctly', async () => {
 
 After deploying your Lambda functions, keep tabs on them with CloudWatch metrics and alarms. For a unified view of all your serverless functions, [OneUptime](https://oneuptime.com) can aggregate Lambda metrics alongside your other services.
 
-For setting up pipeline notifications, check our guide on [CodePipeline notifications](https://oneuptime.com/blog/post/codepipeline-notifications/view). And if things go wrong, see our [CodePipeline troubleshooting guide](https://oneuptime.com/blog/post/troubleshoot-codepipeline-failures/view).
+For setting up pipeline notifications, check our guide on [CodePipeline notifications](https://oneuptime.com/blog/post/2026-02-12-codepipeline-notifications/view). And if things go wrong, see our [CodePipeline troubleshooting guide](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-codepipeline-failures/view).

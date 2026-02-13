@@ -269,7 +269,7 @@ aws ec2 describe-route-tables \
 
 Look for routes with a status of `blackhole`. This happens when the target (like a NAT gateway or peering connection) has been deleted but the route still exists. Delete blackhole routes - they cause silent packet drops.
 
-For the complete VPC setup including these route tables, see [creating a VPC from scratch](https://oneuptime.com/blog/post/create-vpc-from-scratch-in-aws/view).
+For the complete VPC setup including these route tables, see [creating a VPC from scratch](https://oneuptime.com/blog/post/2026-02-12-create-vpc-from-scratch-in-aws/view).
 
 ## Wrapping Up
 

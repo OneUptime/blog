@@ -353,7 +353,7 @@ cloudwatch.put_metric_alarm(
 )
 ```
 
-For comprehensive monitoring of your modernized mainframe workloads, [OneUptime](https://oneuptime.com/blog/post/migrate-from-on-premises-to-aws-step-by-step/view) provides application monitoring that covers both the runtime environment and the business transactions that depend on it.
+For comprehensive monitoring of your modernized mainframe workloads, [OneUptime](https://oneuptime.com/blog/post/2026-02-12-migrate-from-on-premises-to-aws-step-by-step/view) provides application monitoring that covers both the runtime environment and the business transactions that depend on it.
 
 ## Testing Strategies
 

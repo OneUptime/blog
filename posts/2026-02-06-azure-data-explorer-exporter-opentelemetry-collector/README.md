@@ -764,7 +764,7 @@ Solutions:
 The Azure Data Explorer exporter provides a powerful solution for storing and analyzing OpenTelemetry data at scale. With its high-performance query engine and flexible data management capabilities, ADX is ideal for organizations requiring advanced analytics and long-term telemetry retention.
 
 For more information on OpenTelemetry exporters, check out these related articles:
-- https://oneuptime.com/blog/post/azure-monitor-exporter-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/google-cloud-operations-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-azure-monitor-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-google-cloud-operations-exporter-opentelemetry-collector/view
 
 For detailed information about the Azure Data Explorer exporter configuration options, refer to the official OpenTelemetry Collector documentation.

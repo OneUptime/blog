@@ -325,7 +325,7 @@ When a pipeline build fails, check the S3 logs first. The build logs are detaile
 
 For ongoing monitoring, set up CloudWatch Events to trigger on pipeline state changes. You can get notified when builds succeed or fail.
 
-For a broader view of your infrastructure health, check out how to [monitor EC2 instances with CloudWatch](https://oneuptime.com/blog/post/monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) to make sure the instances launched from your custom AMIs are performing well.
+For a broader view of your infrastructure health, check out how to [monitor EC2 instances with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) to make sure the instances launched from your custom AMIs are performing well.
 
 ## Best Practices
 

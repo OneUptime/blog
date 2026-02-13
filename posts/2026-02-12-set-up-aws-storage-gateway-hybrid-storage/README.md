@@ -222,6 +222,6 @@ This schedules maintenance for Sunday at 2:00 AM UTC. Pick a time when your gate
 
 ## What's Next
 
-With your Storage Gateway deployed, you're ready to configure specific gateway types for your use case. Check out our guides on [configuring File Gateway for S3 access](https://oneuptime.com/blog/post/configure-storage-gateway-file-gateway-s3-access/view), [setting up Volume Gateway](https://oneuptime.com/blog/post/configure-storage-gateway-volume-gateway/view), or [configuring Tape Gateway](https://oneuptime.com/blog/post/configure-storage-gateway-tape-gateway/view) depending on your needs.
+With your Storage Gateway deployed, you're ready to configure specific gateway types for your use case. Check out our guides on [configuring File Gateway for S3 access](https://oneuptime.com/blog/post/2026-02-12-configure-storage-gateway-file-gateway-s3-access/view), [setting up Volume Gateway](https://oneuptime.com/blog/post/2026-02-12-configure-storage-gateway-volume-gateway/view), or [configuring Tape Gateway](https://oneuptime.com/blog/post/2026-02-12-configure-storage-gateway-tape-gateway/view) depending on your needs.
 
 The beauty of Storage Gateway is that your on-premises applications don't need to change at all. They keep using the same file shares, block volumes, or tape interfaces they always have - the data just flows seamlessly into AWS behind the scenes.

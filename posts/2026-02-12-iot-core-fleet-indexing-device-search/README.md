@@ -328,4 +328,4 @@ Limits to be aware of:
 
 Fleet indexing turns your IoT device registry into a searchable database. Combined with dynamic thing groups, it gives you powerful fleet management capabilities - from finding specific devices to building operational dashboards to targeting firmware updates. Enable it early in your IoT deployment, define useful custom fields, and build your operational workflows around the query capabilities.
 
-For more on IoT device management, see our guides on [AWS IoT Core device provisioning](https://oneuptime.com/blog/post/aws-iot-core-device-provisioning/view) and [using IoT Core Device Defender for security audits](https://oneuptime.com/blog/post/iot-core-device-defender-security-audits/view).
+For more on IoT device management, see our guides on [AWS IoT Core device provisioning](https://oneuptime.com/blog/post/2026-02-12-aws-iot-core-device-provisioning/view) and [using IoT Core Device Defender for security audits](https://oneuptime.com/blog/post/2026-02-12-iot-core-device-defender-security-audits/view).

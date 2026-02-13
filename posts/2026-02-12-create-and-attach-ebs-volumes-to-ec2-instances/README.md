@@ -19,7 +19,7 @@ A few things to know upfront:
 - EBS volumes are availability zone-specific. A volume in us-east-1a can only attach to instances in us-east-1a.
 - Each instance has a root EBS volume (where the OS lives) and can have additional volumes attached.
 - Volumes can only be attached to one instance at a time (except for io1/io2 Multi-Attach, which is a special case).
-- Performance characteristics depend on the volume type. See our guide on [choosing between EBS volume types](https://oneuptime.com/blog/post/choose-between-ebs-volume-types/view) for details.
+- Performance characteristics depend on the volume type. See our guide on [choosing between EBS volume types](https://oneuptime.com/blog/post/2026-02-12-choose-between-ebs-volume-types/view) for details.
 
 ## Creating an EBS Volume
 
@@ -305,6 +305,6 @@ Set up [monitoring with OneUptime](https://oneuptime.com) to track disk usage an
 
 **Using device names on Nitro instances.** Nitro-based instances (most modern types) expose EBS volumes as NVMe devices. The device name you specify during attach (/dev/xvdf) might appear as /dev/nvme1n1 inside the instance.
 
-**Not encrypting.** Always encrypt EBS volumes. There's no performance penalty, and it protects data at rest. See our guide on [encrypting EBS volumes](https://oneuptime.com/blog/post/encrypt-ebs-volumes-on-existing-ec2-instances/view).
+**Not encrypting.** Always encrypt EBS volumes. There's no performance penalty, and it protects data at rest. See our guide on [encrypting EBS volumes](https://oneuptime.com/blog/post/2026-02-12-encrypt-ebs-volumes-on-existing-ec2-instances/view).
 
 EBS volumes are the bread and butter of EC2 storage. Master the create-attach-format-mount workflow, and you'll be well-equipped to handle almost any storage need on AWS.

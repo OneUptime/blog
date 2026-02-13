@@ -201,7 +201,7 @@ When you see traffic being rejected, it's typically caused by either a security 
 2. If you see inbound traffic at instance B rejected - it's a security group or network ACL on that subnet.
 3. If you see SYN packets going out but no SYN-ACK coming back - the remote end isn't responding or something in the path is dropping the response.
 
-For more on the differences between security groups and NACLs, check out the comparison guide at https://oneuptime.com/blog/post/security-groups-vs-network-acls/view.
+For more on the differences between security groups and NACLs, check out the comparison guide at https://oneuptime.com/blog/post/2026-02-12-security-groups-vs-network-acls/view.
 
 ## Cost Considerations
 

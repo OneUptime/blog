@@ -176,7 +176,7 @@ check_ri_utilization()
 
 RIs aren't always the right choice. Here are situations where you should stick with on-demand:
 
-**Variable workloads.** If a database only runs during business hours or gets spun up temporarily for testing, on-demand makes more sense. Consider [scheduling non-production resources](https://oneuptime.com/blog/post/schedule-non-production-resources-to-save-costs/view) instead.
+**Variable workloads.** If a database only runs during business hours or gets spun up temporarily for testing, on-demand makes more sense. Consider [scheduling non-production resources](https://oneuptime.com/blog/post/2026-02-12-schedule-non-production-resources-to-save-costs/view) instead.
 
 **Rapidly changing requirements.** If you're actively migrating databases, changing engines, or testing new instance types, lock-in is risky.
 
@@ -215,7 +215,7 @@ Reserved Instances work best as part of a broader cost optimization strategy. Pa
 - **Aurora Serverless** - For databases with unpredictable workloads, Aurora Serverless v2 can scale to zero and might be cheaper than even reserved pricing.
 - **Read replica optimization** - Only maintain read replicas you actually need. Each replica is a separate instance that needs its own RI.
 
-For the full picture on AWS cost reduction, take a look at our guide on [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/create-a-cost-optimization-strategy-for-aws/view).
+For the full picture on AWS cost reduction, take a look at our guide on [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/2026-02-12-create-a-cost-optimization-strategy-for-aws/view).
 
 ## Key Takeaways
 

@@ -281,4 +281,4 @@ curl -XPUT "https://search-secure-search.us-east-1.es.amazonaws.com/_plugins/_se
     }'
 ```
 
-Fine-grained access control is essential for any shared OpenSearch deployment. It lets you consolidate multiple use cases into a single cluster while maintaining strict data isolation. For building dashboards on top of this secured data, see [building log analytics dashboards in OpenSearch](https://oneuptime.com/blog/post/log-analytics-dashboards-opensearch/view).
+Fine-grained access control is essential for any shared OpenSearch deployment. It lets you consolidate multiple use cases into a single cluster while maintaining strict data isolation. For building dashboards on top of this secured data, see [building log analytics dashboards in OpenSearch](https://oneuptime.com/blog/post/2026-02-12-log-analytics-dashboards-opensearch/view).

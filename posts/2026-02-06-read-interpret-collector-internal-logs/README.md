@@ -159,7 +159,7 @@ Error: failed to build the service: cannot build pipelines: cannot build receive
 
 The error message identifies the specific component and configuration issue preventing startup.
 
-For comprehensive startup troubleshooting, see https://oneuptime.com/blog/post/troubleshoot-collector-startup-failures/view.
+For comprehensive startup troubleshooting, see https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-startup-failures/view.
 
 ## Monitoring Data Flow
 
@@ -265,7 +265,7 @@ Monitor logs after configuration changes to verify improvements.
 
 Memory limiter logs show when memory pressure causes backpressure. This protects against OOM kills but indicates the collector needs more resources or lower data volume.
 
-For memory troubleshooting details, see https://oneuptime.com/blog/post/troubleshoot-memory-issues-oom-kills-collector/view.
+For memory troubleshooting details, see https://oneuptime.com/blog/post/2026-02-06-troubleshoot-memory-issues-oom-kills-collector/view.
 
 ## Interpreting Error Messages
 
@@ -722,12 +722,12 @@ service:
 ```
 
 Use debug logs together with:
-- zPages for live pipeline visibility: https://oneuptime.com/blog/post/zpages-live-debugging-collector/view
-- pprof for performance analysis: https://oneuptime.com/blog/post/profile-collector-pprof-extension/view
-- Debug exporter for data inspection: https://oneuptime.com/blog/post/debug-exporter-troubleshoot-collector-pipelines/view
+- zPages for live pipeline visibility: https://oneuptime.com/blog/post/2026-02-06-zpages-live-debugging-collector/view
+- pprof for performance analysis: https://oneuptime.com/blog/post/2026-02-06-profile-collector-pprof-extension/view
+- Debug exporter for data inspection: https://oneuptime.com/blog/post/2026-02-06-debug-exporter-troubleshoot-collector-pipelines/view
 
 ## Conclusion
 
 Mastering collector internal logs provides deep insight into collector behavior, enabling rapid issue diagnosis and performance optimization. Understanding log levels, structure, common patterns, and correlation with metrics equips you to maintain healthy collector deployments. Combine log analysis with other troubleshooting tools for comprehensive observability of your observability infrastructure.
 
-For startup-specific log analysis, see https://oneuptime.com/blog/post/troubleshoot-collector-startup-failures/view. For runtime performance issues, refer to https://oneuptime.com/blog/post/troubleshoot-memory-issues-oom-kills-collector/view.
+For startup-specific log analysis, see https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-startup-failures/view. For runtime performance issues, refer to https://oneuptime.com/blog/post/2026-02-06-troubleshoot-memory-issues-oom-kills-collector/view.

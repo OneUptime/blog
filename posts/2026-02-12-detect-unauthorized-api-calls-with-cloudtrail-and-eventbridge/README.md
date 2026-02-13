@@ -328,4 +328,4 @@ Then check CloudWatch metrics for your EventBridge rules to see if they matched.
 
 CloudTrail plus EventBridge gives you a lightweight, serverless security monitoring layer. It is not meant to replace comprehensive tools like GuardDuty, but it excels at catching specific patterns you define. The rules are easy to create, the cost is negligible, and the response time is fast.
 
-For deeper audit analysis, check out our guide on [CloudTrail Lake for advanced event analysis](https://oneuptime.com/blog/post/use-cloudtrail-lake-for-advanced-event-analysis/view). For detecting unusual API patterns automatically, see [monitoring API call patterns with CloudTrail Insights](https://oneuptime.com/blog/post/monitor-aws-api-call-patterns-with-cloudtrail-insights/view).
+For deeper audit analysis, check out our guide on [CloudTrail Lake for advanced event analysis](https://oneuptime.com/blog/post/2026-02-12-use-cloudtrail-lake-for-advanced-event-analysis/view). For detecting unusual API patterns automatically, see [monitoring API call patterns with CloudTrail Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-aws-api-call-patterns-with-cloudtrail-insights/view).

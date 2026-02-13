@@ -311,7 +311,7 @@ Use ECR when:
 - You need build caching strategies that App Runner doesn't support
 - You want to share images across multiple services
 
-For the ECR approach, see our guide on [setting up App Runner with ECR](https://oneuptime.com/blog/post/app-runner-with-ecr/view).
+For the ECR approach, see our guide on [setting up App Runner with ECR](https://oneuptime.com/blog/post/2026-02-12-app-runner-with-ecr/view).
 
 ## Wrapping Up
 

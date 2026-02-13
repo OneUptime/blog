@@ -152,7 +152,7 @@ If you are running ECS on Spot instances, this setting is essential.
 ECS_ENABLE_SPOT_INSTANCE_DRAINING=true
 ```
 
-When enabled, the agent watches for Spot interruption notices. Upon receiving one, it sets the instance to DRAINING, which tells ECS to start moving tasks to other instances. For more on running Spot instances with ECS, see our guide on [ECS with Spot Instances and capacity providers](https://oneuptime.com/blog/post/ecs-spot-instances-capacity-providers/view).
+When enabled, the agent watches for Spot interruption notices. Upon receiving one, it sets the instance to DRAINING, which tells ECS to start moving tasks to other instances. For more on running Spot instances with ECS, see our guide on [ECS with Spot Instances and capacity providers](https://oneuptime.com/blog/post/2026-02-12-ecs-spot-instances-capacity-providers/view).
 
 ## Resource Limits and Reservations
 
@@ -275,7 +275,7 @@ curl -s http://localhost:51678/v1/metadata
 curl -s http://localhost:51678/v1/tasks
 ```
 
-For more on troubleshooting ECS issues, see our guide on [troubleshooting ECS task failures](https://oneuptime.com/blog/post/troubleshoot-ecs-task-failures/view).
+For more on troubleshooting ECS issues, see our guide on [troubleshooting ECS task failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-ecs-task-failures/view).
 
 ## Wrapping Up
 

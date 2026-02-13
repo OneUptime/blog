@@ -371,7 +371,7 @@ module "order_events" {
 
 ## Monitoring the Setup
 
-Once your infrastructure is deployed, make sure you're monitoring it. For detailed guidance on tracking delivery metrics and setting up alarms, check out our post on [monitoring SNS with CloudWatch](https://oneuptime.com/blog/post/monitor-sns-cloudwatch/view).
+Once your infrastructure is deployed, make sure you're monitoring it. For detailed guidance on tracking delivery metrics and setting up alarms, check out our post on [monitoring SNS with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-sns-cloudwatch/view).
 
 ## Wrapping Up
 

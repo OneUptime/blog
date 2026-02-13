@@ -413,4 +413,4 @@ aws glue create-trigger \
   --actions '[{"JobName": "curate-daily-metrics"}, {"CrawlerName": "processed-zone-crawler"}]'
 ```
 
-This gives you a fully governed data lake. Raw data flows in, gets cleaned and transformed, and analysts query the curated results through Athena - all with fine-grained access control via Lake Formation. For more details on the individual components, see our guides on [Lake Formation setup](https://oneuptime.com/blog/post/set-up-amazon-lake-formation-for-data-lakes/view) and [batch analytics with Glue and Athena](https://oneuptime.com/blog/post/build-batch-analytics-pipeline-glue-athena/view).
+This gives you a fully governed data lake. Raw data flows in, gets cleaned and transformed, and analysts query the curated results through Athena - all with fine-grained access control via Lake Formation. For more details on the individual components, see our guides on [Lake Formation setup](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-lake-formation-for-data-lakes/view) and [batch analytics with Glue and Athena](https://oneuptime.com/blog/post/2026-02-12-build-batch-analytics-pipeline-glue-athena/view).

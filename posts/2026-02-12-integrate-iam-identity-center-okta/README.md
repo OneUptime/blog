@@ -29,7 +29,7 @@ The flow is straightforward: users click the AWS tile in their Okta dashboard, O
 
 ## Prerequisites
 
-- AWS IAM Identity Center enabled (see our [setup guide](https://oneuptime.com/blog/post/set-up-aws-iam-identity-center-sso/view))
+- AWS IAM Identity Center enabled (see our [setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-iam-identity-center-sso/view))
 - Okta account with admin access
 - An Okta plan that supports SCIM provisioning (Okta Lifecycle Management)
 

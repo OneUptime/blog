@@ -631,6 +631,6 @@ echo "Sampling rate: $(bc <<< "scale=2; $sampled / 600000 * 100")%"
 6. **Test under load**: Validate sampling behavior matches expectations
 7. **Document sampling policies**: Ensure teams understand what's sampled and why
 
-For additional optimization techniques, see [How to Disable Unnecessary Auto-Instrumentation Libraries to Reduce Noise](https://oneuptime.com/blog/post/disable-unnecessary-auto-instrumentation-reduce-noise/view) and [How to Aggregate Metrics at the Source to Reduce Data Volume](https://oneuptime.com/blog/post/aggregate-metrics-source-reduce-data-volume/view).
+For additional optimization techniques, see [How to Disable Unnecessary Auto-Instrumentation Libraries to Reduce Noise](https://oneuptime.com/blog/post/2026-02-06-disable-unnecessary-auto-instrumentation-reduce-noise/view) and [How to Aggregate Metrics at the Source to Reduce Data Volume](https://oneuptime.com/blog/post/2026-02-06-aggregate-metrics-source-reduce-data-volume/view).
 
 Rate-based sampling provides predictable, controllable telemetry volume while preserving observability for critical transactions, making it essential for high-traffic production environments.

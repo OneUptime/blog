@@ -384,7 +384,7 @@ def send_bulk(email_service, recipients, subject, text, html=None, rate_limit=14
     return results
 ```
 
-For larger bulk operations, see our guide on [sending bulk emails with Amazon SES](https://oneuptime.com/blog/post/send-bulk-emails-with-amazon-ses/view).
+For larger bulk operations, see our guide on [sending bulk emails with Amazon SES](https://oneuptime.com/blog/post/2026-02-12-send-bulk-emails-with-amazon-ses/view).
 
 ## Summary
 

@@ -297,4 +297,4 @@ Here's a quick decision framework:
 
 For most production use cases, the Athena approach is more flexible. You get SQL transformations, support for columnar formats like Parquet, and partition pruning for cost-efficient queries. The direct S3 approach is great for quick, one-off analyses or small reference datasets.
 
-If you're just getting started with QuickSight, check out our [QuickSight setup guide](https://oneuptime.com/blog/post/set-up-amazon-quicksight-for-business-intelligence/view) for the initial configuration steps, and our guide on [using QuickSight with Athena](https://oneuptime.com/blog/post/use-quicksight-with-athena/view) for more advanced query patterns.
+If you're just getting started with QuickSight, check out our [QuickSight setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-quicksight-for-business-intelligence/view) for the initial configuration steps, and our guide on [using QuickSight with Athena](https://oneuptime.com/blog/post/2026-02-12-use-quicksight-with-athena/view) for more advanced query patterns.

@@ -268,7 +268,7 @@ aws autoscaling describe-auto-scaling-groups \
 
 You can also tag instances differently based on their lifecycle (Spot vs On-Demand) and use AWS Cost Explorer to track spending by purchase type.
 
-For real-time monitoring of your mixed ASG, including health checks and instance lifecycle events, consider setting up [comprehensive health checks](https://oneuptime.com/blog/post/configure-health-checks-ec2-load-balancer/view) to catch issues quickly.
+For real-time monitoring of your mixed ASG, including health checks and instance lifecycle events, consider setting up [comprehensive health checks](https://oneuptime.com/blog/post/2026-02-12-configure-health-checks-ec2-load-balancer/view) to catch issues quickly.
 
 ## Handling Spot Fallback to On-Demand
 

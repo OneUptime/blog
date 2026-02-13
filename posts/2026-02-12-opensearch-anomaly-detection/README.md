@@ -291,4 +291,4 @@ curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_alerting
 
 **Give the model time.** Resist the urge to tweak the detector in the first 48 hours. The model needs time to learn seasonal patterns like weekday vs. weekend traffic differences.
 
-For a broader monitoring strategy that includes anomaly detection, check out [building log analytics dashboards](https://oneuptime.com/blog/post/log-analytics-dashboards-opensearch/view) and [setting up OpenSearch alerting](https://oneuptime.com/blog/post/opensearch-alerting/view).
+For a broader monitoring strategy that includes anomaly detection, check out [building log analytics dashboards](https://oneuptime.com/blog/post/2026-02-12-log-analytics-dashboards-opensearch/view) and [setting up OpenSearch alerting](https://oneuptime.com/blog/post/2026-02-12-opensearch-alerting/view).

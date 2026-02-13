@@ -302,9 +302,9 @@ resource "aws_securityhub_insight" "by_account" {
 
 ## Prerequisites
 
-Security Hub relies on AWS Config for its security standards checks. Make sure Config is enabled first. See our guide on [enabling AWS Config with Terraform](https://oneuptime.com/blog/post/enable-aws-config-terraform/view) for the full setup.
+Security Hub relies on AWS Config for its security standards checks. Make sure Config is enabled first. See our guide on [enabling AWS Config with Terraform](https://oneuptime.com/blog/post/2026-02-12-enable-aws-config-terraform/view) for the full setup.
 
-Also, enable GuardDuty for threat detection findings that feed into Security Hub. We cover that in our [GuardDuty setup guide](https://oneuptime.com/blog/post/create-guardduty-detector-terraform/view).
+Also, enable GuardDuty for threat detection findings that feed into Security Hub. We cover that in our [GuardDuty setup guide](https://oneuptime.com/blog/post/2026-02-12-create-guardduty-detector-terraform/view).
 
 ## Wrapping Up
 

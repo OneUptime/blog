@@ -302,7 +302,7 @@ aws macie2 get-usage-statistics \
   --sort-by '{"attributeName": "totalEstimatedCost", "orderBy": "DESC"}'
 ```
 
-For more on what Macie can find, check out our guide on [using Macie to find PII in S3](https://oneuptime.com/blog/post/macie-find-pii-s3-buckets/view).
+For more on what Macie can find, check out our guide on [using Macie to find PII in S3](https://oneuptime.com/blog/post/2026-02-12-macie-find-pii-s3-buckets/view).
 
 ## Wrapping Up
 

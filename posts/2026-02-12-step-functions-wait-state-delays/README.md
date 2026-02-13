@@ -328,7 +328,7 @@ A common question: do you pay while the workflow is waiting? No. You pay per sta
 
 ## Monitoring Long-Running Workflows
 
-When you have workflows that wait for hours or days, monitoring becomes important. You'll want to track how many executions are currently in a waiting state and alert if any have been waiting longer than expected. For guidance on monitoring Step Functions, see our post on [monitoring Step Functions executions in the console](https://oneuptime.com/blog/post/monitor-step-functions-executions-console/view).
+When you have workflows that wait for hours or days, monitoring becomes important. You'll want to track how many executions are currently in a waiting state and alert if any have been waiting longer than expected. For guidance on monitoring Step Functions, see our post on [monitoring Step Functions executions in the console](https://oneuptime.com/blog/post/2026-02-12-monitor-step-functions-executions-console/view).
 
 ## Wrapping Up
 

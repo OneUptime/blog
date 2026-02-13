@@ -20,7 +20,7 @@ Use WAF on ALB when:
 - Your application is internal-facing (behind a VPN or private network)
 - You want a second layer of inspection behind CloudFront's WAF
 
-Use [WAF on CloudFront](https://oneuptime.com/blog/post/waf-cloudfront-global-protection/view) when:
+Use [WAF on CloudFront](https://oneuptime.com/blog/post/2026-02-12-waf-cloudfront-global-protection/view) when:
 - You want to block traffic at the edge before it reaches your region
 - Your application is public-facing and serves a global audience
 - You want DDoS protection at the edge
@@ -535,4 +535,4 @@ aws cloudwatch put-metric-alarm \
 
 **Rules not taking effect** - After updating rules, it can take a minute or two for changes to propagate. Also check rule priorities - lower numbers are evaluated first.
 
-For complementary protection, explore [WAF managed rule groups](https://oneuptime.com/blog/post/waf-managed-rule-groups/view) and [rate-limiting strategies](https://oneuptime.com/blog/post/waf-rate-limiting-rules-prevent-ddos/view). For global applications, consider adding [CloudFront with WAF](https://oneuptime.com/blog/post/waf-cloudfront-global-protection/view) as an additional layer.
+For complementary protection, explore [WAF managed rule groups](https://oneuptime.com/blog/post/2026-02-12-waf-managed-rule-groups/view) and [rate-limiting strategies](https://oneuptime.com/blog/post/2026-02-12-waf-rate-limiting-rules-prevent-ddos/view). For global applications, consider adding [CloudFront with WAF](https://oneuptime.com/blog/post/2026-02-12-waf-cloudfront-global-protection/view) as an additional layer.

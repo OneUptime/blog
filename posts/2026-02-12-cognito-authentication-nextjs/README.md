@@ -424,7 +424,7 @@ export default function DashboardPage() {
 }
 ```
 
-For more details on JWT validation, see [decoding and validating Cognito JWT tokens](https://oneuptime.com/blog/post/decode-validate-cognito-jwt-tokens/view). And for a deployment approach using Amplify Hosting, check out [setting up Amplify Hosting for a Next.js app](https://oneuptime.com/blog/post/amplify-hosting-nextjs-app/view).
+For more details on JWT validation, see [decoding and validating Cognito JWT tokens](https://oneuptime.com/blog/post/2026-02-12-decode-validate-cognito-jwt-tokens/view). And for a deployment approach using Amplify Hosting, check out [setting up Amplify Hosting for a Next.js app](https://oneuptime.com/blog/post/2026-02-12-amplify-hosting-nextjs-app/view).
 
 ## Wrapping Up
 

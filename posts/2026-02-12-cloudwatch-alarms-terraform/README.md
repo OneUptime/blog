@@ -411,7 +411,7 @@ module "web_alarms" {
 
 **Always include ok_actions.** Your team needs to know when things recover, not just when they break.
 
-For building dashboards alongside your alarms, check out our guide on [CloudWatch dashboards with Terraform](https://oneuptime.com/blog/post/cloudwatch-dashboards-terraform/view).
+For building dashboards alongside your alarms, check out our guide on [CloudWatch dashboards with Terraform](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-dashboards-terraform/view).
 
 ## Wrapping Up
 

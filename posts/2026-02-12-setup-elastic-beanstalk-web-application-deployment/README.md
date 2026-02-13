@@ -379,4 +379,4 @@ Deployment options:
 4. 502 errors? Your app probably isn't running - check it listens on the right port
 5. High latency? Check auto-scaling settings and instance types
 
-Elastic Beanstalk gives you production-ready infrastructure without the configuration burden. For a hands-on deployment example, see our guide on [deploying a Node.js app with Elastic Beanstalk](https://oneuptime.com/blog/post/deploy-nodejs-app-elastic-beanstalk/view).
+Elastic Beanstalk gives you production-ready infrastructure without the configuration burden. For a hands-on deployment example, see our guide on [deploying a Node.js app with Elastic Beanstalk](https://oneuptime.com/blog/post/2026-02-12-deploy-nodejs-app-elastic-beanstalk/view).

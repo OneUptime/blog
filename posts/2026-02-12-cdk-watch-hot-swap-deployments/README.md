@@ -288,7 +288,7 @@ To give you a sense of the time savings:
 
 Over a day of active development, this adds up to hours of saved waiting time.
 
-For production deployments where you want the full CloudFormation safety net, stick with regular `cdk deploy`. For development iteration speed, `cdk watch` is hard to beat. If you're building CDK projects, consider using [Projen for project management](https://oneuptime.com/blog/post/cdk-projen-project-management/view) to standardize your development workflow across teams.
+For production deployments where you want the full CloudFormation safety net, stick with regular `cdk deploy`. For development iteration speed, `cdk watch` is hard to beat. If you're building CDK projects, consider using [Projen for project management](https://oneuptime.com/blog/post/2026-02-12-cdk-projen-project-management/view) to standardize your development workflow across teams.
 
 ## Wrapping Up
 

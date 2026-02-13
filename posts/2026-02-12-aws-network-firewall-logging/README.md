@@ -346,4 +346,4 @@ aws cloudwatch put-metric-alarm \
 
 **Monitor log delivery.** Make sure logs are actually flowing. A gap in logging during an incident is a nightmare scenario. Set up [OneUptime](https://oneuptime.com) monitoring on your log delivery pipeline to catch any interruptions.
 
-For related VPC security topics, check out our guide on [VPC Flow Logs with custom fields](https://oneuptime.com/blog/post/vpc-flow-logs-custom-fields/view) to get another angle on your network traffic analysis.
+For related VPC security topics, check out our guide on [VPC Flow Logs with custom fields](https://oneuptime.com/blog/post/2026-02-12-vpc-flow-logs-custom-fields/view) to get another angle on your network traffic analysis.

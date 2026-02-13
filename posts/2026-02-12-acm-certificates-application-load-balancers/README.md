@@ -336,4 +336,4 @@ aws elbv2 describe-listener-certificates \
 
 ## Wrapping Up
 
-ACM certificates with ALBs are the standard way to handle HTTPS for web applications on AWS. The setup is straightforward: create a validated certificate, attach it to an HTTPS listener, add an HTTP redirect, and pick a modern TLS security policy. Use multiple certificates with SNI for multi-domain setups, and let ACM handle renewal automatically. For the full certificate lifecycle guide, check out [requesting and managing ACM certificates](https://oneuptime.com/blog/post/request-manage-ssl-tls-certificates-acm/view).
+ACM certificates with ALBs are the standard way to handle HTTPS for web applications on AWS. The setup is straightforward: create a validated certificate, attach it to an HTTPS listener, add an HTTP redirect, and pick a modern TLS security policy. Use multiple certificates with SNI for multi-domain setups, and let ACM handle renewal automatically. For the full certificate lifecycle guide, check out [requesting and managing ACM certificates](https://oneuptime.com/blog/post/2026-02-12-request-manage-ssl-tls-certificates-acm/view).

@@ -275,7 +275,7 @@ export class StandardQueue extends Construct {
 }
 ```
 
-For more on connecting queues to notification topics, check out our post on [creating SNS topics and subscriptions with CDK](https://oneuptime.com/blog/post/sns-topics-subscriptions-cdk/view). If you're building event-driven pipelines, you might also want to look at [Step Functions state machines with CDK](https://oneuptime.com/blog/post/step-functions-state-machines-cdk/view).
+For more on connecting queues to notification topics, check out our post on [creating SNS topics and subscriptions with CDK](https://oneuptime.com/blog/post/2026-02-12-sns-topics-subscriptions-cdk/view). If you're building event-driven pipelines, you might also want to look at [Step Functions state machines with CDK](https://oneuptime.com/blog/post/2026-02-12-step-functions-state-machines-cdk/view).
 
 ## Wrapping Up
 

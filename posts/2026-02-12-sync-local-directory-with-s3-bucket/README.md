@@ -132,7 +132,7 @@ aws s3 sync s3://account-a-bucket/shared/ s3://account-b-bucket/imported/ \
     --acl bucket-owner-full-control
 ```
 
-For ongoing cross-region replication, you're better off using [S3 Replication](https://oneuptime.com/blog/post/set-up-s3-same-region-replication/view) instead of manual sync commands.
+For ongoing cross-region replication, you're better off using [S3 Replication](https://oneuptime.com/blog/post/2026-02-12-set-up-s3-same-region-replication/view) instead of manual sync commands.
 
 ## Performance Tuning
 

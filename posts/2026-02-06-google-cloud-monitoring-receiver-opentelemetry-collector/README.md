@@ -843,9 +843,9 @@ Example OneUptime alert for high CPU:
 
 ## Related Resources
 
-- [How to Configure Google Cloud Pub/Sub Receiver](https://oneuptime.com/blog/post/google-cloud-pubsub-receiver-opentelemetry-collector/view)
-- [How to Configure Azure Monitor Receiver](https://oneuptime.com/blog/post/azure-monitor-receiver-opentelemetry-collector/view)
-- [OpenTelemetry Collector: What It Is and When You Need It](https://oneuptime.com/blog/post/what-is-opentelemetry-collector-and-why-use-one/view)
+- [How to Configure Google Cloud Pub/Sub Receiver](https://oneuptime.com/blog/post/2026-02-06-google-cloud-pubsub-receiver-opentelemetry-collector/view)
+- [How to Configure Azure Monitor Receiver](https://oneuptime.com/blog/post/2026-02-06-azure-monitor-receiver-opentelemetry-collector/view)
+- [OpenTelemetry Collector: What It Is and When You Need It](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
 
 ---
 

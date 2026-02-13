@@ -267,7 +267,7 @@ You can also use browser DevTools. Open the Network tab, select a request, and i
 
 **Headers apply to all branches**: The `customHttp.yml` file in your repository applies to whichever branch it is deployed on. If you need different headers for staging vs production, use branch-specific overrides in the Amplify console.
 
-For related configuration, see our guide on [configuring Amplify redirects and rewrites](https://oneuptime.com/blog/post/configure-amplify-redirects-and-rewrites/view).
+For related configuration, see our guide on [configuring Amplify redirects and rewrites](https://oneuptime.com/blog/post/2026-02-12-configure-amplify-redirects-and-rewrites/view).
 
 ## Wrapping Up
 

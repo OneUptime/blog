@@ -301,7 +301,7 @@ exports.handler = async (event) => {
 };
 ```
 
-For securing Function URLs with IAM authentication instead, see our post on [securing Lambda Function URLs with IAM Auth](https://oneuptime.com/blog/post/secure-lambda-function-urls-with-iam-auth/view).
+For securing Function URLs with IAM authentication instead, see our post on [securing Lambda Function URLs with IAM Auth](https://oneuptime.com/blog/post/2026-02-12-secure-lambda-function-urls-with-iam-auth/view).
 
 ## Testing Function URLs
 

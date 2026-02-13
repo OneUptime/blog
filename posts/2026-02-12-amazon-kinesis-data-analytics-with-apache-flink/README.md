@@ -397,6 +397,6 @@ Check your Flink application health with CloudWatch metrics.
 - **lastCheckpointSize** - State size
 - **currentInputWatermark** - How far behind event time is
 
-For SQL-based streaming analytics as an alternative, see our guide on [Kinesis Data Analytics with SQL](https://oneuptime.com/blog/post/amazon-kinesis-data-analytics-with-sql/view).
+For SQL-based streaming analytics as an alternative, see our guide on [Kinesis Data Analytics with SQL](https://oneuptime.com/blog/post/2026-02-12-amazon-kinesis-data-analytics-with-sql/view).
 
 Flink on Kinesis Data Analytics gives you serious stream processing power without the Flink cluster management headache. It's the right choice when your streaming logic outgrows SQL - stateful processing, complex event patterns, and exactly-once guarantees are all table stakes with Flink.

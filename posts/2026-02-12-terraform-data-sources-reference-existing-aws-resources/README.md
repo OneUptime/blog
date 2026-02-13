@@ -211,7 +211,7 @@ locals {
 }
 ```
 
-Be careful with secrets in data sources. The values end up in your state file, so make sure your state backend is properly secured. See our guide on [Terraform state with S3 backend](https://oneuptime.com/blog/post/terraform-state-with-s3-backend-and-dynamodb-locking/view) for securing state.
+Be careful with secrets in data sources. The values end up in your state file, so make sure your state backend is properly secured. See our guide on [Terraform state with S3 backend](https://oneuptime.com/blog/post/2026-02-12-terraform-state-with-s3-backend-and-dynamodb-locking/view) for securing state.
 
 ## Looking Up Route 53 Zones
 
@@ -316,4 +316,4 @@ Understand the plan-time vs apply-time distinction. Data source values are resol
 
 Data sources bridge the gap between Terraform-managed and non-Terraform infrastructure. Use them to look up VPCs from other teams, find the latest AMIs, read secrets, and reference remote state. They keep your configurations flexible and portable across accounts and environments.
 
-For related patterns, check out our guide on [Terraform modules for reusable infrastructure](https://oneuptime.com/blog/post/terraform-modules-for-reusable-aws-infrastructure/view) and [Terraform local values and variables](https://oneuptime.com/blog/post/terraform-local-values-and-variables/view).
+For related patterns, check out our guide on [Terraform modules for reusable infrastructure](https://oneuptime.com/blog/post/2026-02-12-terraform-modules-for-reusable-aws-infrastructure/view) and [Terraform local values and variables](https://oneuptime.com/blog/post/2026-02-12-terraform-local-values-and-variables/view).

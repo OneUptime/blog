@@ -22,7 +22,7 @@ Pick EC2 launch type when:
 - You're running at scale where reserved instances make EC2 significantly cheaper
 - You need access to the host for debugging or specialized networking
 
-For a deeper comparison, check out our [guide on choosing between Fargate and EC2](https://oneuptime.com/blog/post/choose-ecs-fargate-ec2/view).
+For a deeper comparison, check out our [guide on choosing between Fargate and EC2](https://oneuptime.com/blog/post/2026-02-12-choose-ecs-fargate-ec2/view).
 
 ## Step 1: Create an ECS-Optimized Launch Template
 

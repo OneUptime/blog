@@ -405,4 +405,4 @@ Resources:
 
 Lambda Powertools for Java brings the same observability patterns to the JVM that teams have come to expect from the Python and TypeScript versions. The annotation-based approach feels natural to Java developers, and the AspectJ integration means you don't have to restructure your code.
 
-For the equivalent guides in other languages, check out [Lambda Powertools for Python](https://oneuptime.com/blog/post/lambda-powertools-python/view) and [Lambda Powertools for TypeScript](https://oneuptime.com/blog/post/lambda-powertools-typescript/view).
+For the equivalent guides in other languages, check out [Lambda Powertools for Python](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-python/view) and [Lambda Powertools for TypeScript](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-typescript/view).

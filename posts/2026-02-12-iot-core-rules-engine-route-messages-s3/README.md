@@ -352,4 +352,4 @@ Firehose buffers messages and writes them to S3 in larger batches (configurable 
 
 Routing IoT messages to S3 through the Rules Engine gives you a serverless, scalable data pipeline for IoT telemetry. The key is getting the S3 key partitioning right from the start - use time-based and device-based partitions that align with how you plan to query the data. For high-volume deployments, add Kinesis Data Firehose as a batching layer to avoid creating millions of tiny S3 objects.
 
-For routing to other destinations, see our guides on [routing messages to DynamoDB](https://oneuptime.com/blog/post/iot-core-rules-engine-route-messages-dynamodb/view) and [routing messages to Lambda](https://oneuptime.com/blog/post/iot-core-rules-engine-route-messages-lambda/view).
+For routing to other destinations, see our guides on [routing messages to DynamoDB](https://oneuptime.com/blog/post/2026-02-12-iot-core-rules-engine-route-messages-dynamodb/view) and [routing messages to Lambda](https://oneuptime.com/blog/post/2026-02-12-iot-core-rules-engine-route-messages-lambda/view).

@@ -14,7 +14,7 @@ If you've ever seen a task fail with "CannotPullContainerError" or "ResourceInit
 
 ## What the Execution Role Does
 
-The execution role is NOT the role your application uses at runtime. That's the task role (see our post on [configuring ECS task IAM roles](https://oneuptime.com/blog/post/configure-ecs-task-iam-roles/view)). The execution role handles the infrastructure-level operations that happen before and during task lifecycle management:
+The execution role is NOT the role your application uses at runtime. That's the task role (see our post on [configuring ECS task IAM roles](https://oneuptime.com/blog/post/2026-02-12-configure-ecs-task-iam-roles/view)). The execution role handles the infrastructure-level operations that happen before and during task lifecycle management:
 
 1. **Pulling container images** from ECR
 2. **Fetching secrets** from Secrets Manager or SSM Parameter Store

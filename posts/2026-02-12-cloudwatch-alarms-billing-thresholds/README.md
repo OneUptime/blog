@@ -115,7 +115,7 @@ aws cloudwatch put-metric-alarm \
   --dimensions Name=Currency,Value=USD
 ```
 
-Route each level to different SNS topics with different subscribers. The 50% warning might go to email. The 80% alert goes to Slack. The 100% breach goes to [PagerDuty](https://oneuptime.com/blog/post/cloudwatch-alarms-pagerduty/view).
+Route each level to different SNS topics with different subscribers. The 50% warning might go to email. The 80% alert goes to Slack. The 100% breach goes to [PagerDuty](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-pagerduty/view).
 
 ## Per-Service Billing Alarms
 
@@ -385,7 +385,7 @@ For more advanced cost monitoring - like forecasting, cost allocation by tag, or
 
 **Review and adjust quarterly.** As your usage grows, your thresholds need to grow with it. An alarm that fires every month because your normal spend exceeds the threshold becomes noise.
 
-For a broader look at controlling AWS monitoring costs, check out our guide on [reducing CloudWatch costs](https://oneuptime.com/blog/post/reduce-cloudwatch-costs/view).
+For a broader look at controlling AWS monitoring costs, check out our guide on [reducing CloudWatch costs](https://oneuptime.com/blog/post/2026-02-12-reduce-cloudwatch-costs/view).
 
 ## Wrapping Up
 

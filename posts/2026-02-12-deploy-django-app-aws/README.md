@@ -400,7 +400,7 @@ docker push \
     123456789012.dkr.ecr.us-east-1.amazonaws.com/django-app:latest
 ```
 
-Create an ECS service with the same approach shown in the [Express deployment guide](https://oneuptime.com/blog/post/deploy-nodejs-express-app-aws/view), adjusting the container port and image name.
+Create an ECS service with the same approach shown in the [Express deployment guide](https://oneuptime.com/blog/post/2026-02-12-deploy-nodejs-express-app-aws/view), adjusting the container port and image name.
 
 ## Running Migrations in ECS
 
@@ -480,4 +480,4 @@ aws rds create-db-instance \
 - **Use a CDN (CloudFront)** for static and media files. It reduces load on your application servers and improves response times.
 - **Monitor your Django app** with proper logging and health checks. Keep an eye on response times, error rates, and database connection pool usage.
 
-For monitoring your deployed Django application, integrate with a monitoring solution that can track both application metrics and infrastructure health. And for handling static files efficiently through S3, refer to the [Boto3 S3 upload guide](https://oneuptime.com/blog/post/upload-files-s3-boto3/view).
+For monitoring your deployed Django application, integrate with a monitoring solution that can track both application metrics and infrastructure health. And for handling static files efficiently through S3, refer to the [Boto3 S3 upload guide](https://oneuptime.com/blog/post/2026-02-12-upload-files-s3-boto3/view).

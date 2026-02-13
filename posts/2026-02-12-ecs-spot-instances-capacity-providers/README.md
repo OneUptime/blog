@@ -256,7 +256,7 @@ Spot instances can be reclaimed with a 2-minute warning. Here is how to handle t
 3. **Set connection draining** on your ALB target groups to allow in-flight requests to complete
 4. **Handle SIGTERM** in your application to gracefully shut down
 
-For application-level graceful shutdown patterns, see our guide on [ECS health checks](https://oneuptime.com/blog/post/ecs-health-checks/view).
+For application-level graceful shutdown patterns, see our guide on [ECS health checks](https://oneuptime.com/blog/post/2026-02-12-ecs-health-checks/view).
 
 ## Cost Savings Example
 
@@ -274,4 +274,4 @@ The actual savings depend on Spot pricing in your region, but 60-70% savings is 
 
 Capacity providers with Spot instances give you the best of both worlds - cost savings from Spot pricing and reliability from having an on-demand baseline. The key ingredients are diversifying your Spot instance types, enabling Spot draining, and using a capacity provider strategy that maintains enough on-demand capacity for your critical baseline. Start with a conservative split (50/50) and gradually increase your Spot percentage as you gain confidence.
 
-For more on ECS capacity providers, check out our guide on [using ECS capacity provider auto scaling](https://oneuptime.com/blog/post/use-ecs-capacity-provider-auto-scaling/view).
+For more on ECS capacity providers, check out our guide on [using ECS capacity provider auto scaling](https://oneuptime.com/blog/post/2026-02-12-use-ecs-capacity-provider-auto-scaling/view).

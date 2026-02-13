@@ -328,4 +328,4 @@ response = comprehend.start_document_classification_job(
 )
 ```
 
-Custom classification with Comprehend is a solid choice when you need reliable, repeatable text categorization. The managed training process means you can iterate quickly - improve your training data, retrain, and deploy without touching any infrastructure. If you also need entity extraction from your classified documents, check out our guide on [entity recognition with Amazon Comprehend](https://oneuptime.com/blog/post/amazon-comprehend-entity-recognition/view).
+Custom classification with Comprehend is a solid choice when you need reliable, repeatable text categorization. The managed training process means you can iterate quickly - improve your training data, retrain, and deploy without touching any infrastructure. If you also need entity extraction from your classified documents, check out our guide on [entity recognition with Amazon Comprehend](https://oneuptime.com/blog/post/2026-02-12-amazon-comprehend-entity-recognition/view).

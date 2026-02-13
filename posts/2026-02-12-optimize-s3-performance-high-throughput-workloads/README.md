@@ -18,7 +18,7 @@ The per-prefix limits are:
 - **3,500 PUT/COPY/POST/DELETE requests per second**
 - **5,500 GET/HEAD requests per second**
 
-These limits are per prefix. If you distribute your objects across multiple prefixes, you multiply these limits. For a detailed guide on prefix-based optimization, see our post on [S3 prefixes and partitioning](https://oneuptime.com/blog/post/s3-prefixes-partitioning-better-performance/view).
+These limits are per prefix. If you distribute your objects across multiple prefixes, you multiply these limits. For a detailed guide on prefix-based optimization, see our post on [S3 prefixes and partitioning](https://oneuptime.com/blog/post/2026-02-12-s3-prefixes-partitioning-better-performance/view).
 
 ## Technique 1: Parallel Uploads and Downloads
 

@@ -249,7 +249,7 @@ Processing thousands of IoT events per second? Express can handle 100,000 execut
 
 ## Monitoring Both Types
 
-Standard workflows give you built-in execution history in the console, which is fantastic for debugging. Express workflows push execution details to CloudWatch Logs, so you'll want to set up log groups and dashboards. For tips on monitoring Step Functions executions effectively, check out our post on [monitoring Step Functions in the console](https://oneuptime.com/blog/post/monitor-step-functions-executions-console/view).
+Standard workflows give you built-in execution history in the console, which is fantastic for debugging. Express workflows push execution details to CloudWatch Logs, so you'll want to set up log groups and dashboards. For tips on monitoring Step Functions executions effectively, check out our post on [monitoring Step Functions in the console](https://oneuptime.com/blog/post/2026-02-12-monitor-step-functions-executions-console/view).
 
 ## Making the Decision
 

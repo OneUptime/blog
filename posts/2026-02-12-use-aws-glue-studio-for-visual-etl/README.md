@@ -305,7 +305,7 @@ cloudwatch.put_metric_alarm(
 - You're working with advanced Spark features (broadcast joins, custom partitioners)
 - The visual interface feels limiting
 
-For more on scripted ETL jobs, check out our guide on [creating AWS Glue ETL jobs](https://oneuptime.com/blog/post/create-aws-glue-etl-jobs/view). And once your jobs are built, learn how to [schedule them with workflows](https://oneuptime.com/blog/post/schedule-glue-etl-jobs-with-workflows/view).
+For more on scripted ETL jobs, check out our guide on [creating AWS Glue ETL jobs](https://oneuptime.com/blog/post/2026-02-12-create-aws-glue-etl-jobs/view). And once your jobs are built, learn how to [schedule them with workflows](https://oneuptime.com/blog/post/2026-02-12-schedule-glue-etl-jobs-with-workflows/view).
 
 ## Wrapping Up
 

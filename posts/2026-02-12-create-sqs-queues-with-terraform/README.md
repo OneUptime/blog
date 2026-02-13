@@ -207,7 +207,7 @@ resource "aws_sqs_queue_policy" "sns_access" {
 }
 ```
 
-For setting up SNS topics to publish to SQS, see our post on [creating SNS topics with Terraform](https://oneuptime.com/blog/post/create-sns-topics-with-terraform/view).
+For setting up SNS topics to publish to SQS, see our post on [creating SNS topics with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-sns-topics-with-terraform/view).
 
 ## Lambda Integration
 

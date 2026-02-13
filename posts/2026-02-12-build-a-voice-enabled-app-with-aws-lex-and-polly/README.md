@@ -468,7 +468,7 @@ def detect_and_respond(text, session_id):
 
 ## Monitoring the Voice Application
 
-Voice applications have unique monitoring needs. Track Lex intent recognition accuracy (how often FallbackIntent fires), conversation completion rates, and Polly synthesis latency. High fallback rates mean your bot needs more training utterances. Monitor these metrics with [OneUptime](https://oneuptime.com/blog/post/build-a-translation-service-with-aws-translate/view) to ensure a smooth voice experience for users.
+Voice applications have unique monitoring needs. Track Lex intent recognition accuracy (how often FallbackIntent fires), conversation completion rates, and Polly synthesis latency. High fallback rates mean your bot needs more training utterances. Monitor these metrics with [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-translation-service-with-aws-translate/view) to ensure a smooth voice experience for users.
 
 ## Wrapping Up
 

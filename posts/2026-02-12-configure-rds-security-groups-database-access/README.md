@@ -104,7 +104,7 @@ aws ec2 authorize-security-group-ingress \
   --source-group sg-lambda-functions
 ```
 
-For a deep dive on Lambda and RDS connectivity, check out [connecting to RDS from Lambda](https://oneuptime.com/blog/post/connect-rds-instance-from-lambda-function/view).
+For a deep dive on Lambda and RDS connectivity, check out [connecting to RDS from Lambda](https://oneuptime.com/blog/post/2026-02-12-connect-rds-instance-from-lambda-function/view).
 
 ## Bastion Host Access
 
@@ -290,7 +290,7 @@ Look for these red flags:
 - Rules referencing security groups that no longer exist
 - More rules than expected (indicates access creep)
 
-For automated network access auditing, check out [Network Access Analyzer](https://oneuptime.com/blog/post/use-network-access-analyzer-identify-network-access-issues/view).
+For automated network access auditing, check out [Network Access Analyzer](https://oneuptime.com/blog/post/2026-02-12-use-network-access-analyzer-identify-network-access-issues/view).
 
 ## Common Mistakes
 

@@ -281,4 +281,4 @@ Origin compute savings: depends on your origin infrastructure
 
 If your origin is running on expensive compute (EC2, Fargate, or API Gateway), the cost savings from reduced origin load often dwarf the Origin Shield fees.
 
-For related CDN optimization techniques, take a look at our post on [CloudFront continuous deployment](https://oneuptime.com/blog/post/cloudfront-continuous-deployment-safe-rollouts/view).
+For related CDN optimization techniques, take a look at our post on [CloudFront continuous deployment](https://oneuptime.com/blog/post/2026-02-12-cloudfront-continuous-deployment-safe-rollouts/view).

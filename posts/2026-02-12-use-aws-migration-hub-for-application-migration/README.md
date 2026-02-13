@@ -199,7 +199,7 @@ aws mgn describe-source-servers \
     --filters '{"sourceServerIDs": ["s-abc123"]}'
 ```
 
-For a detailed walkthrough of MGN, see our guide on [using AWS Application Migration Service](https://oneuptime.com/blog/post/use-aws-application-migration-service-mgn/view).
+For a detailed walkthrough of MGN, see our guide on [using AWS Application Migration Service](https://oneuptime.com/blog/post/2026-02-12-use-aws-application-migration-service-mgn/view).
 
 ### Database Migration Service
 
@@ -211,7 +211,7 @@ aws dms describe-replication-tasks \
     --filters "Name=replication-task-id,Values=payment-db-migration"
 ```
 
-For database migration specifics, check out our guide on [using AWS Database Migration Service for schema conversion](https://oneuptime.com/blog/post/use-aws-database-migration-service-for-schema-conversion/view).
+For database migration specifics, check out our guide on [using AWS Database Migration Service for schema conversion](https://oneuptime.com/blog/post/2026-02-12-use-aws-database-migration-service-for-schema-conversion/view).
 
 ## Migration Waves
 

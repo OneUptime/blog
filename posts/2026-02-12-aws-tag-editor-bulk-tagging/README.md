@@ -310,7 +310,7 @@ aws configservice put-config-rule \
   }'
 ```
 
-For organizing tagged resources into logical groups, see our guide on [using AWS Resource Groups](https://oneuptime.com/blog/post/aws-resource-groups-organizing-resources/view).
+For organizing tagged resources into logical groups, see our guide on [using AWS Resource Groups](https://oneuptime.com/blog/post/2026-02-12-aws-resource-groups-organizing-resources/view).
 
 ## Best Practices
 

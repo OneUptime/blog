@@ -313,7 +313,7 @@ aws networkmanager get-network-telemetry \
     --core-network-id core-network-0123456789abcdef0
 ```
 
-For comprehensive monitoring of your DNS infrastructure across regions, see our post on [monitoring Route 53 DNS query logging](https://oneuptime.com/blog/post/monitor-route-53-dns-query-logging/view).
+For comprehensive monitoring of your DNS infrastructure across regions, see our post on [monitoring Route 53 DNS query logging](https://oneuptime.com/blog/post/2026-02-12-monitor-route-53-dns-query-logging/view).
 
 ## Cost Considerations
 

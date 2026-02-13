@@ -203,7 +203,7 @@ resource "aws_iam_user_group_membership" "developer_groups" {
 
 ## Best Practices for IAM Users
 
-**Use groups, not direct policy attachment.** When someone changes roles, you move them between groups instead of editing individual policies. It's cleaner and easier to audit. Check out our guide on [creating IAM groups and adding users](https://oneuptime.com/blog/post/create-iam-groups-and-add-users/view) for details.
+**Use groups, not direct policy attachment.** When someone changes roles, you move them between groups instead of editing individual policies. It's cleaner and easier to audit. Check out our guide on [creating IAM groups and adding users](https://oneuptime.com/blog/post/2026-02-12-create-iam-groups-and-add-users/view) for details.
 
 **Require MFA for all human users.** You can enforce this with an IAM policy that denies everything except MFA setup until MFA is enabled.
 

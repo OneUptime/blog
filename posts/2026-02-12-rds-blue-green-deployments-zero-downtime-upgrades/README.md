@@ -215,7 +215,7 @@ aws rds describe-events \
   --duration 120
 ```
 
-Check [Performance Insights](https://oneuptime.com/blog/post/monitor-rds-with-performance-insights/view) to make sure query performance is normal.
+Check [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view) to make sure query performance is normal.
 
 ## Rolling Back
 
@@ -261,4 +261,4 @@ aws rds create-blue-green-deployment \
 
 Blue/Green Deployments turn database upgrades from a nerve-wracking maintenance event into a controlled, tested process. The extra cost of running two environments for a few hours is nothing compared to the confidence of knowing your upgrade works before it touches production.
 
-For more on upgrade planning, see our guide on [upgrading RDS engine versions](https://oneuptime.com/blog/post/upgrade-rds-engine-versions/view).
+For more on upgrade planning, see our guide on [upgrading RDS engine versions](https://oneuptime.com/blog/post/2026-02-12-upgrade-rds-engine-versions/view).

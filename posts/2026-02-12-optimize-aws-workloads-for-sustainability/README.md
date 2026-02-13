@@ -81,7 +81,7 @@ aws ec2 run-instances \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Purpose,Value=graviton-benchmark}]'
 ```
 
-We have a dedicated guide on [using Graviton instances to reduce energy consumption](https://oneuptime.com/blog/post/use-graviton-instances-to-reduce-energy-consumption/view) if you want to go deeper.
+We have a dedicated guide on [using Graviton instances to reduce energy consumption](https://oneuptime.com/blog/post/2026-02-12-use-graviton-instances-to-reduce-energy-consumption/view) if you want to go deeper.
 
 ### Embrace Serverless
 
@@ -320,7 +320,7 @@ This is often overlooked, but inefficient code directly translates to higher CPU
 
 ## Measuring Progress
 
-You cannot improve what you do not measure. Use the [AWS Customer Carbon Footprint Tool](https://oneuptime.com/blog/post/use-aws-customer-carbon-footprint-tool/view) to track your emissions over time. Combine it with cost tracking to create a sustainability dashboard:
+You cannot improve what you do not measure. Use the [AWS Customer Carbon Footprint Tool](https://oneuptime.com/blog/post/2026-02-12-use-aws-customer-carbon-footprint-tool/view) to track your emissions over time. Combine it with cost tracking to create a sustainability dashboard:
 
 ```python
 # Custom CloudWatch metric for emissions-per-revenue

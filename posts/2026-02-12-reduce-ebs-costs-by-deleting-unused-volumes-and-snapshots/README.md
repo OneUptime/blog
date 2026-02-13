@@ -298,7 +298,7 @@ aws ec2 run-instances \
 
 **Enforce tagging with AWS Config or SCP.** Require tags like Owner and Environment on all EBS volumes so you can track who's responsible.
 
-For a broader look at finding waste in your AWS account, check out our guide on [identifying idle and unused AWS resources](https://oneuptime.com/blog/post/identify-idle-and-unused-aws-resources/view).
+For a broader look at finding waste in your AWS account, check out our guide on [identifying idle and unused AWS resources](https://oneuptime.com/blog/post/2026-02-12-identify-idle-and-unused-aws-resources/view).
 
 ## Bottom Line
 

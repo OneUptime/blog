@@ -363,4 +363,4 @@ CloudWatch anomaly detection replaces guesswork with data-driven alerting. Inste
 
 Start with your highest-traffic metrics where patterns are strongest - the model needs data to work well. Give it two weeks of training data before relying on it for production alerting. And always pair anomaly detection alarms with static threshold alarms for critical resource limits where you know the absolute boundary.
 
-For the fundamentals of CloudWatch alarming, see our guide on [creating CloudWatch metric alarms](https://oneuptime.com/blog/post/create-cloudwatch-metric-alarms/view). And for combining multiple alarms into smarter alerts, check out [creating CloudWatch composite alarms](https://oneuptime.com/blog/post/create-cloudwatch-composite-alarms/view).
+For the fundamentals of CloudWatch alarming, see our guide on [creating CloudWatch metric alarms](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-metric-alarms/view). And for combining multiple alarms into smarter alerts, check out [creating CloudWatch composite alarms](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-composite-alarms/view).

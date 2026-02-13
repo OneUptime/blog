@@ -62,7 +62,7 @@ aws rds modify-db-instance \
   --apply-immediately
 ```
 
-AWS applies the upgrade during your [maintenance window](https://oneuptime.com/blog/post/set-up-rds-maintenance-windows/view). The instance restarts, causing brief downtime (seconds for Multi-AZ, minutes for Single-AZ).
+AWS applies the upgrade during your [maintenance window](https://oneuptime.com/blog/post/2026-02-12-set-up-rds-maintenance-windows/view). The instance restarts, causing brief downtime (seconds for Multi-AZ, minutes for Single-AZ).
 
 ### Manual Minor Version Upgrade
 
@@ -241,11 +241,11 @@ ANALYZE;
 EXPLAIN ANALYZE SELECT ...;
 ```
 
-Monitor [Performance Insights](https://oneuptime.com/blog/post/monitor-rds-with-performance-insights/view) closely for the first 24-48 hours to catch any query regressions.
+Monitor [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view) closely for the first 24-48 hours to catch any query regressions.
 
 ## Using Blue/Green Deployments for Zero-Downtime Upgrades
 
-For production databases where downtime isn't acceptable, RDS [Blue/Green Deployments](https://oneuptime.com/blog/post/rds-blue-green-deployments-zero-downtime-upgrades/view) let you perform major upgrades with minimal disruption. The green environment runs the new version while the blue (current) environment continues serving traffic. When you're satisfied, you switch over.
+For production databases where downtime isn't acceptable, RDS [Blue/Green Deployments](https://oneuptime.com/blog/post/2026-02-12-rds-blue-green-deployments-zero-downtime-upgrades/view) let you perform major upgrades with minimal disruption. The green environment runs the new version while the blue (current) environment continues serving traffic. When you're satisfied, you switch over.
 
 ## Rollback Plan
 

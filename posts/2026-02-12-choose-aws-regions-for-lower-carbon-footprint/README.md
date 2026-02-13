@@ -269,7 +269,7 @@ def submit_batch_job(job_name, job_definition, job_queue_prefix):
 
 ## Tracking Region-Level Carbon Impact
 
-Use the AWS Customer Carbon Footprint Tool to track emissions by region. If you see that one region dominates your emissions, that is your signal to investigate migration. For detailed instructions, see our guide on [using the AWS Customer Carbon Footprint Tool](https://oneuptime.com/blog/post/use-aws-customer-carbon-footprint-tool/view).
+Use the AWS Customer Carbon Footprint Tool to track emissions by region. If you see that one region dominates your emissions, that is your signal to investigate migration. For detailed instructions, see our guide on [using the AWS Customer Carbon Footprint Tool](https://oneuptime.com/blog/post/2026-02-12-use-aws-customer-carbon-footprint-tool/view).
 
 For continuous monitoring of your multi-region infrastructure alongside sustainability metrics, [OneUptime](https://oneuptime.com) provides unified observability across all your AWS regions.
 
@@ -285,4 +285,4 @@ Choosing the right AWS region for carbon efficiency is one of the simplest and h
 
 The framework is straightforward: define your constraints (latency, compliance, services), score eligible regions on carbon intensity, validate that latency and cost work, and pick the greenest option that meets your needs. For non-latency-sensitive workloads, always default to your greenest region.
 
-Combined with other optimization strategies like [right-sizing and using Graviton processors](https://oneuptime.com/blog/post/optimize-aws-workloads-for-sustainability/view), smart region selection can reduce your cloud carbon footprint by 50% or more without changing a line of application code.
+Combined with other optimization strategies like [right-sizing and using Graviton processors](https://oneuptime.com/blog/post/2026-02-12-optimize-aws-workloads-for-sustainability/view), smart region selection can reduce your cloud carbon footprint by 50% or more without changing a line of application code.

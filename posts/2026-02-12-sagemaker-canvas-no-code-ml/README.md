@@ -157,7 +157,7 @@ for job in response['AutoMLJobSummaries'][:5]:
     print()
 ```
 
-Canvas models can also be registered in the [SageMaker Model Registry](https://oneuptime.com/blog/post/sagemaker-model-registry/view) for proper versioning and approval workflows.
+Canvas models can also be registered in the [SageMaker Model Registry](https://oneuptime.com/blog/post/2026-02-12-sagemaker-model-registry/view) for proper versioning and approval workflows.
 
 ## Deploying Canvas Models
 
@@ -249,7 +249,7 @@ client.update_domain(
 
 ## Monitoring Canvas Models in Production
 
-If you deploy a Canvas model to production, you should monitor it just like any other model. Set up [SageMaker Model Monitor](https://oneuptime.com/blog/post/sagemaker-model-monitor-drift-detection/view) to track data drift and model quality, and use [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) for endpoint health monitoring.
+If you deploy a Canvas model to production, you should monitor it just like any other model. Set up [SageMaker Model Monitor](https://oneuptime.com/blog/post/2026-02-12-sagemaker-model-monitor-drift-detection/view) to track data drift and model quality, and use [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) for endpoint health monitoring.
 
 ## Cost Considerations
 

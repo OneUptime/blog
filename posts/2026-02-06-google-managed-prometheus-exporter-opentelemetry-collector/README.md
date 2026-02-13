@@ -899,7 +899,7 @@ Solutions:
 Google Managed Prometheus provides a scalable, fully managed solution for Prometheus-based monitoring on Google Cloud. By using the OpenTelemetry Collector with the GMP exporter, you can leverage the power of Prometheus without the operational overhead of managing infrastructure.
 
 For more information on OpenTelemetry exporters, check out these related articles:
-- https://oneuptime.com/blog/post/google-cloud-operations-exporter-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/influxdb-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-google-cloud-operations-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-influxdb-exporter-opentelemetry-collector/view
 
 For detailed information about the Google Managed Prometheus exporter configuration options, refer to the official OpenTelemetry Collector documentation.

@@ -769,9 +769,9 @@ rate(otelcol_exporter_send_failed_spans[5m])
 
 For more information on operating OpenTelemetry Collector:
 
-- [How to Scale the OpenTelemetry Collector for High-Throughput Environments](https://oneuptime.com/blog/post/scale-opentelemetry-collector-high-throughput/view)
-- [How to Tune Batch Processor Settings for Optimal Collector Performance](https://oneuptime.com/blog/post/tune-batch-processor-optimal-collector-performance/view)
-- [How to Configure Sending Queues and Retry Logic in the Collector](https://oneuptime.com/blog/post/configure-sending-queues-retry-logic-collector/view)
-- [How to Configure Mutual TLS (mTLS) for the OpenTelemetry Collector](https://oneuptime.com/blog/post/configure-mtls-opentelemetry-collector/view)
+- [How to Scale the OpenTelemetry Collector for High-Throughput Environments](https://oneuptime.com/blog/post/2026-02-06-scale-opentelemetry-collector-high-throughput/view)
+- [How to Tune Batch Processor Settings for Optimal Collector Performance](https://oneuptime.com/blog/post/2026-02-06-tune-batch-processor-optimal-collector-performance/view)
+- [How to Configure Sending Queues and Retry Logic in the Collector](https://oneuptime.com/blog/post/2026-02-06-configure-sending-queues-retry-logic-collector/view)
+- [How to Configure Mutual TLS (mTLS) for the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-configure-mtls-opentelemetry-collector/view)
 
 Monitoring your OpenTelemetry Collector with its internal metrics is essential for maintaining a reliable observability pipeline. By tracking the right metrics, setting up appropriate alerts, and understanding what the metrics tell you about collector health, you can proactively address issues and ensure your telemetry data flows reliably from applications to backends.

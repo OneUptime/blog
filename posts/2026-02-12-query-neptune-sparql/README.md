@@ -10,7 +10,7 @@ Description: A practical guide to querying Amazon Neptune with SPARQL, covering 
 
 SPARQL is the query language for RDF (Resource Description Framework) graphs in Amazon Neptune. While Gremlin works with property graphs, SPARQL operates on triples - subject, predicate, object statements that form a knowledge graph. If you're working with linked data, ontologies, or any scenario where standardized data interchange matters, SPARQL on Neptune is a powerful combination.
 
-If you haven't set up Neptune yet, check out our [Neptune setup guide](https://oneuptime.com/blog/post/amazon-neptune-graph-databases/view) first. Already have your cluster running? Let's dive into writing SPARQL queries.
+If you haven't set up Neptune yet, check out our [Neptune setup guide](https://oneuptime.com/blog/post/2026-02-12-amazon-neptune-graph-databases/view) first. Already have your cluster running? Let's dive into writing SPARQL queries.
 
 ## Understanding RDF and Triples
 
@@ -346,7 +346,7 @@ Use LIMIT when you don't need all results. Avoid `SELECT *` when you only need s
 
 ## When to Choose SPARQL Over Gremlin
 
-SPARQL is the right choice when you're working with standardized vocabularies (like FOAF, Dublin Core, or Schema.org), when you need to merge data from multiple sources using linked data principles, or when your team already has experience with RDF and semantic web technologies. For application-centric graph queries like social features or recommendation engines, [Gremlin](https://oneuptime.com/blog/post/query-neptune-gremlin/view) might be a better fit.
+SPARQL is the right choice when you're working with standardized vocabularies (like FOAF, Dublin Core, or Schema.org), when you need to merge data from multiple sources using linked data principles, or when your team already has experience with RDF and semantic web technologies. For application-centric graph queries like social features or recommendation engines, [Gremlin](https://oneuptime.com/blog/post/2026-02-12-query-neptune-gremlin/view) might be a better fit.
 
 Both languages can coexist in the same Neptune cluster, but you can't mix them in the same query, and the underlying data models (property graph vs RDF) are separate.
 

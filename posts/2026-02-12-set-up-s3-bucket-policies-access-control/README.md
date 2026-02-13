@@ -340,7 +340,7 @@ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_SESSION_TOKEN=... \
 When access isn't working as expected:
 
 1. **Check IAM policies** - The requester needs both IAM permission AND bucket policy permission (unless you're using explicit Deny).
-2. **Check public access block** - If [public access is blocked](https://oneuptime.com/blog/post/block-public-access-on-s3-buckets/view), bucket policies granting public access won't work.
+2. **Check public access block** - If [public access is blocked](https://oneuptime.com/blog/post/2026-02-12-block-public-access-on-s3-buckets/view), bucket policies granting public access won't work.
 3. **Enable S3 access logging** or check CloudTrail for denied requests.
 4. **Use the IAM Policy Simulator** to test specific actions.
 

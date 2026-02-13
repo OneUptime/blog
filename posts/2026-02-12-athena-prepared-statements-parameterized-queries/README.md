@@ -343,4 +343,4 @@ aws athena create-prepared-statement \
 
 The `BytesScannedCutoffPerQuery` setting (10 GB in this example) prevents any single query from scanning too much data, protecting you from runaway costs even if someone finds a way to execute expensive queries.
 
-Prepared statements are a best practice for any application that queries Athena. They're more secure, cleaner, and easier to manage than string concatenation. For optimizing the tables these queries run against, see [CTAS for optimized tables](https://oneuptime.com/blog/post/athena-ctas-creating-optimized-tables/view) and [partitioning data in S3](https://oneuptime.com/blog/post/partition-data-s3-efficient-athena-queries/view).
+Prepared statements are a best practice for any application that queries Athena. They're more secure, cleaner, and easier to manage than string concatenation. For optimizing the tables these queries run against, see [CTAS for optimized tables](https://oneuptime.com/blog/post/2026-02-12-athena-ctas-creating-optimized-tables/view) and [partitioning data in S3](https://oneuptime.com/blog/post/2026-02-12-partition-data-s3-efficient-athena-queries/view).

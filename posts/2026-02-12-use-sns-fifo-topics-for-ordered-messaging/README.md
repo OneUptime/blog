@@ -303,4 +303,4 @@ FIFO topics have a 300 transactions per second limit per topic (3000 with batchi
 
 FIFO topics are the right choice when message ordering and exactly-once delivery matter more than raw throughput. Pair them with FIFO SQS queues for reliable, ordered processing.
 
-For standard topics with higher throughput needs, see [creating an SNS topic](https://oneuptime.com/blog/post/create-an-sns-topic/view). For the fan-out pattern with standard queues, check [subscribing SQS queues to SNS](https://oneuptime.com/blog/post/subscribe-an-sqs-queue-to-sns/view).
+For standard topics with higher throughput needs, see [creating an SNS topic](https://oneuptime.com/blog/post/2026-02-12-create-an-sns-topic/view). For the fan-out pattern with standard queues, check [subscribing SQS queues to SNS](https://oneuptime.com/blog/post/2026-02-12-subscribe-an-sqs-queue-to-sns/view).

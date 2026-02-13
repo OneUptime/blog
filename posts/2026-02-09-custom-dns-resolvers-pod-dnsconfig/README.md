@@ -528,4 +528,4 @@ Follow these guidelines:
 
 Custom DNS configuration per pod provides flexibility for special networking requirements while maintaining Kubernetes' DNS infrastructure. By understanding dnsPolicy and dnsConfig options, you can integrate external DNS servers, customize resolver behavior, and handle complex routing scenarios without compromising cluster DNS functionality.
 
-For more DNS customization, explore our guides on [CoreDNS configuration](https://oneuptime.com/blog/post/coredns-custom-forward-zones/view) and [DNS troubleshooting](https://oneuptime.com/blog/post/debug-dns-resolution-dnsutils/view).
+For more DNS customization, explore our guides on [CoreDNS configuration](https://oneuptime.com/blog/post/2026-02-09-coredns-custom-forward-zones/view) and [DNS troubleshooting](https://oneuptime.com/blog/post/2026-02-09-debug-dns-resolution-dnsutils/view).

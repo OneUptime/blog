@@ -246,7 +246,7 @@ ORDER BY team, monthly_cost DESC;
 
 5. **Review weekly, not just monthly.** Container workloads are dynamic. Weekly reviews help you catch cost anomalies before they become big surprises.
 
-For more on building custom billing reports, check out our guide on [creating custom AWS billing reports with CUR 2.0](https://oneuptime.com/blog/post/create-custom-aws-billing-reports-with-cur-20/view).
+For more on building custom billing reports, check out our guide on [creating custom AWS billing reports with CUR 2.0](https://oneuptime.com/blog/post/2026-02-12-create-custom-aws-billing-reports-with-cur-20/view).
 
 ## Wrapping Up
 

@@ -271,6 +271,6 @@ aws network-firewall update-logging-configuration \
   }'
 ```
 
-For more on stateful vs stateless rule configuration, see https://oneuptime.com/blog/post/network-firewall-stateful-stateless-rules/view.
+For more on stateful vs stateless rule configuration, see https://oneuptime.com/blog/post/2026-02-12-network-firewall-stateful-stateless-rules/view.
 
 Network Firewall isn't cheap - you pay per firewall endpoint per AZ plus per-GB inspection charges. But for workloads that need domain filtering, IDS/IPS capabilities, or compliance-mandated deep packet inspection, it fills a gap that security groups and NACLs simply can't address.

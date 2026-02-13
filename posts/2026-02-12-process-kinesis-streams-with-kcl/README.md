@@ -359,7 +359,7 @@ aws dynamodb scan \
   --projection-expression "leaseKey, leaseOwner, checkpoint"
 ```
 
-For monitoring your Kinesis pipeline end-to-end, you can integrate these metrics into OneUptime to get a unified view alongside your other infrastructure. If you're also using Lambda consumers, check out our guide on [processing Kinesis streams with Lambda](https://oneuptime.com/blog/post/process-kinesis-streams-with-lambda/view).
+For monitoring your Kinesis pipeline end-to-end, you can integrate these metrics into OneUptime to get a unified view alongside your other infrastructure. If you're also using Lambda consumers, check out our guide on [processing Kinesis streams with Lambda](https://oneuptime.com/blog/post/2026-02-12-process-kinesis-streams-with-lambda/view).
 
 ## Common KCL Issues
 

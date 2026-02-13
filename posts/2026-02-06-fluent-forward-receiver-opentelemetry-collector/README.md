@@ -378,4 +378,4 @@ The Fluent Forward receiver provides a seamless migration path from Fluentd-base
 
 Start with a basic configuration and gradually add authentication, TLS, and advanced processing as your requirements grow. Monitor the receiver metrics to ensure healthy operation and tune configuration parameters based on your specific workload characteristics.
 
-For more OpenTelemetry Collector receivers, explore our guides on the [Docker Stats receiver](https://oneuptime.com/blog/post/docker-stats-receiver-opentelemetry-collector/view) and [PostgreSQL receiver](https://oneuptime.com/blog/post/postgresql-receiver-opentelemetry-collector/view).
+For more OpenTelemetry Collector receivers, explore our guides on the [Docker Stats receiver](https://oneuptime.com/blog/post/2026-02-06-docker-stats-receiver-opentelemetry-collector/view) and [PostgreSQL receiver](https://oneuptime.com/blog/post/2026-02-06-postgresql-receiver-opentelemetry-collector/view).

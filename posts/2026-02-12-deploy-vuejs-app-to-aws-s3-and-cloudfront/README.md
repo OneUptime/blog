@@ -366,4 +366,4 @@ Track error rates, cache hit ratios, and latency in CloudFront's built-in metric
 
 ## Summary
 
-S3 plus CloudFront is the gold standard for hosting Vue.js SPAs on AWS. The combination is cheap, globally distributed, and infinitely scalable. Once you've got the initial infrastructure in place, deployments are just a build and sync away. The process is essentially identical to [deploying a React app](https://oneuptime.com/blog/post/deploy-react-app-to-aws-s3-and-cloudfront/view), so if you're running both frameworks, you can reuse most of this infrastructure.
+S3 plus CloudFront is the gold standard for hosting Vue.js SPAs on AWS. The combination is cheap, globally distributed, and infinitely scalable. Once you've got the initial infrastructure in place, deployments are just a build and sync away. The process is essentially identical to [deploying a React app](https://oneuptime.com/blog/post/2026-02-12-deploy-react-app-to-aws-s3-and-cloudfront/view), so if you're running both frameworks, you can reuse most of this infrastructure.

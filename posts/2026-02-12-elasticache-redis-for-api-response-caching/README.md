@@ -385,4 +385,4 @@ A healthy API cache should have a hit rate above 80%. If it's lower, your TTLs m
 
 API response caching with Redis can dramatically reduce your API latency and database load. Start with the cache-aside pattern and TTL-based expiration - they cover 90% of use cases. Add event-based invalidation for data that changes frequently and where freshness matters. And always build your caching layer to fail gracefully - if Redis goes down, your API should still work, just slower.
 
-For more caching patterns, check out the guide on [session caching with Redis](https://oneuptime.com/blog/post/elasticache-redis-for-session-caching/view). For monitoring, see the guide on [monitoring ElastiCache with CloudWatch](https://oneuptime.com/blog/post/monitor-elasticache-with-cloudwatch/view).
+For more caching patterns, check out the guide on [session caching with Redis](https://oneuptime.com/blog/post/2026-02-12-elasticache-redis-for-session-caching/view). For monitoring, see the guide on [monitoring ElastiCache with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-elasticache-with-cloudwatch/view).

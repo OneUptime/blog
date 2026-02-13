@@ -21,7 +21,7 @@ Before you mount, double check these things:
 3. The EFS mount target's security group allows inbound traffic on port 2049 from your instance's security group
 4. The instance has an IAM role with EFS permissions (if using IAM authorization)
 
-If you haven't created an EFS file system yet, see our guide on [creating an Amazon EFS file system](https://oneuptime.com/blog/post/amazon-efs-file-system/view).
+If you haven't created an EFS file system yet, see our guide on [creating an Amazon EFS file system](https://oneuptime.com/blog/post/2026-02-12-amazon-efs-file-system/view).
 
 ## Installing the EFS Mount Helper
 
@@ -183,7 +183,7 @@ You don't have to mount the root of the file system. You can mount a specific su
 sudo mount -t efs fs-0abc123def456789:/app/data /mnt/app-data
 ```
 
-This is useful when different applications share the same EFS file system but each gets its own directory. You can also use EFS Access Points for this - see our guide on [EFS access points for application-specific access](https://oneuptime.com/blog/post/efs-access-points-application-specific-access/view).
+This is useful when different applications share the same EFS file system but each gets its own directory. You can also use EFS Access Points for this - see our guide on [EFS access points for application-specific access](https://oneuptime.com/blog/post/2026-02-12-efs-access-points-application-specific-access/view).
 
 ## Mounting on Multiple Instances
 

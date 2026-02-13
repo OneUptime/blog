@@ -378,7 +378,7 @@ def update_preferences(event, context):
 
 ## Monitoring Notification Delivery
 
-Failed notifications mean lost engagement and potentially lost revenue. Track delivery rates per channel, bounce rates for email, and queue depths. If your notification system goes down, users miss critical alerts. Monitor the entire pipeline with [OneUptime](https://oneuptime.com/blog/post/build-a-dead-letter-queue-processing-system-on-aws/view) to make sure every notification reaches its destination.
+Failed notifications mean lost engagement and potentially lost revenue. Track delivery rates per channel, bounce rates for email, and queue depths. If your notification system goes down, users miss critical alerts. Monitor the entire pipeline with [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-dead-letter-queue-processing-system-on-aws/view) to make sure every notification reaches its destination.
 
 ## Wrapping Up
 

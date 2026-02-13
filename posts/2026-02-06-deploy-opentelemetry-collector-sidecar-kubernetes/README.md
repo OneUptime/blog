@@ -708,8 +708,8 @@ Comparison of deployment patterns:
 
 For other OpenTelemetry Collector deployment patterns:
 
-- [How to Deploy the OpenTelemetry Collector as a DaemonSet in Kubernetes](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-daemonset-kubernetes/view)
-- [How to Deploy the OpenTelemetry Collector as a Gateway](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-gateway/view)
-- [How to Route Telemetry to Multiple Backends with the Routing Connector](https://oneuptime.com/blog/post/route-telemetry-multiple-backends-routing-connector/view)
+- [How to Deploy the OpenTelemetry Collector as a DaemonSet in Kubernetes](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-daemonset-kubernetes/view)
+- [How to Deploy the OpenTelemetry Collector as a Gateway](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-gateway/view)
+- [How to Route Telemetry to Multiple Backends with the Routing Connector](https://oneuptime.com/blog/post/2026-02-06-route-telemetry-multiple-backends-routing-connector/view)
 
 Sidecar deployment offers application-specific telemetry processing with strong isolation guarantees. While resource-intensive compared to shared collectors, sidecars excel in multi-tenant environments, security-sensitive applications, and scenarios requiring application-specific customization. Consider combining sidecars with gateway collectors for optimal architecture.

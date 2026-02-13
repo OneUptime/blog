@@ -269,7 +269,7 @@ Compare that to running a t3.micro EC2 instance 24/7 at roughly $8/month. The se
 
 ## Monitoring Your Bot
 
-You should set up CloudWatch alarms for your Lambda function to catch errors early. Track the invocation count, error rate, and duration metrics. If you want deeper observability, consider connecting your logs to a monitoring platform. For more on monitoring serverless applications, check out our guide on [monitoring AWS Lambda functions](https://oneuptime.com/blog/post/implement-graceful-shutdown-in-lambda-functions/view).
+You should set up CloudWatch alarms for your Lambda function to catch errors early. Track the invocation count, error rate, and duration metrics. If you want deeper observability, consider connecting your logs to a monitoring platform. For more on monitoring serverless applications, check out our guide on [monitoring AWS Lambda functions](https://oneuptime.com/blog/post/2026-02-12-implement-graceful-shutdown-in-lambda-functions/view).
 
 ## Wrapping Up
 

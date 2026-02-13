@@ -308,7 +308,7 @@ You can also use SSM Parameter Store for less sensitive configuration. The synta
 }
 ```
 
-For a detailed comparison and when to use each, check out our guide on [managing ECS environment variables](https://oneuptime.com/blog/post/pass-environment-variables-ecs-tasks/view).
+For a detailed comparison and when to use each, check out our guide on [managing ECS environment variables](https://oneuptime.com/blog/post/2026-02-12-pass-environment-variables-ecs-tasks/view).
 
 ## Common Mistakes
 

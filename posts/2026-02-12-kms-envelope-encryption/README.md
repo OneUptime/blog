@@ -306,4 +306,4 @@ The SDK is battle-tested and follows all the best practices around key derivatio
 
 Envelope encryption is the standard pattern for using KMS in any real application. It removes the 4KB size limit, dramatically reduces costs and latency, and keeps your KMS master key safely in the HSM while data encryption happens locally. Whether you roll your own or use the AWS Encryption SDK, always use encryption context, always zero out plaintext keys after use, and consider data key caching for high-throughput workloads.
 
-For more on managing the KMS keys that back your envelope encryption, see our guides on [creating CMKs](https://oneuptime.com/blog/post/create-manage-kms-customer-managed-keys/view) and [key policies](https://oneuptime.com/blog/post/kms-key-policies-access-control/view).
+For more on managing the KMS keys that back your envelope encryption, see our guides on [creating CMKs](https://oneuptime.com/blog/post/2026-02-12-create-manage-kms-customer-managed-keys/view) and [key policies](https://oneuptime.com/blog/post/2026-02-12-kms-key-policies-access-control/view).

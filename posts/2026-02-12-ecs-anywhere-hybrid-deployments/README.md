@@ -268,7 +268,7 @@ aws ecs describe-tasks \
   --query "tasks[0].{status:lastStatus, health:healthStatus, startedAt:startedAt}"
 ```
 
-For more on monitoring, see our guide on [monitoring ECS with Container Insights](https://oneuptime.com/blog/post/monitor-ecs-container-insights/view).
+For more on monitoring, see our guide on [monitoring ECS with Container Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-container-insights/view).
 
 ## Networking Considerations
 

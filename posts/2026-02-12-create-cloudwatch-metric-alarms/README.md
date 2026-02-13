@@ -296,7 +296,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:warning"
 ```
 
-For combining multiple alarms into higher-level health indicators, see our guide on [creating CloudWatch composite alarms](https://oneuptime.com/blog/post/create-cloudwatch-composite-alarms/view).
+For combining multiple alarms into higher-level health indicators, see our guide on [creating CloudWatch composite alarms](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-composite-alarms/view).
 
 ## Best Practices
 

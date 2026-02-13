@@ -307,7 +307,7 @@ df -h $MOUNT_POINT
 
 **Filesystem expansion isn't automatic.** AWS resizes the block device, but you must extend the partition and filesystem yourself. Some newer AMIs have a service that does this automatically on boot, but don't count on it.
 
-**gp2 performance scales with size.** gp2 volumes get 3 IOPS per GB. If you're on gp2 and need more IOPS, increasing the size is one way to get them. But switching to gp3 and setting explicit IOPS is usually a better approach. See our guide on [EBS volume types](https://oneuptime.com/blog/post/choose-between-ebs-volume-types/view).
+**gp2 performance scales with size.** gp2 volumes get 3 IOPS per GB. If you're on gp2 and need more IOPS, increasing the size is one way to get them. But switching to gp3 and setting explicit IOPS is usually a better approach. See our guide on [EBS volume types](https://oneuptime.com/blog/post/2026-02-12-choose-between-ebs-volume-types/view).
 
 **Monitor disk usage proactively.** Don't wait until you're at 100% to resize. Set up alerts at 80% usage so you have time to act. Use [OneUptime](https://oneuptime.com) or CloudWatch to monitor disk utilization across your fleet.
 

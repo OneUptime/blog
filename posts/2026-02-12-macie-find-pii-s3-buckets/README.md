@@ -359,7 +359,7 @@ aws macie2 get-finding-statistics \
   }'
 ```
 
-For the broader Macie setup including automated discovery, check our guide on [enabling Macie for S3](https://oneuptime.com/blog/post/enable-amazon-macie-s3-data-discovery/view). And if you want automated discovery running continuously, see [configuring Macie automated discovery](https://oneuptime.com/blog/post/configure-macie-automated-sensitive-data-discovery/view).
+For the broader Macie setup including automated discovery, check our guide on [enabling Macie for S3](https://oneuptime.com/blog/post/2026-02-12-enable-amazon-macie-s3-data-discovery/view). And if you want automated discovery running continuously, see [configuring Macie automated discovery](https://oneuptime.com/blog/post/2026-02-12-configure-macie-automated-sensitive-data-discovery/view).
 
 ## Wrapping Up
 

@@ -296,4 +296,4 @@ aws elasticache create-serverless-cache \
 
 ElastiCache Serverless is the easiest way to get a production-ready cache on AWS. No node types to choose, no cluster sizing to worry about, and no capacity planning needed. It auto-scales on two dimensions - compute and storage - and you pay only for what you use. Set usage limits to control costs, monitor for throttling, and let AWS handle the rest.
 
-For more on caching, check out our guides on [configuring ElastiCache Global Datastore for multi-Region](https://oneuptime.com/blog/post/configure-elasticache-global-datastore-for-multi-region/view) and [Redis data tiering](https://oneuptime.com/blog/post/configure-elasticache-redis-data-tiering/view).
+For more on caching, check out our guides on [configuring ElastiCache Global Datastore for multi-Region](https://oneuptime.com/blog/post/2026-02-12-configure-elasticache-global-datastore-for-multi-region/view) and [Redis data tiering](https://oneuptime.com/blog/post/2026-02-12-configure-elasticache-redis-data-tiering/view).

@@ -10,7 +10,7 @@ Description: A detailed guide to creating ECS task definitions, covering contain
 
 A task definition is the blueprint for your containers in ECS. It tells ECS which Docker image to use, how much CPU and memory to allocate, what environment variables to set, where to send logs, and how containers within a task should interact. Before you can run anything on ECS, you need a task definition.
 
-Think of it like a docker-compose file, but for AWS. If you haven't created your [ECS cluster](https://oneuptime.com/blog/post/first-ecs-cluster/view) yet, do that first.
+Think of it like a docker-compose file, but for AWS. If you haven't created your [ECS cluster](https://oneuptime.com/blog/post/2026-02-12-first-ecs-cluster/view) yet, do that first.
 
 ## Task Definition Basics
 
@@ -341,4 +341,4 @@ If your app needs to read from S3, write to DynamoDB, or publish to SNS, those p
 
 ## Wrapping Up
 
-Task definitions are the most detailed piece of ECS configuration. Take the time to get them right - proper resource limits, good logging, secrets management, and health checks will save you from debugging issues in production. Start simple with a single container, get it running, then add sidecars and volumes as needed. Once you have your task definition, you're ready to [run it as a task](https://oneuptime.com/blog/post/run-ecs-task-manually/view) or [create a service](https://oneuptime.com/blog/post/ecs-service-long-running-containers/view) around it.
+Task definitions are the most detailed piece of ECS configuration. Take the time to get them right - proper resource limits, good logging, secrets management, and health checks will save you from debugging issues in production. Start simple with a single container, get it running, then add sidecars and volumes as needed. Once you have your task definition, you're ready to [run it as a task](https://oneuptime.com/blog/post/2026-02-12-run-ecs-task-manually/view) or [create a service](https://oneuptime.com/blog/post/2026-02-12-ecs-service-long-running-containers/view) around it.

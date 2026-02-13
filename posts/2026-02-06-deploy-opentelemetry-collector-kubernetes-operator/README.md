@@ -749,7 +749,7 @@ graph TB
 
 For additional deployment patterns, see:
 
-- [How to Set Up a Two-Tier Collector Architecture (Agent + Gateway)](https://oneuptime.com/blog/post/two-tier-collector-architecture-agent-gateway/view)
-- [How to Deploy the OpenTelemetry Collector as a StatefulSet in Kubernetes](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-statefulset-kubernetes/view)
+- [How to Set Up a Two-Tier Collector Architecture (Agent + Gateway)](https://oneuptime.com/blog/post/2026-02-06-two-tier-collector-architecture-agent-gateway/view)
+- [How to Deploy the OpenTelemetry Collector as a StatefulSet in Kubernetes](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-statefulset-kubernetes/view)
 
 The OpenTelemetry Operator simplifies collector management in Kubernetes environments, providing declarative configuration, automatic instrumentation, and advanced features like target allocation. It's the recommended approach for production Kubernetes deployments.

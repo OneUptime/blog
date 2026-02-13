@@ -269,7 +269,7 @@ Terraform follows the chain from the original name to the final destination.
 
 ## Handling State Conflicts
 
-For details on handling state issues that might come up during refactoring, see our post on [Terraform state conflicts and locking issues](https://oneuptime.com/blog/post/terraform-state-conflicts-locking-issues/view).
+For details on handling state issues that might come up during refactoring, see our post on [Terraform state conflicts and locking issues](https://oneuptime.com/blog/post/2026-02-12-terraform-state-conflicts-locking-issues/view).
 
 ## Wrapping Up
 

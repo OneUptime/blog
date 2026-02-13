@@ -802,7 +802,7 @@ extensions:
   - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.95.0
 ```
 
-For details on building custom distributions, see https://oneuptime.com/blog/post/build-custom-opentelemetry-collector-distribution-ocb/view.
+For details on building custom distributions, see https://oneuptime.com/blog/post/2026-02-06-build-custom-opentelemetry-collector-distribution-ocb/view.
 
 ## Configure the Collector
 
@@ -999,6 +999,6 @@ Optimize by:
 Building custom extensions for the OpenTelemetry Collector enables you to add auxiliary capabilities that enhance the Collector's operational functionality. Extensions provide infrastructure services like health checks, authentication, storage, and management APIs without interfering with the telemetry pipeline. Combined with custom receivers, processors, and exporters, custom extensions complete your ability to fully customize the Collector for your specific requirements.
 
 For related topics, see:
-- https://oneuptime.com/blog/post/build-custom-receiver-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/build-custom-processor-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/build-custom-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-processor-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-build-custom-exporter-opentelemetry-collector/view

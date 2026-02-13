@@ -389,4 +389,4 @@ aws events put-rule \
 
 Device Defender is essential for maintaining IoT security at scale. The audit feature catches configuration drift and policy mistakes before they become vulnerabilities. The detect feature monitors runtime behavior to catch compromised or malfunctioning devices. Set up daily audits, create security profiles that match your device behavior patterns, and configure automated mitigation actions for common findings. Security is not a one-time setup - it is an ongoing process.
 
-For more on IoT Core security, see our guides on [IoT Core certificate-based authentication](https://oneuptime.com/blog/post/iot-core-certificate-based-authentication/view) and [creating IoT Core policies for device permissions](https://oneuptime.com/blog/post/iot-core-policies-device-permissions/view).
+For more on IoT Core security, see our guides on [IoT Core certificate-based authentication](https://oneuptime.com/blog/post/2026-02-12-iot-core-certificate-based-authentication/view) and [creating IoT Core policies for device permissions](https://oneuptime.com/blog/post/2026-02-12-iot-core-policies-device-permissions/view).

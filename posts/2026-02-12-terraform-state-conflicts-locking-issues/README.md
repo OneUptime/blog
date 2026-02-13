@@ -256,7 +256,7 @@ terraform state pull > "backup-$(date +%Y%m%d-%H%M%S).tfstate"
 
 ### Use Moved Blocks Instead of State Surgery
 
-When refactoring, use `moved` blocks instead of `terraform state mv`. Moved blocks are tracked in code and are repeatable. See our post on [using Terraform moved blocks](https://oneuptime.com/blog/post/terraform-moved-blocks-resource-refactoring/view) for details.
+When refactoring, use `moved` blocks instead of `terraform state mv`. Moved blocks are tracked in code and are repeatable. See our post on [using Terraform moved blocks](https://oneuptime.com/blog/post/2026-02-12-terraform-moved-blocks-resource-refactoring/view) for details.
 
 ## Common Scenarios and Solutions
 

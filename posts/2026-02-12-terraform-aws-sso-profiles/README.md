@@ -250,7 +250,7 @@ provider "aws" {
 }
 ```
 
-For more on infrastructure automation, check out how to [run Terraform plan as a pull request check](https://oneuptime.com/blog/post/terraform-plan-pull-request-check/view).
+For more on infrastructure automation, check out how to [run Terraform plan as a pull request check](https://oneuptime.com/blog/post/2026-02-12-terraform-plan-pull-request-check/view).
 
 ## Troubleshooting Common Issues
 

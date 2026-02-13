@@ -223,7 +223,7 @@ You'd typically run this as part of a CI/CD pipeline after building and testing 
 
 **Snapshot access.** When someone shares an AMI with you, you can technically describe the backing snapshots. Keep this in mind if the AMI contains sensitive data.
 
-**Region-specific.** AMI sharing only works within the same region. If the AMI is in us-east-1 and the other account needs it in eu-west-1, the other account needs to copy it across regions after you share it. See our guide on [copying AMIs to other regions](https://oneuptime.com/blog/post/copy-ami-to-another-aws-region/view).
+**Region-specific.** AMI sharing only works within the same region. If the AMI is in us-east-1 and the other account needs it in eu-west-1, the other account needs to copy it across regions after you share it. See our guide on [copying AMIs to other regions](https://oneuptime.com/blog/post/2026-02-12-copy-ami-to-another-aws-region/view).
 
 **Audit and monitoring.** Track which AMIs are shared and with whom. Use AWS Config rules or set up [monitoring](https://oneuptime.com) to alert on AMIs being shared publicly.
 

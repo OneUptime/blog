@@ -286,4 +286,4 @@ Resources:
 
 ## Wrapping Up
 
-DocumentDB is a solid choice if you want MongoDB API compatibility with the operational simplicity of a fully managed AWS service. The setup is straightforward, but pay attention to the compatibility gaps - test your application thoroughly before migrating production workloads. If you're considering moving an existing MongoDB deployment over, check out our guide on [migrating from MongoDB to DocumentDB](https://oneuptime.com/blog/post/migrate-mongodb-amazon-documentdb/view) for a detailed walkthrough of the process.
+DocumentDB is a solid choice if you want MongoDB API compatibility with the operational simplicity of a fully managed AWS service. The setup is straightforward, but pay attention to the compatibility gaps - test your application thoroughly before migrating production workloads. If you're considering moving an existing MongoDB deployment over, check out our guide on [migrating from MongoDB to DocumentDB](https://oneuptime.com/blog/post/2026-02-12-migrate-mongodb-amazon-documentdb/view) for a detailed walkthrough of the process.

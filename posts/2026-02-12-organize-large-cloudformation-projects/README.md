@@ -348,6 +348,6 @@ Not everything should be in its own stack. Here's a practical guideline. Resourc
 
 Resources that have different lifecycles should be in separate stacks. Your network infrastructure might change once a quarter, but your application deployment might happen multiple times a day. Separating them means faster deployments and smaller blast radius.
 
-If you're looking to validate that everything is working after deploying these organized stacks, consider using [cfn-lint](https://oneuptime.com/blog/post/cloudformation-linter-cfn-lint/view) to catch problems before deployment, and set up monitoring to catch issues after deployment.
+If you're looking to validate that everything is working after deploying these organized stacks, consider using [cfn-lint](https://oneuptime.com/blog/post/2026-02-12-cloudformation-linter-cfn-lint/view) to catch problems before deployment, and set up monitoring to catch issues after deployment.
 
 The bottom line is this: start splitting templates early. It's much easier to organize a project from the beginning than to untangle a monolithic template later. Even if your infrastructure is small today, setting up a clean structure now will save you hours of refactoring down the road.

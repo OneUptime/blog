@@ -521,4 +521,4 @@ kubectl get services --all-namespaces -o json | \
 
 This identifies unlabeled resources.
 
-Labels and annotations bring order to Kubernetes clusters. Label resources for filtering and selection, annotate them with operational metadata, and build consistent organizational schemes. Apply labels and annotations in bulk to standardize environments, then leverage them in selectors, automation, and monitoring. For more resource organization techniques, check out https://oneuptime.com/blog/post/kubectl-get-sort-by-resources/view.
+Labels and annotations bring order to Kubernetes clusters. Label resources for filtering and selection, annotate them with operational metadata, and build consistent organizational schemes. Apply labels and annotations in bulk to standardize environments, then leverage them in selectors, automation, and monitoring. For more resource organization techniques, check out https://oneuptime.com/blog/post/2026-02-09-kubectl-get-sort-by-resources/view.

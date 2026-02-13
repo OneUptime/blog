@@ -218,7 +218,7 @@ aws s3api put-bucket-replication \
 
 ## Replicating with Filters
 
-You don't have to replicate everything. Use filters to replicate only specific objects. For more on advanced filtering, see our guide on [replication rules with filters and prefixes](https://oneuptime.com/blog/post/s3-replication-rules-filters-prefixes/view).
+You don't have to replicate everything. Use filters to replicate only specific objects. For more on advanced filtering, see our guide on [replication rules with filters and prefixes](https://oneuptime.com/blog/post/2026-02-12-s3-replication-rules-filters-prefixes/view).
 
 Replicate only objects matching a prefix:
 

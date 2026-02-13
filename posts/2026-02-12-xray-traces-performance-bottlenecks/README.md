@@ -14,7 +14,7 @@ This guide covers practical techniques for using X-Ray to hunt down performance 
 
 ## Starting Broad: The Service Map
 
-Every performance investigation should start with the [X-Ray service map](https://oneuptime.com/blog/post/xray-service-map-application-dependencies/view). It gives you an instant overview of where time is being spent.
+Every performance investigation should start with the [X-Ray service map](https://oneuptime.com/blog/post/2026-02-12-xray-service-map-application-dependencies/view). It gives you an instant overview of where time is being spent.
 
 Look for:
 
@@ -341,7 +341,7 @@ aws cloudwatch put-metric-alarm \
 
 **Track improvement over time.** After you fix a bottleneck, compare the latency distribution before and after. This validates your fix and gives you data for future prioritization.
 
-**Use [sampling rules](https://oneuptime.com/blog/post/xray-sampling-rules/view) strategically.** For performance analysis, you might want higher sampling rates on specific endpoints you're investigating. Adjust sampling temporarily during investigation periods.
+**Use [sampling rules](https://oneuptime.com/blog/post/2026-02-12-xray-sampling-rules/view) strategically.** For performance analysis, you might want higher sampling rates on specific endpoints you're investigating. Adjust sampling temporarily during investigation periods.
 
 ## Wrapping Up
 

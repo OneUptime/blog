@@ -438,7 +438,7 @@ function streamToBuffer(stream) {
 }
 ```
 
-For the authentication setup that makes this all work, see [using Amplify Authentication with Cognito](https://oneuptime.com/blog/post/amplify-authentication-cognito/view). For direct AWS resource access patterns, see [using Cognito Identity Pools for AWS resource access](https://oneuptime.com/blog/post/cognito-identity-pools-aws-resource-access/view).
+For the authentication setup that makes this all work, see [using Amplify Authentication with Cognito](https://oneuptime.com/blog/post/2026-02-12-amplify-authentication-cognito/view). For direct AWS resource access patterns, see [using Cognito Identity Pools for AWS resource access](https://oneuptime.com/blog/post/2026-02-12-cognito-identity-pools-aws-resource-access/view).
 
 ## Wrapping Up
 

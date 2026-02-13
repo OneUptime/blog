@@ -765,6 +765,6 @@ For monitoring your database performance and availability, check out [OneUptime'
 
 ## Related Resources
 
-- [How to Back Up Kubernetes with Velero](https://oneuptime.com/blog/post/kubernetes-velero-backup-restore/view)
-- [How to Resize Persistent Volumes Without Downtime](https://oneuptime.com/blog/post/kubernetes-resize-persistent-volumes/view)
-- [How to Right-Size Resource Requests and Limits](https://oneuptime.com/blog/post/kubernetes-resource-requests-limits-rightsizing/view)
+- [How to Back Up Kubernetes with Velero](https://oneuptime.com/blog/post/2026-01-19-kubernetes-velero-backup-restore/view)
+- [How to Resize Persistent Volumes Without Downtime](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resize-persistent-volumes/view)
+- [How to Right-Size Resource Requests and Limits](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-requests-limits-rightsizing/view)

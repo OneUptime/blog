@@ -276,6 +276,6 @@ This reduces alert fatigue by only notifying you when there's a genuine performa
 
 Create a CloudWatch dashboard to visualize all your DynamoDB metrics in one place. Combined with alarms, this gives you both proactive alerting and reactive investigation capabilities.
 
-For a more comprehensive monitoring solution that covers DynamoDB alongside your entire stack, consider setting up [DynamoDB Contributor Insights](https://oneuptime.com/blog/post/enable-dynamodb-contributor-insights/view) for deeper visibility into access patterns and hot keys.
+For a more comprehensive monitoring solution that covers DynamoDB alongside your entire stack, consider setting up [DynamoDB Contributor Insights](https://oneuptime.com/blog/post/2026-02-12-enable-dynamodb-contributor-insights/view) for deeper visibility into access patterns and hot keys.
 
 The key takeaway: set up throttle alarms with a threshold of 1 (any throttling is worth knowing about), use multiple evaluation periods for latency alarms, and automate alarm creation so every table gets consistent coverage.

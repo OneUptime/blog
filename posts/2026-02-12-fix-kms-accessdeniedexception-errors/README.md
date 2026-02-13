@@ -269,4 +269,4 @@ aws kms list-grants \
 7. Does the service need `kms:CreateGrant`?
 8. Check CloudTrail for the detailed error context.
 
-KMS access issues are always about the interplay between key policies and IAM policies. Once you understand that both must agree, the debugging process becomes systematic. For more AWS troubleshooting tips, take a look at our guide on [fixing ACM certificate validation issues](https://oneuptime.com/blog/post/fix-acm-certificate-pending-validation-stuck/view).
+KMS access issues are always about the interplay between key policies and IAM policies. Once you understand that both must agree, the debugging process becomes systematic. For more AWS troubleshooting tips, take a look at our guide on [fixing ACM certificate validation issues](https://oneuptime.com/blog/post/2026-02-12-fix-acm-certificate-pending-validation-stuck/view).

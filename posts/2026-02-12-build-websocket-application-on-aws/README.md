@@ -293,7 +293,7 @@ But there's a catch with the broadcast pattern. Scanning the entire DynamoDB tab
 - Replace the DynamoDB scan with ElastiCache Redis for faster lookups
 - Use SNS or EventBridge to fan out messages instead of direct Lambda broadcasts
 
-For monitoring your WebSocket application in production, you'll want proper observability. Check out our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/build-logging-and-monitoring-stack-on-aws/view) for setting up CloudWatch metrics and alarms.
+For monitoring your WebSocket application in production, you'll want proper observability. Check out our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view) for setting up CloudWatch metrics and alarms.
 
 ## Handling Connection Limits and Timeouts
 

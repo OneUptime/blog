@@ -235,7 +235,7 @@ aws cloudformation wait stack-delete-complete \
   --stack-name my-app-stack
 ```
 
-For more nuance around safe deletion, see our guide on [deleting CloudFormation stacks safely](https://oneuptime.com/blog/post/delete-cloudformation-stacks-safely/view).
+For more nuance around safe deletion, see our guide on [deleting CloudFormation stacks safely](https://oneuptime.com/blog/post/2026-02-12-delete-cloudformation-stacks-safely/view).
 
 ## A Complete Deployment Script
 
@@ -301,4 +301,4 @@ A few flags worth knowing:
 - `--notification-arns`: Send stack events to an SNS topic
 - `--tags`: Apply tags to all resources in the stack
 
-The CLI gives you full control over CloudFormation. Combined with shell scripts or CI/CD tools, it's the foundation for automated infrastructure deployment. For the next step, look into [CloudFormation parameters](https://oneuptime.com/blog/post/cloudformation-parameters-reusable-templates/view) to make your templates work across environments without modification.
+The CLI gives you full control over CloudFormation. Combined with shell scripts or CI/CD tools, it's the foundation for automated infrastructure deployment. For the next step, look into [CloudFormation parameters](https://oneuptime.com/blog/post/2026-02-12-cloudformation-parameters-reusable-templates/view) to make your templates work across environments without modification.

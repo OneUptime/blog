@@ -298,7 +298,7 @@ const decryptAlarm = new cloudwatch.Alarm(this, 'HighDecryptRate', {
 });
 ```
 
-For more on encrypting secrets stored in Secrets Manager, check out our post on [creating Secrets Manager secrets with CDK](https://oneuptime.com/blog/post/secrets-manager-secrets-cdk/view).
+For more on encrypting secrets stored in Secrets Manager, check out our post on [creating Secrets Manager secrets with CDK](https://oneuptime.com/blog/post/2026-02-12-secrets-manager-secrets-cdk/view).
 
 ## Wrapping Up
 

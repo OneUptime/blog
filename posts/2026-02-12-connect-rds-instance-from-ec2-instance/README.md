@@ -305,7 +305,7 @@ conn = psycopg2.connect(
 
 ## Connection Pooling with RDS Proxy
 
-For applications with many short-lived connections (like microservices), consider using [RDS Proxy](https://oneuptime.com/blog/post/setup-rds-proxy-connection-pooling/view). It sits between your EC2 instances and RDS, managing a pool of connections and reducing the load on your database.
+For applications with many short-lived connections (like microservices), consider using [RDS Proxy](https://oneuptime.com/blog/post/2026-02-12-setup-rds-proxy-connection-pooling/view). It sits between your EC2 instances and RDS, managing a pool of connections and reducing the load on your database.
 
 ## Troubleshooting
 

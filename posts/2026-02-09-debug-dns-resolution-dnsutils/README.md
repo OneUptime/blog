@@ -524,4 +524,4 @@ Follow these practices when debugging DNS:
 
 DNS troubleshooting requires systematic investigation and the right tools. By using dnsutils, nslookup, dig, and CoreDNS logs effectively, you can quickly identify and resolve DNS issues in Kubernetes clusters. Building diagnostic scripts and maintaining a troubleshooting checklist ensures consistent problem resolution.
 
-For more DNS management guidance, see our guides on [CoreDNS configuration](https://oneuptime.com/blog/post/coredns-kubernetes/view) and [DNS resolution optimization](https://oneuptime.com/blog/post/coredns-cache-plugin-ttl/view).
+For more DNS management guidance, see our guides on [CoreDNS configuration](https://oneuptime.com/blog/post/2026-01-26-coredns-kubernetes/view) and [DNS resolution optimization](https://oneuptime.com/blog/post/2026-02-09-coredns-cache-plugin-ttl/view).

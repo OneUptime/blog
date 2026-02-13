@@ -301,4 +301,4 @@ aws timestream-query query \
 
 Timestream's SQL dialect gives you familiar relational query syntax enhanced with purpose-built time series functions. The key functions to master are `ago()` for relative time filtering, `BIN()` for time bucketing, `MAX_BY()` for latest-value queries, and `CREATE_TIME_SERIES()` for working with time series as arrays. Combined with standard SQL window functions and aggregations, you can build sophisticated time series analytics without leaving SQL.
 
-For more on Timestream, see our guides on [setting up Timestream for IoT data](https://oneuptime.com/blog/post/set-up-timestream-for-iot-data/view) and [Timestream scheduled queries](https://oneuptime.com/blog/post/set-up-timestream-scheduled-queries/view).
+For more on Timestream, see our guides on [setting up Timestream for IoT data](https://oneuptime.com/blog/post/2026-02-12-set-up-timestream-for-iot-data/view) and [Timestream scheduled queries](https://oneuptime.com/blog/post/2026-02-12-set-up-timestream-scheduled-queries/view).

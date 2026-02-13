@@ -366,4 +366,4 @@ def handler(event, context):
 
 Lambda Powertools Metrics gives you custom CloudWatch metrics with zero API call overhead. The EMF approach means your metrics are published through CloudWatch Logs, which is both faster and cheaper than direct PutMetricData calls. Use dimensions thoughtfully to avoid metric explosion, and build dashboards and alarms on the metrics that matter to your business.
 
-For the complete observability picture, combine metrics with [structured logging](https://oneuptime.com/blog/post/lambda-powertools-logger-structured-logging/view) and [distributed tracing](https://oneuptime.com/blog/post/lambda-powertools-tracer-xray-integration/view).
+For the complete observability picture, combine metrics with [structured logging](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-logger-structured-logging/view) and [distributed tracing](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-tracer-xray-integration/view).

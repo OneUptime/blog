@@ -255,7 +255,7 @@ You can export these metrics to CloudWatch, X-Ray, or third-party tools. For X-R
 
 Then set the `ENABLE_ENVOY_XRAY_TRACING` environment variable to `1` on the Envoy container. You'll get distributed traces across all your services without any instrumentation in your application code.
 
-For more on ECS monitoring, check out our guide on [monitoring ECS with Container Insights](https://oneuptime.com/blog/post/monitor-ecs-container-insights/view).
+For more on ECS monitoring, check out our guide on [monitoring ECS with Container Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-container-insights/view).
 
 ## Traffic Management Patterns
 

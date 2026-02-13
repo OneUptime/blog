@@ -379,4 +379,4 @@ aws configservice get-compliance-details-by-config-rule \
 
 ## Next Steps
 
-Once you've got custom rules working, you might want to [set up automatic remediation](https://oneuptime.com/blog/post/remediate-non-compliant-resources-aws-config/view) for non-compliant resources. And for deploying rules across multiple accounts, look into [Config conformance packs](https://oneuptime.com/blog/post/aws-config-conformance-packs/view) or [Config aggregators](https://oneuptime.com/blog/post/aws-config-aggregators-multi-account/view).
+Once you've got custom rules working, you might want to [set up automatic remediation](https://oneuptime.com/blog/post/2026-02-12-remediate-non-compliant-resources-aws-config/view) for non-compliant resources. And for deploying rules across multiple accounts, look into [Config conformance packs](https://oneuptime.com/blog/post/2026-02-12-aws-config-conformance-packs/view) or [Config aggregators](https://oneuptime.com/blog/post/2026-02-12-aws-config-aggregators-multi-account/view).

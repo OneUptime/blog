@@ -292,7 +292,7 @@ When returning binary data, set `isBase64Encoded: true` in your response and bas
 
 **Forgetting to stringify the body.** The response body must be a string. Returning a raw object will cause a 502 Bad Gateway error.
 
-**Missing CORS headers.** Proxy integration means you're responsible for CORS. API Gateway won't add headers for you. Check out our guide on [handling CORS in Lambda behind API Gateway](https://oneuptime.com/blog/post/handle-cors-lambda-api-gateway/view) for details.
+**Missing CORS headers.** Proxy integration means you're responsible for CORS. API Gateway won't add headers for you. Check out our guide on [handling CORS in Lambda behind API Gateway](https://oneuptime.com/blog/post/2026-02-12-handle-cors-lambda-api-gateway/view) for details.
 
 **502 errors with no obvious cause.** If your Lambda function throws an unhandled exception or returns a malformed response, API Gateway returns 502. Always wrap your handler in try/catch and return a proper error response.
 

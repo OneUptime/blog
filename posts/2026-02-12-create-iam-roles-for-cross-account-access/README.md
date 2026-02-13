@@ -305,4 +305,4 @@ https://signin.aws.amazon.com/switchrole?account=222222222222&roleName=CrossAcco
 
 ## Wrapping Up
 
-Cross-account roles are the backbone of multi-account AWS architectures. They eliminate the need for IAM users in every account, provide temporary credentials, and create clear audit trails in CloudTrail. Always require MFA for human access, use external IDs for third-party access, and restrict trust policies to specific principals when possible. For more on role assumption, check our guide on [assuming IAM roles using AWS STS](https://oneuptime.com/blog/post/assume-an-iam-role-using-aws-sts/view).
+Cross-account roles are the backbone of multi-account AWS architectures. They eliminate the need for IAM users in every account, provide temporary credentials, and create clear audit trails in CloudTrail. Always require MFA for human access, use external IDs for third-party access, and restrict trust policies to specific principals when possible. For more on role assumption, check our guide on [assuming IAM roles using AWS STS](https://oneuptime.com/blog/post/2026-02-12-assume-an-iam-role-using-aws-sts/view).

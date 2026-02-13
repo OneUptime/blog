@@ -204,7 +204,7 @@ resource "aws_network_interface_attachment" "secondary_attach" {
 }
 ```
 
-For more on Terraform with EC2, check out our post on [creating EC2 instances with Terraform](https://oneuptime.com/blog/post/create-ec2-instance-terraform/view).
+For more on Terraform with EC2, check out our post on [creating EC2 instances with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-ec2-instance-terraform/view).
 
 ## Assigning Elastic IPs to Secondary Interfaces
 

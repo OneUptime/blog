@@ -319,6 +319,6 @@ A few guidelines that'll save you headaches:
 - **Log the request ID.** When you contact AWS support, the request ID is the fastest way to trace what happened.
 - **Don't swallow errors silently.** Even if you handle an error gracefully, log it so you know it happened.
 - **Use adaptive retry mode** for services with heavy throttling (DynamoDB, API Gateway, Lambda).
-- **Test error paths.** Use [moto for mocking AWS errors](https://oneuptime.com/blog/post/moto-mocking-aws-services-python-tests/view) in your unit tests so you know your error handling actually works.
+- **Test error paths.** Use [moto for mocking AWS errors](https://oneuptime.com/blog/post/2026-02-12-moto-mocking-aws-services-python-tests/view) in your unit tests so you know your error handling actually works.
 
 Error handling isn't the fun part of AWS development, but it's what separates scripts that work in demos from code that works in production.

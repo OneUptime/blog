@@ -261,4 +261,4 @@ Monitor your table with CloudWatch metrics. Watch for throttled requests, consum
 
 CDK gives you a clean way to define DynamoDB tables with all their configuration in code. Start with on-demand billing, add indexes as your access patterns become clear, and switch to provisioned capacity with auto-scaling once your traffic is predictable. The key is getting your data model right first - the CDK code is the easy part.
 
-For a complete serverless backend, pair this with our guide on [creating an API Gateway with CDK](https://oneuptime.com/blog/post/create-api-gateway-with-cdk/view).
+For a complete serverless backend, pair this with our guide on [creating an API Gateway with CDK](https://oneuptime.com/blog/post/2026-02-12-create-api-gateway-with-cdk/view).

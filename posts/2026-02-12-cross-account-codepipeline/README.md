@@ -360,4 +360,4 @@ Cross-account deployments have more moving parts, so there are more things that 
 - **"KMS Decrypt failed"** - The KMS key policy must explicitly allow the production account to decrypt.
 - **Deployment artifacts not found** - Make sure the artifact bucket uses the custom KMS key, not the default AWS-managed key.
 
-For monitoring cross-account pipelines and getting alerted when deployments fail in any environment, [OneUptime](https://oneuptime.com) provides centralized monitoring across multiple AWS accounts. Also check our guide on [troubleshooting CodePipeline failures](https://oneuptime.com/blog/post/troubleshoot-codepipeline-failures/view) for general debugging techniques.
+For monitoring cross-account pipelines and getting alerted when deployments fail in any environment, [OneUptime](https://oneuptime.com) provides centralized monitoring across multiple AWS accounts. Also check our guide on [troubleshooting CodePipeline failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-codepipeline-failures/view) for general debugging techniques.

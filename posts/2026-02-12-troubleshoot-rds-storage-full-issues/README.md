@@ -237,7 +237,7 @@ aws rds modify-db-instance \
   --apply-immediately
 ```
 
-See our detailed guide on [enabling RDS storage auto scaling](https://oneuptime.com/blog/post/enable-rds-storage-auto-scaling/view) for more.
+See our detailed guide on [enabling RDS storage auto scaling](https://oneuptime.com/blog/post/2026-02-12-enable-rds-storage-auto-scaling/view) for more.
 
 ### Set Up Storage Alarms
 
@@ -296,4 +296,4 @@ CREATE TABLE application_logs_2026_02
 DROP TABLE application_logs_2025_11;
 ```
 
-Storage issues are preventable. Enable auto scaling, set up [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view), implement retention policies, and keep an eye on your biggest tables. A few minutes of setup saves hours of emergency firefighting.
+Storage issues are preventable. Enable auto scaling, set up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view), implement retention policies, and keep an eye on your biggest tables. A few minutes of setup saves hours of emergency firefighting.

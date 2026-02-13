@@ -305,7 +305,7 @@ If you prefer the console, you can save custom reports for quick access:
 
 Saved reports remember all your settings and update automatically when you open them.
 
-For a more advanced visualization setup, check out our guide on [visualizing AWS costs with QuickSight](https://oneuptime.com/blog/post/visualize-aws-costs-quicksight/view). And to automate cost control based on what these reports reveal, see [creating AWS Budget actions](https://oneuptime.com/blog/post/create-aws-budget-actions-automatic-cost-control/view).
+For a more advanced visualization setup, check out our guide on [visualizing AWS costs with QuickSight](https://oneuptime.com/blog/post/2026-02-12-visualize-aws-costs-quicksight/view). And to automate cost control based on what these reports reveal, see [creating AWS Budget actions](https://oneuptime.com/blog/post/2026-02-12-create-aws-budget-actions-automatic-cost-control/view).
 
 ## Wrapping Up
 

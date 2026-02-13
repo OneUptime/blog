@@ -380,4 +380,4 @@ aws codebuild batch-get-builds \
 
 For real-time build monitoring and alerting on failures, check out our guide on [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view). You'll want to know about build failures before your deploy pipeline does.
 
-CodeBuild's simplicity is its strength. Define a project, write a buildspec, and you've got CI. No servers, no plugins, no maintenance. For more details on writing buildspec files, see our [buildspec guide](https://oneuptime.com/blog/post/write-codebuild-buildspec-yml/view).
+CodeBuild's simplicity is its strength. Define a project, write a buildspec, and you've got CI. No servers, no plugins, no maintenance. For more details on writing buildspec files, see our [buildspec guide](https://oneuptime.com/blog/post/2026-02-12-write-codebuild-buildspec-yml/view).

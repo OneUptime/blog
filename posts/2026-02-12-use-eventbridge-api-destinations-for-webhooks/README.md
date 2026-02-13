@@ -90,7 +90,7 @@ aws events create-connection \
 
 Connections store credentials in Secrets Manager behind the scenes. EventBridge manages the secret lifecycle automatically, including OAuth token refresh.
 
-For more details on connection resources and their auth capabilities, see our guide on [EventBridge Connection Resources for Authentication](https://oneuptime.com/blog/post/use-eventbridge-connection-resources-for-authentication/view).
+For more details on connection resources and their auth capabilities, see our guide on [EventBridge Connection Resources for Authentication](https://oneuptime.com/blog/post/2026-02-12-use-eventbridge-connection-resources-for-authentication/view).
 
 ## Step 2: Create the API Destination
 

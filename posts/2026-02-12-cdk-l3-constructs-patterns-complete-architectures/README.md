@@ -255,6 +255,6 @@ Don't use L3 constructs when:
 - You need fine-grained control over every resource attribute
 - The pattern creates resources you don't want (e.g., a new VPC when you have an existing one)
 
-In these cases, build your architecture from L2 constructs. You might even wrap your custom architecture in your own L3-style construct for reuse across projects. See the post on [creating custom CDK constructs](https://oneuptime.com/blog/post/create-custom-cdk-constructs/view) for how to do that.
+In these cases, build your architecture from L2 constructs. You might even wrap your custom architecture in your own L3-style construct for reuse across projects. See the post on [creating custom CDK constructs](https://oneuptime.com/blog/post/2026-02-12-create-custom-cdk-constructs/view) for how to do that.
 
-L3 constructs are a productivity multiplier when they fit. Check what's available in the `aws-ecs-patterns`, `aws-apigateway`, and `aws-route53-patterns` modules before building from scratch. For a deeper understanding of construct levels, read about [CDK constructs L1, L2, and L3](https://oneuptime.com/blog/post/understand-cdk-constructs-l1-l2-l3/view).
+L3 constructs are a productivity multiplier when they fit. Check what's available in the `aws-ecs-patterns`, `aws-apigateway`, and `aws-route53-patterns` modules before building from scratch. For a deeper understanding of construct levels, read about [CDK constructs L1, L2, and L3](https://oneuptime.com/blog/post/2026-02-12-understand-cdk-constructs-l1-l2-l3/view).

@@ -662,8 +662,8 @@ processors:
 ## Related Resources
 
 For more Collector optimization strategies:
-- https://oneuptime.com/blog/post/cut-observability-costs-opentelemetry-filtering-sampling/view
-- https://oneuptime.com/blog/post/reduce-telemetry-data-volume-span-suppression/view
-- https://oneuptime.com/blog/post/handle-high-cardinality-metrics-opentelemetry/view
+- https://oneuptime.com/blog/post/2026-02-06-cut-observability-costs-opentelemetry-filtering-sampling/view
+- https://oneuptime.com/blog/post/2026-02-06-reduce-telemetry-data-volume-span-suppression/view
+- https://oneuptime.com/blog/post/2026-02-06-handle-high-cardinality-metrics-opentelemetry/view
 
 Proper memory management is critical for Collector stability. By correctly configuring GOMEMLIMIT and the memory limiter processor, you can ensure your Collectors remain stable under high load while efficiently using available resources. The key is understanding the relationship between container limits, GOMEMLIMIT, and memory limiter thresholds.

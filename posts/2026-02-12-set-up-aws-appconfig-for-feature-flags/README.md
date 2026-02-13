@@ -383,4 +383,4 @@ For flags that have already fully deployed, update the flag to its previous stat
 
 AppConfig gives you managed feature flag infrastructure without a third-party service. The combination of hosted configurations, deployment strategies, and validators makes it production-ready out of the box. Start with simple boolean flags, add percentage-based rollouts when you need gradual releases, and use validators to prevent bad configurations from reaching production.
 
-For using AppConfig beyond feature flags - like dynamic application configuration - check out our guide on [using AppConfig for dynamic configuration](https://oneuptime.com/blog/post/use-appconfig-for-dynamic-configuration/view).
+For using AppConfig beyond feature flags - like dynamic application configuration - check out our guide on [using AppConfig for dynamic configuration](https://oneuptime.com/blog/post/2026-02-12-use-appconfig-for-dynamic-configuration/view).

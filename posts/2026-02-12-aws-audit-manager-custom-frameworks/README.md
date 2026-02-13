@@ -308,7 +308,7 @@ def handler(event, context):
 
 **Start with AWS managed controls**. Before building custom controls from scratch, check if AWS has a managed control that does what you need. You can mix managed and custom controls in the same framework.
 
-For ongoing monitoring of your compliance posture beyond Audit Manager, you might want to set up [auto remediation with AWS Config](https://oneuptime.com/blog/post/aws-config-auto-remediation/view) so non-compliant resources get fixed automatically.
+For ongoing monitoring of your compliance posture beyond Audit Manager, you might want to set up [auto remediation with AWS Config](https://oneuptime.com/blog/post/2026-02-12-aws-config-auto-remediation/view) so non-compliant resources get fixed automatically.
 
 ## Wrapping Up
 

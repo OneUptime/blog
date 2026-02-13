@@ -297,7 +297,7 @@ new events.Rule(this, 'S3UploadRule', {
 });
 ```
 
-Note: S3 events via EventBridge require enabling EventBridge notifications on the bucket. See our post on [triggering Lambda from S3 events](https://oneuptime.com/blog/post/trigger-lambda-s3-events/view) for setup details.
+Note: S3 events via EventBridge require enabling EventBridge notifications on the bucket. See our post on [triggering Lambda from S3 events](https://oneuptime.com/blog/post/2026-02-12-trigger-lambda-s3-events/view) for setup details.
 
 ## Input Transformation
 
@@ -337,7 +337,7 @@ new targets.LambdaFunction(handler, {
 })
 ```
 
-The DLQ here is for the EventBridge-to-Lambda delivery, separate from any DLQ on the Lambda function itself. For Lambda-level error handling, check our post on [configuring Dead Letter Queues for Lambda](https://oneuptime.com/blog/post/configure-dead-letter-queues-lambda-functions/view).
+The DLQ here is for the EventBridge-to-Lambda delivery, separate from any DLQ on the Lambda function itself. For Lambda-level error handling, check our post on [configuring Dead Letter Queues for Lambda](https://oneuptime.com/blog/post/2026-02-12-configure-dead-letter-queues-lambda-functions/view).
 
 ## EventBridge vs. SNS
 

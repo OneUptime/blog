@@ -404,4 +404,4 @@ You've got plenty of room for multiple managed rule groups plus custom rules.
 4. **Switch to Block mode** - Change `OverrideAction` to `None` (which means "use the rule's action")
 5. **Continue monitoring** - Keep sampled requests and CloudWatch metrics enabled
 
-For custom rules to complement managed groups, see [WAF rules for common web attacks](https://oneuptime.com/blog/post/aws-waf-rules-common-web-attacks/view). Add [rate limiting](https://oneuptime.com/blog/post/waf-rate-limiting-rules-prevent-ddos/view) for DDoS protection. And for global applications, deploy [WAF with CloudFront](https://oneuptime.com/blog/post/waf-cloudfront-global-protection/view).
+For custom rules to complement managed groups, see [WAF rules for common web attacks](https://oneuptime.com/blog/post/2026-02-12-aws-waf-rules-common-web-attacks/view). Add [rate limiting](https://oneuptime.com/blog/post/2026-02-12-waf-rate-limiting-rules-prevent-ddos/view) for DDoS protection. And for global applications, deploy [WAF with CloudFront](https://oneuptime.com/blog/post/2026-02-12-waf-cloudfront-global-protection/view).

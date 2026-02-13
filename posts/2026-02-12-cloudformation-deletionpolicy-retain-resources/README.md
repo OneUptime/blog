@@ -101,7 +101,7 @@ DeletionPolicy triggers in two situations:
 2. **The resource is removed from the template** during a stack update - it follows its DeletionPolicy
 
 It does NOT trigger when:
-- A resource is replaced during a stack update (that's governed by `UpdateReplacePolicy` - see our [UpdateReplacePolicy guide](https://oneuptime.com/blog/post/cloudformation-updatereplacepolicy/view))
+- A resource is replaced during a stack update (that's governed by `UpdateReplacePolicy` - see our [UpdateReplacePolicy guide](https://oneuptime.com/blog/post/2026-02-12-cloudformation-updatereplacepolicy/view))
 - You change properties that cause an in-place modification
 
 ## A Complete Protection Strategy
@@ -213,7 +213,7 @@ aws cloudformation create-change-set \
   --template-body file://template.yaml
 ```
 
-For details, see our guide on [CloudFormation resource import](https://oneuptime.com/blog/post/cloudformation-resource-import/view).
+For details, see our guide on [CloudFormation resource import](https://oneuptime.com/blog/post/2026-02-12-cloudformation-resource-import/view).
 
 ### Option 2: Delete manually
 
@@ -302,6 +302,6 @@ And set DeletionPolicy on critical resources as an additional safety layer.
 
 **Test your deletion policies in dev.** Delete your dev stack and verify that retained resources actually persist. Don't discover a misconfiguration in production.
 
-**Pair DeletionPolicy with UpdateReplacePolicy.** [UpdateReplacePolicy](https://oneuptime.com/blog/post/cloudformation-updatereplacepolicy/view) handles the resource replacement scenario that DeletionPolicy doesn't cover.
+**Pair DeletionPolicy with UpdateReplacePolicy.** [UpdateReplacePolicy](https://oneuptime.com/blog/post/2026-02-12-cloudformation-updatereplacepolicy/view) handles the resource replacement scenario that DeletionPolicy doesn't cover.
 
 DeletionPolicy is one of the simplest but most important CloudFormation features. A single line in your template can prevent catastrophic data loss. Use it on anything you can't afford to lose.

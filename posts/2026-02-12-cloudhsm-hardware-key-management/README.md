@@ -342,4 +342,4 @@ CloudHSM is not cheap. Each HSM instance runs about $1.50 per hour (roughly $1,1
 
 **Monitor continuously.** Use [OneUptime](https://oneuptime.com) to track HSM availability and performance. An HSM going down can cascade into application failures fast.
 
-For KMS-level encryption needs, check out our guide on [cross-region KMS keys](https://oneuptime.com/blog/post/cross-region-kms-keys-encryption/view). CloudHSM is the heavy artillery - make sure you need it before deploying.
+For KMS-level encryption needs, check out our guide on [cross-region KMS keys](https://oneuptime.com/blog/post/2026-02-12-cross-region-kms-keys-encryption/view). CloudHSM is the heavy artillery - make sure you need it before deploying.

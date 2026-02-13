@@ -332,9 +332,9 @@ aws iam delete-role --role-name my-lambda-role
 
 Now that you've got the basics down, there's a lot more to explore:
 
-- [Creating a Lambda function from the AWS Console](https://oneuptime.com/blog/post/lambda-function-aws-console/view) - A visual walkthrough
-- [Deploying Lambda functions with the AWS CLI](https://oneuptime.com/blog/post/deploy-lambda-functions-aws-cli/view) - Advanced CLI deployment patterns
-- [Deploying Lambda functions with AWS SAM](https://oneuptime.com/blog/post/deploy-lambda-functions-aws-sam/view) - Infrastructure as code for serverless
-- [Configuring Lambda memory and timeout](https://oneuptime.com/blog/post/configure-lambda-memory-timeout-settings/view) - Performance tuning
+- [Creating a Lambda function from the AWS Console](https://oneuptime.com/blog/post/2026-02-12-lambda-function-aws-console/view) - A visual walkthrough
+- [Deploying Lambda functions with the AWS CLI](https://oneuptime.com/blog/post/2026-02-12-deploy-lambda-functions-aws-cli/view) - Advanced CLI deployment patterns
+- [Deploying Lambda functions with AWS SAM](https://oneuptime.com/blog/post/2026-02-12-deploy-lambda-functions-aws-sam/view) - Infrastructure as code for serverless
+- [Configuring Lambda memory and timeout](https://oneuptime.com/blog/post/2026-02-12-configure-lambda-memory-timeout-settings/view) - Performance tuning
 
 Lambda is one of those services that's simple to start with and deep enough to keep learning for years. Start with simple functions, get comfortable with the event model, and gradually take on more complex patterns.

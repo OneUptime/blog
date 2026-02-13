@@ -230,7 +230,7 @@ aws sesv2 delete-suppressed-destination \
   --email-address fixed@example.com
 ```
 
-This is a great safety net, but don't rely on it exclusively. You should still maintain your own suppression list so your application logic knows not to attempt sending to these addresses in the first place. For more details, see our guide on [configuring SES suppression lists](https://oneuptime.com/blog/post/configure-ses-suppression-lists/view).
+This is a great safety net, but don't rely on it exclusively. You should still maintain your own suppression list so your application logic knows not to attempt sending to these addresses in the first place. For more details, see our guide on [configuring SES suppression lists](https://oneuptime.com/blog/post/2026-02-12-configure-ses-suppression-lists/view).
 
 ## Monitoring Bounce and Complaint Rates
 
@@ -247,7 +247,7 @@ aws sesv2 get-account
 # }
 ```
 
-Set up CloudWatch alarms that alert you when rates get dangerous. For details on how to do this, check out [monitoring SES sending with CloudWatch](https://oneuptime.com/blog/post/monitor-ses-sending-with-cloudwatch/view).
+Set up CloudWatch alarms that alert you when rates get dangerous. For details on how to do this, check out [monitoring SES sending with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-ses-sending-with-cloudwatch/view).
 
 The thresholds you want to watch:
 - Bounce rate: alarm at 3%, take action at 2%

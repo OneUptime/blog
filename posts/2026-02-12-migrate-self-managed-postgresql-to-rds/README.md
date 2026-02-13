@@ -311,7 +311,7 @@ aws rds modify-db-instance \
   --max-allocated-storage 500
 ```
 
-Don't forget to set up [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view) and [event notifications](https://oneuptime.com/blog/post/enable-rds-event-notifications-via-sns/view) for your new instance.
+Don't forget to set up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view) and [event notifications](https://oneuptime.com/blog/post/2026-02-12-enable-rds-event-notifications-via-sns/view) for your new instance.
 
 ## Common Pitfalls
 

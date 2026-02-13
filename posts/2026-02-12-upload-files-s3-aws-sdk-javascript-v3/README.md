@@ -307,4 +307,4 @@ await safeUpload('./data.json', 'my-bucket', 'data/output.json');
 - **Batch directory uploads.** Parallel uploads dramatically improve throughput, but don't open too many connections at once.
 - **Use presigned URLs for client-side uploads.** It's more secure than proxying uploads through your server.
 
-For more on the v3 SDK fundamentals, check out the [SDK overview](https://oneuptime.com/blog/post/aws-sdk-javascript-v3-nodejs/view). And for uploading from Python instead, see the [Boto3 S3 upload guide](https://oneuptime.com/blog/post/upload-files-s3-boto3/view).
+For more on the v3 SDK fundamentals, check out the [SDK overview](https://oneuptime.com/blog/post/2026-02-12-aws-sdk-javascript-v3-nodejs/view). And for uploading from Python instead, see the [Boto3 S3 upload guide](https://oneuptime.com/blog/post/2026-02-12-upload-files-s3-boto3/view).

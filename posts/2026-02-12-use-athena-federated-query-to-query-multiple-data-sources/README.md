@@ -269,7 +269,7 @@ Federated queries incur additional costs:
 
 For moderate query volumes, these costs are minimal. But if you're running thousands of federated queries per day against large external tables, the Lambda costs can add up. Monitor them through CloudWatch.
 
-For overall cost visibility across your AWS services, check out our post on [reducing Athena query costs](https://oneuptime.com/blog/post/reduce-athena-query-costs/view).
+For overall cost visibility across your AWS services, check out our post on [reducing Athena query costs](https://oneuptime.com/blog/post/2026-02-12-reduce-athena-query-costs/view).
 
 ## Wrapping Up
 

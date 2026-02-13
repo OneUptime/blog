@@ -290,7 +290,7 @@ S3 Select has some important constraints.
 | Real-time aggregation | Kinesis + Lambda |
 | ETL pipeline | AWS Glue |
 
-For ETL pipelines that process S3 data at scale, check out our guide on [integrating S3 with AWS Glue](https://oneuptime.com/blog/post/integrate-s3-aws-glue-etl/view).
+For ETL pipelines that process S3 data at scale, check out our guide on [integrating S3 with AWS Glue](https://oneuptime.com/blog/post/2026-02-12-integrate-s3-aws-glue-etl/view).
 
 ## Cost Savings
 

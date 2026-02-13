@@ -228,6 +228,6 @@ resource "aws_ec2_traffic_mirror_session" "web" {
 - VXLAN overhead adds about 50 bytes per packet
 - Cross-AZ mirroring incurs data transfer charges
 
-For flow-level analysis without full packet capture, VPC Flow Logs might be sufficient and more cost-effective. See https://oneuptime.com/blog/post/enable-and-analyze-vpc-flow-logs/view for details.
+For flow-level analysis without full packet capture, VPC Flow Logs might be sufficient and more cost-effective. See https://oneuptime.com/blog/post/2026-02-12-enable-and-analyze-vpc-flow-logs/view for details.
 
 Traffic Mirroring is one of those tools you set up before you need it. When a security incident happens, having packet-level visibility into what's crossing your network can be the difference between a fast resolution and weeks of guessing.

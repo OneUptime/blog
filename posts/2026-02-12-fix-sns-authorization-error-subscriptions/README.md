@@ -207,7 +207,7 @@ Before you start debugging, run through this list:
 
 Most of the time, the issue falls into one of these categories. Start from the top, and you'll usually find the problem within a few minutes.
 
-For more on monitoring your AWS infrastructure and catching these issues early, check out how to set up proper [AWS monitoring with OneUptime](https://oneuptime.com/blog/post/setup-aws-cloudshell-quick-command-line-access/view).
+For more on monitoring your AWS infrastructure and catching these issues early, check out how to set up proper [AWS monitoring with OneUptime](https://oneuptime.com/blog/post/2026-02-12-setup-aws-cloudshell-quick-command-line-access/view).
 
 ## Wrapping Up
 

@@ -151,7 +151,7 @@ aws ec2 search-transit-gateway-routes \
   --output table
 ```
 
-For more advanced routing (like isolating dev from prod), create custom route tables. See [configuring transit gateway route tables](https://oneuptime.com/blog/post/configure-transit-gateway-route-tables/view) for the details.
+For more advanced routing (like isolating dev from prod), create custom route tables. See [configuring transit gateway route tables](https://oneuptime.com/blog/post/2026-02-12-configure-transit-gateway-route-tables/view) for the details.
 
 ## CloudFormation Template
 
@@ -245,4 +245,4 @@ Lowest possible cost                  VPC Peering
 
 Transit Gateway transforms your AWS networking from a tangled mesh into a clean hub-and-spoke topology. Every VPC, VPN, and Direct Connect gateway connects once to the central hub, and routing takes care of the rest. It costs more than VPC peering, but the operational simplicity and advanced routing capabilities make it worth it once you're past three or four VPCs. Start with the default route table for simple connectivity, then explore custom route tables when you need network segmentation.
 
-For sharing this transit gateway with other accounts, see [sharing transit gateway across AWS accounts](https://oneuptime.com/blog/post/share-transit-gateway-across-aws-accounts/view).
+For sharing this transit gateway with other accounts, see [sharing transit gateway across AWS accounts](https://oneuptime.com/blog/post/2026-02-12-share-transit-gateway-across-aws-accounts/view).

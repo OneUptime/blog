@@ -314,7 +314,7 @@ Video processing is not cheap. Here are the main cost drivers:
 
 To reduce costs, consider processing video only during specific hours, using motion detection at the edge to reduce unnecessary streaming, and keeping Kinesis retention short while archiving important clips to S3.
 
-Setting up proper monitoring for your infrastructure costs is critical. You can track spending with tools like [OneUptime](https://oneuptime.com/blog/post/build-a-time-series-dashboard-for-iot-on-aws/view) to get alerts before bills spiral out of control.
+Setting up proper monitoring for your infrastructure costs is critical. You can track spending with tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-time-series-dashboard-for-iot-on-aws/view) to get alerts before bills spiral out of control.
 
 ## Security Considerations
 

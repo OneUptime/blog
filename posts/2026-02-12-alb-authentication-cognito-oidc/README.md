@@ -347,4 +347,4 @@ The `OnUnauthenticatedRequest` setting is key:
 - `deny`: Return 401 (for API access)
 - `allow`: Pass through without auth (for public endpoints)
 
-ALB authentication is one of the most underused AWS features. It removes significant complexity from your application while providing enterprise-grade authentication. For more on load balancer configuration, check out [NLB with TLS termination](https://oneuptime.com/blog/post/nlb-tls-termination/view).
+ALB authentication is one of the most underused AWS features. It removes significant complexity from your application while providing enterprise-grade authentication. For more on load balancer configuration, check out [NLB with TLS termination](https://oneuptime.com/blog/post/2026-02-12-nlb-tls-termination/view).

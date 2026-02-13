@@ -93,7 +93,7 @@ This downloads pre-compiled Linux binaries even if you're on macOS. It works for
 
 ### Option 3: Use Lambda Layers
 
-For commonly used libraries, create a Lambda Layer that you can share across functions. More on this in our post about [Lambda Layers](https://oneuptime.com/blog/post/lambda-layers-share-code-functions/view).
+For commonly used libraries, create a Lambda Layer that you can share across functions. More on this in our post about [Lambda Layers](https://oneuptime.com/blog/post/2026-02-12-lambda-layers-share-code-functions/view).
 
 ## Node.js: npm Install
 
@@ -316,4 +316,4 @@ chmod -R 755 build/
 
 Packaging dependencies is one of Lambda's rough edges, but once you have a build process set up, it becomes routine. Use pip's `-t` flag for Python, `npm install --production` for Node.js, and Docker for anything with native binaries. Automate it with a Makefile or SAM, and you'll never think about it again.
 
-For sharing common dependencies across functions, check out our guide on [Lambda Layers](https://oneuptime.com/blog/post/lambda-layers-share-code-functions/view).
+For sharing common dependencies across functions, check out our guide on [Lambda Layers](https://oneuptime.com/blog/post/2026-02-12-lambda-layers-share-code-functions/view).

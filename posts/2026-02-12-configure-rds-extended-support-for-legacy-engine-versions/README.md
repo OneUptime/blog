@@ -262,4 +262,4 @@ aws events put-targets \
 
 RDS Extended Support is a safety net, not a long-term strategy. It keeps your databases running and patched while you plan and execute an upgrade, but the additional per-vCPU-hour charges add up. The best approach is to start planning your upgrade before standard support ends, use Extended Support only as a buffer for the transition, and track the costs to keep stakeholders motivated to complete the migration.
 
-For related database topics, check out our guide on [setting up DMS for MySQL to Aurora migration](https://oneuptime.com/blog/post/set-up-dms-for-mysql-to-aurora-migration/view) which covers how to use AWS Database Migration Service during your upgrade process.
+For related database topics, check out our guide on [setting up DMS for MySQL to Aurora migration](https://oneuptime.com/blog/post/2026-02-12-set-up-dms-for-mysql-to-aurora-migration/view) which covers how to use AWS Database Migration Service during your upgrade process.

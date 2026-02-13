@@ -378,4 +378,4 @@ volumes:
 - **Clean up in tests.** Delete resources after each test to avoid state leaking between tests.
 - **Don't rely on LocalStack for production behavior.** It's great for development and integration testing, but always do final validation against real AWS.
 
-For mocking at the unit test level instead of running a full LocalStack instance, see the guides on [mocking AWS SDK calls](https://oneuptime.com/blog/post/mock-aws-sdk-calls-unit-tests/view) and [moto for Python](https://oneuptime.com/blog/post/moto-mocking-aws-services-python-tests/view).
+For mocking at the unit test level instead of running a full LocalStack instance, see the guides on [mocking AWS SDK calls](https://oneuptime.com/blog/post/2026-02-12-mock-aws-sdk-calls-unit-tests/view) and [moto for Python](https://oneuptime.com/blog/post/2026-02-12-moto-mocking-aws-services-python-tests/view).

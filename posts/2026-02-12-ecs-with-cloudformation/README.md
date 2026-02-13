@@ -379,7 +379,7 @@ CloudFormation detects that only the task definition changed, creates a new task
 4. **Use nested stacks** for large applications with many services
 5. **Parameterize everything** that changes between environments
 
-For an alternative infrastructure-as-code approach with more programming language support, see our guide on [ECS with AWS CDK](https://oneuptime.com/blog/post/ecs-with-aws-cdk/view).
+For an alternative infrastructure-as-code approach with more programming language support, see our guide on [ECS with AWS CDK](https://oneuptime.com/blog/post/2026-02-12-ecs-with-aws-cdk/view).
 
 ## Wrapping Up
 

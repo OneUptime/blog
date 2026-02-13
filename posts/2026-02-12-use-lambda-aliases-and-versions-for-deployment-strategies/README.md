@@ -161,7 +161,7 @@ aws lambda update-alias \
   --routing-config '{}'
 ```
 
-For automated canary deployments, see our post on [implementing canary deployments for Lambda functions](https://oneuptime.com/blog/post/implement-canary-deployments-for-lambda-functions/view).
+For automated canary deployments, see our post on [implementing canary deployments for Lambda functions](https://oneuptime.com/blog/post/2026-02-12-implement-canary-deployments-for-lambda-functions/view).
 
 ## CloudFormation with Versions and Aliases
 

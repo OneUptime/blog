@@ -331,7 +331,7 @@ Resources:
 
 **Parameter passing**: Pass values explicitly through deployment scripts. More manual but no coupling.
 
-**Nested stacks**: If the stacks should deploy together, [nested stacks](https://oneuptime.com/blog/post/cloudformation-nested-stacks/view) share data through parent-child parameter passing without exports.
+**Nested stacks**: If the stacks should deploy together, [nested stacks](https://oneuptime.com/blog/post/2026-02-12-cloudformation-nested-stacks/view) share data through parent-child parameter passing without exports.
 
 ## Best Practices
 
@@ -345,4 +345,4 @@ Resources:
 
 **Document your exports.** Always include a `Description` on exports. Other teams need to understand what the value represents and how to use it.
 
-Cross-stack references with `Fn::ImportValue` let you build modular, maintainable infrastructure. Just be aware of the dependency implications and choose the right sharing mechanism for each situation. For more on structuring multi-stack architectures, check out our post on [CloudFormation outputs and exports](https://oneuptime.com/blog/post/cloudformation-outputs-export-values/view).
+Cross-stack references with `Fn::ImportValue` let you build modular, maintainable infrastructure. Just be aware of the dependency implications and choose the right sharing mechanism for each situation. For more on structuring multi-stack architectures, check out our post on [CloudFormation outputs and exports](https://oneuptime.com/blog/post/2026-02-12-cloudformation-outputs-export-values/view).

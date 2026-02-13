@@ -282,4 +282,4 @@ aws cloudwatch get-metric-statistics \
 
 DocumentDB Elastic Clusters bring horizontal scaling to AWS's managed document database. By sharding your data across multiple compute units, you break through the throughput and storage limits of standard DocumentDB. The key to success is choosing good shard keys - pick columns with high cardinality that your application frequently filters on, and you will get even data distribution and efficient query routing.
 
-For related database topics, check out our guides on [migrating from Cassandra to Keyspaces](https://oneuptime.com/blog/post/migrate-from-cassandra-to-amazon-keyspaces/view) and [setting up Timestream for IoT data](https://oneuptime.com/blog/post/set-up-timestream-for-iot-data/view).
+For related database topics, check out our guides on [migrating from Cassandra to Keyspaces](https://oneuptime.com/blog/post/2026-02-12-migrate-from-cassandra-to-amazon-keyspaces/view) and [setting up Timestream for IoT data](https://oneuptime.com/blog/post/2026-02-12-set-up-timestream-for-iot-data/view).

@@ -70,7 +70,7 @@ aws s3 sync s3://my-bucket/data/ ./local-data/ --delete
 aws s3 sync s3://my-bucket/data/ ./local-data/ --size-only
 ```
 
-By default, sync compares file size and last modified timestamps. The `--size-only` flag compares only sizes, which is faster but less precise. See our full guide on [syncing directories with S3](https://oneuptime.com/blog/post/sync-local-directory-with-s3-bucket/view) for more details.
+By default, sync compares file size and last modified timestamps. The `--size-only` flag compares only sizes, which is faster but less precise. See our full guide on [syncing directories with S3](https://oneuptime.com/blog/post/2026-02-12-sync-local-directory-with-s3-bucket/view) for more details.
 
 ## Downloading to stdout
 
@@ -166,7 +166,7 @@ aws s3api get-object \
     ./config-old-version.json
 ```
 
-This is invaluable when you need to recover a previous version of a file. For more on versioning, check our guide on [recovering deleted objects from versioned buckets](https://oneuptime.com/blog/post/recover-deleted-objects-versioned-s3-bucket/view).
+This is invaluable when you need to recover a previous version of a file. For more on versioning, check our guide on [recovering deleted objects from versioned buckets](https://oneuptime.com/blog/post/2026-02-12-recover-deleted-objects-versioned-s3-bucket/view).
 
 ## Downloading with Presigned URLs
 

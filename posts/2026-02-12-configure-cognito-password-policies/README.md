@@ -353,7 +353,7 @@ Different compliance frameworks have specific password requirements:
 - **SOC 2**: Password complexity appropriate to the risk
 - **NIST 800-63B**: Minimum 8 characters, check against breached password lists, no complexity rules required
 
-Cognito's built-in policy covers most of these. For breach-checking, you'll need the Lambda trigger approach shown above. For more on securing your Cognito setup, see [enabling MFA in Cognito User Pools](https://oneuptime.com/blog/post/enable-mfa-cognito-user-pools/view).
+Cognito's built-in policy covers most of these. For breach-checking, you'll need the Lambda trigger approach shown above. For more on securing your Cognito setup, see [enabling MFA in Cognito User Pools](https://oneuptime.com/blog/post/2026-02-12-enable-mfa-cognito-user-pools/view).
 
 ## Summary
 

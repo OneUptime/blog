@@ -289,9 +289,9 @@ Resources:
 
 ## Performance Expectations
 
-A single VPN tunnel supports up to 1.25 Gbps. With two tunnels and ECMP (equal-cost multi-path) through a transit gateway, you can get up to 2.5 Gbps. If you need more, consider [AWS Direct Connect](https://oneuptime.com/blog/post/set-up-aws-direct-connect-dedicated-connectivity/view).
+A single VPN tunnel supports up to 1.25 Gbps. With two tunnels and ECMP (equal-cost multi-path) through a transit gateway, you can get up to 2.5 Gbps. If you need more, consider [AWS Direct Connect](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-direct-connect-dedicated-connectivity/view).
 
-For tunnel redundancy details, see [configuring VPN redundancy with dual tunnels](https://oneuptime.com/blog/post/configure-vpn-redundancy-dual-tunnels/view).
+For tunnel redundancy details, see [configuring VPN redundancy with dual tunnels](https://oneuptime.com/blog/post/2026-02-12-configure-vpn-redundancy-dual-tunnels/view).
 
 ## Wrapping Up
 

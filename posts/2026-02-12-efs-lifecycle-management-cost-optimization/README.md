@@ -266,7 +266,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:ops-alerts"
 ```
 
-For comprehensive monitoring of all EFS metrics, see our guide on [monitoring EFS with CloudWatch](https://oneuptime.com/blog/post/monitor-efs-cloudwatch/view).
+For comprehensive monitoring of all EFS metrics, see our guide on [monitoring EFS with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-efs-cloudwatch/view).
 
 ## Best Practices
 

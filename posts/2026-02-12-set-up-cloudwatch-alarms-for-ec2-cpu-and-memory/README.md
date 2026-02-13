@@ -86,7 +86,7 @@ aws cloudwatch put-metric-alarm \
 
 ## Memory Alarms (Requires CloudWatch Agent)
 
-CloudWatch doesn't collect memory metrics by default. You need the CloudWatch agent installed and configured. If you haven't set that up yet, check out [installing and configuring the CloudWatch agent on EC2](https://oneuptime.com/blog/post/install-and-configure-the-cloudwatch-agent-on-ec2/view).
+CloudWatch doesn't collect memory metrics by default. You need the CloudWatch agent installed and configured. If you haven't set that up yet, check out [installing and configuring the CloudWatch agent on EC2](https://oneuptime.com/blog/post/2026-02-12-install-and-configure-the-cloudwatch-agent-on-ec2/view).
 
 Once the agent is reporting memory metrics, you can create alarms against them:
 
@@ -286,6 +286,6 @@ aws cloudwatch put-metric-alarm \
 
 **Account for burst workloads**: If your application has predictable spikes (batch jobs, report generation), either adjust thresholds during those windows or use anomaly detection alarms instead.
 
-For a broader monitoring strategy that includes these alarms, consider setting up [detailed monitoring on your EC2 instances](https://oneuptime.com/blog/post/monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) to get 1-minute metric granularity, which makes alarms more responsive.
+For a broader monitoring strategy that includes these alarms, consider setting up [detailed monitoring on your EC2 instances](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) to get 1-minute metric granularity, which makes alarms more responsive.
 
 Well-configured alarms are the difference between catching a problem in 3 minutes and finding out about it from your users 30 minutes later. Take the time to set them up properly, and they'll pay for themselves the first time they catch an issue before it becomes an outage.

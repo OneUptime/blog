@@ -191,7 +191,7 @@ The `dynamodb:LeadingKeys` condition restricts operations to items where the par
 }
 ```
 
-This uses session tags (see our guide on [ABAC with session tags](https://oneuptime.com/blog/post/configure-session-tags-attribute-based-access-control/view)) to enforce tenant isolation. Each tenant can only access rows where the partition key matches their tenant ID.
+This uses session tags (see our guide on [ABAC with session tags](https://oneuptime.com/blog/post/2026-02-12-configure-session-tags-attribute-based-access-control/view)) to enforce tenant isolation. Each tenant can only access rows where the partition key matches their tenant ID.
 
 ## Fine-Grained Access: Attribute-Level Control
 

@@ -297,4 +297,4 @@ app.get('/api/info', (req, res) => {
 4. Uneven traffic distribution? Check instance health - unhealthy instances don't get traffic
 5. Timeouts? Your application might be too slow - check instance performance metrics
 
-The Lightsail load balancer is the easiest way to add redundancy and SSL to your web applications. For protecting your data with backups, see our guide on [using Lightsail snapshots](https://oneuptime.com/blog/post/use-lightsail-snapshots-backup/view).
+The Lightsail load balancer is the easiest way to add redundancy and SSL to your web applications. For protecting your data with backups, see our guide on [using Lightsail snapshots](https://oneuptime.com/blog/post/2026-02-12-use-lightsail-snapshots-backup/view).

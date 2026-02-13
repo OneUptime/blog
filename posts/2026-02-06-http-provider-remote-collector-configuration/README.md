@@ -763,7 +763,7 @@ data:
 
 **Rate Limiting**: Implement rate limiting on the configuration server to prevent abuse and ensure availability.
 
-For even more advanced centralized management, explore [OpAMP protocol for collector management](https://oneuptime.com/blog/post/manage-collector-configuration-opamp/view). You can also combine HTTP providers with [environment variables](https://oneuptime.com/blog/post/environment-variables-opentelemetry-collector-configuration/view) for flexible deployments.
+For even more advanced centralized management, explore [OpAMP protocol for collector management](https://oneuptime.com/blog/post/2026-02-06-manage-collector-configuration-opamp/view). You can also combine HTTP providers with [environment variables](https://oneuptime.com/blog/post/2026-02-06-environment-variables-opentelemetry-collector-configuration/view) for flexible deployments.
 
 ## Conclusion
 

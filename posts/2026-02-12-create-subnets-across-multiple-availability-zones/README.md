@@ -298,7 +298,7 @@ aws ec2 modify-subnet-attribute \
 
 **Overlapping CIDR blocks.** AWS will reject a subnet creation if its CIDR overlaps with an existing subnet in the same VPC. Plan your address space carefully.
 
-**Not associating subnets with the right route table.** Subnets use the main route table by default, which typically has no internet route. You need to explicitly associate public subnets with a route table that has an internet gateway route. For details on route table configuration, see [configuring route tables in a VPC](https://oneuptime.com/blog/post/configure-route-tables-in-vpc/view).
+**Not associating subnets with the right route table.** Subnets use the main route table by default, which typically has no internet route. You need to explicitly associate public subnets with a route table that has an internet gateway route. For details on route table configuration, see [configuring route tables in a VPC](https://oneuptime.com/blog/post/2026-02-12-configure-route-tables-in-vpc/view).
 
 **Unbalanced AZ distribution.** If you put 3 instances in AZ-a and 1 in AZ-b, losing AZ-a takes out 75% of your capacity. Distribute evenly.
 

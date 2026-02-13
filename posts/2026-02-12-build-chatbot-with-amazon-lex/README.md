@@ -182,13 +182,13 @@ graph LR
 
 **Test with real users early.** People will say things you never anticipated. The sooner you see real utterances, the sooner you can improve your training data.
 
-**Monitor with CloudWatch.** Lex publishes metrics like `MissedUtteranceCount` and `RuntimeRequestCount`. Set up alarms so you know when your bot is confused. For deeper observability, consider integrating with a platform like [OneUptime](https://oneuptime.com/blog/post/use-amazon-devops-guru-for-operational-insights/view) to track performance across your entire stack.
+**Monitor with CloudWatch.** Lex publishes metrics like `MissedUtteranceCount` and `RuntimeRequestCount`. Set up alarms so you know when your bot is confused. For deeper observability, consider integrating with a platform like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-use-amazon-devops-guru-for-operational-insights/view) to track performance across your entire stack.
 
 **Version your bots.** Use aliases and versions to manage deployments. Your test alias can point to the draft version while your production alias points to a stable, tested version.
 
 ## What's Next
 
-Once your bot is working, you'll want to add fulfillment logic. That means connecting an AWS Lambda function to handle the actual business logic - like saving the pizza order to a database or calling an API. Check out our guide on [integrating Amazon Lex with Lambda](https://oneuptime.com/blog/post/integrate-amazon-lex-with-lambda-for-fulfillment/view) for the next step.
+Once your bot is working, you'll want to add fulfillment logic. That means connecting an AWS Lambda function to handle the actual business logic - like saving the pizza order to a database or calling an API. Check out our guide on [integrating Amazon Lex with Lambda](https://oneuptime.com/blog/post/2026-02-12-integrate-amazon-lex-with-lambda-for-fulfillment/view) for the next step.
 
 You'll also want to fine-tune your intents and slots as you gather more data. Lex provides conversation logs that show you exactly what users are saying and where the bot gets confused. Use that data to add more utterances and improve accuracy over time.
 

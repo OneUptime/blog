@@ -444,7 +444,7 @@ Key metrics to monitor for memory issues:
 - `otelcol_exporter_queue_size`: Current queue size for exporters
 - `otelcol_processor_batch_batch_size_trigger_send`: Batch sizes being sent
 
-For detailed guidance on using pprof for memory profiling, see https://oneuptime.com/blog/post/profile-collector-pprof-extension/view.
+For detailed guidance on using pprof for memory profiling, see https://oneuptime.com/blog/post/2026-02-06-profile-collector-pprof-extension/view.
 
 ## Diagnosing Memory Leaks
 
@@ -652,4 +652,4 @@ These emergency measures sacrifice processing capabilities and data completeness
 
 Memory management is fundamental to reliable OpenTelemetry Collector operations. The memory limiter processor, proper batch configuration, controlled exporter queues, and comprehensive monitoring form the foundation of a stable deployment. Understanding memory architecture, identifying issues early, and implementing appropriate scaling strategies prevent OOM kills and ensure continuous telemetry collection.
 
-For related troubleshooting topics, see https://oneuptime.com/blog/post/troubleshoot-collector-startup-failures/view and https://oneuptime.com/blog/post/zpages-live-debugging-collector/view. To validate your memory optimizations, use https://oneuptime.com/blog/post/debug-exporter-troubleshoot-collector-pipelines/view.
+For related troubleshooting topics, see https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-startup-failures/view and https://oneuptime.com/blog/post/2026-02-06-zpages-live-debugging-collector/view. To validate your memory optimizations, use https://oneuptime.com/blog/post/2026-02-06-debug-exporter-troubleshoot-collector-pipelines/view.

@@ -230,7 +230,7 @@ Monitor these after a runtime change:
 - **Init Duration**: Cold start times may change with new runtime versions.
 - **Throttles**: New runtime overhead could change concurrency patterns.
 
-Set up CloudWatch alarms on these metrics to catch regressions quickly. For a comprehensive monitoring setup, see our guide on [connecting Amazon Managed Grafana to CloudWatch](https://oneuptime.com/blog/post/connect-amazon-managed-grafana-to-cloudwatch/view).
+Set up CloudWatch alarms on these metrics to catch regressions quickly. For a comprehensive monitoring setup, see our guide on [connecting Amazon Managed Grafana to CloudWatch](https://oneuptime.com/blog/post/2026-02-12-connect-amazon-managed-grafana-to-cloudwatch/view).
 
 ## Rolling Back a Runtime Version
 

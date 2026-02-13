@@ -313,4 +313,4 @@ def get_recommendations(user_id, limit=10):
 
 Neptune Serverless takes the capacity planning guesswork out of running a graph database. It automatically scales between your defined minimum and maximum NCU range, handling everything from idle periods to traffic spikes. Combined with support for Gremlin, openCypher, and SPARQL, it is a flexible choice for graph workloads of any size.
 
-For analytical graph workloads that require algorithms like PageRank and community detection, see our guide on [Neptune Analytics](https://oneuptime.com/blog/post/set-up-neptune-analytics-for-graph-queries/view).
+For analytical graph workloads that require algorithms like PageRank and community detection, see our guide on [Neptune Analytics](https://oneuptime.com/blog/post/2026-02-12-set-up-neptune-analytics-for-graph-queries/view).

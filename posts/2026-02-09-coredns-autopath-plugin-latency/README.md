@@ -426,4 +426,4 @@ Implement these practices for optimal autopath performance:
 
 The autopath plugin is one of the most effective optimizations for DNS performance in Kubernetes. By eliminating unnecessary query attempts, you reduce latency, lower CoreDNS load, and improve overall application responsiveness. When combined with proper caching strategies and NodeLocal DNSCache, autopath enables DNS infrastructure that scales efficiently even in large clusters.
 
-For related optimizations, explore our guides on [CoreDNS cache configuration](https://oneuptime.com/blog/post/coredns-cache-settings-high-qps/view) and [DNS resolution troubleshooting](https://oneuptime.com/blog/post/pod-dns-resolution-coredns-errors/view).
+For related optimizations, explore our guides on [CoreDNS cache configuration](https://oneuptime.com/blog/post/2026-02-09-coredns-cache-settings-high-qps/view) and [DNS resolution troubleshooting](https://oneuptime.com/blog/post/2026-02-09-pod-dns-resolution-coredns-errors/view).

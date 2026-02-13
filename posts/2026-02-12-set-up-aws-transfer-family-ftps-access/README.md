@@ -217,7 +217,7 @@ aws transfer create-user \
   --ssh-public-key-body "$(cat ftps_user_key.pub)"
 ```
 
-You can also use password authentication by setting up a custom identity provider (see our guide on [Transfer Family custom identity providers](https://oneuptime.com/blog/post/configure-transfer-family-custom-identity-providers/view)).
+You can also use password authentication by setting up a custom identity provider (see our guide on [Transfer Family custom identity providers](https://oneuptime.com/blog/post/2026-02-12-configure-transfer-family-custom-identity-providers/view)).
 
 ## Step 7: Test the FTPS Connection
 

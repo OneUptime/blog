@@ -313,7 +313,7 @@ aws ec2 wait snapshot-completed \
     --snapshot-ids $COPIED_SNAP
 ```
 
-For more on cross-region AMI and snapshot management, see our guide on [copying AMIs to other regions](https://oneuptime.com/blog/post/copy-ami-to-another-aws-region/view).
+For more on cross-region AMI and snapshot management, see our guide on [copying AMIs to other regions](https://oneuptime.com/blog/post/2026-02-12-copy-ami-to-another-aws-region/view).
 
 ## Testing Your Restore Process
 
@@ -337,7 +337,7 @@ Set up [monitoring with OneUptime](https://oneuptime.com) to verify the restored
 
 **Changed UUIDs.** Volumes created from snapshots get new UUIDs. If your fstab uses UUIDs (which it should), you need to update them after restoration.
 
-**Encryption key access.** If snapshots are encrypted with a KMS key and you're restoring in a different account, you need access to that key. See our guide on [encrypting EBS volumes](https://oneuptime.com/blog/post/encrypt-ebs-volumes-on-existing-ec2-instances/view).
+**Encryption key access.** If snapshots are encrypted with a KMS key and you're restoring in a different account, you need access to that key. See our guide on [encrypting EBS volumes](https://oneuptime.com/blog/post/2026-02-12-encrypt-ebs-volumes-on-existing-ec2-instances/view).
 
 **Stale DNS/IP.** If the original instance had an Elastic IP or DNS records pointing to it, remember to update those after launching a replacement instance.
 

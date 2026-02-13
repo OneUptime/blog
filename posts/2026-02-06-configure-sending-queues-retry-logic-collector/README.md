@@ -867,9 +867,9 @@ service:
 
 For more information on building reliable telemetry pipelines:
 
-- [How to Tune Batch Processor Settings for Optimal Collector Performance](https://oneuptime.com/blog/post/tune-batch-processor-optimal-collector-performance/view)
-- [How to Scale the OpenTelemetry Collector for High-Throughput Environments](https://oneuptime.com/blog/post/scale-opentelemetry-collector-high-throughput/view)
-- [How to Monitor the Collector with Its Internal Metrics](https://oneuptime.com/blog/post/monitor-collector-internal-metrics/view)
-- [How to Set Up Load Balancing Across Multiple Collector Instances](https://oneuptime.com/blog/post/load-balancing-multiple-collector-instances/view)
+- [How to Tune Batch Processor Settings for Optimal Collector Performance](https://oneuptime.com/blog/post/2026-02-06-tune-batch-processor-optimal-collector-performance/view)
+- [How to Scale the OpenTelemetry Collector for High-Throughput Environments](https://oneuptime.com/blog/post/2026-02-06-scale-opentelemetry-collector-high-throughput/view)
+- [How to Monitor the Collector with Its Internal Metrics](https://oneuptime.com/blog/post/2026-02-06-monitor-collector-internal-metrics/view)
+- [How to Set Up Load Balancing Across Multiple Collector Instances](https://oneuptime.com/blog/post/2026-02-06-load-balancing-multiple-collector-instances/view)
 
 Properly configured sending queues and retry logic are fundamental to building reliable telemetry pipelines. By understanding how to tune these settings for your specific environment and monitoring their behavior through internal metrics, you can ensure that your observability data reaches its destination even in the face of network issues, backend outages, and traffic spikes.

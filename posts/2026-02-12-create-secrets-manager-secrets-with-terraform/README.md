@@ -94,7 +94,7 @@ resource "aws_secretsmanager_secret" "api_key" {
 }
 ```
 
-For creating KMS keys, see our post on [creating KMS keys with Terraform](https://oneuptime.com/blog/post/create-kms-keys-with-terraform/view).
+For creating KMS keys, see our post on [creating KMS keys with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-kms-keys-with-terraform/view).
 
 ## Automatic Rotation
 

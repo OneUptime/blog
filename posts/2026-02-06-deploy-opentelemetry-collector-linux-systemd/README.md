@@ -855,8 +855,8 @@ service:
 
 For other deployment options, see:
 
-- [How to Deploy the OpenTelemetry Collector on Docker and Docker Compose](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-docker-compose/view)
-- [How to Deploy the OpenTelemetry Collector on AWS ECS Fargate](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-aws-ecs-fargate/view)
-- [How to Set Up a Two-Tier Collector Architecture (Agent + Gateway)](https://oneuptime.com/blog/post/two-tier-collector-architecture-agent-gateway/view)
+- [How to Deploy the OpenTelemetry Collector on Docker and Docker Compose](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-docker-compose/view)
+- [How to Deploy the OpenTelemetry Collector on AWS ECS Fargate](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-aws-ecs-fargate/view)
+- [How to Set Up a Two-Tier Collector Architecture (Agent + Gateway)](https://oneuptime.com/blog/post/2026-02-06-two-tier-collector-architecture-agent-gateway/view)
 
 Deploying OpenTelemetry Collectors as systemd services provides robust process management, resource control, and seamless integration with Linux systems. This approach is ideal for traditional infrastructure, edge deployments, and environments requiring fine-grained system-level control.

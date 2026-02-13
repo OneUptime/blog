@@ -297,4 +297,4 @@ The real value is operational. Less time spent debugging routing issues, less ri
 
 If you're in a single region, stick with transit gateways. Cloud WAN's value shows up when you're spanning multiple regions and need consistent segmentation across all of them. The policy-driven approach also makes it a better fit for organizations with strict compliance requirements around network isolation.
 
-For related monitoring approaches, take a look at [setting up network monitoring with AWS](https://oneuptime.com/blog/post/aws-network-manager-global-monitoring/view).
+For related monitoring approaches, take a look at [setting up network monitoring with AWS](https://oneuptime.com/blog/post/2026-02-12-aws-network-manager-global-monitoring/view).

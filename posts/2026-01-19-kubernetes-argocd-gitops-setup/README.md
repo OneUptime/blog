@@ -826,7 +826,7 @@ spec:
         property: password
 ```
 
-For more on managing secrets with ArgoCD, see our guide on [External Secrets Operator and HashiCorp Vault](https://oneuptime.com/blog/post/kubernetes-external-secrets-vault-integration/view).
+For more on managing secrets with ArgoCD, see our guide on [External Secrets Operator and HashiCorp Vault](https://oneuptime.com/blog/post/2026-01-19-kubernetes-external-secrets-vault-integration/view).
 
 ## Conclusion
 
@@ -844,6 +844,6 @@ For comprehensive monitoring of your ArgoCD deployments and applications, check 
 
 ## Related Resources
 
-- [How to Secure Kubernetes Secrets with External Secrets Operator](https://oneuptime.com/blog/post/kubernetes-external-secrets-vault-integration/view)
-- [How to Implement Kubernetes RBAC Best Practices](https://oneuptime.com/blog/post/kubernetes-rbac-multi-tenant-best-practices/view)
-- [How to Set Up Health Checks for Kubernetes](https://oneuptime.com/blog/post/python-health-checks-kubernetes/view)
+- [How to Secure Kubernetes Secrets with External Secrets Operator](https://oneuptime.com/blog/post/2026-01-19-kubernetes-external-secrets-vault-integration/view)
+- [How to Implement Kubernetes RBAC Best Practices](https://oneuptime.com/blog/post/2026-01-19-kubernetes-rbac-multi-tenant-best-practices/view)
+- [How to Set Up Health Checks for Kubernetes](https://oneuptime.com/blog/post/2025-01-06-python-health-checks-kubernetes/view)

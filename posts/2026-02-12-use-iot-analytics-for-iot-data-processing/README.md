@@ -217,7 +217,7 @@ aws iotanalytics create-dataset \
   ]'
 ```
 
-This dataset runs every hour and produces a summary table of average temperature and humidity per device. You can then visualize this in QuickSight or download it for analysis. For a walkthrough on building visualizations, check out our guide on [building an IoT dashboard with QuickSight](https://oneuptime.com/blog/post/build-an-iot-dashboard-with-quicksight/view).
+This dataset runs every hour and produces a summary table of average temperature and humidity per device. You can then visualize this in QuickSight or download it for analysis. For a walkthrough on building visualizations, check out our guide on [building an IoT dashboard with QuickSight](https://oneuptime.com/blog/post/2026-02-12-build-an-iot-dashboard-with-quicksight/view).
 
 ## Step 6: Exploring Data with Jupyter Notebooks
 

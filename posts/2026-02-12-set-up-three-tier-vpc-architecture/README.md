@@ -363,10 +363,10 @@ The biggest cost driver in this architecture is NAT gateways. Each one costs abo
 
 For development and staging environments, you can cut costs by using a single NAT gateway. Just know that you're trading availability for savings - if the AZ with the NAT gateway goes down, your app tier loses outbound internet access.
 
-Also consider VPC endpoints for services like S3 and DynamoDB. They're free for gateway endpoints and eliminate NAT gateway data processing charges for those services. Check out [setting up VPC gateway endpoints for S3 and DynamoDB](https://oneuptime.com/blog/post/set-up-vpc-gateway-endpoints-s3-dynamodb/view) for the details.
+Also consider VPC endpoints for services like S3 and DynamoDB. They're free for gateway endpoints and eliminate NAT gateway data processing charges for those services. Check out [setting up VPC gateway endpoints for S3 and DynamoDB](https://oneuptime.com/blog/post/2026-02-12-set-up-vpc-gateway-endpoints-s3-dynamodb/view) for the details.
 
 ## Wrapping Up
 
 The three-tier VPC architecture gives you clear boundaries between your public-facing resources, your business logic, and your data. It's the pattern AWS recommends, and for good reason - it balances security, scalability, and operational simplicity. Start with this foundation and add complexity only when you need it.
 
-For the networking primitives behind this setup, check out [creating a VPC from scratch](https://oneuptime.com/blog/post/create-vpc-from-scratch-in-aws/view) and [configuring route tables in a VPC](https://oneuptime.com/blog/post/configure-route-tables-in-vpc/view).
+For the networking primitives behind this setup, check out [creating a VPC from scratch](https://oneuptime.com/blog/post/2026-02-12-create-vpc-from-scratch-in-aws/view) and [configuring route tables in a VPC](https://oneuptime.com/blog/post/2026-02-12-configure-route-tables-in-vpc/view).

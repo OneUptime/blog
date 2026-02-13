@@ -429,7 +429,7 @@ exports.listDevices = async (event) => {
 - **Timestream**: Automatically scales storage and compute
 - **Lambda**: Set concurrency limits to prevent overwhelming downstream services
 
-For monitoring your IoT pipeline, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/build-a-metrics-collection-system-on-aws/view).
+For monitoring your IoT pipeline, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-metrics-collection-system-on-aws/view).
 
 ## Wrapping Up
 

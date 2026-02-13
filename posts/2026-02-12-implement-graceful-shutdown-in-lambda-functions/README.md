@@ -339,7 +339,7 @@ docker kill --signal=SIGTERM lambda-test
 docker logs lambda-test
 ```
 
-For more Lambda best practices, see our guide on [configuring Lambda reserved vs unreserved concurrency](https://oneuptime.com/blog/post/configure-lambda-reserved-vs-unreserved-concurrency/view).
+For more Lambda best practices, see our guide on [configuring Lambda reserved vs unreserved concurrency](https://oneuptime.com/blog/post/2026-02-12-configure-lambda-reserved-vs-unreserved-concurrency/view).
 
 ## Wrapping Up
 

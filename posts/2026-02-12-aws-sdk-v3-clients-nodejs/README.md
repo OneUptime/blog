@@ -297,7 +297,7 @@ s3.middlewareStack.add(
 await s3.send(new GetObjectCommand({ Bucket: 'my-bucket', Key: 'test.txt' }));
 ```
 
-For a deep dive into the middleware system, check out the guide on [AWS SDK v3 middleware](https://oneuptime.com/blog/post/aws-sdk-javascript-v3-middleware/view).
+For a deep dive into the middleware system, check out the guide on [AWS SDK v3 middleware](https://oneuptime.com/blog/post/2026-02-12-aws-sdk-javascript-v3-middleware/view).
 
 ## Best Practices
 
@@ -307,4 +307,4 @@ For a deep dive into the middleware system, check out the guide on [AWS SDK v3 m
 - **Use connection pooling** with `keepAlive: true` in the HTTP agent for high-throughput applications.
 - **Configure retries** based on your application's tolerance for latency vs. reliability.
 
-For handling credentials across different environments, see the detailed guide on [credential management in AWS SDK v3](https://oneuptime.com/blog/post/credentials-aws-sdk-javascript-v3/view). If you're testing locally, [LocalStack](https://oneuptime.com/blog/post/localstack-test-aws-services-locally/view) is a great companion for your development workflow.
+For handling credentials across different environments, see the detailed guide on [credential management in AWS SDK v3](https://oneuptime.com/blog/post/2026-02-12-credentials-aws-sdk-javascript-v3/view). If you're testing locally, [LocalStack](https://oneuptime.com/blog/post/2026-02-12-localstack-test-aws-services-locally/view) is a great companion for your development workflow.

@@ -27,7 +27,7 @@ One thing to know upfront: Google Workspace's SCIM support for AWS is more limit
 
 ## Prerequisites
 
-- AWS IAM Identity Center enabled (see the [setup guide](https://oneuptime.com/blog/post/set-up-aws-iam-identity-center-sso/view))
+- AWS IAM Identity Center enabled (see the [setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-iam-identity-center-sso/view))
 - Google Workspace Super Admin access
 - Google Workspace Business, Enterprise, or Education edition
 

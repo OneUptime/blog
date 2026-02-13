@@ -338,4 +338,4 @@ aws lightsail update-relational-database \
 4. Performance issues? Check CPU and connection metrics, consider upgrading the plan
 5. Running out of storage? Create a snapshot and upgrade to a larger bundle
 
-Lightsail databases are a great fit when you want managed database simplicity without the pricing complexity of RDS. For load balancing your application in front of the database, check out our guide on [setting up a Lightsail load balancer](https://oneuptime.com/blog/post/setup-lightsail-load-balancer/view).
+Lightsail databases are a great fit when you want managed database simplicity without the pricing complexity of RDS. For load balancing your application in front of the database, check out our guide on [setting up a Lightsail load balancer](https://oneuptime.com/blog/post/2026-02-12-setup-lightsail-load-balancer/view).

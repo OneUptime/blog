@@ -305,7 +305,7 @@ Since you can't add encryption to an existing cluster, you need to create a new 
 3. Update your application to point to the new cluster
 4. Delete the old unencrypted cluster
 
-For more on managing your ElastiCache Redis configuration, check out the guide on [configuring replication](https://oneuptime.com/blog/post/configure-elasticache-redis-replication/view) and [setting up backups](https://oneuptime.com/blog/post/set-up-elasticache-redis-backups/view).
+For more on managing your ElastiCache Redis configuration, check out the guide on [configuring replication](https://oneuptime.com/blog/post/2026-02-12-configure-elasticache-redis-replication/view) and [setting up backups](https://oneuptime.com/blog/post/2026-02-12-set-up-elasticache-redis-backups/view).
 
 ## Wrapping Up
 

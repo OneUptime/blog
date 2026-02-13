@@ -280,6 +280,6 @@ There are a few things to keep in mind when working with waiters:
 - **Use built-in waiters when available.** They handle edge cases that custom polling loops often miss.
 - **Log during long waits.** In production, silent waits make debugging painful. Add logging so you know what state resources are in.
 
-For more on handling Boto3 errors that can occur during waiter operations, check out the companion post on [Boto3 error handling](https://oneuptime.com/blog/post/boto3-errors-and-exceptions/view). And if you're monitoring your AWS infrastructure, integrating waiter outcomes with your observability stack can help you catch deployment issues early.
+For more on handling Boto3 errors that can occur during waiter operations, check out the companion post on [Boto3 error handling](https://oneuptime.com/blog/post/2026-02-12-boto3-errors-and-exceptions/view). And if you're monitoring your AWS infrastructure, integrating waiter outcomes with your observability stack can help you catch deployment issues early.
 
 Waiters aren't glamorous, but they're one of those features that make your AWS automation significantly more reliable. Use them instead of rolling your own polling loops, and you'll save yourself a lot of debugging time.

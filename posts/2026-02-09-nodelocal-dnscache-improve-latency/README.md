@@ -467,4 +467,4 @@ Follow these guidelines for NodeLocal DNSCache:
 
 NodeLocal DNSCache dramatically improves DNS performance in Kubernetes by caching at the node level. By reducing latency, lowering CoreDNS load, and improving reliability, it's an essential component for production clusters. Proper configuration and monitoring ensure you get maximum benefit from this powerful caching layer.
 
-For related DNS optimizations, explore our guides on [CoreDNS cache configuration](https://oneuptime.com/blog/post/coredns-cache-plugin-ttl/view) and [CoreDNS autopath plugin](https://oneuptime.com/blog/post/coredns-autopath-plugin-latency/view).
+For related DNS optimizations, explore our guides on [CoreDNS cache configuration](https://oneuptime.com/blog/post/2026-02-09-coredns-cache-plugin-ttl/view) and [CoreDNS autopath plugin](https://oneuptime.com/blog/post/2026-02-09-coredns-autopath-plugin-latency/view).

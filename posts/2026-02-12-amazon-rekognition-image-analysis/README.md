@@ -277,6 +277,6 @@ Rekognition charges per image processed, with different rates for each feature. 
 
 For monitoring your Rekognition usage and costs alongside other AWS services, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
 
-If you need face detection and comparison specifically, take a look at our dedicated guide on [Amazon Rekognition for face detection](https://oneuptime.com/blog/post/amazon-rekognition-face-detection-comparison/view). And for video analysis, see [Amazon Rekognition for video analysis](https://oneuptime.com/blog/post/amazon-rekognition-video-analysis/view).
+If you need face detection and comparison specifically, take a look at our dedicated guide on [Amazon Rekognition for face detection](https://oneuptime.com/blog/post/2026-02-12-amazon-rekognition-face-detection-comparison/view). And for video analysis, see [Amazon Rekognition for video analysis](https://oneuptime.com/blog/post/2026-02-12-amazon-rekognition-video-analysis/view).
 
 Rekognition is one of those services that's easy to underestimate until you start using it. The combination of label detection, OCR, and content moderation covers a surprising range of real-world image analysis needs.

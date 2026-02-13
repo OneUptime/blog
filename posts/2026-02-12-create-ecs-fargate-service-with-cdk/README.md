@@ -30,7 +30,7 @@ npm install -g aws-cdk
 cdk bootstrap aws://ACCOUNT_ID/REGION
 ```
 
-If you haven't bootstrapped yet, check out our guide on [CDK Bootstrap for Account Preparation](https://oneuptime.com/blog/post/use-cdk-bootstrap-for-account-preparation/view).
+If you haven't bootstrapped yet, check out our guide on [CDK Bootstrap for Account Preparation](https://oneuptime.com/blog/post/2026-02-12-use-cdk-bootstrap-for-account-preparation/view).
 
 ## Setting Up the Project
 
@@ -196,7 +196,7 @@ new cdk.CfnOutput(this, 'ServiceName', {
 
 ## Deploying the Stack
 
-Before deploying, it's a good practice to synthesize and diff your changes. See our post on [synthesizing and diffing CDK changes](https://oneuptime.com/blog/post/synthesize-and-diff-cdk-changes-before-deployment/view) for more detail.
+Before deploying, it's a good practice to synthesize and diff your changes. See our post on [synthesizing and diffing CDK changes](https://oneuptime.com/blog/post/2026-02-12-synthesize-and-diff-cdk-changes-before-deployment/view) for more detail.
 
 ```bash
 # Preview the CloudFormation template
@@ -236,4 +236,4 @@ cdk destroy
 
 CDK makes it straightforward to define ECS Fargate services as code. The high-level patterns handle the boilerplate, while still giving you access to every knob when you need to customize. Start with the `ApplicationLoadBalancedFargateService` pattern, add auto-scaling, and build from there.
 
-If you're managing the underlying infrastructure with CDK too, check out our guide on [creating a VPC with CDK](https://oneuptime.com/blog/post/terraform-aws-vpc-module/view) and [creating an RDS database with CDK](https://oneuptime.com/blog/post/create-rds-database-with-cdk/view) to round out your stack.
+If you're managing the underlying infrastructure with CDK too, check out our guide on [creating a VPC with CDK](https://oneuptime.com/blog/post/2026-02-12-terraform-aws-vpc-module/view) and [creating an RDS database with CDK](https://oneuptime.com/blog/post/2026-02-12-create-rds-database-with-cdk/view) to round out your stack.

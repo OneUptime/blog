@@ -249,7 +249,7 @@ It won't help much when:
 
 ## Combining with Multipart Upload
 
-For the best performance with large files, combine Transfer Acceleration with [multipart uploads](https://oneuptime.com/blog/post/upload-large-files-to-s3-multipart-upload/view):
+For the best performance with large files, combine Transfer Acceleration with [multipart uploads](https://oneuptime.com/blog/post/2026-02-12-upload-large-files-to-s3-multipart-upload/view):
 
 ```bash
 # Configure multipart settings for optimal acceleration

@@ -604,8 +604,8 @@ service:
 
 Explore related OpenTelemetry Collector configurations:
 
-- https://oneuptime.com/blog/post/jaeger-receiver-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/kafka-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-jaeger-receiver-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-kafka-receiver-opentelemetry-collector/view
 
 ## Conclusion
 

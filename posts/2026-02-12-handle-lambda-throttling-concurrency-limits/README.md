@@ -339,7 +339,7 @@ aws lambda put-function-concurrency \
   --reserved-concurrent-executions 200
 ```
 
-For more on this, see our guide on [configuring Lambda reserved concurrency](https://oneuptime.com/blog/post/configure-lambda-reserved-concurrency/view).
+For more on this, see our guide on [configuring Lambda reserved concurrency](https://oneuptime.com/blog/post/2026-02-12-configure-lambda-reserved-concurrency/view).
 
 ### Optimize Function Duration
 

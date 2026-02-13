@@ -306,4 +306,4 @@ aws opensearchserverless update-account-settings \
     }'
 ```
 
-OpenSearch Serverless is a great choice when you don't want to deal with cluster sizing, upgrades, and capacity planning. For adding alerting on top of your search and analytics data, check out [setting up OpenSearch alerting](https://oneuptime.com/blog/post/opensearch-alerting/view).
+OpenSearch Serverless is a great choice when you don't want to deal with cluster sizing, upgrades, and capacity planning. For adding alerting on top of your search and analytics data, check out [setting up OpenSearch alerting](https://oneuptime.com/blog/post/2026-02-12-opensearch-alerting/view).

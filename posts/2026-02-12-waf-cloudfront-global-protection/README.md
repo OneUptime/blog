@@ -420,9 +420,9 @@ For most applications, the total WAF cost is $20-50/month, which is a tiny fract
 ## Combining with Other Protections
 
 For the most comprehensive protection:
-- Use [managed rule groups](https://oneuptime.com/blog/post/waf-managed-rule-groups/view) for baseline protection against known threats
-- Add [custom rules for common web attacks](https://oneuptime.com/blog/post/aws-waf-rules-common-web-attacks/view) specific to your application
-- Configure [rate-limiting rules](https://oneuptime.com/blog/post/waf-rate-limiting-rules-prevent-ddos/view) to stop DDoS and brute-force attacks
-- Deploy [WAF on your ALB](https://oneuptime.com/blog/post/waf-application-load-balancer/view) as a second layer if needed
+- Use [managed rule groups](https://oneuptime.com/blog/post/2026-02-12-waf-managed-rule-groups/view) for baseline protection against known threats
+- Add [custom rules for common web attacks](https://oneuptime.com/blog/post/2026-02-12-aws-waf-rules-common-web-attacks/view) specific to your application
+- Configure [rate-limiting rules](https://oneuptime.com/blog/post/2026-02-12-waf-rate-limiting-rules-prevent-ddos/view) to stop DDoS and brute-force attacks
+- Deploy [WAF on your ALB](https://oneuptime.com/blog/post/2026-02-12-waf-application-load-balancer/view) as a second layer if needed
 
 Edge-level WAF with CloudFront gives you the best possible protection with the least latency impact. Get it set up and you'll sleep better at night.

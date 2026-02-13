@@ -18,7 +18,7 @@ This guide covers setting up the X-Ray data source in Managed Grafana, building 
 
 You need:
 
-- An Amazon Managed Grafana workspace (see [setting up Amazon Managed Grafana](https://oneuptime.com/blog/post/set-up-amazon-managed-grafana/view))
+- An Amazon Managed Grafana workspace (see [setting up Amazon Managed Grafana](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-managed-grafana/view))
 - Applications instrumented with X-Ray SDK or OpenTelemetry sending traces to X-Ray
 - IAM permissions for the Grafana workspace role to query X-Ray
 
@@ -285,7 +285,7 @@ aws xray create-sampling-rule --cli-input-json '{
 
 **Combine with CloudWatch Logs**: For the complete picture, add CloudWatch Logs panels to your dashboard. Metrics tell you something is wrong, traces tell you where, and logs tell you why.
 
-For a broader observability setup, see our guide on [connecting Amazon Managed Grafana to Prometheus](https://oneuptime.com/blog/post/connect-amazon-managed-grafana-to-prometheus/view).
+For a broader observability setup, see our guide on [connecting Amazon Managed Grafana to Prometheus](https://oneuptime.com/blog/post/2026-02-12-connect-amazon-managed-grafana-to-prometheus/view).
 
 ## Wrapping Up
 

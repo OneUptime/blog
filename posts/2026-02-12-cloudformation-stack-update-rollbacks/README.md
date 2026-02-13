@@ -81,7 +81,7 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_IAM
 ```
 
-Before retrying, use a [change set](https://oneuptime.com/blog/post/cloudformation-change-sets-safe-updates/view) to preview the update. This helps you catch issues before committing.
+Before retrying, use a [change set](https://oneuptime.com/blog/post/2026-02-12-cloudformation-change-sets-safe-updates/view) to preview the update. This helps you catch issues before committing.
 
 ## Handling UPDATE_ROLLBACK_FAILED
 
@@ -144,7 +144,7 @@ If you skipped resources, your stack's view of reality no longer matches actual 
 2. Either import it back into the stack or remove it from the template
 3. Deploy an update that aligns the template with reality
 
-For resource import, check our guide on [CloudFormation resource import](https://oneuptime.com/blog/post/cloudformation-resource-import/view).
+For resource import, check our guide on [CloudFormation resource import](https://oneuptime.com/blog/post/2026-02-12-cloudformation-resource-import/view).
 
 ## Preventing Update Failures
 
@@ -156,7 +156,7 @@ aws cloudformation validate-template \
   --template-body file://template.yaml
 ```
 
-See our full guide on [validating CloudFormation templates](https://oneuptime.com/blog/post/validate-cloudformation-templates-before-deployment/view).
+See our full guide on [validating CloudFormation templates](https://oneuptime.com/blog/post/2026-02-12-validate-cloudformation-templates-before-deployment/view).
 
 ### Use change sets
 
@@ -219,7 +219,7 @@ Resources:
       Engine: postgres
 ```
 
-For more details, see our guide on [CloudFormation UpdateReplacePolicy](https://oneuptime.com/blog/post/cloudformation-updatereplacepolicy/view).
+For more details, see our guide on [CloudFormation UpdateReplacePolicy](https://oneuptime.com/blog/post/2026-02-12-cloudformation-updatereplacepolicy/view).
 
 ### Enable rollback triggers
 
@@ -255,7 +255,7 @@ When a stack update goes wrong:
 
 **Monitor your stacks.** Set up notifications for stack status changes so you know immediately when an update fails.
 
-**Keep templates small.** Smaller templates mean smaller blast radius. Use [nested stacks](https://oneuptime.com/blog/post/cloudformation-nested-stacks/view) to break up large deployments.
+**Keep templates small.** Smaller templates mean smaller blast radius. Use [nested stacks](https://oneuptime.com/blog/post/2026-02-12-cloudformation-nested-stacks/view) to break up large deployments.
 
 **Test updates in lower environments first.** Always deploy to dev and staging before production. If it fails there, it would have failed in production too.
 

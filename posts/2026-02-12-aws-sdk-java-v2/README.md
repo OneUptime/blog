@@ -334,4 +334,4 @@ S3Client localS3 = S3Client.builder()
 - **Use async clients** for high-throughput applications where blocking isn't acceptable.
 - **Import only what you need.** Each service module is a separate dependency.
 
-For details on configuring credentials for your Java clients, see the guide on [AWS SDK Java credentials](https://oneuptime.com/blog/post/configure-aws-sdk-java-credentials/view). If you're testing locally, [LocalStack](https://oneuptime.com/blog/post/localstack-test-aws-services-locally/view) works great with the Java SDK.
+For details on configuring credentials for your Java clients, see the guide on [AWS SDK Java credentials](https://oneuptime.com/blog/post/2026-02-12-configure-aws-sdk-java-credentials/view). If you're testing locally, [LocalStack](https://oneuptime.com/blog/post/2026-02-12-localstack-test-aws-services-locally/view) works great with the Java SDK.

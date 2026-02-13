@@ -99,7 +99,7 @@ aws ec2 copy-image \
     --name "shared-webapp-us-west-2-copy"
 ```
 
-Once copied, the new AMI belongs to your account. You have full control over it, regardless of what the original owner does with their AMI. This is a good practice for any shared AMI you depend on - see our guide on [sharing AMIs across accounts](https://oneuptime.com/blog/post/share-ami-across-aws-accounts/view) for more details.
+Once copied, the new AMI belongs to your account. You have full control over it, regardless of what the original owner does with their AMI. This is a good practice for any shared AMI you depend on - see our guide on [sharing AMIs across accounts](https://oneuptime.com/blog/post/2026-02-12-share-ami-across-aws-accounts/view) for more details.
 
 ## Multi-Region Deployment Strategy
 

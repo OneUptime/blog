@@ -402,7 +402,7 @@ Choosing the right sampling rate requires balancing costs against observability 
 | 10-20% | Production, high traffic | Statistical validity, 80-90% savings |
 | 1-5% | Production, very high traffic | Basic visibility, 95-99% savings |
 
-Start with a higher rate and reduce based on your budget and observability requirements. For more strategies on reducing costs, see our guide on [building cost-effective observability platforms](https://oneuptime.com/blog/post/cost-effective-observability-platform-opentelemetry/view).
+Start with a higher rate and reduce based on your budget and observability requirements. For more strategies on reducing costs, see our guide on [building cost-effective observability platforms](https://oneuptime.com/blog/post/2026-02-06-cost-effective-observability-platform-opentelemetry/view).
 
 ## Troubleshooting Common Issues
 
@@ -416,6 +416,6 @@ Start with a higher rate and reduce based on your budget and observability requi
 - **Solution**: Implement tail sampling with error/latency policies to catch critical traces
 
 **Problem**: High memory usage despite sampling
-- **Solution**: Configure [proper message size limits](https://oneuptime.com/blog/post/configure-max-recv-msg-size-prevent-dropped-data/view) and batch processors
+- **Solution**: Configure [proper message size limits](https://oneuptime.com/blog/post/2026-02-06-configure-max-recv-msg-size-prevent-dropped-data/view) and batch processors
 
 Consistent probability sampling is a powerful tool for managing observability costs while maintaining trace integrity. By understanding the principles and implementing proper configuration, you can achieve predictable overhead and reliable distributed tracing at any scale.

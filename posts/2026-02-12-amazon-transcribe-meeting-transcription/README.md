@@ -419,4 +419,4 @@ Audio quality makes a huge difference. Use a decent microphone, minimize backgro
 
 Custom vocabularies are worth the setup time. Add your company name, product names, technical terms, people's names, and any jargon your team uses regularly.
 
-For real-time meeting transcription, check out our guide on [Amazon Transcribe speech-to-text](https://oneuptime.com/blog/post/amazon-transcribe-speech-to-text/view) which covers the streaming API in detail. And for monitoring the health of your transcription pipeline, see our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For real-time meeting transcription, check out our guide on [Amazon Transcribe speech-to-text](https://oneuptime.com/blog/post/2026-02-12-amazon-transcribe-speech-to-text/view) which covers the streaming API in detail. And for monitoring the health of your transcription pipeline, see our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).

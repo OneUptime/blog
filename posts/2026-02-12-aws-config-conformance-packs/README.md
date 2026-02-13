@@ -327,4 +327,4 @@ resource "aws_config_conformance_pack" "security_baseline" {
 4. **Review compliance results weekly** and set a goal to reduce non-compliant resources over time
 5. **Combine with remediation** for rules where auto-fix is safe
 
-For setting up Config itself, see [enabling AWS Config](https://oneuptime.com/blog/post/enable-aws-config-resource-compliance/view). For cross-account visibility, look into [Config aggregators](https://oneuptime.com/blog/post/aws-config-aggregators-multi-account/view). And for handling non-compliant resources, check out [remediation with AWS Config](https://oneuptime.com/blog/post/remediate-non-compliant-resources-aws-config/view).
+For setting up Config itself, see [enabling AWS Config](https://oneuptime.com/blog/post/2026-02-12-enable-aws-config-resource-compliance/view). For cross-account visibility, look into [Config aggregators](https://oneuptime.com/blog/post/2026-02-12-aws-config-aggregators-multi-account/view). And for handling non-compliant resources, check out [remediation with AWS Config](https://oneuptime.com/blog/post/2026-02-12-remediate-non-compliant-resources-aws-config/view).

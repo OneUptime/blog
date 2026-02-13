@@ -474,6 +474,6 @@ Always pair the batch processor with the memory limiter, monitor batch size dist
 
 **Related Reading:**
 
-- [How to Configure the Memory Limiter Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/memory-limiter-processor-opentelemetry-collector/view)
-- [How to Configure the Filter Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/filter-processor-opentelemetry-collector/view)
+- [How to Configure the Memory Limiter Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-memory-limiter-processor-opentelemetry-collector/view)
+- [How to Configure the Filter Processor in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-filter-processor-opentelemetry-collector/view)
 - [How to reduce noise in OpenTelemetry?](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view)

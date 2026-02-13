@@ -404,7 +404,7 @@ Rewritten content:"""
 
 ## Monitoring the Writing Assistant
 
-Track API latency (writers expect fast responses), error rates, usage per writing mode (which features are most popular), and token consumption for cost management. If Bedrock throttles your requests during peak hours, users get a degraded experience. Monitor with [OneUptime](https://oneuptime.com/blog/post/build-a-code-review-bot-with-amazon-bedrock/view) to catch performance issues before they impact users.
+Track API latency (writers expect fast responses), error rates, usage per writing mode (which features are most popular), and token consumption for cost management. If Bedrock throttles your requests during peak hours, users get a degraded experience. Monitor with [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-code-review-bot-with-amazon-bedrock/view) to catch performance issues before they impact users.
 
 ## Wrapping Up
 

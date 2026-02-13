@@ -343,4 +343,4 @@ Structured logging isn't just a nice-to-have - it's essential for operating serv
 
 The investment in structured logging pays off the first time you need to troubleshoot a production issue. Instead of scrolling through thousands of unstructured log lines, you write a query and have your answer in seconds.
 
-For the complete Powertools experience, see our posts on [tracing with Powertools](https://oneuptime.com/blog/post/lambda-powertools-tracer-xray-integration/view) and [custom metrics with Powertools](https://oneuptime.com/blog/post/lambda-powertools-metrics-custom-cloudwatch/view).
+For the complete Powertools experience, see our posts on [tracing with Powertools](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-tracer-xray-integration/view) and [custom metrics with Powertools](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-metrics-custom-cloudwatch/view).

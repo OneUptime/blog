@@ -371,7 +371,7 @@ That's a 20x difference. Smart sampling rules let you get the traces you need wi
 
 **Test rule matching.** After creating rules, verify they're matching correctly by checking the sampling statistics in the X-Ray console.
 
-For related topics, see our guides on [X-Ray groups for filtering traces](https://oneuptime.com/blog/post/xray-groups-filtering-traces/view) and [analyzing traces for performance bottlenecks](https://oneuptime.com/blog/post/xray-traces-performance-bottlenecks/view).
+For related topics, see our guides on [X-Ray groups for filtering traces](https://oneuptime.com/blog/post/2026-02-12-xray-groups-filtering-traces/view) and [analyzing traces for performance bottlenecks](https://oneuptime.com/blog/post/2026-02-12-xray-traces-performance-bottlenecks/view).
 
 ## Wrapping Up
 

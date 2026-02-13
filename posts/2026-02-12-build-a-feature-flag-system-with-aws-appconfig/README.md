@@ -387,7 +387,7 @@ def toggle_flag(event, context):
 
 ## Monitoring Feature Flag Health
 
-When features are behind flags, you need to correlate feature flag states with application health metrics. Track flag evaluation counts, error rates per flag state, and deployment status. You can centralize this monitoring with [OneUptime](https://oneuptime.com/blog/post/build-a-canary-testing-system-on-aws/view) to see how flag changes affect your application's overall health.
+When features are behind flags, you need to correlate feature flag states with application health metrics. Track flag evaluation counts, error rates per flag state, and deployment status. You can centralize this monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-canary-testing-system-on-aws/view) to see how flag changes affect your application's overall health.
 
 ## Wrapping Up
 

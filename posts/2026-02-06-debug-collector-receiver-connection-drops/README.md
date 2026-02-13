@@ -769,8 +769,8 @@ Set up comprehensive monitoring for receiver health:
 
 For more troubleshooting guidance on OpenTelemetry Collector issues:
 
-- [How to Fix Collector Slow Startup in Kubernetes](https://oneuptime.com/blog/post/fix-collector-slow-startup-kubernetes/view)
-- [How to Monitor Collector Queue Depth and Backpressure](https://oneuptime.com/blog/post/monitor-collector-queue-depth-backpressure/view)
-- [How to Fix Collector Exporter Timeout Errors](https://oneuptime.com/blog/post/fix-collector-exporter-timeout-errors/view)
+- [How to Fix Collector Slow Startup in Kubernetes](https://oneuptime.com/blog/post/2026-02-06-fix-collector-slow-startup-kubernetes/view)
+- [How to Monitor Collector Queue Depth and Backpressure](https://oneuptime.com/blog/post/2026-02-06-monitor-collector-queue-depth-backpressure/view)
+- [How to Fix Collector Exporter Timeout Errors](https://oneuptime.com/blog/post/2026-02-06-fix-collector-exporter-timeout-errors/view)
 
 Connection drops in OpenTelemetry Collector receivers stem from various sources: network issues, configuration mismatches, resource constraints, or downstream backpressure. By systematically diagnosing the problem using logs, metrics, and network analysis, you can identify the root cause and implement targeted fixes that ensure reliable telemetry collection.

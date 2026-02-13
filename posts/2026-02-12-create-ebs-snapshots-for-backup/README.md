@@ -306,7 +306,7 @@ aws ec2 create-volume \
     --tag-specifications 'ResourceType=volume,Tags=[{Key=Name,Value=restored-data}]'
 ```
 
-For a full instance restoration guide, see our post on [restoring EC2 instances from EBS snapshots](https://oneuptime.com/blog/post/restore-ec2-instance-from-ebs-snapshot/view).
+For a full instance restoration guide, see our post on [restoring EC2 instances from EBS snapshots](https://oneuptime.com/blog/post/2026-02-12-restore-ec2-instance-from-ebs-snapshot/view).
 
 ## Best Practices
 

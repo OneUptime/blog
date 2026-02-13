@@ -223,7 +223,7 @@ aws apigateway update-stage \
   --patch-operations op=replace,path=/variables/backendHost,value=api.internal.example.com
 ```
 
-This pattern works well when API Gateway fronts a fleet of EC2 instances, ECS services, or any HTTP-based backend. For private backends, you might want to combine this with [API Gateway VPC Link for private APIs](https://oneuptime.com/blog/post/api-gateway-vpc-link-private-apis/view).
+This pattern works well when API Gateway fronts a fleet of EC2 instances, ECS services, or any HTTP-based backend. For private backends, you might want to combine this with [API Gateway VPC Link for private APIs](https://oneuptime.com/blog/post/2026-02-12-api-gateway-vpc-link-private-apis/view).
 
 ## Stage Variables in Mapping Templates
 

@@ -43,7 +43,7 @@ You'll need:
 - A CodeDeploy application with at least one successful deployment
 - Proper IAM roles for both CodeDeploy and your EC2 instances
 
-If you haven't set up CodeDeploy yet, start with our guide on [setting up CodeDeploy for EC2 deployments](https://oneuptime.com/blog/post/aws-codedeploy-ec2-deployments/view).
+If you haven't set up CodeDeploy yet, start with our guide on [setting up CodeDeploy for EC2 deployments](https://oneuptime.com/blog/post/2026-02-12-aws-codedeploy-ec2-deployments/view).
 
 ## Step 1: Prepare Your Launch Template
 
@@ -234,4 +234,4 @@ Common issues with ASG integration:
 
 For comprehensive deployment monitoring, tools like [OneUptime](https://oneuptime.com) can help you track deployment health across your ASG instances and alert you when scale-out deployments fail.
 
-If you run into persistent deployment failures, check our guide on [handling CodeDeploy deployment failures](https://oneuptime.com/blog/post/codedeploy-deployment-failures/view) for detailed debugging steps.
+If you run into persistent deployment failures, check our guide on [handling CodeDeploy deployment failures](https://oneuptime.com/blog/post/2026-02-12-codedeploy-deployment-failures/view) for detailed debugging steps.

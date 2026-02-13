@@ -552,8 +552,8 @@ Create a monitoring dashboard to track collector startup metrics over time. You 
 
 For more information on optimizing OpenTelemetry Collector deployments, check out:
 
-- [How to Monitor Collector Queue Depth and Backpressure](https://oneuptime.com/blog/post/monitor-collector-queue-depth-backpressure/view)
-- [How to Fix Collector Exporter Timeout Errors](https://oneuptime.com/blog/post/fix-collector-exporter-timeout-errors/view)
-- [How to Reduce OpenTelemetry Performance Overhead in Production by 50%](https://oneuptime.com/blog/post/reduce-opentelemetry-performance-overhead-production/view)
+- [How to Monitor Collector Queue Depth and Backpressure](https://oneuptime.com/blog/post/2026-02-06-monitor-collector-queue-depth-backpressure/view)
+- [How to Fix Collector Exporter Timeout Errors](https://oneuptime.com/blog/post/2026-02-06-fix-collector-exporter-timeout-errors/view)
+- [How to Reduce OpenTelemetry Performance Overhead in Production by 50%](https://oneuptime.com/blog/post/2026-02-06-reduce-opentelemetry-performance-overhead-production/view)
 
 Slow collector startup in Kubernetes is usually caused by a combination of configuration complexity, resource constraints, and network delays. By systematically identifying bottlenecks and applying targeted optimizations, you can reduce startup time from minutes to seconds, ensuring reliable observability pipeline deployments.

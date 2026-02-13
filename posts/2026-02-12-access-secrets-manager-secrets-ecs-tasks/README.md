@@ -333,7 +333,7 @@ For simpler cases where you don't need rotation, you can use SSM Parameter Store
 }
 ```
 
-For a deeper comparison of the two services, see our guide on [Secrets Manager vs Parameter Store](https://oneuptime.com/blog/post/secrets-manager-vs-parameter-store/view).
+For a deeper comparison of the two services, see our guide on [Secrets Manager vs Parameter Store](https://oneuptime.com/blog/post/2026-02-12-secrets-manager-vs-parameter-store/view).
 
 ## Debugging Common Issues
 

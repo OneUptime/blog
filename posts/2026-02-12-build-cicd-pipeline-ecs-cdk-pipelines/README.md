@@ -317,7 +317,7 @@ const staging = new EcsStage(this, 'Staging', {
 
 ## Monitoring Your Pipeline
 
-Once the pipeline is running, you should monitor it. Set up CloudWatch alarms for pipeline failures and integrate with SNS for notifications. You can also check out our guide on [monitoring ECS services with CloudWatch](https://oneuptime.com/blog/post/monitor-ecs-tasks-cloudwatch-metrics/view) for observability best practices.
+Once the pipeline is running, you should monitor it. Set up CloudWatch alarms for pipeline failures and integrate with SNS for notifications. You can also check out our guide on [monitoring ECS services with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-tasks-cloudwatch-metrics/view) for observability best practices.
 
 ## Common Pitfalls
 
@@ -331,4 +331,4 @@ Once the pipeline is running, you should monitor it. Set up CloudWatch alarms fo
 
 CDK Pipelines gives you a production-grade CI/CD pipeline for ECS with remarkably little code. The self-mutating capability means the pipeline evolves with your application, and the staged deployment model with approval gates gives you confidence in production releases. Once you set it up, you rarely need to touch the pipeline directly - just push code and let it handle the rest.
 
-For more on deploying to ECS, see our guides on [creating ECS Fargate services with CDK](https://oneuptime.com/blog/post/create-ecs-fargate-service-with-cdk/view) and [ECS deployment strategies](https://oneuptime.com/blog/post/codedeploy-ecs-deployments/view).
+For more on deploying to ECS, see our guides on [creating ECS Fargate services with CDK](https://oneuptime.com/blog/post/2026-02-12-create-ecs-fargate-service-with-cdk/view) and [ECS deployment strategies](https://oneuptime.com/blog/post/2026-02-12-codedeploy-ecs-deployments/view).

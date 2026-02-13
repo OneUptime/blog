@@ -13,7 +13,7 @@ When you've got millions of S3 access log entries, grep isn't going to cut it. Y
 ## Prerequisites
 
 You'll need:
-1. S3 access logging already enabled (see our guide on [setting up S3 access logging](https://oneuptime.com/blog/post/s3-access-logging-audit-trails/view))
+1. S3 access logging already enabled (see our guide on [setting up S3 access logging](https://oneuptime.com/blog/post/2026-02-12-s3-access-logging-audit-trails/view))
 2. An Athena workgroup configured with a query results bucket
 3. Logs accumulated in your logging bucket
 

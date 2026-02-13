@@ -432,7 +432,7 @@ Common frameworks and their key AWS controls:
 | PCI DSS | Network security, encryption, access | VPC, KMS, WAF, GuardDuty |
 | GDPR | Data protection, consent, deletion | Macie, S3 lifecycle, KMS |
 
-For monitoring the compliance system itself, see our guide on [building a log aggregation system on AWS](https://oneuptime.com/blog/post/build-a-log-aggregation-system-on-aws/view).
+For monitoring the compliance system itself, see our guide on [building a log aggregation system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-log-aggregation-system-on-aws/view).
 
 ## Wrapping Up
 

@@ -273,7 +273,7 @@ This requires the instance to have the EC2 Instance Connect agent installed (it'
 4. **Don't modify authorized_keys manually** unless you know what you're doing
 5. **Use EC2 Instance Connect** for temporary access instead of sharing key pairs
 
-For connection timeouts (as opposed to permission denied), see our guide on [fixing connection timeouts to EC2](https://oneuptime.com/blog/post/fix-connection-timed-out-when-connecting-to-ec2/view).
+For connection timeouts (as opposed to permission denied), see our guide on [fixing connection timeouts to EC2](https://oneuptime.com/blog/post/2026-02-12-fix-connection-timed-out-when-connecting-to-ec2/view).
 
 ## Summary
 

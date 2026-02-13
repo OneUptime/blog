@@ -232,7 +232,7 @@ There's a common misconception that detailed monitoring adds more metric types. 
 - **Per-process metrics**: Requires the CloudWatch agent
 - **Application-level metrics**: Requires custom metrics
 
-For these, you need to install and configure the CloudWatch agent. Check out [installing and configuring the CloudWatch agent on EC2](https://oneuptime.com/blog/post/install-and-configure-the-cloudwatch-agent-on-ec2/view) for a full walkthrough.
+For these, you need to install and configure the CloudWatch agent. Check out [installing and configuring the CloudWatch agent on EC2](https://oneuptime.com/blog/post/2026-02-12-install-and-configure-the-cloudwatch-agent-on-ec2/view) for a full walkthrough.
 
 ## Cost Considerations
 
@@ -292,6 +292,6 @@ aws cloudwatch put-dashboard \
   }'
 ```
 
-For alerts and incident management on top of your CloudWatch data, consider setting up [CloudWatch alarms for CPU and memory](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) to get notified before issues impact your users.
+For alerts and incident management on top of your CloudWatch data, consider setting up [CloudWatch alarms for CPU and memory](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) to get notified before issues impact your users.
 
 Detailed monitoring is one of those simple toggles that makes a real difference in your ability to understand and react to what's happening on your instances. For production workloads, the $3.50/month per instance is almost always worth the visibility you get in return.

@@ -353,7 +353,7 @@ def get_push_metrics(app_id):
 4. **Test on both platforms.** iOS and Android handle notifications differently. What works on one might not look right on the other.
 5. **Include a clear call to action.** Every notification should give the user a reason to tap.
 
-For email campaigns alongside push notifications, see our guide on [using Pinpoint for email campaigns](https://oneuptime.com/blog/post/use-pinpoint-for-email-campaigns/view).
+For email campaigns alongside push notifications, see our guide on [using Pinpoint for email campaigns](https://oneuptime.com/blog/post/2026-02-12-use-pinpoint-for-email-campaigns/view).
 
 ## Summary
 

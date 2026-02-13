@@ -251,4 +251,4 @@ When you hit `NotAuthorizedException`, work through this list:
 
 Most of the time, it's either wrong credentials, a missing secret hash, or a misconfigured auth flow. Start with those three and you'll resolve the majority of cases.
 
-For monitoring your authentication infrastructure and catching these issues in real-time, you might want to look into setting up proper [observability for your AWS services](https://oneuptime.com/blog/post/fix-sns-authorization-error-subscriptions/view).
+For monitoring your authentication infrastructure and catching these issues in real-time, you might want to look into setting up proper [observability for your AWS services](https://oneuptime.com/blog/post/2026-02-12-fix-sns-authorization-error-subscriptions/view).

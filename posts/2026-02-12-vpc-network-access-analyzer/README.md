@@ -351,4 +351,4 @@ aws securityhub enable-import-findings-for-product \
 
 **Combine with VPC Flow Logs.** Network Access Analyzer tells you what access is possible. VPC Flow Logs tell you what access is actually happening. Together, they give you a complete picture of your network security posture.
 
-For more on managing network access, see our guide on [AWS Verified Access](https://oneuptime.com/blog/post/aws-verified-access-zero-trust/view).
+For more on managing network access, see our guide on [AWS Verified Access](https://oneuptime.com/blog/post/2026-02-12-aws-verified-access-zero-trust/view).

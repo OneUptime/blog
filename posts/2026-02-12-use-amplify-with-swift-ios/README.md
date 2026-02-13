@@ -580,4 +580,4 @@ func signOut() async {
 
 ## Wrapping Up
 
-Amplify for Swift gives you a native, type-safe way to integrate AWS services into your iOS app. The Swift async/await support makes the code clean and readable, and the SwiftUI compatibility means you can build modern, reactive UIs with minimal boilerplate. For cross-platform development with Flutter, see [Amplify with Flutter](https://oneuptime.com/blog/post/use-amplify-with-flutter/view). For Android, check out [Amplify with Android Kotlin](https://oneuptime.com/blog/post/use-amplify-with-android-kotlin/view).
+Amplify for Swift gives you a native, type-safe way to integrate AWS services into your iOS app. The Swift async/await support makes the code clean and readable, and the SwiftUI compatibility means you can build modern, reactive UIs with minimal boilerplate. For cross-platform development with Flutter, see [Amplify with Flutter](https://oneuptime.com/blog/post/2026-02-12-use-amplify-with-flutter/view). For Android, check out [Amplify with Android Kotlin](https://oneuptime.com/blog/post/2026-02-12-use-amplify-with-android-kotlin/view).

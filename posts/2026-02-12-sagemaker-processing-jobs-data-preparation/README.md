@@ -414,4 +414,4 @@ Processing Jobs charge you for the instance time plus any S3 data transfer. A fe
 
 ## Wrapping Up
 
-Processing Jobs are the workhorse of SageMaker data pipelines. They're simple, flexible, and cost-effective since you only pay for the compute time you use. Whether you're cleaning data with pandas, running Spark ETL jobs, or evaluating model performance, the pattern is the same: define inputs, write a script, define outputs, and run. When you're ready to chain processing jobs with training and deployment, check out [SageMaker Pipelines](https://oneuptime.com/blog/post/sagemaker-pipelines-mlops/view) for orchestration.
+Processing Jobs are the workhorse of SageMaker data pipelines. They're simple, flexible, and cost-effective since you only pay for the compute time you use. Whether you're cleaning data with pandas, running Spark ETL jobs, or evaluating model performance, the pattern is the same: define inputs, write a script, define outputs, and run. When you're ready to chain processing jobs with training and deployment, check out [SageMaker Pipelines](https://oneuptime.com/blog/post/2026-02-12-sagemaker-pipelines-mlops/view) for orchestration.

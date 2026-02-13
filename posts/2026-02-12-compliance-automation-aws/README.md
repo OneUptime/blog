@@ -381,4 +381,4 @@ Compliance automation transforms compliance from a periodic scramble into a cont
 
 The investment pays off not just in audit readiness, but in actual security. Every compliance rule you enforce automatically is one less vulnerability in your environment.
 
-For related topics, check out [logging and monitoring best practices on AWS](https://oneuptime.com/blog/post/logging-monitoring-best-practices-aws/view) and [the shared responsibility model on AWS](https://oneuptime.com/blog/post/shared-responsibility-model-aws/view).
+For related topics, check out [logging and monitoring best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-logging-monitoring-best-practices-aws/view) and [the shared responsibility model on AWS](https://oneuptime.com/blog/post/2026-02-12-shared-responsibility-model-aws/view).

@@ -250,9 +250,9 @@ aws ec2 create-flow-logs \
 
 ## When Peering Isn't Enough
 
-Cross-account peering works well for connecting a few accounts. But when you have ten or more accounts that all need to talk to each other, the number of peering connections explodes. Consider [using a transit gateway for multi-VPC connectivity](https://oneuptime.com/blog/post/aws-transit-gateway-multi-vpc-connectivity/view) and [sharing it across accounts](https://oneuptime.com/blog/post/share-transit-gateway-across-aws-accounts/view) instead.
+Cross-account peering works well for connecting a few accounts. But when you have ten or more accounts that all need to talk to each other, the number of peering connections explodes. Consider [using a transit gateway for multi-VPC connectivity](https://oneuptime.com/blog/post/2026-02-12-aws-transit-gateway-multi-vpc-connectivity/view) and [sharing it across accounts](https://oneuptime.com/blog/post/2026-02-12-share-transit-gateway-across-aws-accounts/view) instead.
 
-For cross-region peering, see [setting up VPC peering across AWS regions](https://oneuptime.com/blog/post/set-up-vpc-peering-across-aws-regions/view).
+For cross-region peering, see [setting up VPC peering across AWS regions](https://oneuptime.com/blog/post/2026-02-12-set-up-vpc-peering-across-aws-regions/view).
 
 ## Wrapping Up
 

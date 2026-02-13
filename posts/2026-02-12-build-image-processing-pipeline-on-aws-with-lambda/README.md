@@ -302,7 +302,7 @@ A few other things that help performance:
 - Set appropriate memory based on your largest expected image
 - Use `/tmp` storage for intermediate files if needed (up to 10 GB)
 
-For monitoring your pipeline in production, you'll want visibility into processing times and error rates. Our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/build-logging-and-monitoring-stack-on-aws/view) covers setting up the right CloudWatch metrics and alarms.
+For monitoring your pipeline in production, you'll want visibility into processing times and error rates. Our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view) covers setting up the right CloudWatch metrics and alarms.
 
 ## Summary
 

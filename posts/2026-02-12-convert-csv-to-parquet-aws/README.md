@@ -289,4 +289,4 @@ aws glue create-job \
     --number-of-workers 5
 ```
 
-Converting CSV to Parquet is one of the highest-ROI improvements you can make to your data lake. For more query optimization strategies, see [partitioning data in S3 for Athena](https://oneuptime.com/blog/post/partition-data-s3-efficient-athena-queries/view) and [Athena CTAS for optimized tables](https://oneuptime.com/blog/post/athena-ctas-creating-optimized-tables/view).
+Converting CSV to Parquet is one of the highest-ROI improvements you can make to your data lake. For more query optimization strategies, see [partitioning data in S3 for Athena](https://oneuptime.com/blog/post/2026-02-12-partition-data-s3-efficient-athena-queries/view) and [Athena CTAS for optimized tables](https://oneuptime.com/blog/post/2026-02-12-athena-ctas-creating-optimized-tables/view).

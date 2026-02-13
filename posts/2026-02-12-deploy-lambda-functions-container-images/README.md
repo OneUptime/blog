@@ -269,7 +269,7 @@ else
 fi
 ```
 
-For more on local testing approaches, see our guide on [testing Lambda functions locally with SAM CLI](https://oneuptime.com/blog/post/test-lambda-functions-locally-sam-cli/view).
+For more on local testing approaches, see our guide on [testing Lambda functions locally with SAM CLI](https://oneuptime.com/blog/post/2026-02-12-test-lambda-functions-locally-sam-cli/view).
 
 ## Multi-Stage Builds for Smaller Images
 

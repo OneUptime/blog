@@ -386,7 +386,7 @@ For large migrations, AWS DataSync is significantly faster than rsync because it
 5. **Audit KMS key usage** through CloudTrail to track who's accessing your encrypted data.
 6. **Test failover scenarios** - make sure your key policy doesn't accidentally lock you out of your own data.
 
-For setting up the complete EFS file system including encryption, see our guide on [creating an Amazon EFS file system](https://oneuptime.com/blog/post/amazon-efs-file-system/view).
+For setting up the complete EFS file system including encryption, see our guide on [creating an Amazon EFS file system](https://oneuptime.com/blog/post/2026-02-12-amazon-efs-file-system/view).
 
 ## Wrapping Up
 

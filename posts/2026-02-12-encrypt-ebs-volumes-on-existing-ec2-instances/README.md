@@ -290,7 +290,7 @@ done
 - Can control key rotation
 - Can grant/revoke access through key policies
 
-For most organizations, customer-managed keys are worth the small cost for the additional control. They're essential if you need to share encrypted AMIs or snapshots across accounts. See our guide on [sharing AMIs across accounts](https://oneuptime.com/blog/post/share-ami-across-aws-accounts/view) for details.
+For most organizations, customer-managed keys are worth the small cost for the additional control. They're essential if you need to share encrypted AMIs or snapshots across accounts. See our guide on [sharing AMIs across accounts](https://oneuptime.com/blog/post/2026-02-12-share-ami-across-aws-accounts/view) for details.
 
 ## Finding Unencrypted Volumes
 

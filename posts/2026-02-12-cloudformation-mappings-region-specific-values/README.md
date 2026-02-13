@@ -187,7 +187,7 @@ These three features overlap, so when do you use which?
 
 **Use mappings** when you know all the possible values upfront and they're determined by something predictable (region, environment name).
 
-**Use conditions** when you need to include or exclude entire resources based on a decision. Check out our [conditions guide](https://oneuptime.com/blog/post/cloudformation-conditions-conditional-resources/view) for details.
+**Use conditions** when you need to include or exclude entire resources based on a decision. Check out our [conditions guide](https://oneuptime.com/blog/post/2026-02-12-cloudformation-conditions-conditional-resources/view) for details.
 
 A common pattern is combining all three:
 
@@ -228,7 +228,7 @@ Mappings have some constraints you should know about:
 
 4. **All values are strings.** Even numbers need to be quoted. CloudFormation coerces them where needed, but be aware.
 
-If you need more complex lookups or dynamic data, consider using SSM Parameter Store or [CloudFormation macros](https://oneuptime.com/blog/post/cloudformation-macros-transforms/view).
+If you need more complex lookups or dynamic data, consider using SSM Parameter Store or [CloudFormation macros](https://oneuptime.com/blog/post/2026-02-12-cloudformation-macros-transforms/view).
 
 ## FindInMap with Default Values
 
@@ -261,4 +261,4 @@ This prevents stack failures when someone passes an environment name that isn't 
 
 **Combine with parameters.** Parameters provide the lookup key; mappings provide the data. Together, they keep templates clean and reusable.
 
-Mappings are one piece of the reusability puzzle. When paired with [parameters](https://oneuptime.com/blog/post/cloudformation-parameters-reusable-templates/view) and [outputs](https://oneuptime.com/blog/post/cloudformation-outputs-export-values/view), they let you write templates once and deploy them everywhere.
+Mappings are one piece of the reusability puzzle. When paired with [parameters](https://oneuptime.com/blog/post/2026-02-12-cloudformation-parameters-reusable-templates/view) and [outputs](https://oneuptime.com/blog/post/2026-02-12-cloudformation-outputs-export-values/view), they let you write templates once and deploy them everywhere.

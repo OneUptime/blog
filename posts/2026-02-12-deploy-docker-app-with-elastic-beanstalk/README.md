@@ -249,7 +249,7 @@ option_settings:
     Timeout: 600
 ```
 
-This deploys to 25% of instances at a time, keeping 75% serving traffic. For more details on deployment strategies, check out our guide on [rolling deployments in Elastic Beanstalk](https://oneuptime.com/blog/post/set-up-rolling-deployments-in-elastic-beanstalk/view).
+This deploys to 25% of instances at a time, keeping 75% serving traffic. For more details on deployment strategies, check out our guide on [rolling deployments in Elastic Beanstalk](https://oneuptime.com/blog/post/2026-02-12-set-up-rolling-deployments-in-elastic-beanstalk/view).
 
 ## Debugging Docker Deployments
 
@@ -311,4 +311,4 @@ Docker on Elastic Beanstalk gives you container portability without the complexi
 
 For simple applications, a single Dockerfile is all you need. For more complex setups, Docker Compose handles multi-service architectures well. And when you outgrow Elastic Beanstalk, your Docker images work on ECS, EKS, or anywhere else containers run.
 
-If you're experiencing deployment issues, take a look at our guide on [troubleshooting Elastic Beanstalk deployment failures](https://oneuptime.com/blog/post/troubleshoot-elastic-beanstalk-deployment-failures/view).
+If you're experiencing deployment issues, take a look at our guide on [troubleshooting Elastic Beanstalk deployment failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-elastic-beanstalk-deployment-failures/view).

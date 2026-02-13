@@ -331,7 +331,7 @@ aws cloudwatch get-metric-data \
   --end-time 2026-02-12T23:59:59Z
 ```
 
-For a deeper dive into monitoring, see our guide on [monitoring Amplify hosting with CloudWatch](https://oneuptime.com/blog/post/monitor-amplify-hosting-with-cloudwatch/view).
+For a deeper dive into monitoring, see our guide on [monitoring Amplify hosting with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-amplify-hosting-with-cloudwatch/view).
 
 ## Common Issues
 

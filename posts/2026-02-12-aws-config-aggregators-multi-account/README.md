@@ -279,8 +279,8 @@ get_compliance_summary('org-aggregator')
 
 The aggregator only collects data from accounts that have Config enabled. If a member account doesn't have Config running, the aggregator won't show any data for it. Make sure you've:
 
-1. [Enabled AWS Config](https://oneuptime.com/blog/post/enable-aws-config-resource-compliance/view) in all source accounts
-2. Deployed the same Config rules across all accounts (use [conformance packs](https://oneuptime.com/blog/post/aws-config-conformance-packs/view) for this)
+1. [Enabled AWS Config](https://oneuptime.com/blog/post/2026-02-12-enable-aws-config-resource-compliance/view) in all source accounts
+2. Deployed the same Config rules across all accounts (use [conformance packs](https://oneuptime.com/blog/post/2026-02-12-aws-config-conformance-packs/view) for this)
 3. Enabled Config in all relevant regions
 
 ## Delegated Administrator
@@ -302,4 +302,4 @@ Then create the aggregator in account 555555555555 instead of the management acc
 
 ## Wrapping Up
 
-Config aggregators give you the cross-account visibility that's essential for managing compliance at scale. Combined with [conformance packs](https://oneuptime.com/blog/post/aws-config-conformance-packs/view) for deploying rules consistently and [automatic remediation](https://oneuptime.com/blog/post/remediate-non-compliant-resources-aws-config/view) for fixing violations, you've got a complete compliance management pipeline across your entire AWS organization.
+Config aggregators give you the cross-account visibility that's essential for managing compliance at scale. Combined with [conformance packs](https://oneuptime.com/blog/post/2026-02-12-aws-config-conformance-packs/view) for deploying rules consistently and [automatic remediation](https://oneuptime.com/blog/post/2026-02-12-remediate-non-compliant-resources-aws-config/view) for fixing violations, you've got a complete compliance management pipeline across your entire AWS organization.

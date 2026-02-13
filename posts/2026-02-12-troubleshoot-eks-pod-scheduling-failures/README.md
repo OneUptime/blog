@@ -59,7 +59,7 @@ kubectl describe node NODE_NAME | grep -A 20 "Allocated resources"
 
 1. Scale up your node group (add more nodes)
 2. Reduce the pod's resource requests if they're overprovisioned
-3. Enable the [Cluster Autoscaler](https://oneuptime.com/blog/post/configure-eks-cluster-autoscaler/view) or [Karpenter](https://oneuptime.com/blog/post/use-karpenter-for-eks-node-provisioning/view) to add nodes automatically
+3. Enable the [Cluster Autoscaler](https://oneuptime.com/blog/post/2026-02-12-configure-eks-cluster-autoscaler/view) or [Karpenter](https://oneuptime.com/blog/post/2026-02-12-use-karpenter-for-eks-node-provisioning/view) to add nodes automatically
 4. Evict lower-priority pods with PriorityClasses
 
 ```yaml
@@ -157,7 +157,7 @@ kubectl get nodes -L topology.kubernetes.io/zone
 
 1. Add nodes to the AZ where the volume exists
 2. Use `volumeBindingMode: WaitForFirstConsumer` in your StorageClass (prevents this from happening in the first place)
-3. For shared storage needs, consider [EFS instead of EBS](https://oneuptime.com/blog/post/set-up-efs-csi-driver-for-eks-shared-storage/view)
+3. For shared storage needs, consider [EFS instead of EBS](https://oneuptime.com/blog/post/2026-02-12-set-up-efs-csi-driver-for-eks-shared-storage/view)
 
 ## Pod Topology Spread Constraints
 
@@ -255,4 +255,4 @@ echo "=== Cordon Status ==="
 kubectl get nodes | grep -E "NAME|SchedulingDisabled"
 ```
 
-Most scheduling failures boil down to resources, labels, or taints. Check the pod events first, and nine times out of ten, the answer is right there in the event message. For [node-level issues](https://oneuptime.com/blog/post/troubleshoot-eks-node-notready-issues/view), you'll need to dig deeper into the node itself.
+Most scheduling failures boil down to resources, labels, or taints. Check the pod events first, and nine times out of ten, the answer is right there in the event message. For [node-level issues](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-eks-node-notready-issues/view), you'll need to dig deeper into the node itself.

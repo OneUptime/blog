@@ -292,7 +292,7 @@ aws apigateway create-domain-name \
 
 **Regional** endpoints are the better default choice. They're simpler, support mutual TLS, and you can put your own CloudFront distribution in front if you want to customize caching behavior. They also work with AWS WAF directly.
 
-For a related topic on CloudFront integration, check out our post on [CloudFront Functions vs Lambda@Edge](https://oneuptime.com/blog/post/cloudfront-functions-vs-lambda-edge/view).
+For a related topic on CloudFront integration, check out our post on [CloudFront Functions vs Lambda@Edge](https://oneuptime.com/blog/post/2026-02-12-cloudfront-functions-vs-lambda-edge/view).
 
 ## Troubleshooting
 

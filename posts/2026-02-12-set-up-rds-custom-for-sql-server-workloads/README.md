@@ -316,4 +316,4 @@ Stay within the support perimeter to keep RDS Custom automation working:
 
 RDS Custom for SQL Server gives you the best of both worlds - managed database infrastructure with the flexibility to customize the OS and SQL Server to your specific needs. It is particularly valuable for enterprise workloads that depend on SQL Server Agent, linked servers, or custom CLR assemblies that standard RDS simply cannot support.
 
-For more on database migrations and management, see our guides on [RDS Custom for Oracle](https://oneuptime.com/blog/post/set-up-rds-custom-for-oracle-workloads/view) and [DMS for SQL Server to RDS migration](https://oneuptime.com/blog/post/set-up-dms-for-sql-server-to-rds-migration/view).
+For more on database migrations and management, see our guides on [RDS Custom for Oracle](https://oneuptime.com/blog/post/2026-02-12-set-up-rds-custom-for-oracle-workloads/view) and [DMS for SQL Server to RDS migration](https://oneuptime.com/blog/post/2026-02-12-set-up-dms-for-sql-server-to-rds-migration/view).

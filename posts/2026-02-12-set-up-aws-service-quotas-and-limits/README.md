@@ -353,7 +353,7 @@ pre_deployment_quota_check({
 })
 ```
 
-For details on requesting quota increases, check out our guide on [requesting AWS service quota increases](https://oneuptime.com/blog/post/request-aws-service-quota-increases/view).
+For details on requesting quota increases, check out our guide on [requesting AWS service quota increases](https://oneuptime.com/blog/post/2026-02-12-request-aws-service-quota-increases/view).
 
 ## Key Takeaways
 

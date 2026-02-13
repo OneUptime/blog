@@ -877,7 +877,7 @@ Solutions:
 The Google Cloud Operations exporter provides seamless integration between OpenTelemetry and Google Cloud's observability services. By following the configuration patterns and best practices in this guide, you can build a robust monitoring solution that leverages Cloud Trace, Cloud Monitoring, and Cloud Logging.
 
 For more information on OpenTelemetry exporters, check out these related articles:
-- https://oneuptime.com/blog/post/google-managed-prometheus-exporter-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/azure-monitor-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-google-managed-prometheus-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-azure-monitor-exporter-opentelemetry-collector/view
 
 For detailed information about the Google Cloud Operations exporter configuration options, refer to the official OpenTelemetry Collector documentation.

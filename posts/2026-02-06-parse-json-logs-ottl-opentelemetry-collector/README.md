@@ -419,7 +419,7 @@ processors:
 
 7. **Validate Structure**: Check that required fields exist after parsing to catch schema changes.
 
-8. **Test with Real Data**: Use the [OTTL Playground](https://oneuptime.com/blog/post/ottl-playground-test-opentelemetry-collector/view) to test parsing with actual log samples.
+8. **Test with Real Data**: Use the [OTTL Playground](https://oneuptime.com/blog/post/2026-02-06-ottl-playground-test-opentelemetry-collector/view) to test parsing with actual log samples.
 
 ## Common JSON Parsing Challenges
 
@@ -435,6 +435,6 @@ processors:
 
 Parsing JSON logs with OTTL in the OpenTelemetry Collector unlocks the full value of structured logging. By converting JSON strings into structured data, extracting fields into attributes, and flattening nested structures, you make your logs more queryable and valuable for observability.
 
-Combined with other OTTL capabilities like [log body transformation](https://oneuptime.com/blog/post/transform-log-bodies-ottl-opentelemetry-collector/view), [attribute modification](https://oneuptime.com/blog/post/rename-modify-attributes-ottl-opentelemetry-collector/view), and [conditional logic](https://oneuptime.com/blog/post/conditional-logic-ottl-opentelemetry-collector/view), you can build sophisticated log processing pipelines that transform raw JSON logs into well-structured, searchable telemetry data.
+Combined with other OTTL capabilities like [log body transformation](https://oneuptime.com/blog/post/2026-02-06-transform-log-bodies-ottl-opentelemetry-collector/view), [attribute modification](https://oneuptime.com/blog/post/2026-02-06-rename-modify-attributes-ottl-opentelemetry-collector/view), and [conditional logic](https://oneuptime.com/blog/post/2026-02-06-conditional-logic-ottl-opentelemetry-collector/view), you can build sophisticated log processing pipelines that transform raw JSON logs into well-structured, searchable telemetry data.
 
 For more information on JSON parsing and OTTL, refer to the [OpenTelemetry Collector documentation](https://opentelemetry.io/docs/collector/transforming-telemetry/).

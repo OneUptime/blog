@@ -319,4 +319,4 @@ queue.grantConsumeMessages(handler);
 
 Compare that to the dozens of lines of IAM policy JSON you'd write in CloudFormation. L2 constructs don't just save typing - they reduce the chance of permission errors by generating least-privilege policies automatically.
 
-For an overview of how L2 fits into the broader construct hierarchy, check out the post on [understanding CDK constructs L1, L2, and L3](https://oneuptime.com/blog/post/understand-cdk-constructs-l1-l2-l3/view). When L2 constructs don't expose what you need, learn about [CDK escape hatches](https://oneuptime.com/blog/post/cdk-escape-hatches-access-l1-constructs/view) to access the underlying L1 layer.
+For an overview of how L2 fits into the broader construct hierarchy, check out the post on [understanding CDK constructs L1, L2, and L3](https://oneuptime.com/blog/post/2026-02-12-understand-cdk-constructs-l1-l2-l3/view). When L2 constructs don't expose what you need, learn about [CDK escape hatches](https://oneuptime.com/blog/post/2026-02-12-cdk-escape-hatches-access-l1-constructs/view) to access the underlying L1 layer.

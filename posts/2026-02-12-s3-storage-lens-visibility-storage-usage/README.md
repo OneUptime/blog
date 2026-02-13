@@ -221,7 +221,7 @@ LIMIT 20;
 
 Storage Lens provides contextual recommendations when advanced metrics are enabled. Here are the most common ones and what to do.
 
-**"Enable lifecycle policies"**: You've got buckets without any lifecycle rules. Set up transitions to Intelligent-Tiering or Glacier for cold data. See our guide on [S3 Intelligent-Tiering](https://oneuptime.com/blog/post/s3-intelligent-tiering-optimize-storage-costs/view).
+**"Enable lifecycle policies"**: You've got buckets without any lifecycle rules. Set up transitions to Intelligent-Tiering or Glacier for cold data. See our guide on [S3 Intelligent-Tiering](https://oneuptime.com/blog/post/2026-02-12-s3-intelligent-tiering-optimize-storage-costs/view).
 
 **"Clean up incomplete multipart uploads"**: Abandoned multipart uploads sit around consuming storage. Add a lifecycle rule to abort them.
 
@@ -242,7 +242,7 @@ Storage Lens provides contextual recommendations when advanced metrics are enabl
 
 **"Delete expired noncurrent versions"**: Old object versions are piling up. Add an expiration rule.
 
-**"Enable server-side encryption"**: Some buckets don't have default encryption. Fix that immediately - check our guide on [SSE-S3 encryption](https://oneuptime.com/blog/post/server-side-encryption-s3-managed-keys-sse-s3/view).
+**"Enable server-side encryption"**: Some buckets don't have default encryption. Fix that immediately - check our guide on [SSE-S3 encryption](https://oneuptime.com/blog/post/2026-02-12-server-side-encryption-s3-managed-keys-sse-s3/view).
 
 ## Monitoring Storage Lens Metrics
 

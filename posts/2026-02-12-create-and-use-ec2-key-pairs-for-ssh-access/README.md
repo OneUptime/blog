@@ -130,7 +130,7 @@ Then just run:
 ssh prod-server
 ```
 
-For more connection details, see our guide on [connecting to EC2 instances via SSH](https://oneuptime.com/blog/post/connect-to-ec2-instance-using-ssh/view).
+For more connection details, see our guide on [connecting to EC2 instances via SSH](https://oneuptime.com/blog/post/2026-02-12-connect-to-ec2-instance-using-ssh/view).
 
 ## Managing Keys for Teams
 

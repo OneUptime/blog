@@ -298,7 +298,7 @@ aws ssm list-association-executions \
   --output table
 ```
 
-If you're using OneUptime for monitoring, you can integrate these checks into your dashboard alongside your other infrastructure health metrics. Check out our post on [monitoring with CloudWatch](https://oneuptime.com/blog/post/monitor-efs-cloudwatch/view) for more patterns.
+If you're using OneUptime for monitoring, you can integrate these checks into your dashboard alongside your other infrastructure health metrics. Check out our post on [monitoring with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-efs-cloudwatch/view) for more patterns.
 
 ## Practical Tips
 

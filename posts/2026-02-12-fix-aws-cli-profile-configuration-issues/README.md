@@ -252,4 +252,4 @@ This shows which files are being read, which profile is being used, and where th
 7. For assume role, verify the source profile and role trust policy
 8. Use `--debug` to trace credential resolution
 
-Getting your CLI profiles right is foundational to working with AWS. Once the configuration is solid, you can manage multiple accounts and roles seamlessly. For the next step, check out our guide on [using AWS CloudShell](https://oneuptime.com/blog/post/setup-aws-cloudshell-quick-command-line-access/view) when you need quick CLI access without any local setup.
+Getting your CLI profiles right is foundational to working with AWS. Once the configuration is solid, you can manage multiple accounts and roles seamlessly. For the next step, check out our guide on [using AWS CloudShell](https://oneuptime.com/blog/post/2026-02-12-setup-aws-cloudshell-quick-command-line-access/view) when you need quick CLI access without any local setup.

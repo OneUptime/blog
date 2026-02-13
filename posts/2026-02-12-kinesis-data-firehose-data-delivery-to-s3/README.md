@@ -321,7 +321,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
 ```
 
-If DeliveryToS3.DataFreshness is consistently high, check if your S3 bucket has any issues or if the Firehose role has correct permissions. For more on building streaming pipelines, see our guide on [configuring Kinesis Data Streams](https://oneuptime.com/blog/post/configure-amazon-kinesis-data-streams/view).
+If DeliveryToS3.DataFreshness is consistently high, check if your S3 bucket has any issues or if the Firehose role has correct permissions. For more on building streaming pipelines, see our guide on [configuring Kinesis Data Streams](https://oneuptime.com/blog/post/2026-02-12-configure-amazon-kinesis-data-streams/view).
 
 ## Buffering Strategy
 

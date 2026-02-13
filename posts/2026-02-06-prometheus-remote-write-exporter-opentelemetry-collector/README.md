@@ -675,15 +675,15 @@ groups:
 | Overhead | HTTP server in Collector | HTTP client in Collector |
 | Best for | Self-hosted Prometheus | Cloud/managed Prometheus |
 
-See our guide on [configuring the standard Prometheus exporter](https://oneuptime.com/blog/post/prometheus-exporter-opentelemetry-collector/view) for pull-based scenarios.
+See our guide on [configuring the standard Prometheus exporter](https://oneuptime.com/blog/post/2026-02-06-prometheus-exporter-opentelemetry-collector/view) for pull-based scenarios.
 
 ---
 
 ## Related Resources
 
 - [What is the OpenTelemetry Collector and Why Use One?](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
-- [How to Configure the Prometheus Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/prometheus-exporter-opentelemetry-collector/view)
-- [How to Configure the OTLP HTTP Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/otlp-http-exporter-opentelemetry-collector/view)
+- [How to Configure the Prometheus Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-prometheus-exporter-opentelemetry-collector/view)
+- [How to Configure the OTLP HTTP Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-otlp-http-exporter-opentelemetry-collector/view)
 
 ---
 

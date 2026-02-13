@@ -280,4 +280,4 @@ aws elasticache create-replication-group \
 
 ElastiCache Redis data tiering is a straightforward way to cut your Redis costs when your dataset has grown large but not all data is accessed equally. By automatically moving cold data to SSD storage, you can store up to 20 times more data per node at a fraction of the cost. The key is understanding your access patterns - if you have a clear hot/cold split, the savings can be dramatic.
 
-For more on ElastiCache, see our guides on [ElastiCache Serverless](https://oneuptime.com/blog/post/set-up-elasticache-serverless/view) and [Global Datastore for multi-Region caching](https://oneuptime.com/blog/post/configure-elasticache-global-datastore-for-multi-region/view).
+For more on ElastiCache, see our guides on [ElastiCache Serverless](https://oneuptime.com/blog/post/2026-02-12-set-up-elasticache-serverless/view) and [Global Datastore for multi-Region caching](https://oneuptime.com/blog/post/2026-02-12-configure-elasticache-global-datastore-for-multi-region/view).

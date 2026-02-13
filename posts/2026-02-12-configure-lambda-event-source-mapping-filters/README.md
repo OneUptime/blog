@@ -283,7 +283,7 @@ If your filter is not matching records you expect it to match, check these commo
 2. **Data types**: A filter for `[100]` (number) will not match `["100"]` (string). Make sure types match.
 3. **Missing fields**: If the record does not contain the filtered field, it does not match. Use the `exists` operator to handle optional fields.
 
-For monitoring your filtered Lambda functions, check out our guide on [setting up Amazon Managed Grafana](https://oneuptime.com/blog/post/set-up-amazon-managed-grafana/view).
+For monitoring your filtered Lambda functions, check out our guide on [setting up Amazon Managed Grafana](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-managed-grafana/view).
 
 ## Wrapping Up
 

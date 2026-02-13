@@ -423,4 +423,4 @@ def test_create_order_missing_items():
 
 Lambda Powertools Event Handler transforms your Lambda function from a raw event processor into a proper API framework. You get clean routing, automatic CORS handling, structured error responses, middleware support, and testability - all without the overhead of a full web framework.
 
-For the complete serverless API picture, combine Event Handler with [structured logging](https://oneuptime.com/blog/post/lambda-powertools-logger-structured-logging/view), [tracing](https://oneuptime.com/blog/post/lambda-powertools-tracer-xray-integration/view), and [idempotency](https://oneuptime.com/blog/post/lambda-powertools-idempotency/view) for production-grade APIs.
+For the complete serverless API picture, combine Event Handler with [structured logging](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-logger-structured-logging/view), [tracing](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-tracer-xray-integration/view), and [idempotency](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-idempotency/view) for production-grade APIs.

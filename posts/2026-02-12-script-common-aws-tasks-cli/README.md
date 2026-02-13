@@ -14,7 +14,7 @@ This post is a collection of practical scripts for tasks that most AWS users per
 
 ## Setting Up for Scripting
 
-Before diving in, make sure you've got the basics covered. You should have [named profiles configured](https://oneuptime.com/blog/post/aws-cli-named-profiles/view) and the CLI installed.
+Before diving in, make sure you've got the basics covered. You should have [named profiles configured](https://oneuptime.com/blog/post/2026-02-12-aws-cli-named-profiles/view) and the CLI installed.
 
 A good practice is to set a default profile and region at the top of your scripts.
 

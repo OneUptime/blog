@@ -371,4 +371,4 @@ def lambda_handler(event, context):
 
 Athena is the right tool when you need to analyze flow logs at scale - weeks or months of data, across multiple VPCs and accounts. The key is setting up partition projection so you never manage partitions manually, always filtering by date to control costs, and converting to Parquet when volume justifies it.
 
-For real-time monitoring and quick queries on recent data, [CloudWatch Logs Insights](https://oneuptime.com/blog/post/analyze-vpc-flow-logs-cloudwatch-logs-insights/view) is often a better fit. Use both tools together: Athena for historical analysis and investigations, CloudWatch for live monitoring.
+For real-time monitoring and quick queries on recent data, [CloudWatch Logs Insights](https://oneuptime.com/blog/post/2026-02-12-analyze-vpc-flow-logs-cloudwatch-logs-insights/view) is often a better fit. Use both tools together: Athena for historical analysis and investigations, CloudWatch for live monitoring.

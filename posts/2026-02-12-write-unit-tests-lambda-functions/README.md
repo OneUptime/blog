@@ -571,7 +571,7 @@ npx jest tests/unit/order-handler.test.js
 
 **Test idempotency.** If your function processes SQS or Kinesis messages, test that processing the same message twice produces the same result.
 
-For integration testing with SAM CLI, see our guide on [testing Lambda functions locally with SAM CLI](https://oneuptime.com/blog/post/test-lambda-functions-locally-sam-cli/view).
+For integration testing with SAM CLI, see our guide on [testing Lambda functions locally with SAM CLI](https://oneuptime.com/blog/post/2026-02-12-test-lambda-functions-locally-sam-cli/view).
 
 ## Wrapping Up
 

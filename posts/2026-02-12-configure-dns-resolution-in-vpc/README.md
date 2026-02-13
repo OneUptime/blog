@@ -68,7 +68,7 @@ aws ec2 associate-dhcp-options \
   --vpc-id vpc-0abc123def456789
 ```
 
-For a deeper dive into DHCP option sets, check out https://oneuptime.com/blog/post/dhcp-option-sets-in-vpc/view.
+For a deeper dive into DHCP option sets, check out https://oneuptime.com/blog/post/2026-02-12-dhcp-option-sets-in-vpc/view.
 
 One important detail: when you use a custom domain-name-servers value instead of "AmazonProvidedDNS", you lose the ability to resolve Route 53 private hosted zones through the Amazon DNS server directly. You'd need Route 53 Resolver endpoints to bridge that gap.
 

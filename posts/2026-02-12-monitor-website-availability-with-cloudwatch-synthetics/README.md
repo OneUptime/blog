@@ -336,7 +336,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:slo-alerts
 ```
 
-For a broader view of your application's internet-facing availability, see our guide on [setting up CloudWatch Internet Monitor](https://oneuptime.com/blog/post/set-up-cloudwatch-internet-monitor-for-application-availability/view).
+For a broader view of your application's internet-facing availability, see our guide on [setting up CloudWatch Internet Monitor](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-internet-monitor-for-application-availability/view).
 
 ## Step 6: Review Canary Results
 

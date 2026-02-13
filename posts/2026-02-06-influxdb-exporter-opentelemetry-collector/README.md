@@ -905,7 +905,7 @@ Solutions:
 The InfluxDB exporter provides a powerful solution for storing OpenTelemetry metrics in a purpose-built time-series database. With InfluxDB's efficient storage, powerful query language, and extensive ecosystem, you can build comprehensive monitoring and analytics solutions.
 
 For more information on OpenTelemetry exporters, check out these related articles:
-- https://oneuptime.com/blog/post/google-managed-prometheus-exporter-opentelemetry-collector/view
-- https://oneuptime.com/blog/post/aws-s3-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-google-managed-prometheus-exporter-opentelemetry-collector/view
+- https://oneuptime.com/blog/post/2026-02-06-aws-s3-exporter-opentelemetry-collector/view
 
 For detailed information about the InfluxDB exporter configuration options, refer to the official OpenTelemetry Collector documentation.

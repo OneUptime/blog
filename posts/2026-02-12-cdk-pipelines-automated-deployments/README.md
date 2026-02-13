@@ -294,4 +294,4 @@ When you push a change that modifies the pipeline definition (like adding a new 
 
 This is what makes CDK Pipelines special compared to manually configured CodePipeline or third-party CI/CD tools. The pipeline and the application it deploys are defined in the same codebase and evolve together.
 
-For the account setup required for cross-account pipelines, see the post on [deploying CDK apps to multiple accounts](https://oneuptime.com/blog/post/deploy-cdk-apps-multiple-aws-accounts-regions/view). For writing the tests that run in your pipeline stages, check out [integration tests for CDK stacks](https://oneuptime.com/blog/post/write-integration-tests-for-cdk-stacks/view).
+For the account setup required for cross-account pipelines, see the post on [deploying CDK apps to multiple accounts](https://oneuptime.com/blog/post/2026-02-12-deploy-cdk-apps-multiple-aws-accounts-regions/view). For writing the tests that run in your pipeline stages, check out [integration tests for CDK stacks](https://oneuptime.com/blog/post/2026-02-12-write-integration-tests-for-cdk-stacks/view).

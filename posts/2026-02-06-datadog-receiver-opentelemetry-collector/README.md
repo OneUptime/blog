@@ -762,8 +762,8 @@ Once data flows into OneUptime, you gain access to:
 
 For more information on OpenTelemetry Collector configuration and migration strategies:
 
-- [OpenTelemetry Collector: What It Is, When You Need It, and When You Don't](https://oneuptime.com/blog/post/what-is-opentelemetry-collector-and-why-use-one/view)
-- [How to Configure the Cloudflare Receiver in the OpenTelemetry Collector](https://oneuptime.com/blog/post/cloudflare-receiver-opentelemetry-collector/view)
+- [OpenTelemetry Collector: What It Is, When You Need It, and When You Don't](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
+- [How to Configure the Cloudflare Receiver in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-cloudflare-receiver-opentelemetry-collector/view)
 - [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view)
 - [10 Best Datadog Alternatives in 2026](https://oneuptime.com/blog/post/datadog-alternatives-2026/view)
 

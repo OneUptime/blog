@@ -190,7 +190,7 @@ await updateUserAttributes('johndoe@example.com', {
 
 ## Managing Groups
 
-Groups are how you handle role-based access control in Cognito. For a detailed look at RBAC, see [using Cognito groups for role-based access control](https://oneuptime.com/blog/post/cognito-groups-role-based-access-control/view).
+Groups are how you handle role-based access control in Cognito. For a detailed look at RBAC, see [using Cognito groups for role-based access control](https://oneuptime.com/blog/post/2026-02-12-cognito-groups-role-based-access-control/view).
 
 Here are the group management operations:
 
@@ -441,7 +441,7 @@ router.post('/users/:username/disable', async (req, res) => {
 module.exports = router;
 ```
 
-For setting up these admin operations as part of a Terraform-managed infrastructure, see [setting up Cognito with Terraform](https://oneuptime.com/blog/post/cognito-terraform/view).
+For setting up these admin operations as part of a Terraform-managed infrastructure, see [setting up Cognito with Terraform](https://oneuptime.com/blog/post/2026-02-12-cognito-terraform/view).
 
 ## Wrapping Up
 

@@ -450,7 +450,7 @@ service:
       exporters: [otlp/metrics]
 ```
 
-For more information about the Count Connector, see https://oneuptime.com/blog/post/count-connector-opentelemetry-collector/view.
+For more information about the Count Connector, see https://oneuptime.com/blog/post/2026-02-06-count-connector-opentelemetry-collector/view.
 
 ## Production Configuration Example
 
@@ -607,7 +607,7 @@ service:
 
 ## Correlation with Service Performance
 
-Combine the Exceptions Connector with other connectors for comprehensive observability. Link exceptions to service performance metrics using the Span Metrics Connector at https://oneuptime.com/blog/post/span-metrics-connector-red-metrics/view and visualize service dependencies with the Service Graph Connector at https://oneuptime.com/blog/post/service-graph-connector-opentelemetry-collector/view.
+Combine the Exceptions Connector with other connectors for comprehensive observability. Link exceptions to service performance metrics using the Span Metrics Connector at https://oneuptime.com/blog/post/2026-02-06-span-metrics-connector-red-metrics/view and visualize service dependencies with the Service Graph Connector at https://oneuptime.com/blog/post/2026-02-06-service-graph-connector-opentelemetry-collector/view.
 
 ## Best Practices
 

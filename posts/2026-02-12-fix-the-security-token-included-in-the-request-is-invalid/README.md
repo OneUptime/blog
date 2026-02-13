@@ -61,7 +61,7 @@ aws sts get-session-token \
   --token-code 123456
 ```
 
-See also our dedicated guide on [fixing ExpiredTokenException errors](https://oneuptime.com/blog/post/fix-an-error-occurred-expiredtokenexception-in-aws/view).
+See also our dedicated guide on [fixing ExpiredTokenException errors](https://oneuptime.com/blog/post/2026-02-12-fix-an-error-occurred-expiredtokenexception-in-aws/view).
 
 ## Cause 2: Deleted or Deactivated Access Key
 

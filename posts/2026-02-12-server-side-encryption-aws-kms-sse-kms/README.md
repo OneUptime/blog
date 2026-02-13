@@ -19,7 +19,7 @@ The main advantages of SSE-KMS are:
 - **Key rotation**: AWS-managed keys rotate automatically every year. Customer-managed keys can be configured for automatic rotation.
 - **Separation of duties**: You can give someone access to the S3 bucket but not the KMS key, effectively denying them access to the data.
 
-For a comparison with simpler encryption, see our post on [SSE-S3 encryption](https://oneuptime.com/blog/post/server-side-encryption-s3-managed-keys-sse-s3/view).
+For a comparison with simpler encryption, see our post on [SSE-S3 encryption](https://oneuptime.com/blog/post/2026-02-12-server-side-encryption-s3-managed-keys-sse-s3/view).
 
 ## Step 1: Create a KMS Key
 

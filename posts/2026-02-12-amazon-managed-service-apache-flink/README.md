@@ -305,4 +305,4 @@ aws cloudwatch get-metric-statistics \
     --statistics Maximum
 ```
 
-Managed Flink takes the operational burden off your team while giving you the full power of the Flink runtime. For monitoring the Kinesis streams feeding your Flink applications, see [monitoring Kinesis with CloudWatch](https://oneuptime.com/blog/post/monitor-kinesis-data-streams-cloudwatch/view).
+Managed Flink takes the operational burden off your team while giving you the full power of the Flink runtime. For monitoring the Kinesis streams feeding your Flink applications, see [monitoring Kinesis with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-kinesis-data-streams-cloudwatch/view).

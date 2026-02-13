@@ -277,7 +277,7 @@ The exact numbers depend on your model and batch size, but Inf2 consistently del
 - Dynamic input shapes require separate compilations for each shape, or you need to pad to a fixed size.
 - Debugging compiled models is harder than GPU debugging.
 
-For models that do not work well on Inferentia2, consider [AWS Inferentia (first generation)](https://oneuptime.com/blog/post/use-aws-inferentia-instances-for-ml-inference/view) for simpler models, or stick with GPU instances.
+For models that do not work well on Inferentia2, consider [AWS Inferentia (first generation)](https://oneuptime.com/blog/post/2026-02-12-use-aws-inferentia-instances-for-ml-inference/view) for simpler models, or stick with GPU instances.
 
 ## Wrapping Up
 

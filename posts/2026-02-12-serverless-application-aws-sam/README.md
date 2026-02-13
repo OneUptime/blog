@@ -450,7 +450,7 @@ Resources:
 
 ## Monitoring Your SAM Application
 
-Once deployed, set up monitoring for your functions. SAM makes it easy to enable X-Ray tracing and CloudWatch logging through the `Globals` section. For production monitoring, consider integrating with a dedicated monitoring platform. Check out our post on [building a serverless CRUD API](https://oneuptime.com/blog/post/serverless-crud-api-lambda-api-gateway/view) for more on monitoring Lambda-based APIs.
+Once deployed, set up monitoring for your functions. SAM makes it easy to enable X-Ray tracing and CloudWatch logging through the `Globals` section. For production monitoring, consider integrating with a dedicated monitoring platform. Check out our post on [building a serverless CRUD API](https://oneuptime.com/blog/post/2026-02-12-serverless-crud-api-lambda-api-gateway/view) for more on monitoring Lambda-based APIs.
 
 ## SAM Accelerate
 

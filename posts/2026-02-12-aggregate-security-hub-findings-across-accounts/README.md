@@ -326,7 +326,7 @@ With many accounts, the volume of findings can be substantial. Here are some str
 1. **Use batch operations** - Update finding status in bulk rather than one at a time
 2. **Automate triage** - Use Lambda functions to automatically suppress known non-issues
 3. **Focus on new findings** - Filter on `WorkflowStatus: NEW` to see only unaddressed findings
-4. **Use insights aggressively** - [Custom insights](https://oneuptime.com/blog/post/custom-security-hub-insights/view) help you focus on what matters
+4. **Use insights aggressively** - [Custom insights](https://oneuptime.com/blog/post/2026-02-12-custom-security-hub-insights/view) help you focus on what matters
 
 ```bash
 # Batch update findings to mark as notified
@@ -344,8 +344,8 @@ Before setting up aggregation, make sure:
 
 - AWS Organizations is enabled with "all features"
 - Security Hub is enabled in the admin account
-- [GuardDuty is enabled](https://oneuptime.com/blog/post/enable-guardduty-threat-detection/view) in member accounts
-- [AWS Config is enabled](https://oneuptime.com/blog/post/enable-aws-config-resource-compliance/view) in member accounts (required for compliance checks)
-- [Compliance standards are enabled](https://oneuptime.com/blog/post/security-hub-compliance-standards-cis-pci/view) to generate compliance findings
+- [GuardDuty is enabled](https://oneuptime.com/blog/post/2026-02-12-enable-guardduty-threat-detection/view) in member accounts
+- [AWS Config is enabled](https://oneuptime.com/blog/post/2026-02-12-enable-aws-config-resource-compliance/view) in member accounts (required for compliance checks)
+- [Compliance standards are enabled](https://oneuptime.com/blog/post/2026-02-12-security-hub-compliance-standards-cis-pci/view) to generate compliance findings
 
 With all of this in place, your security team has a single dashboard showing threats, compliance violations, and vulnerabilities across every account and region in your organization.

@@ -344,6 +344,6 @@ Once your chatbot is live, you need to track how it's performing. Log every conv
 
 For monitoring the underlying infrastructure - Lambda performance, DynamoDB throughput, API Gateway errors - a solid observability platform is essential. Check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view) for a comprehensive monitoring setup.
 
-Also consider adding [Bedrock Guardrails](https://oneuptime.com/blog/post/amazon-bedrock-guardrails-safe-ai/view) to protect your chatbot from generating inappropriate content or leaking sensitive information.
+Also consider adding [Bedrock Guardrails](https://oneuptime.com/blog/post/2026-02-12-amazon-bedrock-guardrails-safe-ai/view) to protect your chatbot from generating inappropriate content or leaking sensitive information.
 
 Building a chatbot with Bedrock gives you powerful conversational AI without the complexity of training and hosting your own models. Start with the basics, add features incrementally, and let real user interactions guide your improvements.

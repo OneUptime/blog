@@ -79,7 +79,7 @@ Before installing Tekton Chains, ensure you have:
 - kubectl configured with cluster admin access
 - Cosign installed locally for key generation and verification
 
-If you need to set up Tekton Pipelines first, refer to our guide on [getting started with Tekton Pipelines](https://oneuptime.com/blog/post/tekton-pipelines-guide/view).
+If you need to set up Tekton Pipelines first, refer to our guide on [getting started with Tekton Pipelines](https://oneuptime.com/blog/post/2026-01-26-tekton-pipelines-guide/view).
 
 ## Installing Tekton Chains
 

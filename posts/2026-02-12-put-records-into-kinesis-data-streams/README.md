@@ -330,7 +330,7 @@ def put_record_with_backoff(kinesis, stream_name, data, partition_key, max_retri
     raise Exception(f"Failed after {max_retries} retries")
 ```
 
-If you're consistently getting throttled, it's time to add more shards or switch to on-demand mode. For help setting up your stream, check out our guide on [configuring Amazon Kinesis Data Streams](https://oneuptime.com/blog/post/configure-amazon-kinesis-data-streams/view).
+If you're consistently getting throttled, it's time to add more shards or switch to on-demand mode. For help setting up your stream, check out our guide on [configuring Amazon Kinesis Data Streams](https://oneuptime.com/blog/post/2026-02-12-configure-amazon-kinesis-data-streams/view).
 
 ## Performance Tips
 

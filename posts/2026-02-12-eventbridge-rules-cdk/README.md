@@ -271,7 +271,7 @@ appBus.addToResourcePolicy(new cdk.aws_iam.PolicyStatement({
 }));
 ```
 
-For setting up security alerting with EventBridge, check out our post on [security alerting with EventBridge and SNS](https://oneuptime.com/blog/post/security-alerting-eventbridge-sns/view). If you need to wire up state machines as targets, see [Step Functions state machines with CDK](https://oneuptime.com/blog/post/step-functions-state-machines-cdk/view).
+For setting up security alerting with EventBridge, check out our post on [security alerting with EventBridge and SNS](https://oneuptime.com/blog/post/2026-02-12-security-alerting-eventbridge-sns/view). If you need to wire up state machines as targets, see [Step Functions state machines with CDK](https://oneuptime.com/blog/post/2026-02-12-step-functions-state-machines-cdk/view).
 
 ## Wrapping Up
 

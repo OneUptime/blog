@@ -287,7 +287,7 @@ concurrency:
   cancel-in-progress: true
 ```
 
-For broader CI/CD security scanning, see how to [use Checkov for Terraform security scanning](https://oneuptime.com/blog/post/checkov-terraform-security-scanning/view).
+For broader CI/CD security scanning, see how to [use Checkov for Terraform security scanning](https://oneuptime.com/blog/post/2026-02-12-checkov-terraform-security-scanning/view).
 
 ## Notifications
 

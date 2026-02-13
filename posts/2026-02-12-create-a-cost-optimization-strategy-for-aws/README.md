@@ -105,7 +105,7 @@ aws budgets create-budget \
   ]'
 ```
 
-**Set up anomaly detection.** This catches unexpected spikes before they become budget problems. We have a detailed guide on [setting up anomaly detection for AWS costs](https://oneuptime.com/blog/post/set-up-anomaly-detection-for-aws-costs/view).
+**Set up anomaly detection.** This catches unexpected spikes before they become budget problems. We have a detailed guide on [setting up anomaly detection for AWS costs](https://oneuptime.com/blog/post/2026-02-12-set-up-anomaly-detection-for-aws-costs/view).
 
 ## Pillar 2: Right-Sizing
 
@@ -164,7 +164,7 @@ check_rds_sizing()
 
 Right-sizing also applies to:
 - **EBS volumes** - Switch from io1/io2 to gp3 where possible
-- **Lambda functions** - Use power tuning to find optimal memory. See our guide on [reducing Lambda costs](https://oneuptime.com/blog/post/reduce-lambda-costs-by-optimizing-memory-and-duration/view)
+- **Lambda functions** - Use power tuning to find optimal memory. See our guide on [reducing Lambda costs](https://oneuptime.com/blog/post/2026-02-12-reduce-lambda-costs-by-optimizing-memory-and-duration/view)
 - **ElastiCache nodes** - Check memory utilization
 
 ## Pillar 3: Pricing Models
@@ -180,7 +180,7 @@ Once resources are right-sized, commit to discounted pricing for stable workload
 | Best for | Variable workloads | Stable, predictable workloads |
 | Applies to | EC2, Lambda, Fargate | EC2, RDS, ElastiCache, etc. |
 
-Start with Compute Savings Plans for EC2 flexibility, then layer in RDS Reserved Instances for stable databases. See our detailed guide on [reducing RDS costs with Reserved Instances](https://oneuptime.com/blog/post/reduce-rds-costs-with-reserved-instances/view).
+Start with Compute Savings Plans for EC2 flexibility, then layer in RDS Reserved Instances for stable databases. See our detailed guide on [reducing RDS costs with Reserved Instances](https://oneuptime.com/blog/post/2026-02-12-reduce-rds-costs-with-reserved-instances/view).
 
 **Use Spot Instances for fault-tolerant workloads:**
 
@@ -207,7 +207,7 @@ aws ec2 request-spot-fleet \
   }'
 ```
 
-Spot can save 60-90% compared to on-demand. Learn more about [using Spot Instances with ECS Fargate](https://oneuptime.com/blog/post/use-spot-instances-with-ecs-fargate/view).
+Spot can save 60-90% compared to on-demand. Learn more about [using Spot Instances with ECS Fargate](https://oneuptime.com/blog/post/2026-02-12-use-spot-instances-with-ecs-fargate/view).
 
 ## Pillar 4: Architecture
 
@@ -216,7 +216,7 @@ Sometimes the biggest savings come from changing how you build things, not just 
 **Move to serverless where it fits.** A Lambda function that runs 1 million times per month at 256MB/200ms costs about $1.50. The equivalent always-on EC2 instance costs $30+.
 
 **Reduce data transfer.** Data transfer is often 10-20% of the total bill. Key strategies:
-- VPC endpoints for AWS API traffic (see our guide on [reducing NAT Gateway costs](https://oneuptime.com/blog/post/reduce-nat-gateway-data-transfer-costs/view))
+- VPC endpoints for AWS API traffic (see our guide on [reducing NAT Gateway costs](https://oneuptime.com/blog/post/2026-02-12-reduce-nat-gateway-data-transfer-costs/view))
 - CloudFront for content delivery
 - Same-AZ placement for high-traffic services
 - Compression for cross-region data
@@ -247,7 +247,7 @@ A strategy without process dies after the first month. Here's what sustains it:
 
 **Weekly:** Review cost anomalies and budget alerts. 15 minutes.
 
-**Monthly:** Pull Trusted Advisor and Compute Optimizer recommendations. Act on the top 5 findings. 2 hours. See [using Trusted Advisor for cost optimization](https://oneuptime.com/blog/post/use-trusted-advisor-for-cost-optimization-recommendations/view).
+**Monthly:** Pull Trusted Advisor and Compute Optimizer recommendations. Act on the top 5 findings. 2 hours. See [using Trusted Advisor for cost optimization](https://oneuptime.com/blog/post/2026-02-12-use-trusted-advisor-for-cost-optimization-recommendations/view).
 
 **Quarterly:** Review RI/Savings Plan coverage and utilization. Purchase new commitments for stable workloads. Evaluate architectural changes. Half day.
 
@@ -261,7 +261,7 @@ Start with these - they typically take less than a day and deliver immediate sav
 2. Release unassociated Elastic IPs
 3. Set up S3 and DynamoDB VPC Gateway Endpoints
 4. Enable S3 Intelligent-Tiering for large buckets
-5. Schedule non-production resources. See our post on [scheduling non-production resources](https://oneuptime.com/blog/post/schedule-non-production-resources-to-save-costs/view)
+5. Schedule non-production resources. See our post on [scheduling non-production resources](https://oneuptime.com/blog/post/2026-02-12-schedule-non-production-resources-to-save-costs/view)
 6. Switch to Graviton instances where possible
 7. Set CloudWatch Logs retention policies
 

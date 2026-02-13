@@ -356,4 +356,4 @@ IoT Core pricing is based on connectivity minutes, messages sent, and messages r
 
 Amplify PubSub with IoT Core gives you production-grade real-time messaging without managing WebSocket servers or message brokers. The MQTT protocol is efficient, the IAM integration is solid, and the Amplify API is straightforward. Whether you are building chat, live notifications, or IoT dashboards, this is a solid foundation.
 
-For more Amplify features, check out [Amplify Predictions for AI/ML features](https://oneuptime.com/blog/post/use-amplify-predictions-for-aiml-features/view) and [Amplify In-App Messaging](https://oneuptime.com/blog/post/use-amplify-in-app-messaging/view).
+For more Amplify features, check out [Amplify Predictions for AI/ML features](https://oneuptime.com/blog/post/2026-02-12-use-amplify-predictions-for-aiml-features/view) and [Amplify In-App Messaging](https://oneuptime.com/blog/post/2026-02-12-use-amplify-in-app-messaging/view).

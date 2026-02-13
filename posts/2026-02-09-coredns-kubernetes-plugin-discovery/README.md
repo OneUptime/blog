@@ -484,4 +484,4 @@ Follow these guidelines for kubernetes plugin configuration:
 
 The CoreDNS kubernetes plugin provides flexible service discovery capabilities that extend far beyond basic service resolution. By understanding advanced configuration options, you can implement sophisticated discovery patterns that support complex application architectures, multi-cluster setups, and custom naming schemes in Kubernetes environments.
 
-For more service discovery patterns, explore our guides on [headless services](https://oneuptime.com/blog/post/headless-services-pod-ip-discovery/view) and [StatefulSet DNS](https://oneuptime.com/blog/post/dns-service-discovery-statefulset/view).
+For more service discovery patterns, explore our guides on [headless services](https://oneuptime.com/blog/post/2026-02-09-headless-services-pod-ip-discovery/view) and [StatefulSet DNS](https://oneuptime.com/blog/post/2026-02-09-dns-service-discovery-statefulset/view).

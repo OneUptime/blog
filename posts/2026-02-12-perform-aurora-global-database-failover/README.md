@@ -237,10 +237,10 @@ def get_connection_with_retry(endpoint, max_retries=5):
             time.sleep(wait)
 ```
 
-**Use RDS Proxy** where possible. RDS Proxy maintains a connection pool and can help smooth out the reconnection process during failover. Check out the guide on [setting up Aurora with RDS Proxy](https://oneuptime.com/blog/post/set-up-aurora-with-rds-proxy/view) for details.
+**Use RDS Proxy** where possible. RDS Proxy maintains a connection pool and can help smooth out the reconnection process during failover. Check out the guide on [setting up Aurora with RDS Proxy](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-with-rds-proxy/view) for details.
 
 ## Wrapping Up
 
 Failover is something you hope you'll never need in production but absolutely must be prepared for. The managed planned failover is clean and data-safe - use it for testing and planned maintenance. Keep the emergency detach-and-promote process scripted and ready for when a region actually goes down.
 
-The worst time to figure out your failover process is during an actual outage. Test early, test often, and make sure everyone on the team knows where the runbook lives. For more on building resilient Aurora setups, check out the guide on [Aurora Global Databases for multi-region](https://oneuptime.com/blog/post/set-up-aurora-global-databases-for-multi-region/view) deployments.
+The worst time to figure out your failover process is during an actual outage. Test early, test often, and make sure everyone on the team knows where the runbook lives. For more on building resilient Aurora setups, check out the guide on [Aurora Global Databases for multi-region](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-global-databases-for-multi-region/view) deployments.

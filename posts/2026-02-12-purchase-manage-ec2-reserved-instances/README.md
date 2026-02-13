@@ -214,4 +214,4 @@ Aim for 95%+ utilization. Anything below 80% means you're paying for capacity yo
 
 ## Summary
 
-Reserved Instances are one of the most effective ways to reduce your AWS bill for steady-state workloads. The key is doing the analysis first - understand your usage patterns, start conservative with 1-year regional RIs, and monitor utilization over time. For workloads where you're less certain about long-term instance type needs, consider [EC2 Savings Plans](https://oneuptime.com/blog/post/ec2-savings-plans-vs-reserved-instances/view) as a more flexible alternative.
+Reserved Instances are one of the most effective ways to reduce your AWS bill for steady-state workloads. The key is doing the analysis first - understand your usage patterns, start conservative with 1-year regional RIs, and monitor utilization over time. For workloads where you're less certain about long-term instance type needs, consider [EC2 Savings Plans](https://oneuptime.com/blog/post/2026-02-12-ec2-savings-plans-vs-reserved-instances/view) as a more flexible alternative.

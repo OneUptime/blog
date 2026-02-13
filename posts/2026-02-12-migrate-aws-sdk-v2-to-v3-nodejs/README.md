@@ -336,4 +336,4 @@ The codemod handles basic transformations but may need manual review for complex
 - **Check bundle size improvements.** Measure the actual impact on your Lambda deployment package.
 - **Update error handling.** Error structure changed, so audit your catch blocks.
 
-For setting up v3 clients properly after migration, see the [client setup guide](https://oneuptime.com/blog/post/aws-sdk-v3-clients-nodejs/view). And for a full overview of v3 capabilities, read the [AWS SDK v3 introduction](https://oneuptime.com/blog/post/aws-sdk-javascript-v3-nodejs/view).
+For setting up v3 clients properly after migration, see the [client setup guide](https://oneuptime.com/blog/post/2026-02-12-aws-sdk-v3-clients-nodejs/view). And for a full overview of v3 capabilities, read the [AWS SDK v3 introduction](https://oneuptime.com/blog/post/2026-02-12-aws-sdk-javascript-v3-nodejs/view).

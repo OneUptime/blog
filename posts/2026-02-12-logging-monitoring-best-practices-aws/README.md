@@ -447,4 +447,4 @@ Good logging and monitoring isn't something you bolt on at the end. Build it int
 
 The goal isn't to collect as much data as possible. It's to have the right data available when you need it. When an incident happens at 3 AM, you'll be glad you invested in proper observability.
 
-For more on securing your AWS environment, check out our guide on [defense in depth on AWS](https://oneuptime.com/blog/post/defense-in-depth-aws/view) and [compliance automation on AWS](https://oneuptime.com/blog/post/compliance-automation-aws/view).
+For more on securing your AWS environment, check out our guide on [defense in depth on AWS](https://oneuptime.com/blog/post/2026-02-12-defense-in-depth-aws/view) and [compliance automation on AWS](https://oneuptime.com/blog/post/2026-02-12-compliance-automation-aws/view).

@@ -204,7 +204,7 @@ ORDER BY size DESC
 LIMIT 50;
 ```
 
-For a complete guide on querying S3 data with Athena, check out our post on [analyzing S3 access logs with Athena](https://oneuptime.com/blog/post/analyze-s3-access-logs-athena/view).
+For a complete guide on querying S3 data with Athena, check out our post on [analyzing S3 access logs with Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-s3-access-logs-athena/view).
 
 ## Step 6: Automate Audits with Lambda
 

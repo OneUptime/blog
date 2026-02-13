@@ -10,7 +10,7 @@ Description: A detailed guide to loading data into Amazon Redshift from S3 using
 
 The COPY command is the workhorse of Redshift data loading. It's dramatically faster than row-by-row INSERT statements because it reads files in parallel from S3, distributes the work across all your cluster nodes, and handles compression and format conversion automatically. If you're moving data into Redshift, COPY should be your default approach.
 
-This guide covers everything you need to know - from basic COPY syntax to production-ready loading patterns. If you're still setting up your cluster, start with our [Redshift data warehousing guide](https://oneuptime.com/blog/post/amazon-redshift-data-warehousing/view).
+This guide covers everything you need to know - from basic COPY syntax to production-ready loading patterns. If you're still setting up your cluster, start with our [Redshift data warehousing guide](https://oneuptime.com/blog/post/2026-02-12-amazon-redshift-data-warehousing/view).
 
 ## Prerequisites
 

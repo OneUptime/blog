@@ -273,6 +273,6 @@ If count is near max, increase the limit or reduce DNS query volume.
 
 **AWS service endpoints not resolving:**
 
-Verify that VPC DNS is enabled and, for [private clusters](https://oneuptime.com/blog/post/set-up-private-eks-clusters/view), that VPC endpoints have private DNS enabled.
+Verify that VPC DNS is enabled and, for [private clusters](https://oneuptime.com/blog/post/2026-02-12-set-up-private-eks-clusters/view), that VPC endpoints have private DNS enabled.
 
 DNS issues are the kind of thing that seems mysterious until you understand the layers involved. Start from the pod (can it reach CoreDNS?), move to CoreDNS (is it running and configured correctly?), and then check upstream resolution (can the VPC resolver reach the internet?). At each layer, the diagnostic tools will point you in the right direction.

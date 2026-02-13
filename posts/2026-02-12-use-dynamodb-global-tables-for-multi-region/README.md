@@ -222,7 +222,7 @@ aws cloudwatch put-metric-alarm \
   --region us-east-1
 ```
 
-For more detailed monitoring, see our guide on [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/monitor-dynamodb-with-cloudwatch-alarms/view).
+For more detailed monitoring, see our guide on [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-monitor-dynamodb-with-cloudwatch-alarms/view).
 
 ## Removing a Replica
 
@@ -253,4 +253,4 @@ Tips for managing costs:
 - Use on-demand billing to avoid over-provisioning replicas
 - Consider whether you really need global writes or just global reads (read replicas might be cheaper for read-heavy workloads)
 
-Global Tables are the right choice when you genuinely need low-latency access from multiple regions. For disaster recovery without the multi-region write requirement, consider [on-demand backup and restore](https://oneuptime.com/blog/post/use-dynamodb-on-demand-backup-and-restore/view) as a cheaper alternative.
+Global Tables are the right choice when you genuinely need low-latency access from multiple regions. For disaster recovery without the multi-region write requirement, consider [on-demand backup and restore](https://oneuptime.com/blog/post/2026-02-12-use-dynamodb-on-demand-backup-and-restore/view) as a cheaper alternative.

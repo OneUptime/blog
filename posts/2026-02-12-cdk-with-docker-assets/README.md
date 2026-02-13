@@ -289,4 +289,4 @@ const image = new ecr_assets.DockerImageAsset(this, 'AppImage', {
 });
 ```
 
-Docker assets are one of CDK's most practical features. They eliminate the glue scripts between your container builds and your infrastructure definitions. For Lambda-specific asset bundling, check out the post on [CDK assets for bundling Lambda code](https://oneuptime.com/blog/post/cdk-assets-bundling-lambda-code/view). For deploying containers with L3 patterns, see [CDK L3 constructs for complete architectures](https://oneuptime.com/blog/post/cdk-l3-constructs-patterns-complete-architectures/view).
+Docker assets are one of CDK's most practical features. They eliminate the glue scripts between your container builds and your infrastructure definitions. For Lambda-specific asset bundling, check out the post on [CDK assets for bundling Lambda code](https://oneuptime.com/blog/post/2026-02-12-cdk-assets-bundling-lambda-code/view). For deploying containers with L3 patterns, see [CDK L3 constructs for complete architectures](https://oneuptime.com/blog/post/2026-02-12-cdk-l3-constructs-patterns-complete-architectures/view).

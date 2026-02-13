@@ -385,4 +385,4 @@ echo "To promote to production: aws lambda update-alias --function-name $FUNCTIO
 
 The AWS CLI gives you everything you need for professional Lambda deployments. Version management, aliases, canary deployments, and trigger configuration are all available through simple commands that you can script and automate.
 
-For even more streamlined deployments, consider [AWS SAM](https://oneuptime.com/blog/post/deploy-lambda-functions-aws-sam/view), which wraps these CLI operations in a higher-level framework. And if your functions have external dependencies, check out our guide on [packaging Lambda functions with dependencies](https://oneuptime.com/blog/post/package-lambda-functions-dependencies/view).
+For even more streamlined deployments, consider [AWS SAM](https://oneuptime.com/blog/post/2026-02-12-deploy-lambda-functions-aws-sam/view), which wraps these CLI operations in a higher-level framework. And if your functions have external dependencies, check out our guide on [packaging Lambda functions with dependencies](https://oneuptime.com/blog/post/2026-02-12-package-lambda-functions-dependencies/view).

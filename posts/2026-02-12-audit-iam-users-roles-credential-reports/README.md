@@ -311,6 +311,6 @@ compare_reports("/tmp/cred-report-2026-01-12.csv", "/tmp/cred-report-2026-02-12.
 
 Feed your audit results into your monitoring platform to track trends over time. If you're using OneUptime, you can create custom metrics for things like "number of users without MFA" or "number of stale access keys" and set up alerts when those numbers increase.
 
-For the full picture on cleaning up what you find, see our guide on [deleting unused IAM users, roles, and policies](https://oneuptime.com/blog/post/delete-unused-iam-users-roles-policies/view). And make sure you're also [rotating access keys](https://oneuptime.com/blog/post/rotate-iam-access-keys-safely/view) that the audit flags as stale.
+For the full picture on cleaning up what you find, see our guide on [deleting unused IAM users, roles, and policies](https://oneuptime.com/blog/post/2026-02-12-delete-unused-iam-users-roles-policies/view). And make sure you're also [rotating access keys](https://oneuptime.com/blog/post/2026-02-12-rotate-iam-access-keys-safely/view) that the audit flags as stale.
 
 Credential reports aren't glamorous, but they're one of the most effective tools for maintaining IAM hygiene. Run them regularly, act on the findings, and your security posture will improve steadily over time.

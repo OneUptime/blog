@@ -165,7 +165,7 @@ resource "aws_ecr_repository_policy" "multi_account" {
 }
 ```
 
-For a deeper dive into cross-account setups, see our post on [ECR cross-account image sharing](https://oneuptime.com/blog/post/ecr-cross-account-image-sharing/view).
+For a deeper dive into cross-account setups, see our post on [ECR cross-account image sharing](https://oneuptime.com/blog/post/2026-02-12-ecr-cross-account-image-sharing/view).
 
 ## Organization-Wide Access
 

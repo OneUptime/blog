@@ -94,7 +94,7 @@ Memory is often the constraint that catches people off guard. Watch these:
 - **MemoryUtilized** - Actual memory usage in MB
 - **MemoryReserved** - Reserved memory for the task
 
-A task that consistently uses 90%+ of its reserved memory is a ticking time bomb. One traffic spike and you'll hit OOM errors. For debugging memory issues, check out our guide on [troubleshooting ECS out-of-memory errors](https://oneuptime.com/blog/post/troubleshoot-ecs-out-of-memory-errors/view).
+A task that consistently uses 90%+ of its reserved memory is a ticking time bomb. One traffic spike and you'll hit OOM errors. For debugging memory issues, check out our guide on [troubleshooting ECS out-of-memory errors](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-ecs-out-of-memory-errors/view).
 
 ### Network Metrics
 
@@ -197,7 +197,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:ops-alerts"
 ```
 
-For more on CloudWatch alarms, see our guide on [creating CloudWatch metric alarms](https://oneuptime.com/blog/post/create-cloudwatch-metric-alarms/view).
+For more on CloudWatch alarms, see our guide on [creating CloudWatch metric alarms](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-metric-alarms/view).
 
 ## Container-Level Metrics
 

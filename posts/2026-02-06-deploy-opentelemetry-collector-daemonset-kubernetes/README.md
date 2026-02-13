@@ -773,7 +773,7 @@ curl http://localhost:8888/metrics
 
 For other OpenTelemetry Collector deployment patterns:
 
-- [How to Deploy the OpenTelemetry Collector as a Gateway](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-gateway/view)
-- [How to Deploy the OpenTelemetry Collector as a Sidecar in Kubernetes](https://oneuptime.com/blog/post/deploy-opentelemetry-collector-sidecar-kubernetes/view)
+- [How to Deploy the OpenTelemetry Collector as a Gateway](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-gateway/view)
+- [How to Deploy the OpenTelemetry Collector as a Sidecar in Kubernetes](https://oneuptime.com/blog/post/2026-02-06-deploy-opentelemetry-collector-sidecar-kubernetes/view)
 
 Deploying the OpenTelemetry Collector as a DaemonSet provides comprehensive node-level telemetry collection across your Kubernetes cluster. This pattern is essential for infrastructure monitoring, log aggregation, and enriching application telemetry with Kubernetes metadata.

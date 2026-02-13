@@ -179,7 +179,7 @@ pg_restore --verbose --clean --no-acl --no-owner \
   do_database_backup.dump
 ```
 
-For zero-downtime migration, use [AWS DMS](https://oneuptime.com/blog/post/migrate-databases-to-aws-with-dms/view) for continuous replication from DigitalOcean to RDS.
+For zero-downtime migration, use [AWS DMS](https://oneuptime.com/blog/post/2026-02-12-migrate-databases-to-aws-with-dms/view) for continuous replication from DigitalOcean to RDS.
 
 ## Phase 4: Migrate Spaces to S3
 

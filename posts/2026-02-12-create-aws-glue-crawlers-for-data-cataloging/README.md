@@ -341,7 +341,7 @@ Set up CloudWatch alarms for crawler failures so you know when your catalog stop
 
 **Test with a small dataset first.** Run the crawler against a small subset to verify the schema detection before pointing it at terabytes of data.
 
-For the full picture on the Glue Data Catalog, check out our guide on [setting up the AWS Glue Data Catalog](https://oneuptime.com/blog/post/set-up-aws-glue-data-catalog/view). And once your catalog is populated, you can start [querying with Athena](https://oneuptime.com/blog/post/set-up-amazon-athena-for-querying-s3-data/view) immediately.
+For the full picture on the Glue Data Catalog, check out our guide on [setting up the AWS Glue Data Catalog](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-glue-data-catalog/view). And once your catalog is populated, you can start [querying with Athena](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-athena-for-querying-s3-data/view) immediately.
 
 ## Wrapping Up
 

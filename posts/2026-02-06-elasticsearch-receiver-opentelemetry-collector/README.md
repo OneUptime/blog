@@ -474,8 +474,8 @@ For more on OpenTelemetry Collector configuration:
 - [How to collect internal metrics from OpenTelemetry Collector](https://oneuptime.com/blog/post/2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics/view)
 
 For monitoring other infrastructure components:
-- [How to Configure the Nginx Receiver in the OpenTelemetry Collector](https://oneuptime.com/blog/post/nginx-receiver-opentelemetry-collector/view)
-- [How to Configure the Apache Receiver in the OpenTelemetry Collector](https://oneuptime.com/blog/post/apache-receiver-opentelemetry-collector/view)
+- [How to Configure the Nginx Receiver in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-nginx-receiver-opentelemetry-collector/view)
+- [How to Configure the Apache Receiver in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-apache-receiver-opentelemetry-collector/view)
 
 ## Final Thoughts
 

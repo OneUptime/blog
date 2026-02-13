@@ -200,7 +200,7 @@ done
 
 **Consider future growth**: Reserve slightly more than you need today. Adding reservations later is easy, but if the IPs you want are already allocated to running instances, you will have a harder time.
 
-**Coordinate with VPC sharing**: If you use shared VPCs through AWS Resource Access Manager, coordinate CIDR reservations with participant accounts. See our guide on [setting up shared VPCs](https://oneuptime.com/blog/post/set-up-shared-vpcs-with-aws-resource-access-manager/view) for more context.
+**Coordinate with VPC sharing**: If you use shared VPCs through AWS Resource Access Manager, coordinate CIDR reservations with participant accounts. See our guide on [setting up shared VPCs](https://oneuptime.com/blog/post/2026-02-12-set-up-shared-vpcs-with-aws-resource-access-manager/view) for more context.
 
 ## Troubleshooting
 

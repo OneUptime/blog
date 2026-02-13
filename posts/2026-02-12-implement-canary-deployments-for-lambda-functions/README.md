@@ -335,7 +335,7 @@ aws cloudwatch put-dashboard \
   }'
 ```
 
-For comprehensive monitoring, see our guide on [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/monitor-lambda-function-performance-with-cloudwatch/view).
+For comprehensive monitoring, see our guide on [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-lambda-function-performance-with-cloudwatch/view).
 
 ## Wrapping Up
 

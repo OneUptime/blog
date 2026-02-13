@@ -444,7 +444,7 @@ resource "aws_glue_catalog_table" "events" {
 }
 ```
 
-For monitoring your Glue jobs and getting alerted on failures, see our post on [EventBridge rules with Terraform](https://oneuptime.com/blog/post/create-eventbridge-rules-terraform/view) - Glue publishes job state change events to EventBridge.
+For monitoring your Glue jobs and getting alerted on failures, see our post on [EventBridge rules with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-eventbridge-rules-terraform/view) - Glue publishes job state change events to EventBridge.
 
 ## Wrapping Up
 

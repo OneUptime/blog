@@ -820,7 +820,7 @@ Common issues:
 
 For more information on OpenTelemetry exporters, check out these related posts:
 
-- [How to Configure the Honeycomb Marker Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/honeycomb-marker-exporter-opentelemetry-collector/view)
-- [How to Configure the Zipkin Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/zipkin-exporter-opentelemetry-collector/view)
+- [How to Configure the Honeycomb Marker Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-honeycomb-marker-exporter-opentelemetry-collector/view)
+- [How to Configure the Zipkin Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-zipkin-exporter-opentelemetry-collector/view)
 
 The Sentry exporter provides a powerful integration between OpenTelemetry and Sentry's error tracking and performance monitoring capabilities. With proper configuration and sampling, it enables teams to maintain OpenTelemetry standards while leveraging Sentry's developer-friendly debugging tools and workflow features.

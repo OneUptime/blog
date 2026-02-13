@@ -267,7 +267,7 @@ aws batch submit-job \
   --depends-on "jobId=$PROCESSING_JOB_ID,type=N_TO_N"
 ```
 
-The `type=N_TO_N` dependency means the aggregation job waits for all children of the array to complete. For more on job dependencies, see our post on [configuring AWS Batch job dependencies](https://oneuptime.com/blog/post/configure-aws-batch-job-dependencies/view).
+The `type=N_TO_N` dependency means the aggregation job waits for all children of the array to complete. For more on job dependencies, see our post on [configuring AWS Batch job dependencies](https://oneuptime.com/blog/post/2026-02-12-configure-aws-batch-job-dependencies/view).
 
 ## Monitoring Array Job Progress
 
@@ -285,7 +285,7 @@ for status in SUBMITTED PENDING RUNNABLE STARTING RUNNING SUCCEEDED FAILED; do
 done
 ```
 
-For comprehensive monitoring, see [monitoring AWS Batch jobs with CloudWatch](https://oneuptime.com/blog/post/monitor-aws-batch-jobs-with-cloudwatch/view).
+For comprehensive monitoring, see [monitoring AWS Batch jobs with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-aws-batch-jobs-with-cloudwatch/view).
 
 ## Performance Tips
 

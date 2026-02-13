@@ -16,7 +16,7 @@ This guide covers setting up pip with CodeArtifact, publishing packages with twi
 
 You need:
 
-- An AWS CodeArtifact domain and repository with a PyPI upstream connection (see our guide on [setting up CodeArtifact](https://oneuptime.com/blog/post/aws-codeartifact-package-management/view))
+- An AWS CodeArtifact domain and repository with a PyPI upstream connection (see our guide on [setting up CodeArtifact](https://oneuptime.com/blog/post/2026-02-12-aws-codeartifact-package-management/view))
 - AWS CLI installed and configured
 - Python 3.x with pip
 

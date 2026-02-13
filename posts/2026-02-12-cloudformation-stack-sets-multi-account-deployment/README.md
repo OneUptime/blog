@@ -314,6 +314,6 @@ Use `--retain-stacks` instead of `--no-retain-stacks` if you want to keep the de
 
 **Use parameter overrides per account.** You can customize parameter values per account or region if some accounts need slightly different configurations.
 
-**Monitor drift.** Stack instances can drift from the template if someone makes manual changes. Use [drift detection](https://oneuptime.com/blog/post/detect-fix-cloudformation-drift/view) regularly to catch this.
+**Monitor drift.** Stack instances can drift from the template if someone makes manual changes. Use [drift detection](https://oneuptime.com/blog/post/2026-02-12-detect-fix-cloudformation-drift/view) regularly to catch this.
 
 StackSets are essential for any multi-account AWS organization. They ensure consistency, reduce manual work, and give you a single pane of glass for managing infrastructure across your entire AWS footprint.

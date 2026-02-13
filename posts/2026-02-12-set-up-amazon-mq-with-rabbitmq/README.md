@@ -458,6 +458,6 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:critical-alerts
 ```
 
-For sending those alarm notifications, check out [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/use-sns-with-cloudwatch-alarms/view).
+For sending those alarm notifications, check out [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-use-sns-with-cloudwatch-alarms/view).
 
 Amazon MQ with RabbitMQ gives you a fully managed broker with all the features of open-source RabbitMQ. If you're already invested in AMQP and RabbitMQ patterns, it's the path of least resistance for running on AWS without managing the broker infrastructure yourself.

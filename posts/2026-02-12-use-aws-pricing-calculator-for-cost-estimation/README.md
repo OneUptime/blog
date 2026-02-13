@@ -319,7 +319,7 @@ full_infrastructure_estimate()
 
 ## Tips for Accurate Estimates
 
-**Don't forget data transfer.** It's the most commonly underestimated cost. Include inter-AZ, inter-region, and internet-bound traffic. See our guides on [reducing S3 data transfer costs](https://oneuptime.com/blog/post/reduce-s3-data-transfer-costs/view) and [reducing NAT Gateway costs](https://oneuptime.com/blog/post/reduce-nat-gateway-data-transfer-costs/view).
+**Don't forget data transfer.** It's the most commonly underestimated cost. Include inter-AZ, inter-region, and internet-bound traffic. See our guides on [reducing S3 data transfer costs](https://oneuptime.com/blog/post/2026-02-12-reduce-s3-data-transfer-costs/view) and [reducing NAT Gateway costs](https://oneuptime.com/blog/post/2026-02-12-reduce-nat-gateway-data-transfer-costs/view).
 
 **Add 15-20% buffer.** Real costs almost always exceed estimates due to traffic spikes, log storage, and services you didn't think of.
 

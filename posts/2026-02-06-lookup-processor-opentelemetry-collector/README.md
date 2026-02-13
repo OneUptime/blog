@@ -526,7 +526,7 @@ Lookup files may contain sensitive information like oncall contacts or cost cent
 
 For more information on enriching and transforming telemetry data:
 
-- [How to Write OTTL Statements for the Transform Processor](https://oneuptime.com/blog/post/ottl-statements-transform-processor-opentelemetry-collector/view)
-- [How to Use the Metrics Start Time Processor](https://oneuptime.com/blog/post/metrics-start-time-processor-opentelemetry-collector/view)
+- [How to Write OTTL Statements for the Transform Processor](https://oneuptime.com/blog/post/2026-02-06-ottl-statements-transform-processor-opentelemetry-collector/view)
+- [How to Use the Metrics Start Time Processor](https://oneuptime.com/blog/post/2026-02-06-metrics-start-time-processor-opentelemetry-collector/view)
 
 The Lookup processor transforms raw telemetry into contextually rich data by correlating identifiers with external metadata. Whether mapping services to teams, resources to cost centers, or customers to subscription tiers, the processor provides essential enrichment capabilities that enhance observability and enable data-driven decision making. Configure appropriate reload intervals for production deployments, monitor memory usage with large lookup tables, and secure sensitive lookup data appropriately.

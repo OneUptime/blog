@@ -299,7 +299,7 @@ aws cloudwatch get-metric-statistics \
   --statistics Sum Maximum
 ```
 
-For detailed per-interface metrics, install the [CloudWatch agent](https://oneuptime.com/blog/post/install-and-configure-the-cloudwatch-agent-on-ec2/view) with the net metrics enabled.
+For detailed per-interface metrics, install the [CloudWatch agent](https://oneuptime.com/blog/post/2026-02-12-install-and-configure-the-cloudwatch-agent-on-ec2/view) with the net metrics enabled.
 
 Also monitor from inside the instance:
 

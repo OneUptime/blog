@@ -46,7 +46,7 @@ In practice, this means using CloudFormation or Terraform for infrastructure, Co
 
 Security addresses protecting data, systems, and assets. The key principles:
 
-**Implement a strong identity foundation.** Use the principle of least privilege. Every IAM role, policy, and user should have the minimum permissions needed. No wildcards unless absolutely necessary. See our deep dive on [implementing least privilege on AWS](https://oneuptime.com/blog/post/implement-principle-least-privilege-aws/view).
+**Implement a strong identity foundation.** Use the principle of least privilege. Every IAM role, policy, and user should have the minimum permissions needed. No wildcards unless absolutely necessary. See our deep dive on [implementing least privilege on AWS](https://oneuptime.com/blog/post/2026-02-12-implement-principle-least-privilege-aws/view).
 
 **Enable traceability.** Log everything - API calls (CloudTrail), network traffic (VPC Flow Logs), DNS queries (Route 53 query logs). You can't investigate what you didn't record.
 

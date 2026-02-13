@@ -307,7 +307,7 @@ aws cloudfront test-function \
   }'
 ```
 
-Lambda@Edge is harder to test locally. The best approach is unit testing with mock events. For local Lambda testing, see our guide on [testing Lambda functions locally with SAM CLI](https://oneuptime.com/blog/post/test-lambda-functions-locally-sam-cli/view).
+Lambda@Edge is harder to test locally. The best approach is unit testing with mock events. For local Lambda testing, see our guide on [testing Lambda functions locally with SAM CLI](https://oneuptime.com/blog/post/2026-02-12-test-lambda-functions-locally-sam-cli/view).
 
 ## Performance Comparison
 

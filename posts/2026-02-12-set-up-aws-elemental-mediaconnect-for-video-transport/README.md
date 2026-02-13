@@ -435,7 +435,7 @@ Outputs:
 
 6. **Size your bandwidth appropriately.** Ensure your network connection to AWS can handle your video bitrate plus overhead. A 20 Mbps video stream needs at least 25 Mbps of available bandwidth.
 
-For downstream processing of your MediaConnect feeds, check out our guide on [setting up AWS MediaPackage for video packaging](https://oneuptime.com/blog/post/set-up-aws-mediapackage-for-video-packaging/view).
+For downstream processing of your MediaConnect feeds, check out our guide on [setting up AWS MediaPackage for video packaging](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-mediapackage-for-video-packaging/view).
 
 ## Wrapping Up
 

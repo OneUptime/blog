@@ -202,7 +202,7 @@ aws directconnect create-direct-connect-gateway-association \
   --add-allowed-prefixes-to-direct-connect-gateway '[{"cidr":"10.0.0.0/16"}]'
 ```
 
-A single Direct Connect connection in Ashburn can now reach VPCs in us-west-2, eu-west-1, or any other region through the Direct Connect Gateway. For transit gateway integration, see [configuring Direct Connect with Transit Gateway](https://oneuptime.com/blog/post/configure-direct-connect-with-transit-gateway/view).
+A single Direct Connect connection in Ashburn can now reach VPCs in us-west-2, eu-west-1, or any other region through the Direct Connect Gateway. For transit gateway integration, see [configuring Direct Connect with Transit Gateway](https://oneuptime.com/blog/post/2026-02-12-configure-direct-connect-with-transit-gateway/view).
 
 ## Redundancy
 

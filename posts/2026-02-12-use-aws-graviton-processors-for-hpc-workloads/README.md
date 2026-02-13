@@ -115,7 +115,7 @@ SharedStorage:
       Size: 500
 ```
 
-For more on ParallelCluster setup, see our guide on [setting up AWS ParallelCluster for HPC](https://oneuptime.com/blog/post/set-up-aws-parallelcluster-for-hpc/view).
+For more on ParallelCluster setup, see our guide on [setting up AWS ParallelCluster for HPC](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-parallelcluster-for-hpc/view).
 
 ```bash
 # Create the Graviton cluster

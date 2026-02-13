@@ -203,7 +203,7 @@ def handler(event, context):
     # print(f"Using password: {db_password}")  # NEVER DO THIS
 ```
 
-For more details on managing secrets in Lambda, see our post on [Lambda Powertools parameters for SSM and Secrets](https://oneuptime.com/blog/post/lambda-powertools-parameters-ssm-secrets/view).
+For more details on managing secrets in Lambda, see our post on [Lambda Powertools parameters for SSM and Secrets](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-parameters-ssm-secrets/view).
 
 ## Dependency Security
 
@@ -368,4 +368,4 @@ enable_lambda_monitoring()
 
 Serverless security comes down to a few core principles: give each function the minimum permissions it needs, validate all inputs, keep dependencies updated and scanned, protect secrets properly, and monitor everything. The serverless model removes some security responsibilities but introduces others. Don't let the simplicity of Lambda deployments lull you into a false sense of security.
 
-For related topics, see our guides on [container security on AWS](https://oneuptime.com/blog/post/container-security-best-practices-aws/view) and [API security best practices on AWS](https://oneuptime.com/blog/post/api-security-best-practices-aws/view).
+For related topics, see our guides on [container security on AWS](https://oneuptime.com/blog/post/2026-02-12-container-security-best-practices-aws/view) and [API security best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-api-security-best-practices-aws/view).

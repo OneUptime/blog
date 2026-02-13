@@ -379,4 +379,4 @@ After building a few pipelines, here's what works well:
 
 ## Wrapping Up
 
-SageMaker Pipelines turns ad-hoc ML experiments into repeatable, automated workflows. The declarative approach means you define what should happen, and SageMaker figures out how to make it happen on managed infrastructure. Combined with the [Model Registry](https://oneuptime.com/blog/post/sagemaker-model-registry/view) and [Model Monitor](https://oneuptime.com/blog/post/sagemaker-model-monitor-drift-detection/view), you've got the foundation of a solid MLOps practice.
+SageMaker Pipelines turns ad-hoc ML experiments into repeatable, automated workflows. The declarative approach means you define what should happen, and SageMaker figures out how to make it happen on managed infrastructure. Combined with the [Model Registry](https://oneuptime.com/blog/post/2026-02-12-sagemaker-model-registry/view) and [Model Monitor](https://oneuptime.com/blog/post/2026-02-12-sagemaker-model-monitor-drift-detection/view), you've got the foundation of a solid MLOps practice.

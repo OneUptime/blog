@@ -354,7 +354,7 @@ Transit Gateway charges per attachment per hour plus per GB of data processed. F
 
 Compare this to the operational cost of managing 10 VPC peering connections, and the Transit Gateway usually wins, especially as you add more VPCs.
 
-For a broader view of networking options, check our guide on [using AWS Global Networks (Cloud WAN) for multi-region](https://oneuptime.com/blog/post/use-aws-global-networks-cloud-wan-for-multi-region/view), which provides a policy-driven alternative to manual Transit Gateway management.
+For a broader view of networking options, check our guide on [using AWS Global Networks (Cloud WAN) for multi-region](https://oneuptime.com/blog/post/2026-02-12-use-aws-global-networks-cloud-wan-for-multi-region/view), which provides a policy-driven alternative to manual Transit Gateway management.
 
 ## Conclusion
 

@@ -259,4 +259,4 @@ For most production applications, start with "Rolling with additional batch." It
 
 Traffic splitting is worth considering if you're deploying frequently and want to catch regressions early. The 10-minute evaluation window gives you a real-world test before committing to the full rollout.
 
-Whatever strategy you choose, make sure your health checks are meaningful. A health check that always returns 200 is worse than no health check at all - it gives you false confidence that your deployment succeeded. For troubleshooting when deployments go sideways, check out our guide on [troubleshooting Elastic Beanstalk deployment failures](https://oneuptime.com/blog/post/troubleshoot-elastic-beanstalk-deployment-failures/view).
+Whatever strategy you choose, make sure your health checks are meaningful. A health check that always returns 200 is worse than no health check at all - it gives you false confidence that your deployment succeeded. For troubleshooting when deployments go sideways, check out our guide on [troubleshooting Elastic Beanstalk deployment failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-elastic-beanstalk-deployment-failures/view).

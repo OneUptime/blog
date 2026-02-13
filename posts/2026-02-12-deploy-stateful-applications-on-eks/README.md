@@ -327,7 +327,7 @@ spec:
           app: postgres
 ```
 
-For workloads that need cross-AZ access, consider using [EFS instead of EBS](https://oneuptime.com/blog/post/set-up-efs-csi-driver-for-eks-shared-storage/view).
+For workloads that need cross-AZ access, consider using [EFS instead of EBS](https://oneuptime.com/blog/post/2026-02-12-set-up-efs-csi-driver-for-eks-shared-storage/view).
 
 ## Should You Run Databases on Kubernetes?
 

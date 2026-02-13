@@ -330,4 +330,4 @@ Common connection issues:
 
 A reliable MQTT connection is the foundation of any IoT deployment. Get the basics right - proper certificate management, appropriate QoS levels, persistent sessions for important devices, and exponential backoff for reconnections. Then layer on Last Will and Testament for device health monitoring and well-structured topics for clean data routing.
 
-For handling the data that flows over these connections, check out our guide on the [IoT Core Rules Engine](https://oneuptime.com/blog/post/use-iot-core-rules-engine/view).
+For handling the data that flows over these connections, check out our guide on the [IoT Core Rules Engine](https://oneuptime.com/blog/post/2026-02-12-use-iot-core-rules-engine/view).

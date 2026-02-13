@@ -321,7 +321,7 @@ aws cloudwatch get-metric-statistics \
     --statistics Sum
 ```
 
-For broader networking monitoring, check our guide on [monitoring Route 53 DNS query logging](https://oneuptime.com/blog/post/monitor-route-53-dns-query-logging/view).
+For broader networking monitoring, check our guide on [monitoring Route 53 DNS query logging](https://oneuptime.com/blog/post/2026-02-12-monitor-route-53-dns-query-logging/view).
 
 ## Conclusion
 

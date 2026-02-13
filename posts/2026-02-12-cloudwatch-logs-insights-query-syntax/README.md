@@ -303,4 +303,4 @@ Also, `filter` commands should come as early as possible in your pipeline to red
 
 ## Wrapping Up
 
-CloudWatch Logs Insights is a powerful query language that lets you go far beyond simple text search. The pipeline syntax makes it easy to build up complex analyses step by step. For more real-world query examples, check out our posts on [common Logs Insights queries](https://oneuptime.com/blog/post/common-cloudwatch-logs-insights-queries/view) and [querying Lambda logs](https://oneuptime.com/blog/post/query-lambda-logs-cloudwatch-logs-insights/view).
+CloudWatch Logs Insights is a powerful query language that lets you go far beyond simple text search. The pipeline syntax makes it easy to build up complex analyses step by step. For more real-world query examples, check out our posts on [common Logs Insights queries](https://oneuptime.com/blog/post/2026-02-12-common-cloudwatch-logs-insights-queries/view) and [querying Lambda logs](https://oneuptime.com/blog/post/2026-02-12-query-lambda-logs-cloudwatch-logs-insights/view).

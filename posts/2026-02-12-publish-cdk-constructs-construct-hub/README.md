@@ -376,7 +376,7 @@ Mark your construct's stability level in `package.json`:
 
 Construct Hub displays this prominently, so users know what to expect.
 
-For project management tooling that helps with construct libraries, see [CDK with Projen](https://oneuptime.com/blog/post/cdk-projen-project-management/view). For patterns on sharing constructs privately within your org, check out [sharing CDK constructs across projects](https://oneuptime.com/blog/post/share-cdk-constructs-across-projects/view).
+For project management tooling that helps with construct libraries, see [CDK with Projen](https://oneuptime.com/blog/post/2026-02-12-cdk-projen-project-management/view). For patterns on sharing constructs privately within your org, check out [sharing CDK constructs across projects](https://oneuptime.com/blog/post/2026-02-12-share-cdk-constructs-across-projects/view).
 
 ## Wrapping Up
 

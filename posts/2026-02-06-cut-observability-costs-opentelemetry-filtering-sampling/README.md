@@ -576,9 +576,9 @@ processors:
 ## Related Resources
 
 For more cost optimization strategies:
-- https://oneuptime.com/blog/post/handle-high-cardinality-metrics-opentelemetry/view
-- https://oneuptime.com/blog/post/delta-temporality-manage-cardinality-explosions/view
-- https://oneuptime.com/blog/post/probabilistic-sampling-opentelemetry-cost-control/view
-- https://oneuptime.com/blog/post/reduce-telemetry-data-volume-span-suppression/view
+- https://oneuptime.com/blog/post/2026-02-06-handle-high-cardinality-metrics-opentelemetry/view
+- https://oneuptime.com/blog/post/2026-02-06-delta-temporality-manage-cardinality-explosions/view
+- https://oneuptime.com/blog/post/2026-02-06-probabilistic-sampling-opentelemetry-cost-control/view
+- https://oneuptime.com/blog/post/2026-02-06-reduce-telemetry-data-volume-span-suppression/view
 
 Filtering and sampling are essential tools for cost-effective observability. By implementing these strategies, you can dramatically reduce your observability costs while maintaining visibility into critical issues. The key is to be intentional about what data you collect and intelligent about how you sample it.

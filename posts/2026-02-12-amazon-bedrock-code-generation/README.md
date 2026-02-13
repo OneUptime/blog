@@ -347,4 +347,4 @@ Always review generated code before using it. The model might produce code that 
 
 Be specific about your requirements. Mention the framework version, coding standards, and any constraints. "Write a REST endpoint" is much less useful than "Write a FastAPI endpoint that accepts a JSON body with fields name and email, validates both, and returns a 201 with the created user."
 
-For code-heavy workflows that involve processing lots of files, [Bedrock batch inference](https://oneuptime.com/blog/post/amazon-bedrock-batch-inference/view) can save you significant costs compared to real-time invocations.
+For code-heavy workflows that involve processing lots of files, [Bedrock batch inference](https://oneuptime.com/blog/post/2026-02-12-amazon-bedrock-batch-inference/view) can save you significant costs compared to real-time invocations.

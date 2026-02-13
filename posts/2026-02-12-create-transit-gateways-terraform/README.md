@@ -268,7 +268,7 @@ resource "aws_ec2_transit_gateway_route" "blackhole" {
 
 Transit Gateway publishes metrics to CloudWatch. Monitor bytes transferred and packet drops to catch connectivity issues.
 
-For comprehensive monitoring of your network infrastructure, check our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/create-cloudwatch-alarms-terraform/view).
+For comprehensive monitoring of your network infrastructure, check our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-terraform/view).
 
 ## Outputs
 

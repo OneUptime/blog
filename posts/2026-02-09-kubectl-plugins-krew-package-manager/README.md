@@ -401,7 +401,7 @@ Use plugins when their functionality justifies the performance trade-off. For fr
 
 ## Writing Your Own Plugins
 
-You can write custom plugins and distribute them through Krew. See https://oneuptime.com/blog/post/write-kubectl-plugins-bash-go/view for a detailed guide on creating kubectl plugins.
+You can write custom plugins and distribute them through Krew. See https://oneuptime.com/blog/post/2026-02-09-write-kubectl-plugins-bash-go/view for a detailed guide on creating kubectl plugins.
 
 ## Alternative Plugin Managers
 
@@ -456,4 +456,4 @@ kubectl krew info plugin-name -o yaml
 
 The default Krew index curates plugins, but custom indexes might contain untrusted code. Exercise caution with third-party plugin sources.
 
-Krew transforms kubectl from a basic CLI into a powerful extensible platform. Install essential plugins, explore the ecosystem, and extend kubectl to match your workflow. The right plugins eliminate custom scripts and external tools, consolidating cluster management into a single interface. For more kubectl efficiency tips, check out https://oneuptime.com/blog/post/kubectl-aliases-shell-functions/view.
+Krew transforms kubectl from a basic CLI into a powerful extensible platform. Install essential plugins, explore the ecosystem, and extend kubectl to match your workflow. The right plugins eliminate custom scripts and external tools, consolidating cluster management into a single interface. For more kubectl efficiency tips, check out https://oneuptime.com/blog/post/2026-02-09-kubectl-aliases-shell-functions/view.

@@ -313,10 +313,10 @@ def lambda_handler(event, context):
 
 1. **Run global audits weekly**: Don't let orphaned resources pile up. Each unused Elastic IP costs $3.65/month, and forgotten volumes add up quickly.
 
-2. **Use consistent tagging**: Tags are your lifeline for global resource management. Follow a [comprehensive tagging strategy](https://oneuptime.com/blog/post/tag-ec2-resources-for-cost-allocation-and-organization/view) across all regions.
+2. **Use consistent tagging**: Tags are your lifeline for global resource management. Follow a [comprehensive tagging strategy](https://oneuptime.com/blog/post/2026-02-12-tag-ec2-resources-for-cost-allocation-and-organization/view) across all regions.
 
 3. **Limit active regions**: Only enable the regions you actually use. Fewer regions means less surface area for orphaned resources and security risks.
 
-4. **Centralize monitoring**: Use CloudWatch cross-account dashboards or a tool like [OneUptime](https://oneuptime.com/blog/post/monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) to monitor instances across all regions from one place.
+4. **Centralize monitoring**: Use CloudWatch cross-account dashboards or a tool like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) to monitor instances across all regions from one place.
 
 EC2 Global View, whether through the console or scripts, is essential for any organization running instances in multiple regions. The alternative - manually checking each region one by one - simply doesn't scale.

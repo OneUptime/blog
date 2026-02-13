@@ -359,4 +359,4 @@ export const handler = async (event: any) => {
 
 Lambda Powertools for TypeScript gives you production-ready observability with minimal boilerplate. The type safety catches configuration errors at compile time, and the Middy middleware integration keeps your handler code clean and focused on business logic.
 
-If you're using Python instead, check out [Lambda Powertools for Python](https://oneuptime.com/blog/post/lambda-powertools-python/view). For Java, see [Lambda Powertools for Java](https://oneuptime.com/blog/post/lambda-powertools-java/view). The APIs are consistent across all three languages, so the patterns you learn transfer directly.
+If you're using Python instead, check out [Lambda Powertools for Python](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-python/view). For Java, see [Lambda Powertools for Java](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-java/view). The APIs are consistent across all three languages, so the patterns you learn transfer directly.

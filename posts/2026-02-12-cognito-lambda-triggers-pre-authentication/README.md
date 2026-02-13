@@ -354,7 +354,7 @@ resource "aws_lambda_provisioned_concurrency_config" "pre_auth" {
 }
 ```
 
-For the trigger that fires after successful authentication, see [Cognito Lambda triggers for post authentication](https://oneuptime.com/blog/post/cognito-lambda-triggers-post-authentication/view).
+For the trigger that fires after successful authentication, see [Cognito Lambda triggers for post authentication](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-post-authentication/view).
 
 ## Summary
 

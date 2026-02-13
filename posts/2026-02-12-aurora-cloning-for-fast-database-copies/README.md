@@ -188,7 +188,7 @@ Want to test a migration before running it on production? Clone the database, ru
 
 Aurora cloning has a few constraints you should be aware of:
 
-- **Cross-region cloning isn't supported.** The clone must be in the same region as the source. If you need a cross-region copy, use [Aurora Global Databases](https://oneuptime.com/blog/post/set-up-aurora-global-databases-for-multi-region/view) or snapshot-and-restore.
+- **Cross-region cloning isn't supported.** The clone must be in the same region as the source. If you need a cross-region copy, use [Aurora Global Databases](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-global-databases-for-multi-region/view) or snapshot-and-restore.
 - **Clone depth limit.** You can create clones of clones, but only up to 15 levels deep.
 - **Maximum 15 clones per source.** You can't have more than 15 active clones from a single source cluster.
 - **Same engine version.** The clone uses the same engine version as the source.
@@ -234,4 +234,4 @@ UPDATE api_keys SET key_value = 'sanitized_key';
 
 Aurora cloning is one of those features that seems too good to be true until you actually use it. Instant copies of multi-terabyte databases with minimal storage overhead is genuinely impressive engineering. Use it for dev/test environments, analytics, migration testing, and load testing.
 
-Just remember the three rules: always sanitize sensitive data in clones, always delete clones when you're done, and always tag clones so you know what they're for and when they were created. If you're working with Aurora snapshots for longer-lived backups, check out the guide on [exporting Aurora snapshots to S3](https://oneuptime.com/blog/post/export-aurora-snapshots-to-s3/view).
+Just remember the three rules: always sanitize sensitive data in clones, always delete clones when you're done, and always tag clones so you know what they're for and when they were created. If you're working with Aurora snapshots for longer-lived backups, check out the guide on [exporting Aurora snapshots to S3](https://oneuptime.com/blog/post/2026-02-12-export-aurora-snapshots-to-s3/view).

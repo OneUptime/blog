@@ -281,6 +281,6 @@ jobs:
         run: kubectl apply -f manifests/
 ```
 
-For more on configuring kubectl access, see our [kubectl setup guide](https://oneuptime.com/blog/post/configure-kubectl-for-eks/view).
+For more on configuring kubectl access, see our [kubectl setup guide](https://oneuptime.com/blog/post/2026-02-12-configure-kubectl-for-eks/view).
 
 Cross-account EKS access is foundational for multi-account AWS organizations. Get it right, and your teams can manage clusters efficiently without compromising on security boundaries between accounts.

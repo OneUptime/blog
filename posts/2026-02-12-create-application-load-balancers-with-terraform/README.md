@@ -380,7 +380,7 @@ resource "aws_lb_listener_rule" "services" {
 }
 ```
 
-For more on dynamic blocks, see our guide on [Terraform dynamic blocks](https://oneuptime.com/blog/post/terraform-dynamic-blocks-for-repeated-configuration/view).
+For more on dynamic blocks, see our guide on [Terraform dynamic blocks](https://oneuptime.com/blog/post/2026-02-12-terraform-dynamic-blocks-for-repeated-configuration/view).
 
 ## SSL Certificate Management
 
@@ -478,4 +478,4 @@ Key metrics to watch:
 
 ALBs are foundational for web applications on AWS. Terraform makes it straightforward to define complex routing rules, SSL termination, and target group configurations in code. Start with a simple HTTP-to-HTTPS redirect and a single target group, then add path-based routing and weighted targets as your architecture evolves.
 
-For the VPC underneath your ALB, check out our guide on the [Terraform AWS VPC module](https://oneuptime.com/blog/post/terraform-aws-vpc-module/view). For the database layer, see the [Terraform AWS RDS module](https://oneuptime.com/blog/post/terraform-aws-rds-module/view).
+For the VPC underneath your ALB, check out our guide on the [Terraform AWS VPC module](https://oneuptime.com/blog/post/2026-02-12-terraform-aws-vpc-module/view). For the database layer, see the [Terraform AWS RDS module](https://oneuptime.com/blog/post/2026-02-12-terraform-aws-rds-module/view).

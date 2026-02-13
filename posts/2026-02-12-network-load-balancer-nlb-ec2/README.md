@@ -280,7 +280,7 @@ aws elbv2 modify-load-balancer-attributes \
   --attributes Key=load_balancing.cross_zone.enabled,Value=true
 ```
 
-Note that cross-zone load balancing incurs data transfer charges for traffic crossing AZ boundaries. For more details on configuring cross-zone load balancing, see our guide on [cross-zone load balancing setup](https://oneuptime.com/blog/post/cross-zone-load-balancing/view).
+Note that cross-zone load balancing incurs data transfer charges for traffic crossing AZ boundaries. For more details on configuring cross-zone load balancing, see our guide on [cross-zone load balancing setup](https://oneuptime.com/blog/post/2026-02-12-cross-zone-load-balancing/view).
 
 ## NLB with Auto Scaling
 
@@ -325,8 +325,8 @@ Key NLB CloudWatch metrics:
 - **HealthyHostCount / UnHealthyHostCount** - Target health
 - **TCP_Target_Reset_Count** - Connection resets (indicates backend issues)
 
-For real-time monitoring of your NLB health and performance, including target health tracking and connection metrics, consider using [OneUptime's monitoring](https://oneuptime.com/blog/post/configure-health-checks-ec2-load-balancer/view).
+For real-time monitoring of your NLB health and performance, including target health tracking and connection metrics, consider using [OneUptime's monitoring](https://oneuptime.com/blog/post/2026-02-12-configure-health-checks-ec2-load-balancer/view).
 
 ## Summary
 
-The Network Load Balancer is the right choice when you need Layer 4 load balancing with extreme performance, static IPs, or client IP preservation. It handles millions of connections per second with microsecond latencies and supports TCP, UDP, and TLS protocols. Use it for non-HTTP workloads, high-throughput applications, and cases where you need fixed IP addresses. For HTTP workloads that need content-based routing, an [Application Load Balancer](https://oneuptime.com/blog/post/application-load-balancer-alb-ec2/view) is the better fit.
+The Network Load Balancer is the right choice when you need Layer 4 load balancing with extreme performance, static IPs, or client IP preservation. It handles millions of connections per second with microsecond latencies and supports TCP, UDP, and TLS protocols. Use it for non-HTTP workloads, high-throughput applications, and cases where you need fixed IP addresses. For HTTP workloads that need content-based routing, an [Application Load Balancer](https://oneuptime.com/blog/post/2026-02-12-application-load-balancer-alb-ec2/view) is the better fit.

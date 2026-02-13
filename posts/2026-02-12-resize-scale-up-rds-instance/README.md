@@ -226,7 +226,7 @@ Things to check:
 - **Buffer cache hit ratio**: Should improve with more memory
 - **Query latency**: Should decrease if the bottleneck was resource-related
 
-For deeper analysis, use [Performance Insights](https://oneuptime.com/blog/post/monitor-rds-with-performance-insights/view) to compare query performance before and after the resize. And make sure you have [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view) set up to catch any issues that arise.
+For deeper analysis, use [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view) to compare query performance before and after the resize. And make sure you have [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view) set up to catch any issues that arise.
 
 ## When to Scale Up vs. Scale Out
 
@@ -240,4 +240,4 @@ Scaling out (adding read replicas) is better when:
 - You can split reads to replicas in your application
 - You want geographic distribution
 
-Often the best approach is a combination - scale up the primary for writes and add replicas for reads. Consider enabling [storage auto scaling](https://oneuptime.com/blog/post/enable-rds-storage-auto-scaling/view) as well so you don't have to manually manage disk space.
+Often the best approach is a combination - scale up the primary for writes and add replicas for reads. Consider enabling [storage auto scaling](https://oneuptime.com/blog/post/2026-02-12-enable-rds-storage-auto-scaling/view) as well so you don't have to manually manage disk space.

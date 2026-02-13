@@ -329,7 +329,7 @@ Internet Monitor and CloudWatch Synthetics complement each other. Internet Monit
 | Works during zero-traffic periods | No | Yes |
 | Shows geographic impact | Yes | Per-region canaries |
 
-Use both for complete coverage. For more on Synthetics monitoring, see our guide on [monitoring website availability with CloudWatch Synthetics](https://oneuptime.com/blog/post/monitor-website-availability-with-cloudwatch-synthetics/view).
+Use both for complete coverage. For more on Synthetics monitoring, see our guide on [monitoring website availability with CloudWatch Synthetics](https://oneuptime.com/blog/post/2026-02-12-monitor-website-availability-with-cloudwatch-synthetics/view).
 
 ## Wrapping Up
 

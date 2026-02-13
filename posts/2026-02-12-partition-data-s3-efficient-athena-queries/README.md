@@ -254,4 +254,4 @@ WHERE year = '2026' AND month = '02' AND day = '12';
 
 Look for `partition_filter` in the output. If it's there, Athena is pruning partitions correctly. Also check the query results in the Athena console - it shows "Data scanned" for each query. Compare with and without WHERE clauses on partition columns to see the difference.
 
-Proper partitioning is the foundation of cost-effective Athena queries. For getting even more performance out of your queries, look into [converting CSV to Parquet](https://oneuptime.com/blog/post/convert-csv-to-parquet-aws/view) and [using CTAS for optimized tables](https://oneuptime.com/blog/post/athena-ctas-creating-optimized-tables/view).
+Proper partitioning is the foundation of cost-effective Athena queries. For getting even more performance out of your queries, look into [converting CSV to Parquet](https://oneuptime.com/blog/post/2026-02-12-convert-csv-to-parquet-aws/view) and [using CTAS for optimized tables](https://oneuptime.com/blog/post/2026-02-12-athena-ctas-creating-optimized-tables/view).

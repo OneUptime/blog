@@ -909,8 +909,8 @@ After applying optimizations, measure improvements.
 
 For comprehensive OpenTelemetry optimization:
 
-- [How to Fix Collector Slow Startup in Kubernetes](https://oneuptime.com/blog/post/fix-collector-slow-startup-kubernetes/view)
-- [How to Monitor Collector Queue Depth and Backpressure](https://oneuptime.com/blog/post/monitor-collector-queue-depth-backpressure/view)
-- [How to Fix Collector Exporter Timeout Errors](https://oneuptime.com/blog/post/fix-collector-exporter-timeout-errors/view)
+- [How to Fix Collector Slow Startup in Kubernetes](https://oneuptime.com/blog/post/2026-02-06-fix-collector-slow-startup-kubernetes/view)
+- [How to Monitor Collector Queue Depth and Backpressure](https://oneuptime.com/blog/post/2026-02-06-monitor-collector-queue-depth-backpressure/view)
+- [How to Fix Collector Exporter Timeout Errors](https://oneuptime.com/blog/post/2026-02-06-fix-collector-exporter-timeout-errors/view)
 
 Reducing OpenTelemetry overhead by 50% is achievable through intelligent sampling, cardinality reduction, batch optimization, and selective instrumentation. By systematically applying these optimizations and measuring results, you can maintain comprehensive observability while minimizing performance impact on production systems.

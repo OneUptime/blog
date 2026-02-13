@@ -651,6 +651,6 @@ For monitoring your cross-namespace communication and detecting anomalies, check
 
 ## Related Resources
 
-- [How to Implement Kubernetes RBAC Best Practices](https://oneuptime.com/blog/post/kubernetes-rbac-multi-tenant-best-practices/view)
-- [How to Troubleshoot Kubernetes DNS Issues](https://oneuptime.com/blog/post/kubernetes-coredns-troubleshooting-guide/view)
-- [How to Set Up OPA Gatekeeper for Policy Enforcement](https://oneuptime.com/blog/post/kubernetes-opa-gatekeeper-policy-enforcement/view)
+- [How to Implement Kubernetes RBAC Best Practices](https://oneuptime.com/blog/post/2026-01-19-kubernetes-rbac-multi-tenant-best-practices/view)
+- [How to Troubleshoot Kubernetes DNS Issues](https://oneuptime.com/blog/post/2026-01-19-kubernetes-coredns-troubleshooting-guide/view)
+- [How to Set Up OPA Gatekeeper for Policy Enforcement](https://oneuptime.com/blog/post/2026-01-19-kubernetes-opa-gatekeeper-policy-enforcement/view)

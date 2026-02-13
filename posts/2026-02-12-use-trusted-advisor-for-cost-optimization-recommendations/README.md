@@ -289,7 +289,7 @@ These three tools serve different purposes:
 - **Cost Explorer** shows you spending trends, forecasts, and breakdowns. It answers "where is my money going?"
 - **Compute Optimizer** provides specific right-sizing recommendations for EC2, Lambda, and EBS based on ML analysis.
 
-Use all three together for a complete picture. For more on anomaly detection and cost tracking, check out our guide on [setting up anomaly detection for AWS costs](https://oneuptime.com/blog/post/set-up-anomaly-detection-for-aws-costs/view).
+Use all three together for a complete picture. For more on anomaly detection and cost tracking, check out our guide on [setting up anomaly detection for AWS costs](https://oneuptime.com/blog/post/2026-02-12-set-up-anomaly-detection-for-aws-costs/view).
 
 ## Key Takeaways
 

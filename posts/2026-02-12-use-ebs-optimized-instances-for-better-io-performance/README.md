@@ -174,7 +174,7 @@ Set up [monitoring with OneUptime](https://oneuptime.com) to get a unified view 
 
 ### Choose the Right Volume Type
 
-Match your volume type to your workload. See our guide on [choosing between EBS volume types](https://oneuptime.com/blog/post/choose-between-ebs-volume-types/view) for detailed comparisons. Quick summary:
+Match your volume type to your workload. See our guide on [choosing between EBS volume types](https://oneuptime.com/blog/post/2026-02-12-choose-between-ebs-volume-types/view) for detailed comparisons. Quick summary:
 
 - **gp3**: Best default. 3,000 baseline IOPS, independently configurable.
 - **io2**: For latency-sensitive workloads needing guaranteed IOPS.
@@ -194,7 +194,7 @@ aws ec2 modify-volume \
     --throughput 400
 ```
 
-This is one of the easiest performance and cost improvements you can make. For more details, see our guide on [resizing EBS volumes without downtime](https://oneuptime.com/blog/post/resize-ebs-volume-without-downtime/view).
+This is one of the easiest performance and cost improvements you can make. For more details, see our guide on [resizing EBS volumes without downtime](https://oneuptime.com/blog/post/2026-02-12-resize-ebs-volume-without-downtime/view).
 
 ### Tune Linux I/O Scheduler
 

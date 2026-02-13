@@ -277,7 +277,7 @@ async function callSecuredAPI(endpoint, method = 'GET', body = null) {
 }
 ```
 
-For details on how Cognito authorizers specifically work and additional configuration options, see [using Cognito authorizers with API Gateway](https://oneuptime.com/blog/post/cognito-authorizers-api-gateway/view). And if you need to handle token refresh on the client side, check out [handling Cognito token refresh in applications](https://oneuptime.com/blog/post/cognito-token-refresh-applications/view).
+For details on how Cognito authorizers specifically work and additional configuration options, see [using Cognito authorizers with API Gateway](https://oneuptime.com/blog/post/2026-02-12-cognito-authorizers-api-gateway/view). And if you need to handle token refresh on the client side, check out [handling Cognito token refresh in applications](https://oneuptime.com/blog/post/2026-02-12-cognito-token-refresh-applications/view).
 
 ## CORS Configuration
 

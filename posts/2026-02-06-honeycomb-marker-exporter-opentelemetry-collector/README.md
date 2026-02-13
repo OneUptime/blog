@@ -756,7 +756,7 @@ terraform output -json | jq -r 'to_entries | map({
 
 For more information on OpenTelemetry exporters, check out these related posts:
 
-- [How to Configure the Coralogix Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/coralogix-exporter-opentelemetry-collector/view)
-- [How to Configure the Sentry Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/sentry-exporter-opentelemetry-collector/view)
+- [How to Configure the Coralogix Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-coralogix-exporter-opentelemetry-collector/view)
+- [How to Configure the Sentry Exporter in the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-sentry-exporter-opentelemetry-collector/view)
 
 The Honeycomb Marker exporter provides a powerful way to correlate system behavior with operational events. By creating markers for deployments, incidents, configuration changes, and other significant events, you can quickly understand the impact of changes and accelerate troubleshooting when issues occur.

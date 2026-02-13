@@ -316,4 +316,4 @@ aws guardduty update-organization-configuration \
 
 **Test with known patterns.** AWS provides a GuardDuty tester that generates sample findings. Use it to verify your alerting pipeline works before you need it for real.
 
-For complete AWS security coverage, also enable [GuardDuty S3 Protection](https://oneuptime.com/blog/post/guardduty-s3-protection/view) and [GuardDuty Malware Protection for EC2](https://oneuptime.com/blog/post/guardduty-malware-protection-ec2/view). And pair your findings with [OneUptime](https://oneuptime.com) for centralized monitoring and incident management across all your security tools.
+For complete AWS security coverage, also enable [GuardDuty S3 Protection](https://oneuptime.com/blog/post/2026-02-12-guardduty-s3-protection/view) and [GuardDuty Malware Protection for EC2](https://oneuptime.com/blog/post/2026-02-12-guardduty-malware-protection-ec2/view). And pair your findings with [OneUptime](https://oneuptime.com) for centralized monitoring and incident management across all your security tools.

@@ -343,6 +343,6 @@ Pre-process your text to remove HTML, URLs, and special characters. These don't 
 
 Mixed sentiment is more common than you might expect. A review like "Great product but terrible shipping" is genuinely mixed, and that signal is often more actionable than pure positive or negative.
 
-For cases where the built-in sentiment model doesn't capture your domain's nuances, look into [Amazon Comprehend custom classification](https://oneuptime.com/blog/post/amazon-comprehend-custom-classification/view) to train a model on your own labeled data.
+For cases where the built-in sentiment model doesn't capture your domain's nuances, look into [Amazon Comprehend custom classification](https://oneuptime.com/blog/post/2026-02-12-amazon-comprehend-custom-classification/view) to train a model on your own labeled data.
 
 Sentiment analysis is one of those capabilities that seems simple on the surface but can drive real business decisions when you build the right pipeline around it. Start with batch analysis of your existing feedback data and work up to real-time monitoring from there.

@@ -498,7 +498,7 @@ When building custom connectors, follow these best practices:
 
 **Observability**: Add metrics and logs to your connector to monitor its performance and behavior in production.
 
-For more advanced connector patterns, check out the [OpenTelemetry Collector Connector documentation](https://opentelemetry.io/docs/collector/configuration/#connectors) and explore related topics like [environment variables in collector configuration](https://oneuptime.com/blog/post/environment-variables-opentelemetry-collector-configuration/view).
+For more advanced connector patterns, check out the [OpenTelemetry Collector Connector documentation](https://opentelemetry.io/docs/collector/configuration/#connectors) and explore related topics like [environment variables in collector configuration](https://oneuptime.com/blog/post/2026-02-06-environment-variables-opentelemetry-collector-configuration/view).
 
 ## Conclusion
 

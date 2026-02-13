@@ -559,4 +559,4 @@ CloudNativePG brings enterprise-grade PostgreSQL management to Kubernetes with a
 
 Start with a simple three-node cluster, configure automated backups, and test failover scenarios. As your confidence grows, add connection pooling, monitoring, and point-in-time recovery capabilities. CloudNativePG handles the complexity of PostgreSQL high availability, letting you focus on your applications.
 
-For more information on CloudNativePG, visit https://oneuptime.com/blog/post/cloudnativepg-backups/view for details on backup strategies.
+For more information on CloudNativePG, visit https://oneuptime.com/blog/post/2026-01-21-cloudnativepg-backups/view for details on backup strategies.

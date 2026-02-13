@@ -69,7 +69,7 @@ sudo yum install -y php php-mysqlnd php-gd php-xml php-mbstring \
   php-json php-opcache php-zip php-curl php-intl php-imagick
 ```
 
-For a more detailed walkthrough of the LAMP stack setup, see our guide on [setting up LAMP on EC2](https://oneuptime.com/blog/post/lamp-stack-ec2/view).
+For a more detailed walkthrough of the LAMP stack setup, see our guide on [setting up LAMP on EC2](https://oneuptime.com/blog/post/2026-02-12-lamp-stack-ec2/view).
 
 ## Creating the WordPress Database
 

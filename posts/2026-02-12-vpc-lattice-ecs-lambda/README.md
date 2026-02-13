@@ -398,4 +398,4 @@ aws vpc-lattice update-rule \
   }'
 ```
 
-Monitor error rates and latency at each weight adjustment before shifting more traffic. For monitoring strategies, see our post on [VPC Lattice service networks](https://oneuptime.com/blog/post/vpc-lattice-service-networks/view).
+Monitor error rates and latency at each weight adjustment before shifting more traffic. For monitoring strategies, see our post on [VPC Lattice service networks](https://oneuptime.com/blog/post/2026-02-12-vpc-lattice-service-networks/view).

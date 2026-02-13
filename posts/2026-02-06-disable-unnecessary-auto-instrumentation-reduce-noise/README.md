@@ -477,6 +477,6 @@ Follow these guidelines when disabling auto-instrumentation:
 5. **Document disabled instrumentation** so teams understand coverage gaps
 6. **Review periodically** as application behavior changes
 
-For additional optimization strategies, see [How to Implement Rate-Based Sampling for High-Traffic Pipelines](https://oneuptime.com/blog/post/rate-based-sampling-high-traffic-pipelines/view) and [How to Use the OpenTelemetry Transformation Language to Shape Telemetry Data](https://oneuptime.com/blog/post/ottl-shape-telemetry-data/view).
+For additional optimization strategies, see [How to Implement Rate-Based Sampling for High-Traffic Pipelines](https://oneuptime.com/blog/post/2026-02-06-rate-based-sampling-high-traffic-pipelines/view) and [How to Use the OpenTelemetry Transformation Language to Shape Telemetry Data](https://oneuptime.com/blog/post/2026-02-06-ottl-shape-telemetry-data/view).
 
 Selective auto-instrumentation reduces noise without sacrificing critical visibility, improving both observability quality and system performance.

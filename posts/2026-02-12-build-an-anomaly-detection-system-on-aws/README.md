@@ -317,7 +317,7 @@ Your anomaly detection system is infrastructure too, and it needs monitoring. Tr
 - Lambda function errors and timeouts
 - Kinesis iterator age (lag in processing)
 
-For comprehensive monitoring of your anomaly detection pipeline and the broader infrastructure it runs on, check out our post on [building a time-series dashboard for IoT](https://oneuptime.com/blog/post/build-a-time-series-dashboard-for-iot-on-aws/view) that covers visualization of exactly these kinds of operational metrics.
+For comprehensive monitoring of your anomaly detection pipeline and the broader infrastructure it runs on, check out our post on [building a time-series dashboard for IoT](https://oneuptime.com/blog/post/2026-02-12-build-a-time-series-dashboard-for-iot-on-aws/view) that covers visualization of exactly these kinds of operational metrics.
 
 ## Wrapping Up
 

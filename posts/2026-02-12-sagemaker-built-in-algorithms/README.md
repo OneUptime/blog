@@ -313,7 +313,7 @@ Here's a simple decision framework:
 - **Clustering** - K-Means
 - **Images** - Image Classification or Object Detection
 
-You can also use [SageMaker Automatic Model Tuning](https://oneuptime.com/blog/post/sagemaker-automatic-model-tuning-hyperparameter-optimization/view) to find the best hyperparameters for whichever algorithm you choose.
+You can also use [SageMaker Automatic Model Tuning](https://oneuptime.com/blog/post/2026-02-12-sagemaker-automatic-model-tuning-hyperparameter-optimization/view) to find the best hyperparameters for whichever algorithm you choose.
 
 ## Wrapping Up
 

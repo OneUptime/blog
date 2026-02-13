@@ -341,4 +341,4 @@ Here are the most useful attributes you can group findings by:
 4. **Review weekly** - Use insights during your security review meetings to track progress.
 5. **Automate reporting** - Use the script above to generate and email weekly reports.
 
-For aggregating insights across multiple accounts, see [Security Hub cross-account aggregation](https://oneuptime.com/blog/post/aggregate-security-hub-findings-across-accounts/view). And make sure you've got the right [compliance standards enabled](https://oneuptime.com/blog/post/security-hub-compliance-standards-cis-pci/view) to generate the findings your insights depend on.
+For aggregating insights across multiple accounts, see [Security Hub cross-account aggregation](https://oneuptime.com/blog/post/2026-02-12-aggregate-security-hub-findings-across-accounts/view). And make sure you've got the right [compliance standards enabled](https://oneuptime.com/blog/post/2026-02-12-security-hub-compliance-standards-cis-pci/view) to generate the findings your insights depend on.

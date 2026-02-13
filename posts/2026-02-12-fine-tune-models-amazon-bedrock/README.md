@@ -252,7 +252,7 @@ Run multiple jobs with different hyperparameters and compare validation loss to 
 
 ## Cost Considerations
 
-Fine-tuning costs depend on the base model, dataset size, and number of epochs. Provisioned throughput has an hourly cost that runs whether you're using it or not. For pricing comparisons across different Bedrock models, check out our post on [comparing Amazon Bedrock model pricing](https://oneuptime.com/blog/post/compare-amazon-bedrock-model-pricing/view).
+Fine-tuning costs depend on the base model, dataset size, and number of epochs. Provisioned throughput has an hourly cost that runs whether you're using it or not. For pricing comparisons across different Bedrock models, check out our post on [comparing Amazon Bedrock model pricing](https://oneuptime.com/blog/post/2026-02-12-compare-amazon-bedrock-model-pricing/view).
 
 Plan your provisioned throughput carefully. If you only need the model during business hours, consider automating the creation and deletion of provisioned throughput to save costs.
 

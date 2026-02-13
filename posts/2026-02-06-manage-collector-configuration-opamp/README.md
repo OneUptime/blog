@@ -801,7 +801,7 @@ spec:
 
 **Audit Logging**: Log all configuration changes and agent actions for compliance and troubleshooting.
 
-For simpler configuration approaches, consider [environment variables](https://oneuptime.com/blog/post/environment-variables-opentelemetry-collector-configuration/view), [file providers](https://oneuptime.com/blog/post/file-provider-dynamic-collector-configuration/view), or [HTTP providers](https://oneuptime.com/blog/post/http-provider-remote-collector-configuration/view).
+For simpler configuration approaches, consider [environment variables](https://oneuptime.com/blog/post/2026-02-06-environment-variables-opentelemetry-collector-configuration/view), [file providers](https://oneuptime.com/blog/post/2026-02-06-file-provider-dynamic-collector-configuration/view), or [HTTP providers](https://oneuptime.com/blog/post/2026-02-06-http-provider-remote-collector-configuration/view).
 
 ## Conclusion
 

@@ -62,7 +62,7 @@ aws ses get-identity-verification-attributes \
   --region us-east-1
 ```
 
-For detailed domain verification steps, see our guide on [verifying domains in Amazon SES](https://oneuptime.com/blog/post/verify-domains-amazon-ses/view).
+For detailed domain verification steps, see our guide on [verifying domains in Amazon SES](https://oneuptime.com/blog/post/2026-02-12-verify-domains-amazon-ses/view).
 
 ## Step 2: Set Up DKIM
 
@@ -75,7 +75,7 @@ aws ses verify-domain-dkim \
   --region us-east-1
 ```
 
-This returns three CNAME records you need to add to your DNS. For full DKIM setup details, check our [DKIM configuration guide](https://oneuptime.com/blog/post/configure-dkim-amazon-ses/view).
+This returns three CNAME records you need to add to your DNS. For full DKIM setup details, check our [DKIM configuration guide](https://oneuptime.com/blog/post/2026-02-12-configure-dkim-amazon-ses/view).
 
 ## Step 3: Send a Test Email via CLI
 
@@ -319,6 +319,6 @@ aws sesv2 put-account-suppression-attributes \
 
 ## Moving to Production
 
-SES starts in sandbox mode where you can only send to verified addresses. To send to anyone, you need to request production access. See our guide on [moving SES out of the sandbox](https://oneuptime.com/blog/post/move-amazon-ses-out-of-sandbox/view) for the detailed process.
+SES starts in sandbox mode where you can only send to verified addresses. To send to anyone, you need to request production access. See our guide on [moving SES out of the sandbox](https://oneuptime.com/blog/post/2026-02-12-move-amazon-ses-out-of-sandbox/view) for the detailed process.
 
 SES is a reliable, scalable email sending platform that handles the hard parts of email delivery. Get your authentication set up properly (SPF, DKIM, DMARC), handle bounces and complaints promptly, and you'll have a solid email infrastructure at a fraction of the cost of dedicated email services.

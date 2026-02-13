@@ -372,4 +372,4 @@ aws cloudwatch get-metric-statistics \
 
 Migrating from Cassandra to Keyspaces eliminates operational overhead but requires careful planning around compatibility differences, data migration, and application changes. Start with a compatibility assessment, migrate schema and data, run a dual-write period for validation, and then cut over. The operational savings of not managing Cassandra clusters typically justify the migration effort within months.
 
-For more on Keyspaces, see our guide on [on-demand vs provisioned capacity](https://oneuptime.com/blog/post/set-up-keyspaces-on-demand-vs-provisioned-capacity/view). For database migration tools, check out [setting up DMS for MySQL to Aurora migration](https://oneuptime.com/blog/post/set-up-dms-for-mysql-to-aurora-migration/view).
+For more on Keyspaces, see our guide on [on-demand vs provisioned capacity](https://oneuptime.com/blog/post/2026-02-12-set-up-keyspaces-on-demand-vs-provisioned-capacity/view). For database migration tools, check out [setting up DMS for MySQL to Aurora migration](https://oneuptime.com/blog/post/2026-02-12-set-up-dms-for-mysql-to-aurora-migration/view).

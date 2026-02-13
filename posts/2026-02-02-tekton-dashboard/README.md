@@ -765,4 +765,4 @@ Tekton Dashboard transforms pipeline management from a command-line exercise int
 For deeper integration with your existing infrastructure, explore the Tekton Catalog for additional tasks and consider building custom extensions to meet your specific requirements. More information about Tekton Dashboard can be found in the official documentation at tekton.dev.
 
 Related Articles:
-- [Getting Started with Tekton Pipelines](https://oneuptime.com/blog/post/tekton-pipelines-guide/view)
+- [Getting Started with Tekton Pipelines](https://oneuptime.com/blog/post/2026-01-26-tekton-pipelines-guide/view)

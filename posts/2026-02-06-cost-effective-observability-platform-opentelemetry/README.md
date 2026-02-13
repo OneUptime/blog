@@ -583,12 +583,12 @@ Create dashboards tracking:
 
 ## Best Practices Summary
 
-1. **Sample intelligently**: Use [consistent probability sampling](https://oneuptime.com/blog/post/consistent-probability-sampling-predictable-overhead/view) with tail sampling for important traces
-2. **Compress aggressively**: Implement [compression](https://oneuptime.com/blog/post/reduce-network-bandwidth-opentelemetry-compression/view) at every layer
+1. **Sample intelligently**: Use [consistent probability sampling](https://oneuptime.com/blog/post/2026-02-06-consistent-probability-sampling-predictable-overhead/view) with tail sampling for important traces
+2. **Compress aggressively**: Implement [compression](https://oneuptime.com/blog/post/2026-02-06-reduce-network-bandwidth-opentelemetry-compression/view) at every layer
 3. **Reduce cardinality**: Aggregate high-cardinality labels and limit attribute counts
 4. **Tier storage**: Use hot/warm/cold storage based on access patterns
-5. **Optimize protocols**: Choose [gRPC vs HTTP](https://oneuptime.com/blog/post/optimize-grpc-http-performance-otlp-export/view) based on your use case
-6. **Configure temporality**: Use [delta temporality](https://oneuptime.com/blog/post/configure-metric-temporality-minimize-storage-costs/view) for metrics
+5. **Optimize protocols**: Choose [gRPC vs HTTP](https://oneuptime.com/blog/post/2026-02-06-optimize-grpc-http-performance-otlp-export/view) based on your use case
+6. **Configure temporality**: Use [delta temporality](https://oneuptime.com/blog/post/2026-02-06-configure-metric-temporality-minimize-storage-costs/view) for metrics
 7. **Filter early**: Drop low-value telemetry at the SDK or agent level
 8. **Batch efficiently**: Use large batch sizes to reduce network overhead
 

@@ -359,4 +359,4 @@ pre_build:
 
 This gives you tags like `main-20260212-42-a1b2c3d` which are both human-readable and traceable back to the exact source commit.
 
-Building Docker images with CodeBuild is straightforward once you've got the IAM permissions and privileged mode sorted out. The key to fast builds is proper layer caching - both in your Dockerfile structure and CodeBuild's cache configuration. For more on optimizing your CodeBuild setup, check out our guide on [caching dependencies in CodeBuild](https://oneuptime.com/blog/post/cache-dependencies-codebuild-faster-builds/view).
+Building Docker images with CodeBuild is straightforward once you've got the IAM permissions and privileged mode sorted out. The key to fast builds is proper layer caching - both in your Dockerfile structure and CodeBuild's cache configuration. For more on optimizing your CodeBuild setup, check out our guide on [caching dependencies in CodeBuild](https://oneuptime.com/blog/post/2026-02-12-cache-dependencies-codebuild-faster-builds/view).

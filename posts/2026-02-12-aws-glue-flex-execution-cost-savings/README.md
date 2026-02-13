@@ -244,4 +244,4 @@ Resources:
         - JobName: !Ref FlexETLJob
 ```
 
-Flex execution is one of the simplest cost optimizations you can make in your Glue pipeline. Zero code changes, zero performance impact once running, and consistent savings. For faster development of these jobs, check out [Glue interactive sessions](https://oneuptime.com/blog/post/aws-glue-interactive-sessions-development/view).
+Flex execution is one of the simplest cost optimizations you can make in your Glue pipeline. Zero code changes, zero performance impact once running, and consistent savings. For faster development of these jobs, check out [Glue interactive sessions](https://oneuptime.com/blog/post/2026-02-12-aws-glue-interactive-sessions-development/view).

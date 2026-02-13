@@ -623,6 +623,6 @@ Start with a simple panel showing firing alerts, then iterate based on your team
 
 **Related Reading:**
 
-- [Three Pillars of Observability: Logs, Metrics, and Traces](https://oneuptime.com/blog/post/three-pillars-of-observability-logs-metrics-traces/view)
-- [SRE Best Practices](https://oneuptime.com/blog/post/sre-best-practices/view)
-- [How to Create Grafana Annotations](https://oneuptime.com/blog/post/grafana-annotations-advanced/view)
+- [Three Pillars of Observability: Logs, Metrics, and Traces](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)
+- [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view)
+- [How to Create Grafana Annotations](https://oneuptime.com/blog/post/2026-01-30-grafana-annotations-advanced/view)

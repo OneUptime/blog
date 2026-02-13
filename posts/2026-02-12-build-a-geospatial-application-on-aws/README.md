@@ -322,7 +322,7 @@ exports.calculateRoute = async (event) => {
 
 ## Monitoring Your Geospatial Application
 
-Once your application is live, you need to monitor API latency, geofence event processing times, and query performance. AWS CloudWatch captures metrics from all these services, but if you want a unified view across your entire stack including uptime checks and alerting, consider using [OneUptime](https://oneuptime.com/blog/post/build-a-notification-dispatch-system-on-aws/view) to centralize your monitoring.
+Once your application is live, you need to monitor API latency, geofence event processing times, and query performance. AWS CloudWatch captures metrics from all these services, but if you want a unified view across your entire stack including uptime checks and alerting, consider using [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-notification-dispatch-system-on-aws/view) to centralize your monitoring.
 
 ## Cost Considerations
 

@@ -84,7 +84,7 @@ This is convenient but can be slow on large datasets with many partitions. It al
 
 ### Glue Crawler
 
-For automated partition management, use an AWS Glue crawler. It periodically scans your S3 location and updates the Glue Data Catalog with new partitions. We cover this in our guide on [creating AWS Glue crawlers](https://oneuptime.com/blog/post/create-aws-glue-crawlers-for-data-cataloging/view).
+For automated partition management, use an AWS Glue crawler. It periodically scans your S3 location and updates the Glue Data Catalog with new partitions. We cover this in our guide on [creating AWS Glue crawlers](https://oneuptime.com/blog/post/2026-02-12-create-aws-glue-crawlers-for-data-cataloging/view).
 
 ### Partition Projection
 
@@ -254,10 +254,10 @@ print(f"Execution time: {stats['TotalExecutionTimeInMillis']}ms")
 
 Compare scanned data before and after partitioning. If your partitioned queries aren't scanning significantly less data, either your partition keys don't match your query patterns or you're not filtering on partition columns.
 
-For a deeper look at cost optimization, check out our guide on [reducing Athena query costs](https://oneuptime.com/blog/post/reduce-athena-query-costs/view).
+For a deeper look at cost optimization, check out our guide on [reducing Athena query costs](https://oneuptime.com/blog/post/2026-02-12-reduce-athena-query-costs/view).
 
 ## Wrapping Up
 
 Partitioning is the single most impactful optimization you can make for Athena. It's free to implement (just organize your data differently), and it reduces costs proportionally to how selective your queries are. Use partition projection when possible to avoid partition management overhead, choose partition keys that match your query patterns, and always filter on partition columns.
 
-Combined with [columnar formats like Parquet](https://oneuptime.com/blog/post/optimize-athena-queries-with-column-formats-parquet-orc/view), partitioning can make Athena feel fast and cheap even on multi-terabyte datasets.
+Combined with [columnar formats like Parquet](https://oneuptime.com/blog/post/2026-02-12-optimize-athena-queries-with-column-formats-parquet-orc/view), partitioning can make Athena feel fast and cheap even on multi-terabyte datasets.

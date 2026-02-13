@@ -247,7 +247,7 @@ EMF is almost always the better choice inside Lambda functions. Here's a quick c
 | High resolution | 1-second supported | 1-second supported |
 | Outside Lambda | Needs CloudWatch agent | Works anywhere |
 
-The main situation where you'd still want `PutMetricData` is when you're running outside Lambda - on EC2, ECS, or on-premises. For those cases, check out our post on [publishing custom CloudWatch metrics](https://oneuptime.com/blog/post/publish-custom-cloudwatch-metrics/view).
+The main situation where you'd still want `PutMetricData` is when you're running outside Lambda - on EC2, ECS, or on-premises. For those cases, check out our post on [publishing custom CloudWatch metrics](https://oneuptime.com/blog/post/2026-02-12-publish-custom-cloudwatch-metrics/view).
 
 ## Querying EMF Logs with Logs Insights
 
@@ -261,7 +261,7 @@ fields @timestamp, OrderId, CustomerId, ProcessingTime
 | limit 20
 ```
 
-For more on writing these queries, check out [CloudWatch Logs Insights query syntax](https://oneuptime.com/blog/post/cloudwatch-logs-insights-query-syntax/view).
+For more on writing these queries, check out [CloudWatch Logs Insights query syntax](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-logs-insights-query-syntax/view).
 
 ## Tips and Gotchas
 

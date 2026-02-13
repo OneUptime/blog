@@ -380,7 +380,7 @@ new logs.SubscriptionFilter(this, 'PaymentServiceLogs', {
 });
 ```
 
-For a deeper dive into centralized log aggregation, check out our guide on [building a centralized log aggregation system on AWS](https://oneuptime.com/blog/post/build-centralized-log-aggregation-system-on-aws/view).
+For a deeper dive into centralized log aggregation, check out our guide on [building a centralized log aggregation system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-centralized-log-aggregation-system-on-aws/view).
 
 ## Summary
 

@@ -334,4 +334,4 @@ def lambda_handler(event, context):
             print(f"Item {key} passed inspection")
 ```
 
-Custom Labels makes computer vision accessible for domain-specific problems. The biggest investment is in labeling quality training data - everything else is handled by the service. If you also need general image analysis features like text detection and content moderation, see our guide on [Amazon Rekognition for image analysis](https://oneuptime.com/blog/post/amazon-rekognition-image-analysis/view).
+Custom Labels makes computer vision accessible for domain-specific problems. The biggest investment is in labeling quality training data - everything else is handled by the service. If you also need general image analysis features like text detection and content moderation, see our guide on [Amazon Rekognition for image analysis](https://oneuptime.com/blog/post/2026-02-12-amazon-rekognition-image-analysis/view).

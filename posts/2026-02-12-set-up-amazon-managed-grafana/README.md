@@ -224,7 +224,7 @@ curl -X POST \
   }'
 ```
 
-For detailed CloudWatch integration, see our guide on [connecting Amazon Managed Grafana to CloudWatch](https://oneuptime.com/blog/post/connect-amazon-managed-grafana-to-cloudwatch/view).
+For detailed CloudWatch integration, see our guide on [connecting Amazon Managed Grafana to CloudWatch](https://oneuptime.com/blog/post/2026-02-12-connect-amazon-managed-grafana-to-cloudwatch/view).
 
 ## Step 6: Build Your First Dashboard
 
@@ -315,4 +315,4 @@ For small teams, the cost is quite reasonable. The savings in operational overhe
 
 ## Wrapping Up
 
-Amazon Managed Grafana gives you enterprise-grade monitoring dashboards without the infrastructure management. The setup is straightforward: create a workspace, connect your AWS data sources, build dashboards, and configure alerts. The tight integration with IAM Identity Center means authentication is handled from day one, and the native AWS data source plugins make connecting to CloudWatch, Prometheus, and X-Ray seamless. From here, explore connecting additional data sources like [Amazon Managed Prometheus](https://oneuptime.com/blog/post/connect-amazon-managed-grafana-to-prometheus/view) and [X-Ray](https://oneuptime.com/blog/post/connect-amazon-managed-grafana-to-x-ray/view) to build comprehensive observability dashboards.
+Amazon Managed Grafana gives you enterprise-grade monitoring dashboards without the infrastructure management. The setup is straightforward: create a workspace, connect your AWS data sources, build dashboards, and configure alerts. The tight integration with IAM Identity Center means authentication is handled from day one, and the native AWS data source plugins make connecting to CloudWatch, Prometheus, and X-Ray seamless. From here, explore connecting additional data sources like [Amazon Managed Prometheus](https://oneuptime.com/blog/post/2026-02-12-connect-amazon-managed-grafana-to-prometheus/view) and [X-Ray](https://oneuptime.com/blog/post/2026-02-12-connect-amazon-managed-grafana-to-x-ray/view) to build comprehensive observability dashboards.

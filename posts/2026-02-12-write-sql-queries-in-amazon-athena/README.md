@@ -10,7 +10,7 @@ Description: Practical guide to writing SQL queries in Amazon Athena, covering s
 
 Amazon Athena uses Trino (formerly Presto) as its SQL engine, which means you get a rich SQL dialect with some quirks that differ from what you might be used to in MySQL or PostgreSQL. If you've already got Athena set up and pointed at your S3 data, this guide will help you write effective queries.
 
-If you haven't set up Athena yet, start with our [setup guide](https://oneuptime.com/blog/post/set-up-amazon-athena-for-querying-s3-data/view) first.
+If you haven't set up Athena yet, start with our [setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-athena-for-querying-s3-data/view) first.
 
 ## Basic Queries
 
@@ -326,7 +326,7 @@ WHERE DATE(event_time) = current_date - INTERVAL '1' DAY;
 4. **Avoid `ORDER BY` without `LIMIT`** on large result sets
 5. **Use CTAS to pre-aggregate** frequently queried data
 
-For detailed performance optimization, check out our guides on [partitioning](https://oneuptime.com/blog/post/optimize-athena-query-performance-with-partitioning/view) and [columnar formats](https://oneuptime.com/blog/post/optimize-athena-queries-with-column-formats-parquet-orc/view).
+For detailed performance optimization, check out our guides on [partitioning](https://oneuptime.com/blog/post/2026-02-12-optimize-athena-query-performance-with-partitioning/view) and [columnar formats](https://oneuptime.com/blog/post/2026-02-12-optimize-athena-queries-with-column-formats-parquet-orc/view).
 
 ## Wrapping Up
 

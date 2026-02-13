@@ -359,4 +359,4 @@ export class FileService {
 - **Use Stubber for simple Boto3 tests** and `unittest.mock` for more complex scenarios.
 - **Use `aws-sdk-client-mock`** for JavaScript v3 SDK testing. It's the officially recommended approach.
 
-For integration testing that goes beyond unit-level mocking, check out the guide on [LocalStack](https://oneuptime.com/blog/post/localstack-test-aws-services-locally/view). And for Python-specific mocking, the [moto library guide](https://oneuptime.com/blog/post/moto-mocking-aws-services-python-tests/view) offers a higher-level approach that simulates full AWS service behavior.
+For integration testing that goes beyond unit-level mocking, check out the guide on [LocalStack](https://oneuptime.com/blog/post/2026-02-12-localstack-test-aws-services-locally/view). And for Python-specific mocking, the [moto library guide](https://oneuptime.com/blog/post/2026-02-12-moto-mocking-aws-services-python-tests/view) offers a higher-level approach that simulates full AWS service behavior.

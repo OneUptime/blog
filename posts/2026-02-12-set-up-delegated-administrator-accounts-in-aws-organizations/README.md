@@ -210,7 +210,7 @@ aws backup update-region-settings \
   }'
 ```
 
-For more on backup policies, check out our guide on [implementing AWS Organizations backup policies](https://oneuptime.com/blog/post/implement-aws-organizations-backup-policies/view).
+For more on backup policies, check out our guide on [implementing AWS Organizations backup policies](https://oneuptime.com/blog/post/2026-02-12-implement-aws-organizations-backup-policies/view).
 
 ## Automating Delegated Admin Setup with CloudFormation
 

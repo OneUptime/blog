@@ -82,7 +82,7 @@ LOCATION 's3://my-cloudtrail-bucket/AWSLogs/111111111111/CloudTrail/'
 TBLPROPERTIES ('classification'='cloudtrail');
 ```
 
-Replace the S3 location with where your CloudTrail logs actually live. If you're using an [organization trail](https://oneuptime.com/blog/post/cloudtrail-organization-trails/view), the path will include your organization ID.
+Replace the S3 location with where your CloudTrail logs actually live. If you're using an [organization trail](https://oneuptime.com/blog/post/2026-02-12-cloudtrail-organization-trails/view), the path will include your organization ID.
 
 ## Adding Partitions for Performance
 
@@ -334,4 +334,4 @@ def lambda_handler(event, context):
 
 Athena turns your CloudTrail logs from a compliance checkbox into an actual investigation tool. The setup takes about 15 minutes, and once you've got the table and a few saved queries, you can answer questions like "who deleted that S3 bucket last Tuesday" in seconds instead of hours.
 
-For real-time alerting rather than after-the-fact queries, check out how to [set up alerts for specific CloudTrail events](https://oneuptime.com/blog/post/alerts-specific-cloudtrail-events/view) using CloudWatch. And if you want anomaly detection without writing queries yourself, look into [CloudTrail Insights](https://oneuptime.com/blog/post/cloudtrail-insights-anomaly-detection/view).
+For real-time alerting rather than after-the-fact queries, check out how to [set up alerts for specific CloudTrail events](https://oneuptime.com/blog/post/2026-02-12-alerts-specific-cloudtrail-events/view) using CloudWatch. And if you want anomaly detection without writing queries yourself, look into [CloudTrail Insights](https://oneuptime.com/blog/post/2026-02-12-cloudtrail-insights-anomaly-detection/view).

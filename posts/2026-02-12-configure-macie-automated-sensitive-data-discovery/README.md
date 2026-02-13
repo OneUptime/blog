@@ -309,7 +309,7 @@ The sensitivity score updates as Macie processes more objects in each bucket. A 
 4. **Review sensitivity scores weekly.** Sudden changes in a bucket's score could indicate new data patterns.
 5. **Combine with S3 event notifications.** Trigger on-demand scans when new objects are uploaded to critical buckets.
 
-For the initial Macie setup, see our guide on [enabling Macie](https://oneuptime.com/blog/post/enable-amazon-macie-s3-data-discovery/view). For targeted PII scanning, check out [using Macie to find PII](https://oneuptime.com/blog/post/macie-find-pii-s3-buckets/view).
+For the initial Macie setup, see our guide on [enabling Macie](https://oneuptime.com/blog/post/2026-02-12-enable-amazon-macie-s3-data-discovery/view). For targeted PII scanning, check out [using Macie to find PII](https://oneuptime.com/blog/post/2026-02-12-macie-find-pii-s3-buckets/view).
 
 ## Wrapping Up
 

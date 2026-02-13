@@ -249,6 +249,6 @@ resource "aws_s3_bucket" "example" {
 }
 ```
 
-Without `force_destroy`, `terraform destroy` will fail with a BucketNotEmpty error if the bucket contains objects. For more on managing S3 with Terraform, see our post on [using S3 as a Terraform state backend](https://oneuptime.com/blog/post/s3-terraform-state-backend/view).
+Without `force_destroy`, `terraform destroy` will fail with a BucketNotEmpty error if the bucket contains objects. For more on managing S3 with Terraform, see our post on [using S3 as a Terraform state backend](https://oneuptime.com/blog/post/2026-02-12-s3-terraform-state-backend/view).
 
 Monitor your S3 bucket inventory and get alerts when buckets are created or deleted unexpectedly using [OneUptime](https://oneuptime.com).

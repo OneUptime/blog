@@ -255,7 +255,7 @@ aws ec2 revoke-security-group-egress \
 
 ### Enable VPC Flow Logs
 
-Every VPC should have flow logs enabled. They capture network traffic metadata that's invaluable for security investigations. For a detailed walkthrough, see our post on [enabling and configuring VPC Flow Logs](https://oneuptime.com/blog/post/enable-configure-vpc-flow-logs/view).
+Every VPC should have flow logs enabled. They capture network traffic metadata that's invaluable for security investigations. For a detailed walkthrough, see our post on [enabling and configuring VPC Flow Logs](https://oneuptime.com/blog/post/2026-02-12-enable-configure-vpc-flow-logs/view).
 
 ## Automating CIS Compliance Checks
 
@@ -288,4 +288,4 @@ Security Hub gives you a compliance score and highlights which controls are fail
 
 Implementing the CIS AWS Foundations Benchmark isn't a one-time project. It's an ongoing practice. Start with the high-impact controls - MFA enforcement, CloudTrail logging, and security group lockdown. Then work your way through the remaining controls over time.
 
-The automation tools AWS provides (Config conformance packs, Security Hub, and [Audit Manager](https://oneuptime.com/blog/post/aws-audit-manager-compliance-auditing/view)) make it much easier to maintain compliance continuously rather than scrambling before each audit.
+The automation tools AWS provides (Config conformance packs, Security Hub, and [Audit Manager](https://oneuptime.com/blog/post/2026-02-12-aws-audit-manager-compliance-auditing/view)) make it much easier to maintain compliance continuously rather than scrambling before each audit.

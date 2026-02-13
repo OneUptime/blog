@@ -342,7 +342,7 @@ aws cloudwatch get-metric-statistics \
   --statistics Average
 ```
 
-For origin-specific health monitoring, use Route 53 health checks or external monitoring to verify each origin independently. For a comprehensive monitoring setup, check our post on [CloudFront origin failover for high availability](https://oneuptime.com/blog/post/cloudfront-origin-failover-high-availability/view).
+For origin-specific health monitoring, use Route 53 health checks or external monitoring to verify each origin independently. For a comprehensive monitoring setup, check our post on [CloudFront origin failover for high availability](https://oneuptime.com/blog/post/2026-02-12-cloudfront-origin-failover-high-availability/view).
 
 ## Summary
 

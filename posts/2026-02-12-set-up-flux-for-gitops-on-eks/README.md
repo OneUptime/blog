@@ -8,7 +8,7 @@ Description: A step-by-step guide to setting up Flux CD on Amazon EKS for automa
 
 ---
 
-Flux is a GitOps toolkit that keeps your Kubernetes cluster in sync with a Git repository. It's the other major GitOps tool alongside [ArgoCD](https://oneuptime.com/blog/post/set-up-argocd-for-gitops-on-eks/view), and it takes a fundamentally different approach. Where ArgoCD gives you a centralized UI and application management, Flux follows a more Kubernetes-native philosophy - everything is defined as Custom Resources, and there's no required UI. Some teams love this, others miss the visual management ArgoCD provides.
+Flux is a GitOps toolkit that keeps your Kubernetes cluster in sync with a Git repository. It's the other major GitOps tool alongside [ArgoCD](https://oneuptime.com/blog/post/2026-02-12-set-up-argocd-for-gitops-on-eks/view), and it takes a fundamentally different approach. Where ArgoCD gives you a centralized UI and application management, Flux follows a more Kubernetes-native philosophy - everything is defined as Custom Resources, and there's no required UI. Some teams love this, others miss the visual management ArgoCD provides.
 
 This guide walks through setting up Flux v2 on EKS, including source tracking, Kustomize deployments, and Helm release management.
 

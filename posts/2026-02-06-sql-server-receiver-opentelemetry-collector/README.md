@@ -645,8 +645,8 @@ Watch these internal metrics:
 
 For comprehensive SQL Server and database monitoring:
 
-- [How to Configure the SQL Query Receiver in OpenTelemetry Collector](https://oneuptime.com/blog/post/sql-query-receiver-opentelemetry-collector/view)
-- [How to Configure the Oracle DB Receiver in OpenTelemetry Collector](https://oneuptime.com/blog/post/oracle-db-receiver-opentelemetry-collector/view)
+- [How to Configure the SQL Query Receiver in OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-sql-query-receiver-opentelemetry-collector/view)
+- [How to Configure the Oracle DB Receiver in OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-oracle-db-receiver-opentelemetry-collector/view)
 - [OpenTelemetry Collector: What It Is and When You Need It](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
 - [How to collect internal metrics from OpenTelemetry Collector](https://oneuptime.com/blog/post/2025-01-22-how-to-collect-opentelemetry-collector-internal-metrics/view)
 

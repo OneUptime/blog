@@ -210,4 +210,4 @@ That last point about VPC-to-VPC communication is important. If you need VPCs to
 
 Once everything is running, keep an eye on your BGP sessions and traffic flow. CloudWatch provides metrics for Direct Connect connections including connection state, outbound/inbound traffic, and light levels on the physical port.
 
-For broader network visibility, consider pairing this with [Transit Gateway Network Manager](https://oneuptime.com/blog/post/transit-gateway-network-manager/view) to get a unified view of your hybrid network.
+For broader network visibility, consider pairing this with [Transit Gateway Network Manager](https://oneuptime.com/blog/post/2026-02-12-transit-gateway-network-manager/view) to get a unified view of your hybrid network.

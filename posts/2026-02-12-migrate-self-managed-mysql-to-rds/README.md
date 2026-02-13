@@ -232,7 +232,7 @@ The actual downtime is just the time between stopping writes and restarting the 
 
 ## Method 3: AWS Database Migration Service
 
-For a more managed approach, especially when you need schema transformations or monitoring during migration, [AWS DMS](https://oneuptime.com/blog/post/use-dms-to-migrate-databases-to-rds/view) is an excellent option. It handles the initial data load and ongoing replication through a managed service.
+For a more managed approach, especially when you need schema transformations or monitoring during migration, [AWS DMS](https://oneuptime.com/blog/post/2026-02-12-use-dms-to-migrate-databases-to-rds/view) is an excellent option. It handles the initial data load and ongoing replication through a managed service.
 
 ## Post-Migration Tasks
 
@@ -258,7 +258,7 @@ aws rds modify-db-instance \
   --performance-insights-retention-period 7
 ```
 
-Also set up [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-cloudwatch-alarms-for-rds-metrics/view) and [event notifications](https://oneuptime.com/blog/post/enable-rds-event-notifications-via-sns/view) so you're alerted to any issues with the new RDS instance.
+Also set up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-rds-metrics/view) and [event notifications](https://oneuptime.com/blog/post/2026-02-12-enable-rds-event-notifications-via-sns/view) so you're alerted to any issues with the new RDS instance.
 
 ## Common Migration Issues
 

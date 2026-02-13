@@ -14,7 +14,7 @@ Lake Formation gives you four levels of access control: table-level, column-leve
 
 ## Table-Level Permissions
 
-Table-level permissions are the simplest form. You grant or deny access to entire tables within a database. If you've followed our [Lake Formation setup guide](https://oneuptime.com/blog/post/set-up-amazon-lake-formation-for-data-lakes/view), you've already seen these.
+Table-level permissions are the simplest form. You grant or deny access to entire tables within a database. If you've followed our [Lake Formation setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-lake-formation-for-data-lakes/view), you've already seen these.
 
 ```bash
 # Grant SELECT on a specific table

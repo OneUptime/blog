@@ -336,7 +336,7 @@ docker tag my-app:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:lat
 docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
 ```
 
-For a complete CI/CD setup that builds and pushes Docker images, check out our guide on [creating CodeBuild projects with Terraform](https://oneuptime.com/blog/post/create-codebuild-projects-terraform/view).
+For a complete CI/CD setup that builds and pushes Docker images, check out our guide on [creating CodeBuild projects with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-codebuild-projects-terraform/view).
 
 ## Wrapping Up
 

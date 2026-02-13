@@ -31,7 +31,7 @@ flowchart LR
 
 - An EKS cluster with kubectl configured
 - A Route 53 hosted zone for your domain
-- An OIDC provider set up for [IRSA](https://oneuptime.com/blog/post/set-up-iam-roles-for-eks-service-accounts-irsa/view)
+- An OIDC provider set up for [IRSA](https://oneuptime.com/blog/post/2026-02-12-set-up-iam-roles-for-eks-service-accounts-irsa/view)
 
 ## Step 1: Create the IAM Policy
 
@@ -179,7 +179,7 @@ spec:
 
 ExternalDNS picks up the hostname from either the `external-dns.alpha.kubernetes.io/hostname` annotation or the `spec.rules[].host` field.
 
-For more on ALB Ingress, see our [ALB setup guide](https://oneuptime.com/blog/post/set-up-ingress-with-alb-on-eks/view).
+For more on ALB Ingress, see our [ALB setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-ingress-with-alb-on-eks/view).
 
 ## Step 5: Use ExternalDNS with Services
 
@@ -263,4 +263,4 @@ aws route53 list-resource-record-sets \
 
 After ExternalDNS creates a record, it takes time for DNS to propagate. Route 53 is fast - usually under 60 seconds - but cached DNS entries on client machines might take longer depending on TTL values.
 
-ExternalDNS paired with the [ALB Ingress Controller](https://oneuptime.com/blog/post/set-up-ingress-with-alb-on-eks/view) and [cert-manager](https://oneuptime.com/blog/post/set-up-cert-manager-on-eks-with-acm/view) gives you a fully automated path from deployment to a working HTTPS endpoint with a proper domain name. It's one of those tools that, once set up, you never have to think about again.
+ExternalDNS paired with the [ALB Ingress Controller](https://oneuptime.com/blog/post/2026-02-12-set-up-ingress-with-alb-on-eks/view) and [cert-manager](https://oneuptime.com/blog/post/2026-02-12-set-up-cert-manager-on-eks-with-acm/view) gives you a fully automated path from deployment to a working HTTPS endpoint with a proper domain name. It's one of those tools that, once set up, you never have to think about again.

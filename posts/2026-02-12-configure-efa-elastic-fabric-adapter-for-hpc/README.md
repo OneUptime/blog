@@ -231,11 +231,11 @@ torchrun --nproc_per_node=8 --nnodes=4 --node_rank=0 \
   train.py --distributed
 ```
 
-For more on GPU workloads, see our guide on [using EC2 P5 instances for AI/ML training](https://oneuptime.com/blog/post/use-amazon-ec2-p5-instances-for-aiml-training/view).
+For more on GPU workloads, see our guide on [using EC2 P5 instances for AI/ML training](https://oneuptime.com/blog/post/2026-02-12-use-amazon-ec2-p5-instances-for-aiml-training/view).
 
 ## EFA with AWS ParallelCluster
 
-If you use ParallelCluster, enabling EFA is simple. See our [ParallelCluster setup guide](https://oneuptime.com/blog/post/set-up-aws-parallelcluster-for-hpc/view) for the full setup, and add EFA support to your queue:
+If you use ParallelCluster, enabling EFA is simple. See our [ParallelCluster setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-parallelcluster-for-hpc/view) for the full setup, and add EFA support to your queue:
 
 ```yaml
 SlurmQueues:

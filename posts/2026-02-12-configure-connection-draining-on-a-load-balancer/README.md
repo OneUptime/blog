@@ -145,7 +145,7 @@ For ALBs, watch the `TargetResponseTime` metric to understand how long your requ
 
 You can also check the `UnHealthyHostCount` metric. Spikes here often correlate with draining events.
 
-For a more comprehensive monitoring setup, consider using [OneUptime to monitor your AWS infrastructure](https://oneuptime.com/blog/post/monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view). You can set up alerts that fire when draining events coincide with error rate increases.
+For a more comprehensive monitoring setup, consider using [OneUptime to monitor your AWS infrastructure](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view). You can set up alerts that fire when draining events coincide with error rate increases.
 
 ## Connection Draining During Deployments
 

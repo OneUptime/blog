@@ -277,4 +277,4 @@ PrivateLink charges per endpoint per AZ per hour, plus data processing charges p
 
 **Monitor endpoint connections.** Track connection counts, data transfer, and errors. Feed metrics into [OneUptime](https://oneuptime.com) for visibility.
 
-For related networking security topics, check out our guide on [VPC Endpoint Policies for S3 and DynamoDB](https://oneuptime.com/blog/post/vpc-endpoint-policies-s3-dynamodb/view) to add policy-based access control to your endpoints.
+For related networking security topics, check out our guide on [VPC Endpoint Policies for S3 and DynamoDB](https://oneuptime.com/blog/post/2026-02-12-vpc-endpoint-policies-s3-dynamodb/view) to add policy-based access control to your endpoints.

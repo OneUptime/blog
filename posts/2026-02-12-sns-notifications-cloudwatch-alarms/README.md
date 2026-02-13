@@ -347,7 +347,7 @@ This is one of those things that's easy to skip but will save you during an actu
 
 **Consider delivery status logging.** Enable SNS delivery status logging so you can verify that notifications are actually being delivered. Failed deliveries won't generate their own alerts otherwise.
 
-For more advanced integrations, check out our guides on [integrating CloudWatch with PagerDuty](https://oneuptime.com/blog/post/cloudwatch-alarms-pagerduty/view) and [integrating CloudWatch with Slack](https://oneuptime.com/blog/post/cloudwatch-alarms-slack/view).
+For more advanced integrations, check out our guides on [integrating CloudWatch with PagerDuty](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-pagerduty/view) and [integrating CloudWatch with Slack](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-slack/view).
 
 ## Wrapping Up
 

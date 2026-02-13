@@ -334,4 +334,4 @@ aws glue get-job-runs \
 
 For production pipelines, set up alerts for failed jobs and monitor data freshness with [OneUptime](https://oneuptime.com). A stale analytics pipeline is often worse than a broken one because nobody notices the data is old.
 
-For more on optimizing your S3 storage costs after ETL processing, see our guide on [S3 storage class analysis](https://oneuptime.com/blog/post/s3-storage-class-analysis-optimize-costs/view).
+For more on optimizing your S3 storage costs after ETL processing, see our guide on [S3 storage class analysis](https://oneuptime.com/blog/post/2026-02-12-s3-storage-class-analysis-optimize-costs/view).

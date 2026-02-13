@@ -591,7 +591,7 @@ curl http://localhost:1777/debug/pprof/goroutine?debug=2 > goroutines.txt
 # Look for unexpectedly high counts of similar goroutines
 ```
 
-For comprehensive memory troubleshooting, see https://oneuptime.com/blog/post/troubleshoot-memory-issues-oom-kills-collector/view.
+For comprehensive memory troubleshooting, see https://oneuptime.com/blog/post/2026-02-06-troubleshoot-memory-issues-oom-kills-collector/view.
 
 ### Investigating Performance Degradation
 
@@ -638,7 +638,7 @@ curl -o mutex.prof http://localhost:1777/debug/pprof/mutex
 go tool pprof -top mutex.prof
 ```
 
-**Step 5**: Correlate findings with collector metrics and logs. Use zPages for live statistics: https://oneuptime.com/blog/post/zpages-live-debugging-collector/view.
+**Step 5**: Correlate findings with collector metrics and logs. Use zPages for live statistics: https://oneuptime.com/blog/post/2026-02-06-zpages-live-debugging-collector/view.
 
 ## Continuous Profiling for Production
 
@@ -844,9 +844,9 @@ This workflow combines multiple data sources:
 5. Verification confirms fixes work
 
 For comprehensive troubleshooting, use profiling alongside:
-- Internal logs: https://oneuptime.com/blog/post/read-interpret-collector-internal-logs/view
-- zPages: https://oneuptime.com/blog/post/zpages-live-debugging-collector/view
-- Debug exporter: https://oneuptime.com/blog/post/debug-exporter-troubleshoot-collector-pipelines/view
+- Internal logs: https://oneuptime.com/blog/post/2026-02-06-read-interpret-collector-internal-logs/view
+- zPages: https://oneuptime.com/blog/post/2026-02-06-zpages-live-debugging-collector/view
+- Debug exporter: https://oneuptime.com/blog/post/2026-02-06-debug-exporter-troubleshoot-collector-pipelines/view
 
 ## Common Profiling Patterns and Solutions
 
@@ -992,4 +992,4 @@ go tool pprof -base heap_before.prof heap_after.prof
 
 The pprof extension provides powerful profiling capabilities for understanding and optimizing OpenTelemetry Collector performance. CPU profiling identifies expensive operations, memory profiling reveals allocation patterns and leaks, goroutine profiling detects concurrency issues, and blocking profiles show synchronization bottlenecks. Combining profiling with metrics, logs, and live debugging tools creates a comprehensive troubleshooting toolkit for maintaining high-performance collector deployments.
 
-For complementary troubleshooting techniques, see https://oneuptime.com/blog/post/zpages-live-debugging-collector/view for live monitoring, https://oneuptime.com/blog/post/troubleshoot-memory-issues-oom-kills-collector/view for memory optimization, and https://oneuptime.com/blog/post/read-interpret-collector-internal-logs/view for log analysis.
+For complementary troubleshooting techniques, see https://oneuptime.com/blog/post/2026-02-06-zpages-live-debugging-collector/view for live monitoring, https://oneuptime.com/blog/post/2026-02-06-troubleshoot-memory-issues-oom-kills-collector/view for memory optimization, and https://oneuptime.com/blog/post/2026-02-06-read-interpret-collector-internal-logs/view for log analysis.

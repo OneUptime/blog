@@ -314,10 +314,10 @@ Key metrics to watch:
 - **ConnectionSuccess**: Successful connections
 - **UserConnected**: Currently connected users
 
-For comprehensive monitoring beyond CloudWatch, consider setting up [application monitoring with OneUptime](https://oneuptime.com/blog/post/set-up-aws-resilience-hub-for-application-resilience/view) to track availability and performance across your entire virtual desktop fleet.
+For comprehensive monitoring beyond CloudWatch, consider setting up [application monitoring with OneUptime](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-resilience-hub-for-application-resilience/view) to track availability and performance across your entire virtual desktop fleet.
 
 ## Wrapping Up
 
 Amazon WorkSpaces eliminates the operational burden of virtual desktop infrastructure. The initial setup - directory, networking, bundles - takes a few hours. After that, provisioning new desktops is a single API call. The key decisions are choosing the right bundle size for your users, picking the right running mode for cost optimization, and locking down network access with IP control groups.
 
-For more on configuring WorkSpaces for distributed teams, see our guide on [configuring WorkSpaces for remote teams](https://oneuptime.com/blog/post/configure-workspaces-for-remote-teams/view).
+For more on configuring WorkSpaces for distributed teams, see our guide on [configuring WorkSpaces for remote teams](https://oneuptime.com/blog/post/2026-02-12-configure-workspaces-for-remote-teams/view).

@@ -657,5 +657,5 @@ To fix and prevent `BufferExhaustedException`:
 *Need visibility into your Kafka producer health? [OneUptime](https://oneuptime.com) provides real-time monitoring of producer metrics, buffer utilization, and automatic alerting when issues arise.*
 
 **Related Reading:**
-- [How to Configure Kafka for High Throughput](https://oneuptime.com/blog/post/configure-kafka-high-throughput)
+- [How to Configure Kafka for High Throughput](https://oneuptime.com/blog/post/2026-01-24-configure-kafka-high-throughput)
 - [Understanding Kafka Producer Internals](https://oneuptime.com/blog/post/kafka-producer-internals)

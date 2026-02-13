@@ -244,7 +244,7 @@ Watch these metrics:
 - **NumberOfMessagesSent to DLQ** - if messages are landing in the DLQ, something is consistently failing.
 - **Lambda ConcurrentExecutions** - how many workers are active.
 
-Set up alerts on all of these. A growing queue depth combined with stable concurrency usually means your Lambda function is hitting a bottleneck. For monitoring patterns, see [Lambda extensions for monitoring](https://oneuptime.com/blog/post/lambda-extensions-monitoring/view).
+Set up alerts on all of these. A growing queue depth combined with stable concurrency usually means your Lambda function is hitting a bottleneck. For monitoring patterns, see [Lambda extensions for monitoring](https://oneuptime.com/blog/post/2026-02-12-lambda-extensions-monitoring/view).
 
 ## Idempotency
 

@@ -28,7 +28,7 @@ graph LR
 
 ## Setting Up the Schema
 
-We'll use the same product catalog schema from our [AppSync Lambda resolvers post](https://oneuptime.com/blog/post/appsync-graphql-apis-lambda-resolvers/view), but this time with DynamoDB direct resolvers.
+We'll use the same product catalog schema from our [AppSync Lambda resolvers post](https://oneuptime.com/blog/post/2026-02-12-appsync-graphql-apis-lambda-resolvers/view), but this time with DynamoDB direct resolvers.
 
 This schema covers basic CRUD operations:
 

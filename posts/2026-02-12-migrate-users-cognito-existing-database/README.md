@@ -339,7 +339,7 @@ async function getMigrationStats() {
 
 Don't rush to shut down the old database. Keep it running in read-only mode until you've hit an acceptable migration percentage. For lazy migration, you might find that some percentage of users never log in again. After a reasonable period (say, 6 months), force-migrate the remaining users via CSV bulk import and send them password reset instructions.
 
-For managing the migrated users once they're in Cognito, see [using Cognito Admin APIs for user management](https://oneuptime.com/blog/post/cognito-admin-apis-user-management/view).
+For managing the migrated users once they're in Cognito, see [using Cognito Admin APIs for user management](https://oneuptime.com/blog/post/2026-02-12-cognito-admin-apis-user-management/view).
 
 ## Wrapping Up
 

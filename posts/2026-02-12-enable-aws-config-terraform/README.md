@@ -374,7 +374,7 @@ resource "aws_sns_topic" "config_changes" {
 }
 ```
 
-For additional alerting on compliance changes, pair Config notifications with EventBridge rules as described in our guide on [EventBridge rules with Terraform](https://oneuptime.com/blog/post/create-eventbridge-rules-terraform/view).
+For additional alerting on compliance changes, pair Config notifications with EventBridge rules as described in our guide on [EventBridge rules with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-eventbridge-rules-terraform/view).
 
 ## Wrapping Up
 

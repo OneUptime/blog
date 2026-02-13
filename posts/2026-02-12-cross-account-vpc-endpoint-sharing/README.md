@@ -344,4 +344,4 @@ Make sure your endpoint policies allow access from all spoke accounts:
 
 This restricts endpoint access to principals within your AWS Organization, adding a security boundary even on shared endpoints.
 
-For related multi-account networking, see our post on [VPC IP Address Manager](https://oneuptime.com/blog/post/vpc-ip-address-manager-ipam/view).
+For related multi-account networking, see our post on [VPC IP Address Manager](https://oneuptime.com/blog/post/2026-02-12-vpc-ip-address-manager-ipam/view).

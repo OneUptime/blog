@@ -315,8 +315,8 @@ Temperature matters a lot for summarization. Keep it low - 0.1 to 0.3 - for fact
 
 Always specify the summary format you want. "Summarize this" is vague. "Summarize this as three bullet points focusing on financial impact" gives you consistent, useful results.
 
-For high-volume processing, consider [Bedrock batch inference](https://oneuptime.com/blog/post/amazon-bedrock-batch-inference/view) instead of real-time API calls. It's more cost-effective and you don't have to worry about rate limits.
+For high-volume processing, consider [Bedrock batch inference](https://oneuptime.com/blog/post/2026-02-12-amazon-bedrock-batch-inference/view) instead of real-time API calls. It's more cost-effective and you don't have to worry about rate limits.
 
-If you're also using Bedrock for other NLP tasks, you might find our guide on [text analysis with Amazon Comprehend](https://oneuptime.com/blog/post/amazon-comprehend-text-analysis/view) useful for pre-processing steps like language detection and entity extraction before summarization.
+If you're also using Bedrock for other NLP tasks, you might find our guide on [text analysis with Amazon Comprehend](https://oneuptime.com/blog/post/2026-02-12-amazon-comprehend-text-analysis/view) useful for pre-processing steps like language detection and entity extraction before summarization.
 
 Text summarization with Bedrock is one of those features that delivers immediate value. You can go from raw documents to actionable summaries in minutes, and the quality is consistently good enough for business use.
