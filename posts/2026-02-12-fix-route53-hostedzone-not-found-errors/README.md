@@ -237,7 +237,7 @@ Make sure your IAM identity has the right permissions for Route 53:
 
 Some Route 53 actions like `ListHostedZones` require `Resource: "*"` because they're account-level operations.
 
-For monitoring DNS configuration changes and catching issues early, set up [infrastructure monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) that tracks Route 53 changes and alerts on unexpected modifications.
+For monitoring DNS configuration changes and catching issues early, set up [infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) that tracks Route 53 changes and alerts on unexpected modifications.
 
 ## Summary
 

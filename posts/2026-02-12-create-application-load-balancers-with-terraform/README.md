@@ -466,7 +466,7 @@ resource "aws_route53_record" "app" {
 
 ## Monitoring
 
-ALBs produce CloudWatch metrics for request count, latency, error rates, and active connections. Monitor these closely after deployments. For comprehensive alerting that goes beyond CloudWatch, consider [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) for real-time visibility into your load balancer's health.
+ALBs produce CloudWatch metrics for request count, latency, error rates, and active connections. Monitor these closely after deployments. For comprehensive alerting that goes beyond CloudWatch, consider [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) for real-time visibility into your load balancer's health.
 
 Key metrics to watch:
 - `HTTPCode_Target_5XX_Count` - Backend errors

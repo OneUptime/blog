@@ -213,7 +213,7 @@ The deployment typically takes 5-8 minutes, mostly waiting for the ALB to provis
 
 ## Monitoring Your Service
 
-Once deployed, you'll want visibility into your service's health. Container Insights (which we enabled earlier) gives you CPU, memory, and network metrics out of the box. For deeper observability, consider setting up monitoring with a tool like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) that can alert you when things go sideways.
+Once deployed, you'll want visibility into your service's health. Container Insights (which we enabled earlier) gives you CPU, memory, and network metrics out of the box. For deeper observability, consider setting up monitoring with a tool like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) that can alert you when things go sideways.
 
 ## Common Pitfalls
 

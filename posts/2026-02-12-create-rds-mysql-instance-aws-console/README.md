@@ -159,7 +159,7 @@ If the connection times out, check your security group rules and make sure you'r
 Once your instance is running, there are a few things you should do:
 
 1. **Create application-specific users**: Don't use the admin account for your application. Create dedicated users with minimal privileges.
-2. **Set up monitoring**: Configure CloudWatch alarms for CPU, memory, storage, and connection count. Consider using [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) for comprehensive monitoring.
+2. **Set up monitoring**: Configure CloudWatch alarms for CPU, memory, storage, and connection count. Consider using [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for comprehensive monitoring.
 3. **Test failover** (if Multi-AZ): Reboot with failover to make sure your application handles it correctly.
 4. **Document your configuration**: Keep track of instance sizes, parameter groups, and security groups for your team.
 

@@ -393,7 +393,7 @@ aws backup list-backup-jobs \
   --output table
 ```
 
-Set up CloudWatch alarms for backup failures. For broader monitoring of your infrastructure including backup status, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can centralize alerts from all your AWS services.
+Set up CloudWatch alarms for backup failures. For broader monitoring of your infrastructure including backup status, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can centralize alerts from all your AWS services.
 
 ## Cost Analysis
 

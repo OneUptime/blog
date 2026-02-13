@@ -951,5 +951,5 @@ The key insight is that structure isn't about following rules - it's about makin
 *Building a Node.js application that needs monitoring? [OneUptime](https://oneuptime.com) provides comprehensive monitoring, logging, and alerting for your production Node.js applications.*
 
 **Related Reading:**
-- [How to Build Structured Loggers in Node.js](https://oneuptime.com/blog/post/2025-01-19-structured-loggers-nodejs/view)
-- [How to Use Jest for Testing Node.js Applications](https://oneuptime.com/blog/post/2025-01-07-jest-testing-nodejs/view)
+- [How to Build Structured Loggers in Node.js](https://oneuptime.com/blog/post/2026-01-25-structured-loggers-nodejs/view)
+- [How to Use Jest for Testing Node.js Applications](https://oneuptime.com/blog/post/2026-01-22-nodejs-jest-testing/view)

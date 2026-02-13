@@ -359,4 +359,4 @@ resource "aws_secretsmanager_secret_rotation" "db_password" {
 
 The Security pillar is about defense in depth - identity, detection, infrastructure, data, and incident response all working together. No single control is sufficient. Start with the basics (IAM, encryption, CloudTrail), then layer on detection (GuardDuty, Security Hub), and build toward automated remediation. Security isn't a destination; it's an ongoing process of reducing risk.
 
-For monitoring your security posture in real-time, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For monitoring your security posture in real-time, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

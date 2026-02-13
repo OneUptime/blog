@@ -355,4 +355,4 @@ With JSON logs and the parser filter, Fluent Bit can route based on log level or
 
 **Config file not loading**: Make sure the execution role has S3 access for the config file, and that the S3 path is correct.
 
-FireLens adds a bit of complexity to your task definitions, but the flexibility it provides for log routing is worth it. Instead of being locked into CloudWatch, you can send logs anywhere and apply filters and transformations along the way. For monitoring the health of your logging pipeline itself, take a look at our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+FireLens adds a bit of complexity to your task definitions, but the flexibility it provides for log routing is worth it. Instead of being locked into CloudWatch, you can send logs anywhere and apply filters and transformations along the way. For monitoring the health of your logging pipeline itself, take a look at our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).

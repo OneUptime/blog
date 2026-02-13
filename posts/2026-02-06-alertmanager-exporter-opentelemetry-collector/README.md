@@ -652,7 +652,7 @@ Monitor these key metrics:
 - Connection errors to Alertmanager
 - Retry attempts and backoff
 
-For more information on OpenTelemetry Collector monitoring, see our guide on [monitoring the OpenTelemetry Collector](https://oneuptime.com/blog/post/monitoring-opentelemetry-collector/view).
+For more information on OpenTelemetry Collector monitoring, see our guide on [monitoring the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-google-cloud-monitoring-receiver-opentelemetry-collector/view).
 
 ## Best Practices
 

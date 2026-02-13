@@ -610,4 +610,4 @@ Remember that throughput often trades off against latency and durability. Choose
 
 **Related Reading:**
 - [How to Monitor Kafka Consumer Lag](https://oneuptime.com/blog/post/2026-01-21-kafka-consumer-lag)
-- [Kafka Performance Tuning Guide](https://oneuptime.com/blog/post/kafka-performance)
+- [Kafka Performance Tuning Guide](https://oneuptime.com/blog/post/2026-01-21-tune-kafka-broker-performance)

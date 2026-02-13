@@ -290,7 +290,7 @@ client.delete_model(ModelName='xgb-classification-model-v2')
 
 ## Monitoring Deployed Endpoints
 
-Production endpoints need monitoring. Track latency, error rates, and invocation counts. SageMaker publishes metrics to CloudWatch, and you can pipe those into [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) for unified observability across your entire stack.
+Production endpoints need monitoring. Track latency, error rates, and invocation counts. SageMaker publishes metrics to CloudWatch, and you can pipe those into [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for unified observability across your entire stack.
 
 Key metrics to watch:
 

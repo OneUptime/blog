@@ -658,6 +658,6 @@ Whether you're building a monitoring system, analyzing IoT sensor data, or track
 *Need a complete observability solution? [OneUptime](https://oneuptime.com) provides infrastructure monitoring, application performance monitoring, and incident management - all in one platform. It integrates with TimescaleDB and other databases to give you full visibility into your systems.*
 
 **Related Reading:**
-- [ClickHouse vs TimescaleDB: Which to Choose for Time-Series Data](https://oneuptime.com/blog/post/2026-01-21-clickhouse-vs-timescaledb-time-series/view)
-- [How to Collect and Store Time-Series Metrics from IoT Devices](https://oneuptime.com/blog/post/2026-01-23-iot-time-series-metrics-collection/view)
+- [ClickHouse vs TimescaleDB: Which to Choose for Time-Series Data](https://oneuptime.com/blog/post/2026-01-21-clickhouse-vs-timescaledb/view)
+- [How to Collect and Store Time-Series Metrics from IoT Devices](https://oneuptime.com/blog/post/2026-01-21-clickhouse-iot-time-series/view)
 - [Popular PostgreSQL Extensions You Should Know](https://oneuptime.com/blog/post/2026-01-25-postgresql-popular-extensions/view)

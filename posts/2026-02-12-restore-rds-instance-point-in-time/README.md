@@ -331,7 +331,7 @@ The actual time depends on database size, transaction volume during the replay p
 
 After restoring, set up monitoring immediately. The restored instance doesn't inherit CloudWatch alarms from the source.
 
-Use [OneUptime](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) to quickly get visibility into the restored instance's health and performance while you verify the data and plan the cutover.
+Use [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to quickly get visibility into the restored instance's health and performance while you verify the data and plan the cutover.
 
 ## Wrapping Up
 

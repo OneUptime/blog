@@ -312,7 +312,7 @@ High-throughput counters on a single item can create hot partitions. If you're c
 
 ## Monitoring Counter Performance
 
-When counters are critical to your business logic (inventory, rate limits, billing), monitor them closely. Track update latency and throttling rates. A throttled counter update in your checkout flow means a lost sale. Set up alerts through [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to catch throttling before it impacts users.
+When counters are critical to your business logic (inventory, rate limits, billing), monitor them closely. Track update latency and throttling rates. A throttled counter update in your checkout flow means a lost sale. Set up alerts through [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch throttling before it impacts users.
 
 ## Wrapping Up
 

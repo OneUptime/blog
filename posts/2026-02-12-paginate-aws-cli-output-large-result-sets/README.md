@@ -332,7 +332,7 @@ The CLI handles pagination automatically here, collecting all metrics across how
 
 ## Monitoring API Usage
 
-When you're making many paginated API calls, keep an eye on your API usage to avoid throttling. For monitoring your AWS API usage patterns and costs, check out [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view).
+When you're making many paginated API calls, keep an eye on your API usage to avoid throttling. For monitoring your AWS API usage patterns and costs, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ## Wrapping Up
 

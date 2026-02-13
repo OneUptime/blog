@@ -309,7 +309,7 @@ Serverless scales up when queries arrive and scales down when they finish. No WL
 4. **Separate ETL and analytics queues**. ETL does writes (stays on main cluster), analytics does reads (can burst).
 5. **Use query groups** to route critical queries to the right queue.
 
-For monitoring Redshift cluster performance and concurrency scaling metrics, check our post on [data warehouse monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-dashboards/view).
+For monitoring Redshift cluster performance and concurrency scaling metrics, check our post on [data warehouse monitoring](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ## Wrapping Up
 

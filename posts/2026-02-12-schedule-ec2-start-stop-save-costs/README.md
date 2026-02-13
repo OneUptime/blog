@@ -327,7 +327,7 @@ A few things to keep in mind:
 - **Elastic IPs**: Elastic IPs remain associated when you stop an instance, but you'll be charged for the EIP while the instance is stopped
 - **Holidays**: The simple cron approach doesn't account for holidays. You can add holiday logic to the Lambda or use a more sophisticated scheduling system
 
-For monitoring your cost optimization efforts, set up billing alerts and dashboards. Our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) covers how to track these metrics effectively.
+For monitoring your cost optimization efforts, set up billing alerts and dashboards. Our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) covers how to track these metrics effectively.
 
 ## Wrapping Up
 

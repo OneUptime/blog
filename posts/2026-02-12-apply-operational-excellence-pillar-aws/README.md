@@ -180,7 +180,7 @@ resource "aws_cloudwatch_dashboard" "operations" {
 
 **Distributed Tracing** - Use AWS X-Ray to trace requests across services. When a request touches your API Gateway, Lambda, DynamoDB, and SQS, X-Ray shows you exactly where time is spent and where errors occur.
 
-For comprehensive monitoring strategies, take a look at our post on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For comprehensive monitoring strategies, take a look at our post on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Incident Management
 

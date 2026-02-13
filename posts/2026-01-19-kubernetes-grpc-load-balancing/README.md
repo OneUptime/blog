@@ -694,4 +694,4 @@ connectionPool:
 
 - [How to Configure Kubernetes Service Topology for Locality-Aware Routing](https://oneuptime.com/blog/post/2026-01-19-kubernetes-service-topology-locality/view) - Local gRPC routing
 - [How to Implement Kubernetes Gateway API](https://oneuptime.com/blog/post/2026-01-19-kubernetes-gateway-api-ingress-successor/view) - Modern gRPC routing
-- [How to Set Up Istio Service Mesh on Kubernetes](https://oneuptime.com/blog/post/2026-01-19-kubernetes-istio-service-mesh-setup/view) - Full service mesh setup
+- [How to Set Up Istio Service Mesh on Kubernetes](https://oneuptime.com/blog/post/2026-01-25-istio-service-mesh-kubernetes/view) - Full service mesh setup

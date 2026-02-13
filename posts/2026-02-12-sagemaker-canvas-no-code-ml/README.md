@@ -249,7 +249,7 @@ client.update_domain(
 
 ## Monitoring Canvas Models in Production
 
-If you deploy a Canvas model to production, you should monitor it just like any other model. Set up [SageMaker Model Monitor](https://oneuptime.com/blog/post/2026-02-12-sagemaker-model-monitor-drift-detection/view) to track data drift and model quality, and use [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) for endpoint health monitoring.
+If you deploy a Canvas model to production, you should monitor it just like any other model. Set up [SageMaker Model Monitor](https://oneuptime.com/blog/post/2026-02-12-sagemaker-model-monitor-drift-detection/view) to track data drift and model quality, and use [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for endpoint health monitoring.
 
 ## Cost Considerations
 

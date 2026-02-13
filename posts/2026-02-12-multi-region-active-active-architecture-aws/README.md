@@ -319,7 +319,7 @@ aws cloudwatch get-metric-statistics \
   --statistics "Average" "Maximum"
 ```
 
-For comprehensive cross-region monitoring, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can aggregate metrics from all your regions into a single dashboard.
+For comprehensive cross-region monitoring, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can aggregate metrics from all your regions into a single dashboard.
 
 ## Common Pitfalls
 

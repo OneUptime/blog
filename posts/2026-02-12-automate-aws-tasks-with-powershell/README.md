@@ -347,7 +347,7 @@ else {
 }
 ```
 
-For comprehensive monitoring that goes beyond scheduled scripts, consider using [dedicated monitoring tools](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) that provide continuous health checks and instant alerting.
+For comprehensive monitoring that goes beyond scheduled scripts, consider using [dedicated monitoring tools](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) that provide continuous health checks and instant alerting.
 
 ## Summary
 

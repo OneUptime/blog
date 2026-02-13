@@ -342,7 +342,7 @@ def call_api_with_retry(url, api_key, max_retries=3):
     raise Exception("Max retries exceeded - still rate limited")
 ```
 
-For comprehensive monitoring of your API usage patterns and rate limiting effectiveness, check out our post on [API performance monitoring](https://oneuptime.com/blog/post/api-monitoring-best-practices/view).
+For comprehensive monitoring of your API usage patterns and rate limiting effectiveness, check out our post on [API performance monitoring](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 

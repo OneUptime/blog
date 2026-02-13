@@ -388,7 +388,7 @@ curl -X POST YOUR_API_URL/graphql \
 
 ## Monitoring
 
-For AppSync, built-in CloudWatch metrics cover latency, errors, and request counts. For Apollo on Lambda, you get standard Lambda metrics plus whatever logging you add to your resolvers. For production APIs that need uptime monitoring and alerting, consider adding [external monitoring](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) for end-to-end visibility.
+For AppSync, built-in CloudWatch metrics cover latency, errors, and request counts. For Apollo on Lambda, you get standard Lambda metrics plus whatever logging you add to your resolvers. For production APIs that need uptime monitoring and alerting, consider adding [external monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) for end-to-end visibility.
 
 ## Summary
 

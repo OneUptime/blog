@@ -308,7 +308,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:rds-alerts
 ```
 
-For comprehensive monitoring, check out [AWS infrastructure monitoring with OneUptime](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For comprehensive monitoring, check out [AWS infrastructure monitoring with OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Proxy and Multi-AZ Failover
 

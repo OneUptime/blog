@@ -277,4 +277,4 @@ The "Unable to import module" error in Lambda almost always comes down to:
 4. **Platform mismatch** - Compiled packages must be built for Linux
 5. **Layer path wrong** - Dependencies must be in `python/` directory
 
-Monitor your Lambda functions for import errors and other failures with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) to catch deployment issues immediately after they go live.
+Monitor your Lambda functions for import errors and other failures with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch deployment issues immediately after they go live.

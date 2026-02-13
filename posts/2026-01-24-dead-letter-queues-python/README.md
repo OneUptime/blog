@@ -812,5 +812,5 @@ A well-designed DLQ strategy turns message failures from data loss into recovera
 *Running message queues in production? [OneUptime](https://oneuptime.com) monitors queue depths, consumer health, and dead letter rates to catch problems before they escalate.*
 
 **Related Reading:**
-- [How to Implement Event-Driven Architecture in Python](https://oneuptime.com/blog/post/2025-01-06-python-event-driven-architecture/view)
+- [How to Implement Event-Driven Architecture in Python](https://oneuptime.com/blog/post/2025-07-02-spring-boot-event-driven-architecture/view)
 - [How to Build a Graceful Shutdown Handler in Python](https://oneuptime.com/blog/post/2025-01-06-python-graceful-shutdown-kubernetes/view)

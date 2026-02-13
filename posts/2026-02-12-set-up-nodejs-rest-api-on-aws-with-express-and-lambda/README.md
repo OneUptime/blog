@@ -381,7 +381,7 @@ aws lambda put-provisioned-concurrency-config \
   --provisioned-concurrent-executions 5
 ```
 
-For monitoring your API's performance and uptime, check out our guide on [setting up monitoring for AWS services](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view).
+For monitoring your API's performance and uptime, check out our guide on [setting up monitoring for AWS services](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view).
 
 ## Wrapping Up
 

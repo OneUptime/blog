@@ -340,7 +340,7 @@ function logMetric(tenantId, metricName, value) {
 }
 ```
 
-For production SaaS monitoring across all tenants, consider integrating with [OneUptime](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) for comprehensive observability and incident management.
+For production SaaS monitoring across all tenants, consider integrating with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) for comprehensive observability and incident management.
 
 ## Summary
 

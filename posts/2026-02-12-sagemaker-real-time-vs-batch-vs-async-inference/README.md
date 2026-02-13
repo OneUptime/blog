@@ -351,7 +351,7 @@ serverless_predictor = model.deploy(
 
 ## Monitoring Across Inference Modes
 
-Regardless of which mode you choose, monitoring is essential. Track latency, error rates, and throughput. Use [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) to get a unified view of all your inference infrastructure.
+Regardless of which mode you choose, monitoring is essential. Track latency, error rates, and throughput. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to get a unified view of all your inference infrastructure.
 
 ## Wrapping Up
 

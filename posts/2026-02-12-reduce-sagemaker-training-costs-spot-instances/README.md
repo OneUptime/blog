@@ -345,4 +345,4 @@ Spot training isn't always the right choice:
 
 ## Wrapping Up
 
-Managed Spot Training is one of the easiest wins for reducing SageMaker costs. The implementation effort is minimal - add three parameters and checkpointing logic - but the savings can be substantial. For teams running lots of experiments, this can mean the difference between running 10 experiments and running 100 for the same budget. Combine spot training with right-sizing instances and monitoring costs through [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) for a comprehensive cost optimization strategy.
+Managed Spot Training is one of the easiest wins for reducing SageMaker costs. The implementation effort is minimal - add three parameters and checkpointing logic - but the savings can be substantial. For teams running lots of experiments, this can mean the difference between running 10 experiments and running 100 for the same budget. Combine spot training with right-sizing instances and monitoring costs through [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for a comprehensive cost optimization strategy.

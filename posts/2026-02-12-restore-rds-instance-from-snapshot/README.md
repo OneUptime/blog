@@ -331,7 +331,7 @@ endpoint = restore_latest_snapshot(
 
 ## Monitoring and Alerting
 
-Set up monitoring for your restored instance immediately after restore. Don't assume the monitoring from the original instance carries over - it doesn't. Create new CloudWatch alarms and integrate with [OneUptime](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) for comprehensive monitoring.
+Set up monitoring for your restored instance immediately after restore. Don't assume the monitoring from the original instance carries over - it doesn't. Create new CloudWatch alarms and integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) for comprehensive monitoring.
 
 ## Wrapping Up
 

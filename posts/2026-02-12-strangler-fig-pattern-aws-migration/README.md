@@ -329,7 +329,7 @@ def compare_responses(endpoint, request_data):
     return new_response  # Always return the new response
 ```
 
-For monitoring both systems during migration, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can help you track the health and performance of both the legacy and new components side by side.
+For monitoring both systems during migration, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help you track the health and performance of both the legacy and new components side by side.
 
 ## Step 6: Cut Over and Clean Up
 

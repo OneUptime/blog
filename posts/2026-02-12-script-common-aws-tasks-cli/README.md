@@ -400,7 +400,7 @@ chmod +x ~/bin/aws-scripts/*.sh
 
 ## Monitoring
 
-When your automation scripts are managing production infrastructure, you'll want to monitor their execution and the resources they manage. [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can provide alerting when scripts fail or when the resources they manage go into an unhealthy state.
+When your automation scripts are managing production infrastructure, you'll want to monitor their execution and the resources they manage. [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can provide alerting when scripts fail or when the resources they manage go into an unhealthy state.
 
 ## Wrapping Up
 

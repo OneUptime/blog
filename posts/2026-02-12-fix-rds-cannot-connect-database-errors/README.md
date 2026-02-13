@@ -238,7 +238,7 @@ aws rds describe-db-instances --db-instance-identifier $DB_IDENTIFIER \
 
 ## Prevention
 
-Set up connection monitoring so you know about issues before your users do. [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can monitor your RDS connectivity and alert you the moment connections start failing.
+Set up connection monitoring so you know about issues before your users do. [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can monitor your RDS connectivity and alert you the moment connections start failing.
 
 Key CloudWatch metrics to watch:
 - `DatabaseConnections` - Current connection count

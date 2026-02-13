@@ -335,7 +335,7 @@ management:
         enabled: true
 ```
 
-For deeper application monitoring, you can integrate with [external monitoring tools](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) that provide richer alerting and incident management capabilities.
+For deeper application monitoring, you can integrate with [external monitoring tools](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) that provide richer alerting and incident management capabilities.
 
 ## Choosing the Right Approach
 

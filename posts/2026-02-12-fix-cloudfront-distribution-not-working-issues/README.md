@@ -221,7 +221,7 @@ aws cloudfront get-distribution-config --id E1234567890 \
     --query 'DistributionConfig.Logging'
 ```
 
-For a comprehensive monitoring setup that covers CloudFront along with your other AWS infrastructure, have a look at [setting up CloudWatch alerting](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to catch distribution issues proactively.
+For a comprehensive monitoring setup that covers CloudFront along with your other AWS infrastructure, have a look at [setting up CloudWatch alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to catch distribution issues proactively.
 
 ## Summary
 

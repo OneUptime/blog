@@ -311,7 +311,7 @@ for datapoint in sorted(response['Datapoints'], key=lambda x: x['Timestamp']):
     print(f"{datapoint['Timestamp']}: avg={datapoint['Average']:.0f}ms, max={datapoint['Maximum']:.0f}ms")
 ```
 
-For comprehensive monitoring, connect these metrics to [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) to get a unified view across all your ML infrastructure.
+For comprehensive monitoring, connect these metrics to [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to get a unified view across all your ML infrastructure.
 
 ## Wrapping Up
 

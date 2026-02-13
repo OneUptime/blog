@@ -400,5 +400,5 @@ volumes:
 | Network tools | NET_RAW, NET_ADMIN |
 | Most applications | None |
 
-Always start with `--cap-drop=ALL` and add only the capabilities your application actually needs. Combine capability restrictions with other security measures like non-root users, read-only filesystems, and seccomp profiles for defense in depth. For more on running containers as non-root, see our post on [Running Docker Containers as Non-Root Users](https://oneuptime.com/blog/post/2026-01-15-docker-non-root-user/view).
+Always start with `--cap-drop=ALL` and add only the capabilities your application actually needs. Combine capability restrictions with other security measures like non-root users, read-only filesystems, and seccomp profiles for defense in depth. For more on running containers as non-root, see our post on [Running Docker Containers as Non-Root Users](https://oneuptime.com/blog/post/2026-01-16-docker-run-non-root-user/view).
 

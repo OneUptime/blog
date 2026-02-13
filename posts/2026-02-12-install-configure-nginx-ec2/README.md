@@ -392,7 +392,7 @@ Check the status:
 curl http://localhost/nginx_status
 ```
 
-For comprehensive monitoring of Nginx alongside your application, check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For comprehensive monitoring of Nginx alongside your application, check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Log Rotation
 

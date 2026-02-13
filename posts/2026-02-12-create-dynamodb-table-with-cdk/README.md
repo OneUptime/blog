@@ -255,7 +255,7 @@ Use the single-table design pattern when it makes sense, but don't force it. For
 
 Always enable point-in-time recovery for production tables. The cost is minimal, and it's saved many teams from data loss disasters.
 
-Monitor your table with CloudWatch metrics. Watch for throttled requests, consumed capacity approaching provisioned capacity, and system errors. A monitoring tool like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can alert you before users notice problems.
+Monitor your table with CloudWatch metrics. Watch for throttled requests, consumed capacity approaching provisioned capacity, and system errors. A monitoring tool like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can alert you before users notice problems.
 
 ## Wrapping Up
 

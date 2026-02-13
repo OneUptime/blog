@@ -363,7 +363,7 @@ output "cluster_port" {
 
 Once the cluster is running, you can bulk load data from S3 using the Neptune loader API. The IAM role we created earlier handles the S3 access. Create CSV or JSON files in the Neptune format, upload them to S3, and trigger the loader through the cluster endpoint.
 
-For monitoring the health of your Neptune cluster and query performance, see our post on [monitoring database infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For monitoring the health of your Neptune cluster and query performance, see our post on [monitoring database infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Summary
 

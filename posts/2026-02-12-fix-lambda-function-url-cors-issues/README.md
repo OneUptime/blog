@@ -304,4 +304,4 @@ aws lambda add-permission \
   --function-url-auth-type NONE
 ```
 
-For monitoring your Lambda Function URLs and catching CORS misconfigurations in production, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can alert you to elevated error rates before your users start complaining.
+For monitoring your Lambda Function URLs and catching CORS misconfigurations in production, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can alert you to elevated error rates before your users start complaining.

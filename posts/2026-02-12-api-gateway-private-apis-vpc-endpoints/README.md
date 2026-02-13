@@ -361,7 +361,7 @@ Common issues with private APIs:
 3. **Connection timeout** - The VPC endpoint's security group doesn't allow inbound HTTPS from your resource. Check port 443 rules.
 4. **Can't reach from outside VPC** - That's by design. Private APIs are VPC-only.
 
-For monitoring private API health and latency from within your VPC, check out our post on [internal service monitoring](https://oneuptime.com/blog/post/api-monitoring-best-practices/view).
+For monitoring private API health and latency from within your VPC, check out our post on [internal service monitoring](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 

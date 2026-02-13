@@ -1456,4 +1456,4 @@ By following these practices, you will create APIs that developers enjoy using a
 
 **Related Reading:**
 - [How to Implement Rate Limiting in FastAPI Without External Services](https://oneuptime.com/blog/post/2025-01-06-fastapi-rate-limiting/view)
-- [How to Build Production-Ready REST APIs with Flask](https://oneuptime.com/blog/post/flask-rest-api-production/view)
+- [How to Build Production-Ready REST APIs with Flask](https://oneuptime.com/blog/post/2026-02-12-set-up-python-rest-api-on-aws-with-flask-and-lambda/view)

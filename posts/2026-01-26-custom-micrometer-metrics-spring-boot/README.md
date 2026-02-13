@@ -659,5 +659,5 @@ With good custom metrics, you can answer questions like "How many orders per min
 *Want to visualize your custom metrics? [OneUptime](https://oneuptime.com) provides dashboards and alerting for Micrometer metrics, helping you turn raw numbers into actionable insights.*
 
 **Related Reading:**
-- [How to Add Custom Metrics to Python Applications with Prometheus](https://oneuptime.com/blog/post/2025-01-06-python-prometheus-metrics/view)
+- [How to Add Custom Metrics to Python Applications with Prometheus](https://oneuptime.com/blog/post/2025-01-06-python-custom-metrics-prometheus/view)
 - [Basics of Profiling](https://oneuptime.com/blog/post/2025-09-09-basics-of-profiling/view)

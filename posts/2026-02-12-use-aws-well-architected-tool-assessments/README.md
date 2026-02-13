@@ -298,4 +298,4 @@ This is useful when an architecture team wants to review workloads across multip
 
 The AWS Well-Architected Tool turns the framework's best practices into an actionable assessment process. Define your workload, answer the questions honestly, save a milestone, and work through the improvement plan. Repeat quarterly. Over time, you'll see your risk count decrease and your architecture mature. It's the simplest way to systematically improve your AWS workloads.
 
-For monitoring the health of the workloads you're reviewing, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For monitoring the health of the workloads you're reviewing, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

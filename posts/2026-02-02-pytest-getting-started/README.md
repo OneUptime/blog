@@ -759,5 +759,5 @@ def test_slow():
 *A solid test suite is essential for reliable software. [OneUptime](https://oneuptime.com) helps you monitor your applications in production and alerts you when tests pass but real-world issues occur, giving you complete visibility into application health.*
 
 **Related Topics:**
-- [How to Write Effective Unit Tests with pytest](https://oneuptime.com/blog/post/2026-02-02-pytest-effective-unit-tests/view)
+- [How to Write Effective Unit Tests with pytest](https://oneuptime.com/blog/post/2026-01-25-unit-tests-pytest-python/view)
 - [How to Use pytest Fixtures](https://oneuptime.com/blog/post/2026-02-02-pytest-fixtures/view)

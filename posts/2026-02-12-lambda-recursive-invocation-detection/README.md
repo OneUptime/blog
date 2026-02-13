@@ -308,7 +308,7 @@ Before deploying, audit your architecture for potential recursive paths. Here's 
 
 You can also write integration tests that deliberately create recursive conditions in a staging environment with tight concurrency limits.
 
-For monitoring recursive invocation patterns and setting up proper alerting, check out our guide on [Lambda monitoring best practices](https://oneuptime.com/blog/post/aws-lambda-monitoring-best-practices/view).
+For monitoring recursive invocation patterns and setting up proper alerting, check out our guide on [Lambda monitoring best practices](https://oneuptime.com/blog/post/2026-02-12-logging-monitoring-best-practices-aws/view).
 
 ## Wrapping Up
 

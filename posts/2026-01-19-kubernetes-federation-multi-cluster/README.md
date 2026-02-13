@@ -603,5 +603,5 @@ For monitoring federated clusters, check out [OneUptime's multi-cluster monitori
 ## Related Resources
 
 - [How to Set Up Cross-Cluster Service Discovery](https://oneuptime.com/blog/post/2026-01-19-kubernetes-cross-cluster-service-discovery/view)
-- [How to Set Up ArgoCD for GitOps](https://oneuptime.com/blog/post/kubernetes-argocd-gitops/view)
-- [How to Implement Blue-Green Deployments](https://oneuptime.com/blog/post/kubernetes-blue-green-deployments/view)
+- [How to Set Up ArgoCD for GitOps](https://oneuptime.com/blog/post/2026-01-06-kubernetes-gitops-argocd/view)
+- [How to Implement Blue-Green Deployments](https://oneuptime.com/blog/post/2025-11-28-what-are-blue-green-deployments/view)

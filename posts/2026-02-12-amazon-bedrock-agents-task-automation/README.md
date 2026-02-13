@@ -254,7 +254,7 @@ for event in response['completion']:
 
 Once your agent is running in production, you'll want to keep an eye on its behavior. Bedrock provides traces that show you exactly what the agent decided at each step - which actions it called, what the reasoning was, and where things went wrong if they did. You can enable trace logging when invoking the agent by setting `enableTrace=True`.
 
-For broader monitoring across your AWS services, having a solid observability stack makes a huge difference. Check out our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view) for strategies that work well alongside Bedrock Agents.
+For broader monitoring across your AWS services, having a solid observability stack makes a huge difference. Check out our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view) for strategies that work well alongside Bedrock Agents.
 
 ## Tips for Production Use
 

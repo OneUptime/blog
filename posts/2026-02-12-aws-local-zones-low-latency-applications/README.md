@@ -285,7 +285,7 @@ Make sure you actually need the latency improvement before deploying everywhere.
 
 Monitor both the Local Zone resources and the latency between the Local Zone and parent region. CloudWatch works the same way, but set up custom metrics for the cross-zone communication.
 
-For unified monitoring across Local Zones and regions, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can help you see everything in one place.
+For unified monitoring across Local Zones and regions, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help you see everything in one place.
 
 ## Wrapping Up
 

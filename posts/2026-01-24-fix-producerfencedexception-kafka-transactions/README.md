@@ -516,5 +516,5 @@ The `ProducerFencedException` is a protection mechanism, not a bug. To avoid it:
 *Need better visibility into your Kafka transactions? [OneUptime](https://oneuptime.com) provides comprehensive monitoring for distributed systems, helping you detect and diagnose transaction issues before they impact users.*
 
 **Related Reading:**
-- [How to Monitor Kafka Clusters Effectively](https://oneuptime.com/blog/post/kafka-monitoring)
-- [Understanding Kafka Exactly-Once Semantics](https://oneuptime.com/blog/post/kafka-exactly-once)
+- [How to Monitor Kafka Clusters Effectively](https://oneuptime.com/blog/post/2026-01-21-kafka-connect-monitoring)
+- [Understanding Kafka Exactly-Once Semantics](https://oneuptime.com/blog/post/2026-01-21-kafka-exactly-once-semantics)

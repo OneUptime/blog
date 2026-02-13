@@ -366,7 +366,7 @@ curl -X DELETE https://your-api-id.execute-api.us-east-1.amazonaws.com/Prod/item
 
 ## Monitoring Your API
 
-You'll want visibility into how your API is performing. Check out our guide on [monitoring AWS Lambda functions](https://oneuptime.com/blog/post/aws-lambda-monitoring/view) for tips on setting up alerts and dashboards.
+You'll want visibility into how your API is performing. Check out our guide on [monitoring AWS Lambda functions](https://oneuptime.com/blog/post/2025-07-02-python-aws-lambda-serverless/view) for tips on setting up alerts and dashboards.
 
 API Gateway also provides built-in metrics through CloudWatch, including latency, 4xx/5xx error rates, and request counts. Set up alarms for error rates above your threshold so you catch problems before your users do.
 

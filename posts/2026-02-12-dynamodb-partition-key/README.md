@@ -203,7 +203,7 @@ aws dynamodb update-contributor-insights \
   --contributor-insights-action ENABLE
 ```
 
-Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to get alerts when throttling occurs, so you can investigate and adjust your key design before it impacts users.
+Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to get alerts when throttling occurs, so you can investigate and adjust your key design before it impacts users.
 
 ## Wrapping Up
 

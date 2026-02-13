@@ -401,7 +401,7 @@ for job in response['ProcessingJobSummaries']:
     print(f"{job['ProcessingJobName']}: {job['ProcessingJobStatus']}")
 ```
 
-For production pipelines, pipe these logs into [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) so you get notified when jobs fail.
+For production pipelines, pipe these logs into [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) so you get notified when jobs fail.
 
 ## Cost Tips
 

@@ -507,5 +507,5 @@ This implementation gives you a solid foundation. From here, you might add refre
 *Building secure APIs? [OneUptime](https://oneuptime.com) helps you monitor your authentication endpoints and catch issues before your users do.*
 
 **Related Reading:**
-- [How to Secure FastAPI Applications Against OWASP Top 10](https://oneuptime.com/blog/post/2025-01-06-fastapi-security-owasp-top-10/view)
+- [How to Secure FastAPI Applications Against OWASP Top 10](https://oneuptime.com/blog/post/2025-01-06-fastapi-owasp-security/view)
 - [SRE Best Practices for Authentication Systems](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view)

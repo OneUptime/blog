@@ -488,4 +488,4 @@ For comprehensive monitoring of your storage and PVC usage, check out [OneUptime
 
 - [How to Set Up StatefulSets for Databases](https://oneuptime.com/blog/post/2026-01-19-kubernetes-statefulsets-databases/view)
 - [How to Back Up Kubernetes with Velero](https://oneuptime.com/blog/post/2026-01-19-kubernetes-velero-backup-restore/view)
-- [How to Debug Volume Mount Failures](https://oneuptime.com/blog/post/kubernetes-debug-volume-mount-failures/view)
+- [How to Debug Volume Mount Failures](https://oneuptime.com/blog/post/2026-01-19-kubernetes-volume-mount-failures/view)

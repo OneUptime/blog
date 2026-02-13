@@ -1313,4 +1313,4 @@ Start with simple DSLs for your most common configuration needs, then expand as 
 
 **Related Reading:**
 - [Kotlin Coroutines for Async Operations](https://oneuptime.com/blog/post/2026-02-02-kotlin-coroutines-async/view)
-- [Type-Safe Builders in Kotlin](https://oneuptime.com/blog/post/kotlin-type-safe-builders/view)
+- [Type-Safe Builders in Kotlin](https://oneuptime.com/blog/post/2026-01-07-go-sqlc-type-safe-database/view)

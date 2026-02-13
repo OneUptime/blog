@@ -916,5 +916,5 @@ Start with file-based config and add complexity (remote sources, encryption) as 
 *Need to monitor configuration changes across your services? [OneUptime](https://oneuptime.com) tracks deployment changes and configuration updates with automatic alerting.*
 
 **Related Reading:**
-- [How to Build Feature Flags in Python](https://oneuptime.com/blog/post/2025-01-06-python-feature-flags/view)
+- [How to Build Feature Flags in Python](https://oneuptime.com/blog/post/2025-07-02-spring-boot-launchdarkly-feature-flags/view)
 - [How to Manage Production Environment Variables](https://oneuptime.com/blog/post/2026-01-06-nodejs-production-environment-variables/view)

@@ -343,7 +343,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions SNS_TOPIC_ARN
 ```
 
-For comprehensive monitoring that goes beyond CloudWatch, consider integrating with [OneUptime](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) for end-to-end observability and incident management.
+For comprehensive monitoring that goes beyond CloudWatch, consider integrating with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) for end-to-end observability and incident management.
 
 ## Wrapping Up
 

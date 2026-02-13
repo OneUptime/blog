@@ -351,4 +351,4 @@ variable "aft_account_id" {
 
 Control Tower plus Terraform gives you automated, governed multi-account management. The initial landing zone setup happens through the console, but everything after that - new OUs, guardrails, account provisioning, SCPs - is managed through code. This approach scales well from a handful of accounts to hundreds, and ensures every new account starts with the right security baseline.
 
-For monitoring your multi-account environment, see our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For monitoring your multi-account environment, see our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

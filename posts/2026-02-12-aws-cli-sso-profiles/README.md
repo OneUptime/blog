@@ -290,7 +290,7 @@ aws sso logout
 aws sso login --profile dev-admin
 ```
 
-For monitoring authentication patterns and detecting anomalies across your AWS accounts, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can provide visibility into who's accessing what.
+For monitoring authentication patterns and detecting anomalies across your AWS accounts, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can provide visibility into who's accessing what.
 
 ## Wrapping Up
 

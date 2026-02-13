@@ -308,7 +308,7 @@ Access logs can generate significant data volume on high-traffic APIs. A few tip
 - Consider archiving older logs to S3 using CloudWatch Logs subscription filters if you need long-term retention.
 - Monitor your log group size with CloudWatch metrics.
 
-For a more comprehensive approach to monitoring your APIs beyond just access logs, check out our guide on [API monitoring best practices](https://oneuptime.com/blog/post/api-monitoring-best-practices/view).
+For a more comprehensive approach to monitoring your APIs beyond just access logs, check out our guide on [API monitoring best practices](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 

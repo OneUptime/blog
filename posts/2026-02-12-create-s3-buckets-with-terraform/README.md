@@ -299,7 +299,7 @@ A few things that trip people up with S3 and Terraform:
 
 **Forgetting `depends_on`.** Some S3 resources have implicit ordering requirements. Lifecycle configurations, for example, require versioning to be enabled first. Terraform usually figures this out, but not always.
 
-**State drift.** If someone modifies a bucket through the console, Terraform won't know until the next plan. Run `terraform plan` regularly to catch drift early. For monitoring state drift and infrastructure health, consider setting up proper [monitoring for your AWS infrastructure](https://oneuptime.com/blog/post/aws-cloudwatch-setup-guide/view).
+**State drift.** If someone modifies a bucket through the console, Terraform won't know until the next plan. Run `terraform plan` regularly to catch drift early. For monitoring state drift and infrastructure health, consider setting up proper [monitoring for your AWS infrastructure](https://oneuptime.com/blog/post/2026-01-21-loki-vs-cloudwatch/view).
 
 ## Wrapping Up
 

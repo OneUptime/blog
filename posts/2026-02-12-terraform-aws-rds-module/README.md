@@ -324,7 +324,7 @@ output "db_secret_arn" {
 
 ## Monitoring Your Database
 
-RDS provides CloudWatch metrics, Enhanced Monitoring, and Performance Insights. But these only cover the database layer. For end-to-end monitoring that connects database performance to application behavior, pair RDS metrics with an observability platform like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view).
+RDS provides CloudWatch metrics, Enhanced Monitoring, and Performance Insights. But these only cover the database layer. For end-to-end monitoring that connects database performance to application behavior, pair RDS metrics with an observability platform like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 Key metrics to watch:
 - `CPUUtilization` - should stay below 80%

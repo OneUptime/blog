@@ -251,7 +251,7 @@ aws cloudwatch get-metric-statistics \
     --statistics Sum
 ```
 
-A sustained high rate might mean you need to rethink your data model to reduce contention. For comprehensive monitoring of these patterns, check out [setting up proper alerting](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) so you know when contention becomes a problem.
+A sustained high rate might mean you need to rethink your data model to reduce contention. For comprehensive monitoring of these patterns, check out [setting up proper alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) so you know when contention becomes a problem.
 
 ## Key Takeaways
 

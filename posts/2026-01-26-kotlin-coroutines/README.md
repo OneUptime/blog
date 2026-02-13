@@ -737,5 +737,5 @@ Remember these best practices:
 *Building applications with Kotlin coroutines? [OneUptime](https://oneuptime.com) helps you monitor your async applications with distributed tracing and performance metrics.*
 
 **Related Reading:**
-- [How to Use async Python Without Blocking](https://oneuptime.com/blog/post/2026-01-06-python-asyncio/view)
+- [How to Use async Python Without Blocking](https://oneuptime.com/blog/post/2025-01-06-python-asyncio-io-bound/view)
 - [How to Profile Kotlin Applications](https://oneuptime.com/blog/post/2026-01-07-kotlin-profiling/view)

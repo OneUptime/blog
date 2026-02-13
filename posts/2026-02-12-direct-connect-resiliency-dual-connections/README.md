@@ -278,4 +278,4 @@ aws cloudwatch put-metric-alarm \
 
 Also monitor BGP session state on both VIFs. You want to know immediately if a BGP session drops, even if the failover is working correctly. A degraded state - where you're running on a single connection - should be treated as an urgent issue.
 
-For comprehensive infrastructure monitoring, check out [OneUptime's monitoring capabilities](https://oneuptime.com/blog/post/aws-cloudwatch-monitoring/view) to keep your hybrid connectivity reliable.
+For comprehensive infrastructure monitoring, check out [OneUptime's monitoring capabilities](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to keep your hybrid connectivity reliable.

@@ -231,7 +231,7 @@ aws groundstation describe-contact \
   --query "{Status:contactStatus, Start:startTime, End:endTime, MaxElevation:maximumElevation}"
 ```
 
-For broader infrastructure monitoring that ties together your Ground Station contacts with the rest of your processing pipeline, consider tools like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) to get visibility across services.
+For broader infrastructure monitoring that ties together your Ground Station contacts with the rest of your processing pipeline, consider tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to get visibility across services.
 
 ## Cost Structure
 

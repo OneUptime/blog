@@ -245,7 +245,7 @@ for dp in sorted(response['Datapoints'], key=lambda x: x['Timestamp']):
     print(f"{dp['Timestamp'].strftime('%H:%M')}: {int(dp['Sum'])} invocations")
 ```
 
-Set up alerts with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) to get notified about high error rates or unusual latency patterns.
+Set up alerts with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to get notified about high error rates or unusual latency patterns.
 
 ## Migrating from Persistent to Serverless
 

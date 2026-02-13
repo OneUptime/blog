@@ -329,4 +329,4 @@ echo "Deployment complete!"
 
 ## Wrapping Up
 
-CloudFront plus S3 is the gold standard for static site hosting on AWS. You get HTTPS, global CDN distribution, automatic compression, and HTTP/2+3 support - all while keeping your S3 bucket completely private. The initial setup takes some work, but once it's running, the only thing you'll do regularly is deploy new content and invalidate the cache. For monitoring your CDN performance and uptime, check out [OneUptime's monitoring capabilities](https://oneuptime.com/blog/post/aws-cloudwatch-monitoring/view).
+CloudFront plus S3 is the gold standard for static site hosting on AWS. You get HTTPS, global CDN distribution, automatic compression, and HTTP/2+3 support - all while keeping your S3 bucket completely private. The initial setup takes some work, but once it's running, the only thing you'll do regularly is deploy new content and invalidate the cache. For monitoring your CDN performance and uptime, check out [OneUptime's monitoring capabilities](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).

@@ -218,6 +218,6 @@ When you hit a 403, run through this checklist:
 6. Are you going through a VPC endpoint with a restrictive policy?
 7. Is your request using the correct region?
 
-Setting up proper monitoring for your S3 access patterns can catch permission issues early. A tool like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can help you track 403 errors across your infrastructure and alert you when they spike.
+Setting up proper monitoring for your S3 access patterns can catch permission issues early. A tool like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help you track 403 errors across your infrastructure and alert you when they spike.
 
 Most 403 errors come down to IAM resource ARN formatting or bucket policy conflicts. Start there and work your way through the list.

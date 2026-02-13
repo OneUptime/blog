@@ -1565,4 +1565,4 @@ The async nature of Motor combined with FastAPI's performance makes this stack c
 
 **Related Reading:**
 - [How to Implement Rate Limiting in FastAPI](https://oneuptime.com/blog/post/2025-01-06-fastapi-rate-limiting/view)
-- [How to Test FastAPI Applications with pytest](https://oneuptime.com/blog/post/fastapi-pytest-testing/view)
+- [How to Test FastAPI Applications with pytest](https://oneuptime.com/blog/post/2026-01-24-configure-pytest-python-testing/view)

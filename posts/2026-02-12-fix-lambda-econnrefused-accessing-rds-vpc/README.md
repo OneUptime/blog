@@ -215,4 +215,4 @@ When you get ECONNREFUSED from Lambda to RDS:
 6. Is the RDS instance running and available?
 7. Are you connecting to the right port? (3306 for MySQL, 5432 for PostgreSQL)
 
-Monitor your Lambda-to-RDS connections with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) to catch connection issues before they cascade into user-facing errors. Database connectivity problems are one of the most common causes of production incidents, and early detection makes all the difference.
+Monitor your Lambda-to-RDS connections with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch connection issues before they cascade into user-facing errors. Database connectivity problems are one of the most common causes of production incidents, and early detection makes all the difference.

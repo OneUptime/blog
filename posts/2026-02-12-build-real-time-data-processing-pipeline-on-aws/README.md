@@ -380,7 +380,7 @@ aws cloudwatch get-metric-statistics \
 
 If the iterator age keeps growing, your consumers can't keep up with the incoming data and you need more shards or faster processing.
 
-For production pipelines, set up comprehensive monitoring with [OneUptime](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) to catch issues before they cascade.
+For production pipelines, set up comprehensive monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) to catch issues before they cascade.
 
 ## Summary
 

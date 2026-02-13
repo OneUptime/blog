@@ -290,7 +290,7 @@ output "plan_id" {
 
 ## Monitoring Your Backups
 
-You should set up monitoring for backup failures. Check out our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view) for broader strategies, but here's a quick CloudWatch alarm for backup job failures:
+You should set up monitoring for backup failures. Check out our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view) for broader strategies, but here's a quick CloudWatch alarm for backup job failures:
 
 ```hcl
 resource "aws_cloudwatch_metric_alarm" "backup_failures" {

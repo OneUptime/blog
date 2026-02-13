@@ -710,7 +710,7 @@ Monitor these key metrics:
 - Producer queue size and backlog
 - Connection status and reconnections
 
-Also monitor Pulsar broker metrics including topic throughput, storage usage, and consumer lag. For more details on monitoring, see our guide on [monitoring the OpenTelemetry Collector](https://oneuptime.com/blog/post/monitoring-opentelemetry-collector/view).
+Also monitor Pulsar broker metrics including topic throughput, storage usage, and consumer lag. For more details on monitoring, see our guide on [monitoring the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-google-cloud-monitoring-receiver-opentelemetry-collector/view).
 
 ## Best Practices
 
@@ -734,7 +734,7 @@ Follow these best practices when using the Pulsar exporter:
 
 ## Integration with Streaming Architectures
 
-The Pulsar exporter enables integration with streaming data architectures. For more information on stream processing patterns, see our posts on [real-time telemetry processing](https://oneuptime.com/blog/post/realtime-telemetry-processing/view) and [event-driven observability](https://oneuptime.com/blog/post/event-driven-observability/view).
+The Pulsar exporter enables integration with streaming data architectures. For more information on stream processing patterns, see our posts on [real-time telemetry processing](https://oneuptime.com/blog/post/2026-02-06-route-high-value-telemetry-realtime-low-value-s3/view) and [event-driven observability](https://oneuptime.com/blog/post/2025-07-02-spring-boot-event-driven-architecture/view).
 
 ## Conclusion
 

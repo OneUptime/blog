@@ -383,7 +383,7 @@ curl -X POST \
   https://abc123.execute-api.us-east-1.amazonaws.com/prod/upload
 ```
 
-For monitoring upload/download performance and tracking binary payload sizes, check our guide on [API monitoring best practices](https://oneuptime.com/blog/post/api-monitoring-best-practices/view).
+For monitoring upload/download performance and tracking binary payload sizes, check our guide on [API monitoring best practices](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 

@@ -326,7 +326,7 @@ resource "aws_cloudwatch_metric_alarm" "api_anomaly" {
 
 **Tag your alarms consistently.** When you've got 200 alarms, you'll thank yourself for adding environment, team, and service tags.
 
-For a broader look at monitoring strategy beyond just CloudWatch, check out our post on [AWS monitoring best practices](https://oneuptime.com/blog/post/aws-monitoring-best-practices/view).
+For a broader look at monitoring strategy beyond just CloudWatch, check out our post on [AWS monitoring best practices](https://oneuptime.com/blog/post/2026-02-12-logging-monitoring-best-practices-aws/view).
 
 ## Wrapping Up
 

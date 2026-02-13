@@ -186,7 +186,7 @@ Add `DeletionPolicy: Delete` explicitly to resources you want cleaned up, and `D
 
 For S3 buckets, always include a bucket cleanup mechanism if you want the stack to be cleanly deletable.
 
-Set up [infrastructure monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to catch stack state changes. Getting an alert when a stack enters `DELETE_FAILED` lets you respond quickly instead of discovering it days later when someone tries to redeploy.
+Set up [infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to catch stack state changes. Getting an alert when a stack enters `DELETE_FAILED` lets you respond quickly instead of discovering it days later when someone tries to redeploy.
 
 ## Summary
 

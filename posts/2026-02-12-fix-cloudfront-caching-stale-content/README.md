@@ -239,7 +239,7 @@ aws cloudfront wait invalidation-completed \
 echo "Deployment complete and cache cleared"
 ```
 
-For monitoring cache hit ratios and detecting when stale content is being served, set up [CloudFront monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to track cache behavior metrics.
+For monitoring cache hit ratios and detecting when stale content is being served, set up [CloudFront monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to track cache behavior metrics.
 
 ## Summary
 

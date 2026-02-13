@@ -463,7 +463,7 @@ print(f"\nAnswer: {result['answer']}")
 
 ## Monitoring RAG Performance
 
-Track your knowledge base usage and quality through CloudWatch, and set up monitoring with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) for comprehensive observability across your AI infrastructure.
+Track your knowledge base usage and quality through CloudWatch, and set up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for comprehensive observability across your AI infrastructure.
 
 ```python
 cloudwatch = boto3.client('cloudwatch')

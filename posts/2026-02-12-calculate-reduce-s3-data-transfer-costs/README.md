@@ -263,7 +263,7 @@ ce.create_anomaly_monitor(
 )
 ```
 
-You can also build custom monitoring dashboards. For comprehensive monitoring across your AWS infrastructure, check out [OneUptime's monitoring platform](https://oneuptime.com/blog/post/aws-cloudwatch-monitoring/view).
+You can also build custom monitoring dashboards. For comprehensive monitoring across your AWS infrastructure, check out [OneUptime's monitoring platform](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Real-World Cost Reduction Example
 

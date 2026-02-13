@@ -10,7 +10,7 @@ Description: Learn how to configure the GitHub Receiver in the OpenTelemetry Col
 
 The GitHub Receiver collects metrics from GitHub repositories using the GitHub API. It provides visibility into repository activity, pull requests, issues, workflows, and other GitHub-specific metrics that are crucial for understanding development team performance and project health.
 
-For more on application metrics collection, see our guide on [metric receivers](https://oneuptime.com/blog/post/opentelemetry-metrics-receivers/view).
+For more on application metrics collection, see our guide on [metric receivers](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view).
 
 ## What is the GitHub Receiver?
 
@@ -865,4 +865,4 @@ service:
 
 The GitHub Receiver provides comprehensive visibility into repository activity and development team performance. By collecting metrics on pull requests, issues, workflows, and contributors, you can track development velocity, code review efficiency, and CI/CD pipeline health. Combined with processors, you can create dashboards and alerts that help teams improve their development processes.
 
-For more on metric collection and processing, see our guides on [Prometheus receiver](https://oneuptime.com/blog/post/prometheus-receiver-opentelemetry-collector/view) and [metric processors](https://oneuptime.com/blog/post/opentelemetry-metric-processors/view).
+For more on metric collection and processing, see our guides on [Prometheus receiver](https://oneuptime.com/blog/post/2026-02-06-configure-prometheus-receiver-opentelemetry-collector/view) and [metric processors](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view).

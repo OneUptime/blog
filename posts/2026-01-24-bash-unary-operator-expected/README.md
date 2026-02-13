@@ -434,5 +434,5 @@ Following these practices will make your Bash scripts more robust and eliminate 
 *Building reliable automation? [OneUptime](https://oneuptime.com) helps you monitor your scripts and infrastructure with real-time alerting when things go wrong.*
 
 **Related Reading:**
-- [Shell Scripting Best Practices](https://oneuptime.com/blog/post/shell-scripting-best-practices)
-- [Debugging Bash Scripts](https://oneuptime.com/blog/post/debugging-bash-scripts)
+- [Shell Scripting Best Practices](https://oneuptime.com/blog/post/2026-02-13-shell-scripting-best-practices)
+- [Debugging Bash Scripts](https://oneuptime.com/blog/post/2026-01-15-write-debug-bash-scripts-ubuntu)

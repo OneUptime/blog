@@ -331,7 +331,7 @@ aws backup create-report-plan \
   }'
 ```
 
-For comprehensive infrastructure monitoring including backup health, check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For comprehensive infrastructure monitoring including backup health, check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 

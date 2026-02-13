@@ -430,5 +430,5 @@ The key insight is that classes are objects created by metaclasses, just as inst
 *Building complex Python applications? [OneUptime](https://oneuptime.com) provides comprehensive observability for your Python services, with automatic tracing and metric collection via OpenTelemetry.*
 
 **Related Reading:**
-- [How to Implement Custom Descriptors in Python](https://oneuptime.com/blog/post/2026-01-30-python-descriptors/view)
+- [How to Implement Custom Descriptors in Python](https://oneuptime.com/blog/post/2026-01-30-how-to-implement-custom-descriptors-in-python/view)
 - [How to Build Plugin Systems in Python](https://oneuptime.com/blog/post/2026-01-30-python-plugin-systems/view)

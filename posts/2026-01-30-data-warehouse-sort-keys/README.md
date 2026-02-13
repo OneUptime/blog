@@ -389,6 +389,6 @@ The key to success is understanding your query patterns, implementing the approp
 
 **Related Reading:**
 
-- [Understanding Distribution Keys in Redshift](https://oneuptime.com/blog/post/distribution-keys-redshift/view)
-- [Query Optimization Techniques for Data Warehouses](https://oneuptime.com/blog/post/query-optimization-data-warehouse/view)
-- [Columnar Storage: How It Works](https://oneuptime.com/blog/post/columnar-storage-explained/view)
+- [Understanding Distribution Keys in Redshift](https://oneuptime.com/blog/post/2026-02-12-optimize-redshift-distribution-and-sort-keys/view)
+- [Query Optimization Techniques for Data Warehouses](https://oneuptime.com/blog/post/2026-02-13-query-optimization-data-warehouse/view)
+- [Columnar Storage: How It Works](https://oneuptime.com/blog/post/2026-02-13-columnar-storage-explained/view)

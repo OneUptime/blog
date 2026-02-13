@@ -246,7 +246,7 @@ const { items, nextToken } = response.data.listPosts;
 
 ## Monitoring Your API
 
-Once your AppSync API is live, you'll want to monitor it. AppSync integrates with CloudWatch for metrics like latency, error rates, and request counts. For a more comprehensive monitoring setup, consider using [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to track your API health alongside your other infrastructure.
+Once your AppSync API is live, you'll want to monitor it. AppSync integrates with CloudWatch for metrics like latency, error rates, and request counts. For a more comprehensive monitoring setup, consider using [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to track your API health alongside your other infrastructure.
 
 ## Wrapping Up
 

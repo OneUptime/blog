@@ -349,7 +349,7 @@ Route::get('/health', function () {
 
 ## Monitoring
 
-Laravel logs integrate well with CloudWatch when you set `LOG_CHANNEL=stderr`. For production monitoring that goes beyond logs, consider adding [external uptime monitoring](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) and alerting.
+Laravel logs integrate well with CloudWatch when you set `LOG_CHANNEL=stderr`. For production monitoring that goes beyond logs, consider adding [external uptime monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) and alerting.
 
 ## Summary
 

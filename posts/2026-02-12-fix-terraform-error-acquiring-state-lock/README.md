@@ -233,7 +233,7 @@ terraform {
 }
 ```
 
-For monitoring your Terraform pipelines and catching lock issues early, check out [setting up CI/CD monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to alert on pipeline failures.
+For monitoring your Terraform pipelines and catching lock issues early, check out [setting up CI/CD monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to alert on pipeline failures.
 
 ## Summary
 

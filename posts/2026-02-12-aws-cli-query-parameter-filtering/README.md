@@ -327,7 +327,7 @@ aws ec2 describe-instances --query "Reservations[].Instances[?State.Name=='runni
 aws ec2 describe-instances --query "Reservations[].Instances[?State.Name=='running'].InstanceId[]"
 ```
 
-For monitoring the resources you're querying and getting alerted on changes, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) provides real-time visibility beyond what CLI queries can offer.
+For monitoring the resources you're querying and getting alerted on changes, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) provides real-time visibility beyond what CLI queries can offer.
 
 ## Wrapping Up
 

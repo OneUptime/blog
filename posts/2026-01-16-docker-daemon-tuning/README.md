@@ -453,5 +453,5 @@ journalctl -u docker.service -f
 | live-restore | Low | false | true |
 | default-ulimits | High | system | 65535 |
 
-Daemon tuning should be done incrementally with monitoring. Start with storage driver selection and logging configuration, then optimize network settings and resource limits based on workload requirements. For container-level resource management, see our post on [Limiting Docker Container CPU and Memory](https://oneuptime.com/blog/post/2026-01-13-docker-container-cpu-memory-limits/view).
+Daemon tuning should be done incrementally with monitoring. Start with storage driver selection and logging configuration, then optimize network settings and resource limits based on workload requirements. For container-level resource management, see our post on [Limiting Docker Container CPU and Memory](https://oneuptime.com/blog/post/2026-02-08-how-to-configure-docker-desktop-memory-and-cpu-limits-on-macos/view).
 

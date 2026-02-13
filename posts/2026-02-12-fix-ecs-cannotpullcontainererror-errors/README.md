@@ -261,7 +261,7 @@ aws ec2 describe-security-groups --group-ids sg-12345 \
     --query 'SecurityGroups[0].IpPermissionsEgress'
 ```
 
-For ongoing visibility into image pull failures and other ECS issues, set up [container monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to catch these problems before they cascade.
+For ongoing visibility into image pull failures and other ECS issues, set up [container monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to catch these problems before they cascade.
 
 ## Summary
 

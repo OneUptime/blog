@@ -264,7 +264,7 @@ SECRET_KEY = get_secret('SECRET_KEY')
 
 ### Health Checks and Monitoring
 
-Set up proper health checks and connect them to CloudWatch. If you're using OneUptime for monitoring, you can point external health checks at your `/health` endpoint to get alerted when things go wrong. Check out our guide on [setting up AWS monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) for more details.
+Set up proper health checks and connect them to CloudWatch. If you're using OneUptime for monitoring, you can point external health checks at your `/health` endpoint to get alerted when things go wrong. Check out our guide on [setting up AWS monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for more details.
 
 ### Logging
 
@@ -314,4 +314,4 @@ It depends on your situation. Elastic Beanstalk is perfect if you want to get de
 
 For most teams starting out, I'd recommend Elastic Beanstalk. You can always migrate to ECS later as your needs grow. The important thing is getting your app in front of users quickly and iterating from there.
 
-Whatever path you choose, don't skip monitoring. AWS CloudWatch gives you basic metrics out of the box, but pairing it with a tool like [OneUptime](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) will give you much better visibility into what's actually happening in production.
+Whatever path you choose, don't skip monitoring. AWS CloudWatch gives you basic metrics out of the box, but pairing it with a tool like [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) will give you much better visibility into what's actually happening in production.

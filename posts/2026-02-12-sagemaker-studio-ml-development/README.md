@@ -219,7 +219,7 @@ aws sagemaker update-domain \
 
 ## Monitoring Your Studio Usage
 
-You'll want to keep an eye on both costs and performance as your team uses Studio. Integrating with a monitoring platform like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) can help you track resource utilization and set up alerts when spend gets out of hand.
+You'll want to keep an eye on both costs and performance as your team uses Studio. Integrating with a monitoring platform like [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) can help you track resource utilization and set up alerts when spend gets out of hand.
 
 ## Wrapping Up
 

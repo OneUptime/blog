@@ -230,7 +230,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
 ```
 
-You should also monitor `FreeableMemory`, `DatabaseConnections`, and `ReadLatency`. For a comprehensive monitoring solution, take a look at how to [set up monitoring for your AWS resources](https://oneuptime.com/blog/post/aws-cloudwatch-metrics/view).
+You should also monitor `FreeableMemory`, `DatabaseConnections`, and `ReadLatency`. For a comprehensive monitoring solution, take a look at how to [set up monitoring for your AWS resources](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ## CloudFormation Template
 

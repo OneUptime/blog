@@ -268,7 +268,7 @@ The math is simple but the savings add up fast. ARM64 Lambda costs $0.0000133334
 
 If your function runs 10 million invocations per month at 256MB with an average duration of 200ms, the monthly compute cost drops from about $8.33 to $6.67. That's $20 saved per year on a single function. Across hundreds of functions, it becomes significant.
 
-For keeping track of your Lambda cost optimizations, consider monitoring your cloud spend with dashboards - our post on [AWS cost monitoring](https://oneuptime.com/blog/post/aws-cost-optimization/view) has useful patterns.
+For keeping track of your Lambda cost optimizations, consider monitoring your cloud spend with dashboards - our post on [AWS cost monitoring](https://oneuptime.com/blog/post/2026-01-24-cost-optimization/view) has useful patterns.
 
 ## Wrapping Up
 

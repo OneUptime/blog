@@ -335,7 +335,7 @@ Lambda functions log to CloudWatch automatically. You can view logs through the 
 amplify console function processOrder
 ```
 
-For production monitoring, you'll want more than just logs. Track invocation counts, error rates, cold starts, and duration. Setting up alerts through [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) can help you catch issues before they affect users.
+For production monitoring, you'll want more than just logs. Track invocation counts, error rates, cold starts, and duration. Setting up alerts through [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help you catch issues before they affect users.
 
 ## Common Pitfalls
 

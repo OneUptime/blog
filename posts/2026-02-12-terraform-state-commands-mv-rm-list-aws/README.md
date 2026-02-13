@@ -245,4 +245,4 @@ If the plan shows changes, something went wrong with the move. Check addresses a
 
 State management mistakes can cause real problems - from orphaned resources you're still paying for to accidental infrastructure deletion. Take your time with these commands, especially on production state.
 
-For monitoring the infrastructure these resources represent, take a look at our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For monitoring the infrastructure these resources represent, take a look at our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

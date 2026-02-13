@@ -378,6 +378,6 @@ aws codebuild batch-get-builds \
   --query 'builds[0].{Status:buildStatus,Duration:buildComplete,Phases:phases[*].{Name:phaseType,Status:phaseStatus,Duration:durationInSeconds}}'
 ```
 
-For real-time build monitoring and alerting on failures, check out our guide on [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view). You'll want to know about build failures before your deploy pipeline does.
+For real-time build monitoring and alerting on failures, check out our guide on [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view). You'll want to know about build failures before your deploy pipeline does.
 
 CodeBuild's simplicity is its strength. Define a project, write a buildspec, and you've got CI. No servers, no plugins, no maintenance. For more details on writing buildspec files, see our [buildspec guide](https://oneuptime.com/blog/post/2026-02-12-write-codebuild-buildspec-yml/view).

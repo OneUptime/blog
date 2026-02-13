@@ -692,4 +692,4 @@ etcdctl endpoint status --write-out=table
 
 - [How to Set Up Prometheus and Grafana on Kubernetes from Scratch](https://oneuptime.com/blog/post/2026-01-19-kubernetes-prometheus-grafana-setup/view) - Complete monitoring setup
 - [How to Back Up and Restore Kubernetes Clusters with Velero](https://oneuptime.com/blog/post/2026-01-19-kubernetes-velero-backup-restore/view) - Include etcd in backups
-- [How to Troubleshoot Kubernetes Control Plane Issues](https://oneuptime.com/blog/post/2026-01-19-kubernetes-control-plane-troubleshooting/view) - Debug control plane problems
+- [How to Troubleshoot Kubernetes Control Plane Issues](https://oneuptime.com/blog/post/2026-01-19-kubernetes-ingress-troubleshooting/view) - Debug control plane problems

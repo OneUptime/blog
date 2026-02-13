@@ -648,6 +648,6 @@ For monitoring quota usage and resource consumption, check out [OneUptime's Kube
 
 ## Related Resources
 
-- [How to Right-Size Resources with VPA](https://oneuptime.com/blog/post/kubernetes-resource-right-sizing-vpa/view)
+- [How to Right-Size Resources with VPA](https://oneuptime.com/blog/post/2026-01-30-resource-right-sizing/view)
 - [How to Handle Pod Evictions](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-evictions-resource-pressure/view)
 - [How to Set Up Namespace Isolation](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-communication-across-namespaces/view)

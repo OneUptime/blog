@@ -254,7 +254,7 @@ resource "aws_cloudwatch_metric_alarm" "vpn_tunnel1_down" {
 }
 ```
 
-Create a similar alarm for tunnel 2. For a complete monitoring setup, see our post on [monitoring infrastructure on AWS](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+Create a similar alarm for tunnel 2. For a complete monitoring setup, see our post on [monitoring infrastructure on AWS](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Variables
 

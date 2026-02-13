@@ -388,7 +388,7 @@ def lambda_handler(event, context):
     return {"metrics_published": len(metrics)}
 ```
 
-For a complete monitoring solution that covers Redshift along with the rest of your infrastructure, check out our guide on [setting up CloudWatch dashboards](https://oneuptime.com/blog/post/aws-cloudwatch-dashboards/view).
+For a complete monitoring solution that covers Redshift along with the rest of your infrastructure, check out our guide on [setting up CloudWatch dashboards](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ## Wrapping Up
 

@@ -316,7 +316,7 @@ if 'FinalMetricDataList' in response:
         print(f"{metric['MetricName']}: {metric['Value']:.4f}")
 ```
 
-For production training jobs, it's worth setting up monitoring through a platform like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) so you get alerted if jobs fail or take longer than expected.
+For production training jobs, it's worth setting up monitoring through a platform like [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) so you get alerted if jobs fail or take longer than expected.
 
 ## Retrieving Your Trained Model
 

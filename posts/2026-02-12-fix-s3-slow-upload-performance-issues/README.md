@@ -227,7 +227,7 @@ aws ec2 create-vpc-endpoint \
 
 ## Monitoring Upload Performance
 
-Track your upload times and failure rates so you know when things degrade. Setting up monitoring with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can help you catch slow uploads before they impact your users.
+Track your upload times and failure rates so you know when things degrade. Setting up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help you catch slow uploads before they impact your users.
 
 S3 also provides request metrics that you can enable:
 

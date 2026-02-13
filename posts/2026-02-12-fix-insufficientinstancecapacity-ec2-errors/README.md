@@ -174,7 +174,7 @@ aws autoscaling describe-scaling-activities \
   --output table
 ```
 
-Setting up alerts with a monitoring tool like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can help you catch these issues in real-time and respond before they become critical.
+Setting up alerts with a monitoring tool like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help you catch these issues in real-time and respond before they become critical.
 
 ## What About Spot Instances?
 

@@ -1236,5 +1236,5 @@ With these patterns and best practices, you can build robust Android application
 *Need to monitor your Android application's performance? [OneUptime](https://oneuptime.com) provides comprehensive monitoring solutions for mobile applications, including crash reporting and performance tracking.*
 
 **Related Reading:**
-- [How to Implement Dependency Injection in Android with Hilt](https://oneuptime.com/blog/post/android-hilt-dependency-injection)
-- [How to Use Kotlin Coroutines for Background Tasks](https://oneuptime.com/blog/post/kotlin-coroutines-guide)
+- [How to Implement Dependency Injection in Android with Hilt](https://oneuptime.com/blog/post/2026-02-13-android-hilt-dependency-injection)
+- [How to Use Kotlin Coroutines for Background Tasks](https://oneuptime.com/blog/post/2026-01-26-kotlin-coroutines)

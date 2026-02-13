@@ -288,4 +288,4 @@ One thing Terraform can't do for you is move your SES account out of the sandbox
 
 With this Terraform configuration, you get a fully verified SES domain identity with DKIM, SPF, DMARC, and a custom MAIL FROM domain. The DNS records are created automatically in Route 53, and email events flow to CloudWatch for monitoring. Drop these resources into a module, parameterize the domain name, and you can spin up verified sending domains in minutes instead of hours.
 
-For monitoring the health of your email sending infrastructure, take a look at our guide on [setting up AWS monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view) to keep track of bounce rates and delivery metrics.
+For monitoring the health of your email sending infrastructure, take a look at our guide on [setting up AWS monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view) to keep track of bounce rates and delivery metrics.

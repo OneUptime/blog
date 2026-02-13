@@ -382,7 +382,7 @@ exports.handler = async (event) => {
 
 ## Monitoring Exports
 
-Track export status and duration. Failed exports can mean missing data for analytics pipelines. Set up alerts with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to get notified when exports fail or take longer than expected.
+Track export status and duration. Failed exports can mean missing data for analytics pipelines. Set up alerts with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to get notified when exports fail or take longer than expected.
 
 ## Wrapping Up
 

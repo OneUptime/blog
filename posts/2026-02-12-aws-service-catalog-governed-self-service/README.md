@@ -330,7 +330,7 @@ aws servicecatalog scan-provisioned-products \
   --output table
 ```
 
-For monitoring the resources provisioned through Service Catalog alongside your broader infrastructure, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) provides unified visibility.
+For monitoring the resources provisioned through Service Catalog alongside your broader infrastructure, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) provides unified visibility.
 
 ## Wrapping Up
 

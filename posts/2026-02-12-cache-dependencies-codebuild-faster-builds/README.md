@@ -324,6 +324,6 @@ phases:
       - ls -la /root/.m2/repository 2>/dev/null | head -5 || echo "No Maven cache"
 ```
 
-For monitoring your overall build pipeline health, set up [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view) on build duration metrics. A sudden increase in build time usually means your cache stopped working.
+For monitoring your overall build pipeline health, set up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) on build duration metrics. A sudden increase in build time usually means your cache stopped working.
 
 Proper caching is one of the highest-impact optimizations you can make to your CI pipeline. A few minutes of configuration can save hours of build time per week, and your developers will thank you for the faster feedback loops.

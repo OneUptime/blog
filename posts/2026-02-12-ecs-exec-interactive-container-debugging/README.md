@@ -360,4 +360,4 @@ aws ecs execute-command \
 
 Save this as `ecs-exec.sh` and use it like `./ecs-exec.sh my-cluster my-service`. It beats typing out the full command every time.
 
-ECS Exec turns container debugging from a painful log-reading exercise into an interactive experience. Set it up in your non-production environments, and you'll wonder how you lived without it. For related debugging and monitoring approaches, check out our post on [container monitoring best practices](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+ECS Exec turns container debugging from a painful log-reading exercise into an interactive experience. Set it up in your non-production environments, and you'll wonder how you lived without it. For related debugging and monitoring approaches, check out our post on [container monitoring best practices](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).

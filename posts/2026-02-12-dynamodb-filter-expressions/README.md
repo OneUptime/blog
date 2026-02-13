@@ -352,7 +352,7 @@ if (efficiency < 50) {
 }
 ```
 
-Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to alert on queries where filter efficiency drops below a threshold, so you can add indexes before performance degrades.
+Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to alert on queries where filter efficiency drops below a threshold, so you can add indexes before performance degrades.
 
 ## Wrapping Up
 

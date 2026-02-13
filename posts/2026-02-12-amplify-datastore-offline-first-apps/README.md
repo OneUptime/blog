@@ -295,7 +295,7 @@ Hub.listen('datastore', (capsule) => {
 });
 ```
 
-For production apps, you'll want to pipe these events into your monitoring system. Tools like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) can help you track sync failures and latency across your user base.
+For production apps, you'll want to pipe these events into your monitoring system. Tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help you track sync failures and latency across your user base.
 
 ## When to Use DataStore vs. API
 

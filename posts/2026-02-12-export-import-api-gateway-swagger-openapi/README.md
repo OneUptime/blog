@@ -394,7 +394,7 @@ jobs:
             --description "Deployed from commit ${{ github.sha }}"
 ```
 
-For tracking your API deployments and monitoring for issues after importing new definitions, see our post on [deployment monitoring best practices](https://oneuptime.com/blog/post/deployment-monitoring/view).
+For tracking your API deployments and monitoring for issues after importing new definitions, see our post on [deployment monitoring best practices](https://oneuptime.com/blog/post/2026-02-06-canary-deployment-monitoring-opentelemetry/view).
 
 ## Wrapping Up
 

@@ -1136,4 +1136,4 @@ Key takeaways for Docker with Scala applications:
 
 **Related Reading:**
 - [How to Build Minimal Docker Images](https://oneuptime.com/blog/post/2026-01-07-rust-minimal-docker-images/view)
-- [How to Use Docker with Kotlin Applications](https://oneuptime.com/blog/post/2026-01-07-kotlin-docker/view)
+- [How to Use Docker with Kotlin Applications](https://oneuptime.com/blog/post/2026-02-08-how-to-containerize-a-kotlin-application-with-docker/view)

@@ -651,6 +651,6 @@ volumes:
 
 ## Related Posts
 
-- [How to Handle Kubernetes Pod Lifecycle Hooks](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-lifecycle-hooks/view) - PostStart and PreStop hooks
+- [How to Handle Kubernetes Pod Lifecycle Hooks](https://oneuptime.com/blog/post/2026-01-25-pod-lifecycle-hooks-prestop-poststart/view) - PostStart and PreStop hooks
 - [How to Run Kubernetes DaemonSets for Node-Level Services](https://oneuptime.com/blog/post/2026-01-19-kubernetes-daemonsets-node-services/view) - DaemonSet patterns
 - [How to Set Up Kubernetes Jobs and CronJobs](https://oneuptime.com/blog/post/2026-01-19-kubernetes-jobs-cronjobs-batch-processing/view) - Batch processing

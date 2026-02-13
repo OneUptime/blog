@@ -370,7 +370,7 @@ service:
       exporters: [otlp]
 ```
 
-For more information on OpenTelemetry Collector exporters, see our guide on [configuring OTLP exporters](https://oneuptime.com/blog/post/otlp-exporter-opentelemetry-collector/view).
+For more information on OpenTelemetry Collector exporters, see our guide on [configuring OTLP exporters](https://oneuptime.com/blog/post/2026-02-06-otlp-grpc-exporter-opentelemetry-collector/view).
 
 ## Conclusion
 

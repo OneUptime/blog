@@ -358,7 +358,7 @@ def test_my_function(mock_client):
 
 ## Monitoring
 
-When your Python applications interact with AWS, monitoring API call latency and error rates is important. For visibility into how your boto3-powered applications are performing, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can track metrics across your services.
+When your Python applications interact with AWS, monitoring API call latency and error rates is important. For visibility into how your boto3-powered applications are performing, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can track metrics across your services.
 
 ## Wrapping Up
 

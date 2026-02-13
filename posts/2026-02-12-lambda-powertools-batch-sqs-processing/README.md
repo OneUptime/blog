@@ -286,7 +286,7 @@ def lambda_handler(event, context):
     return response
 ```
 
-For deeper observability into your Lambda functions and SQS processing pipelines, consider setting up structured monitoring. You can read more about monitoring approaches in our post on [setting up AWS CloudWatch dashboards](https://oneuptime.com/blog/post/aws-cloudwatch-dashboards/view).
+For deeper observability into your Lambda functions and SQS processing pipelines, consider setting up structured monitoring. You can read more about monitoring approaches in our post on [setting up AWS CloudWatch dashboards](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ## Common Pitfalls
 

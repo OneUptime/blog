@@ -350,7 +350,7 @@ aws ec2 modify-instance-metadata-options \
   --http-endpoint enabled
 ```
 
-For monitoring IAM-related activities and permission issues, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For monitoring IAM-related activities and permission issues, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 

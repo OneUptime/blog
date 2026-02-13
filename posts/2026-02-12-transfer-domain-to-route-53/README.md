@@ -193,7 +193,7 @@ aws route53domains get-domain-detail \
 
 ## Monitoring Your Domain After Transfer
 
-Once everything is settled, set up monitoring to make sure your domain stays healthy. You can use Route 53 health checks to monitor your endpoints, and if you're looking for a more comprehensive monitoring solution, consider tools like [OneUptime](https://oneuptime.com/blog/post/aws-route-53-health-checks/view) that can track DNS resolution, SSL certificates, and endpoint availability all in one place.
+Once everything is settled, set up monitoring to make sure your domain stays healthy. You can use Route 53 health checks to monitor your endpoints, and if you're looking for a more comprehensive monitoring solution, consider tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-route-53-health-checks/view) that can track DNS resolution, SSL certificates, and endpoint availability all in one place.
 
 ## Cost Considerations
 

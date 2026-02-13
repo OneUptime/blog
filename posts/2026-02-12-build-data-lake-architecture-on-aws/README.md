@@ -339,7 +339,7 @@ aws lakeformation grant-permissions \
 
 ## Monitoring
 
-Track data freshness, ETL job success rates, and query performance. For comprehensive data lake monitoring, check out [OneUptime](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) for alerting and observability.
+Track data freshness, ETL job success rates, and query performance. For comprehensive data lake monitoring, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) for alerting and observability.
 
 ## Summary
 

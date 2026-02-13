@@ -205,7 +205,7 @@ Enabling ENA is just the first step. To get the most out of it, consider these t
 - Use multiple flows for high-throughput workloads since single-flow traffic is capped at about 5 Gbps
 - Consider using Enhanced Networking with ENA Express for even lower tail latencies
 
-For monitoring your network performance after enabling ENA, you'll want solid observability in place. Check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) to set up dashboards that track throughput, packet loss, and latency metrics.
+For monitoring your network performance after enabling ENA, you'll want solid observability in place. Check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to set up dashboards that track throughput, packet loss, and latency metrics.
 
 ## Wrapping Up
 

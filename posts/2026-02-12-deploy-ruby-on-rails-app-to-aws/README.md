@@ -379,7 +379,7 @@ config.log_formatter = proc do |severity, time, progname, msg|
 end
 ```
 
-For production monitoring beyond what CloudWatch offers, consider adding [external monitoring](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) that can alert you about response time degradation, error rate spikes, and downtime.
+For production monitoring beyond what CloudWatch offers, consider adding [external monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) that can alert you about response time degradation, error rate spikes, and downtime.
 
 ## Summary
 

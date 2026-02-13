@@ -1155,6 +1155,6 @@ With proper monitoring in place, you can confidently operate NATS at scale, catc
 *Need unified observability for your NATS infrastructure? [OneUptime](https://oneuptime.com) integrates with Prometheus to provide dashboards, alerting, and incident management, giving you a single pane of glass for all your monitoring needs.*
 
 **Related Reading:**
-- [What is Prometheus and How Does it Work](https://oneuptime.com/blog/post/2025-01-16-what-is-prometheus/view)
+- [What is Prometheus and How Does it Work](https://oneuptime.com/blog/post/2025-01-06-python-custom-metrics-prometheus/view)
 - [How to Add Custom Metrics to Python Applications with Prometheus](https://oneuptime.com/blog/post/2025-01-06-python-custom-metrics-prometheus/view)
-- [How to Monitor RabbitMQ with Prometheus](https://oneuptime.com/blog/post/2025-01-24-rabbitmq-prometheus/view)
+- [How to Monitor RabbitMQ with Prometheus](https://oneuptime.com/blog/post/2026-01-24-monitor-rabbitmq-prometheus/view)

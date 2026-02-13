@@ -690,8 +690,8 @@ curl -X POST http://phlare-server:4100/ingest \
 
 Learn more about OpenTelemetry Collector performance and debugging:
 
-- [OpenTelemetry Collector Performance Tuning](https://oneuptime.com/blog/post/opentelemetry-collector-performance/view)
-- [Debugging OpenTelemetry Collector Issues](https://oneuptime.com/blog/post/debugging-otel-collector/view)
+- [OpenTelemetry Collector Performance Tuning](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view)
+- [Debugging OpenTelemetry Collector Issues](https://oneuptime.com/blog/post/2026-02-06-dev-container-otel-collector-jaeger/view)
 
 ## Conclusion
 

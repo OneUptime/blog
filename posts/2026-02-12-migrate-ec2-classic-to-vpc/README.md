@@ -305,7 +305,7 @@ aws ec2 delete-security-group --group-name my-classic-sg
 aws ec2 deregister-image --image-id ami-migration123
 ```
 
-For monitoring your newly migrated VPC infrastructure, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For monitoring your newly migrated VPC infrastructure, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 

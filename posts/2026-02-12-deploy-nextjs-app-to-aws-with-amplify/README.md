@@ -266,7 +266,7 @@ export const logger = {
 }
 ```
 
-For uptime monitoring and alerting, consider setting up external health checks with a service like [OneUptime](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) that can catch issues before your users do.
+For uptime monitoring and alerting, consider setting up external health checks with a service like [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) that can catch issues before your users do.
 
 ## Common Gotchas
 

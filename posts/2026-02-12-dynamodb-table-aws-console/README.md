@@ -227,7 +227,7 @@ After creating your table, you'll probably want to:
 4. Set up backups (point-in-time recovery or on-demand backups)
 5. Configure monitoring and alarms
 
-For monitoring DynamoDB performance in production, check out [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to set up dashboards and alerts for throttling, latency, and error rates.
+For monitoring DynamoDB performance in production, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to set up dashboards and alerts for throttling, latency, and error rates.
 
 ## Wrapping Up
 

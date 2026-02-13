@@ -260,4 +260,4 @@ aws logs filter-log-events \
 7. For non-proxy integrations, validate mapping templates
 8. Always redeploy after making changes
 
-Monitor your API Gateway integrations with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) to catch configuration errors immediately after deployments. A configuration error that slips through can take down your entire API.
+Monitor your API Gateway integrations with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch configuration errors immediately after deployments. A configuration error that slips through can take down your entire API.

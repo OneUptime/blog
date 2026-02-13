@@ -335,7 +335,7 @@ aws cloudwatch get-metric-statistics \
   --region "us-west-2"
 ```
 
-For end-to-end monitoring of your DR readiness across all components, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can track replication health, AMI freshness, and failover test results in one place.
+For end-to-end monitoring of your DR readiness across all components, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can track replication health, AMI freshness, and failover test results in one place.
 
 ## Wrapping Up
 

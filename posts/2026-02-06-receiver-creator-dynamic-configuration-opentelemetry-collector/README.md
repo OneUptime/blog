@@ -10,7 +10,7 @@ Description: Learn how to configure the Receiver Creator in the OpenTelemetry Co
 
 The Receiver Creator is a powerful meta-receiver in the OpenTelemetry Collector that dynamically creates and manages receiver instances based on discovered endpoints. This is particularly useful in containerized environments where services come and go, making static receiver configurations impractical.
 
-For more on OpenTelemetry Collector fundamentals, see our guide on [collector architecture](https://oneuptime.com/blog/post/opentelemetry-collector-architecture/view).
+For more on OpenTelemetry Collector fundamentals, see our guide on [collector architecture](https://oneuptime.com/blog/post/2026-02-06-opentelemetry-architecture-api-sdk-collector/view).
 
 ## What is the Receiver Creator?
 
@@ -643,4 +643,4 @@ service:
 
 The Receiver Creator eliminates manual receiver configuration in dynamic environments. It automatically creates and destroys receiver instances as services come and go, making it essential for Kubernetes, auto-scaling, and containerized deployments. By combining observers, rules, and templates, you can build flexible, maintainable telemetry collection that adapts to your infrastructure.
 
-For more on OpenTelemetry receivers, see our guides on [Prometheus receiver](https://oneuptime.com/blog/post/prometheus-receiver-opentelemetry-collector/view) and [OTLP receiver](https://oneuptime.com/blog/post/otlp-receiver-opentelemetry-collector/view).
+For more on OpenTelemetry receivers, see our guides on [Prometheus receiver](https://oneuptime.com/blog/post/2026-02-06-configure-prometheus-receiver-opentelemetry-collector/view) and [OTLP receiver](https://oneuptime.com/blog/post/2026-02-06-configure-otlp-receiver-opentelemetry-collector/view).

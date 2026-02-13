@@ -346,7 +346,7 @@ aws apigateway update-method \
 
 This gives you certificate-based identity verification (mTLS) plus usage tracking (API keys).
 
-For monitoring mTLS handshake failures and tracking certificate expiration, check out our guide on [API security monitoring](https://oneuptime.com/blog/post/api-monitoring-best-practices/view).
+For monitoring mTLS handshake failures and tracking certificate expiration, check out our guide on [API security monitoring](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 

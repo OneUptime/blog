@@ -237,7 +237,7 @@ aws ec2 associate-address \
 
 With multiple network interfaces, monitoring becomes more important since you need visibility into traffic patterns on each interface separately. CloudWatch metrics are reported per-instance by default, so you'll want to use VPC Flow Logs for per-interface visibility.
 
-For a comprehensive monitoring setup, take a look at [setting up AWS infrastructure monitoring](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) to track traffic across all your interfaces.
+For a comprehensive monitoring setup, take a look at [setting up AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to track traffic across all your interfaces.
 
 ## Summary
 

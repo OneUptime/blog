@@ -196,7 +196,7 @@ Set up CloudWatch alarms for these key metrics:
 - **DatabaseConnections**: Alert at 80% of max_connections
 - **ReadLatency / WriteLatency**: Alert above 20ms
 
-For a more comprehensive monitoring setup, check out [monitoring AWS infrastructure with OneUptime](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For a more comprehensive monitoring setup, check out [monitoring AWS infrastructure with OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## PostgreSQL vs Aurora PostgreSQL
 

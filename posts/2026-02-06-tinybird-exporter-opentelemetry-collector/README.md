@@ -620,8 +620,8 @@ Common issues and solutions:
 
 Learn more about OpenTelemetry and real-time analytics:
 
-- [OpenTelemetry Data Model Explained](https://oneuptime.com/blog/post/opentelemetry-data-model/view)
-- [Building Real-time Observability Dashboards](https://oneuptime.com/blog/post/realtime-observability-dashboards/view)
+- [OpenTelemetry Data Model Explained](https://oneuptime.com/blog/post/2026-02-06-opentelemetry-data-model-beginners/view)
+- [Building Real-time Observability Dashboards](https://oneuptime.com/blog/post/2026-01-25-build-realtime-dashboards-fastapi/view)
 
 ## Conclusion
 

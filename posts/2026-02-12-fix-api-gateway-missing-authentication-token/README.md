@@ -258,4 +258,4 @@ aws apigateway update-stage \
   --patch-operations '[{"op":"replace","path":"/*/*/logging/loglevel","value":"INFO"}]'
 ```
 
-Monitor your API endpoints with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) to catch authentication and routing errors in real-time. The "Missing Authentication Token" error is particularly important to track because it can indicate both configuration issues and potential unauthorized access attempts.
+Monitor your API endpoints with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch authentication and routing errors in real-time. The "Missing Authentication Token" error is particularly important to track because it can indicate both configuration issues and potential unauthorized access attempts.

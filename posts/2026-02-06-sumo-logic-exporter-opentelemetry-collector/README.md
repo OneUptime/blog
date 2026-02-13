@@ -437,8 +437,8 @@ Common issues and their solutions:
 
 For more information on configuring OpenTelemetry Collector exporters, check out these related articles:
 
-- [Understanding OpenTelemetry Collector Architecture](https://oneuptime.com/blog/post/opentelemetry-collector-architecture/view)
-- [Best Practices for OpenTelemetry Collector Deployment](https://oneuptime.com/blog/post/opentelemetry-collector-best-practices/view)
+- [Understanding OpenTelemetry Collector Architecture](https://oneuptime.com/blog/post/2026-02-06-opentelemetry-architecture-api-sdk-collector/view)
+- [Best Practices for OpenTelemetry Collector Deployment](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view)
 
 ## Conclusion
 

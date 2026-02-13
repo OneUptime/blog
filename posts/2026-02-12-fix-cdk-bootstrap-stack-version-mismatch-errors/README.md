@@ -241,7 +241,7 @@ npx cdk bootstrap "aws://$ACCOUNT_ID/$REGION" \
     --cloudformation-execution-policies "arn:aws:iam::aws:policy/AdministratorAccess"
 ```
 
-For monitoring CDK deployments across multiple accounts and regions, set up [deployment monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to catch bootstrap and deployment failures early.
+For monitoring CDK deployments across multiple accounts and regions, set up [deployment monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to catch bootstrap and deployment failures early.
 
 ## Summary
 

@@ -304,7 +304,7 @@ curl -v -X GET \
 
 If the OPTIONS response doesn't have CORS headers, your OPTIONS method is misconfigured. If the GET response doesn't have them, your Lambda needs to return them (for REST API proxy integration).
 
-For tracking CORS errors and API health across environments, see our guide on [monitoring web applications](https://oneuptime.com/blog/post/api-monitoring-best-practices/view).
+For tracking CORS errors and API health across environments, see our guide on [monitoring web applications](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 

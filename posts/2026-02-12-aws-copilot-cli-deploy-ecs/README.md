@@ -313,4 +313,4 @@ Terraform/CDK is better when:
 
 Many teams start with Copilot and migrate to Terraform later if they outgrow it. The CloudFormation stacks Copilot creates are well-organized and can be a useful reference for your Terraform migration.
 
-For monitoring the applications you deploy with Copilot, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) to set up proper observability alongside your deployment pipeline.
+For monitoring the applications you deploy with Copilot, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to set up proper observability alongside your deployment pipeline.

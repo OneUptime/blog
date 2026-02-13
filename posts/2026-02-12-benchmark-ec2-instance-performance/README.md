@@ -18,7 +18,7 @@ There are a few solid reasons to benchmark your instances:
 
 - **Cost optimization** - You might be paying for an m6i.xlarge when an m6a.large handles your workload just fine.
 - **Migration validation** - Before switching instance types in production, you want proof the new instance performs at least as well.
-- **Baseline establishment** - Having performance baselines helps you detect degradation over time, which ties directly into [monitoring your infrastructure](https://oneuptime.com/blog/post/aws-cloudwatch-ec2-monitoring/view).
+- **Baseline establishment** - Having performance baselines helps you detect degradation over time, which ties directly into [monitoring your infrastructure](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view).
 - **Capacity planning** - Understanding the ceiling of your current instances helps you plan scaling strategies.
 
 ## Setting Up Your Benchmarking Environment
@@ -224,6 +224,6 @@ A few tips to make sure your benchmarks are meaningful:
 
 ## Monitoring After Benchmarking
 
-Benchmarking gives you a point-in-time measurement. For ongoing performance tracking, you'll want proper monitoring in place. Tools like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-ec2-monitoring/view) can help you track instance performance metrics continuously and alert you when things degrade.
+Benchmarking gives you a point-in-time measurement. For ongoing performance tracking, you'll want proper monitoring in place. Tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) can help you track instance performance metrics continuously and alert you when things degrade.
 
 The bottom line: don't trust spec sheets alone. Run your own benchmarks, compare the results against your workload requirements, and let the data guide your instance selection. Your wallet will thank you.

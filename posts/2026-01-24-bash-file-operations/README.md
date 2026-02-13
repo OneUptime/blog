@@ -867,5 +867,5 @@ Safe file operations in Bash require:
 *Need to monitor your file processing scripts? [OneUptime](https://oneuptime.com) provides real-time monitoring and alerting for your automation workflows.*
 
 **Related Reading:**
-- [Bash Error Handling Best Practices](https://oneuptime.com/blog/post/bash-error-handling)
+- [Bash Error Handling Best Practices](https://oneuptime.com/blog/post/2026-01-24-bash-set-e-error-handling)
 - [Automating Backup Scripts](https://oneuptime.com/blog/post/2026-01-25-backup-automation)

@@ -253,7 +253,7 @@ aws ram list-principals \
 
 Monitor RAM activity through CloudTrail events and CloudWatch. Look for unauthorized share attempts or unexpected resource associations.
 
-For unified monitoring of your multi-account environment including resource sharing, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can centralize visibility across all accounts.
+For unified monitoring of your multi-account environment including resource sharing, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can centralize visibility across all accounts.
 
 ## Wrapping Up
 

@@ -224,7 +224,7 @@ The message field often contains specifics like "The number of conditions on the
 
 To catch these errors in production before they become a bigger problem, you should set up monitoring on your DynamoDB operations. Tracking `SystemErrors` and `UserErrors` CloudWatch metrics for your tables gives you visibility into how often these issues occur.
 
-For a more comprehensive approach to monitoring DynamoDB alongside your other infrastructure, consider using [OneUptime's AWS monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to get alerts when error rates spike.
+For a more comprehensive approach to monitoring DynamoDB alongside your other infrastructure, consider using [OneUptime's AWS monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to get alerts when error rates spike.
 
 ## Summary
 

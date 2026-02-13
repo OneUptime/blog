@@ -1080,5 +1080,5 @@ With these patterns, you can build scalable, maintainable real-time features tha
 *Need to monitor your Phoenix Channels in production? [OneUptime](https://oneuptime.com) provides real-time monitoring with WebSocket support and customizable alerting.*
 
 **Related Reading:**
-- [How to Monitor Elixir Applications with OpenTelemetry](https://oneuptime.com/blog/post/elixir-opentelemetry-monitoring/view)
+- [How to Monitor Elixir Applications with OpenTelemetry](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view)
 - [Building Scalable Real-time Systems with Phoenix](https://hexdocs.pm/phoenix/channels.html)

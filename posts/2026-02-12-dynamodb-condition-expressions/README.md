@@ -310,7 +310,7 @@ const params = {
 
 A spike in `ConditionalCheckFailedException` errors can indicate contention problems. If many processes are fighting over the same items, consider redesigning your data model to reduce conflicts.
 
-Track these errors with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to spot patterns. High contention on specific items usually points to a hot partition or a design that forces too many writers to touch the same record.
+Track these errors with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to spot patterns. High contention on specific items usually points to a hot partition or a design that forces too many writers to touch the same record.
 
 ## Wrapping Up
 

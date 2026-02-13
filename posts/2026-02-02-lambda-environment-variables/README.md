@@ -1313,5 +1313,5 @@ Effective environment variable management enables your Lambda functions to run s
 *Need to monitor your Lambda functions and track configuration changes? [OneUptime](https://oneuptime.com) provides comprehensive serverless monitoring with alerts for configuration drift and performance anomalies.*
 
 **Related Reading:**
-- [How to Implement AWS Lambda Monitoring](https://oneuptime.com/blog/post/aws-lambda-monitoring/view)
-- [How to Secure Serverless Applications](https://oneuptime.com/blog/post/serverless-security/view)
+- [How to Implement AWS Lambda Monitoring](https://oneuptime.com/blog/post/2025-07-02-python-aws-lambda-serverless/view)
+- [How to Secure Serverless Applications](https://oneuptime.com/blog/post/2026-02-12-serverless-security-best-practices-aws/view)

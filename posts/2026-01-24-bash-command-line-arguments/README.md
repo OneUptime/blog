@@ -851,5 +851,5 @@ Effective command line argument handling requires:
 *Building CLI tools that need monitoring? [OneUptime](https://oneuptime.com) helps you track script execution and alert on failures.*
 
 **Related Reading:**
-- [Bash Script Best Practices](https://oneuptime.com/blog/post/bash-best-practices)
-- [Building Robust Shell Scripts](https://oneuptime.com/blog/post/robust-shell-scripts)
+- [Bash Script Best Practices](https://oneuptime.com/blog/post/2026-02-13-bash-best-practices)
+- [Building Robust Shell Scripts](https://oneuptime.com/blog/post/2026-01-24-portable-shell-scripts)

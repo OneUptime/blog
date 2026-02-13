@@ -301,7 +301,7 @@ Read replicas are NOT promoted during failover. They're a separate feature for r
 
 ## Setting Up Alerting
 
-Set up comprehensive monitoring so you know when failovers happen and how your application responds. Tools like [OneUptime](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) can combine infrastructure metrics with application health checks to give you the full picture during a failover event.
+Set up comprehensive monitoring so you know when failovers happen and how your application responds. Tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) can combine infrastructure metrics with application health checks to give you the full picture during a failover event.
 
 ## Wrapping Up
 

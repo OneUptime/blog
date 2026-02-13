@@ -432,7 +432,7 @@ This is one of the biggest advantages of IaC - no orphaned resources lurking in 
 4. **Tag everything** - it makes cost tracking and resource management much easier
 5. **Use modules** for reusable patterns across projects
 
-For monitoring the instances you deploy with Terraform, consider integrating your monitoring setup as code too. Check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) to get started with observability for your EC2 fleet.
+For monitoring the instances you deploy with Terraform, consider integrating your monitoring setup as code too. Check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to get started with observability for your EC2 fleet.
 
 ## Wrapping Up
 

@@ -308,7 +308,7 @@ resource "aws_cloudwatch_metric_alarm" "latency_p99" {
 }
 ```
 
-For a comprehensive monitoring approach, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For a comprehensive monitoring approach, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Continuous Optimization
 

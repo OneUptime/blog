@@ -307,7 +307,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
-For comprehensive DynamoDB monitoring including capacity utilization, throttling trends, and partition-level analysis, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can help you visualize your DynamoDB performance and catch throttling before it impacts users.
+For comprehensive DynamoDB monitoring including capacity utilization, throttling trends, and partition-level analysis, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help you visualize your DynamoDB performance and catch throttling before it impacts users.
 
 ## Summary
 

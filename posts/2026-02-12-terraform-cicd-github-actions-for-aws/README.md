@@ -364,7 +364,7 @@ Use separate roles for plan and apply if you want plan to be read-only.
 
 ## Monitoring Deployments
 
-After apply, validate that your infrastructure is healthy. Consider adding a post-deployment check that verifies your services are responding. A monitoring tool like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can alert you immediately if a deployment breaks something.
+After apply, validate that your infrastructure is healthy. Consider adding a post-deployment check that verifies your services are responding. A monitoring tool like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can alert you immediately if a deployment breaks something.
 
 ## Wrapping Up
 

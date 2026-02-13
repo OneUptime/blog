@@ -369,7 +369,7 @@ Use DLM when you only need EBS snapshot management. Use AWS Backup when you need
 
 For more on AWS Backup, check out our post on [backing up EC2 instances with AWS Backup](https://oneuptime.com/blog/post/2026-02-12-back-up-ec2-aws-backup/view).
 
-For monitoring your backup health and snapshot status, see our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For monitoring your backup health and snapshot status, see our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 

@@ -250,4 +250,4 @@ curl -v -X GET \
   https://abc123.execute-api.us-east-1.amazonaws.com/prod/resource
 ```
 
-Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) to track 403 error rates across your APIs. A sudden spike in 403s usually indicates a configuration change or a WAF rule that's being too aggressive.
+Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to track 403 error rates across your APIs. A sudden spike in 403s usually indicates a configuration change or a WAF rule that's being too aggressive.

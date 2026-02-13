@@ -380,7 +380,7 @@ exports.handler = async (event) => {
 
 ## Monitoring Auth Failures
 
-Keep an eye on failed authentication attempts. A spike in failures could mean a brute-force attack or a broken client. Cognito publishes metrics to CloudWatch, and you can set up alarms on `SignInFailures`. For a comprehensive approach to monitoring your authentication infrastructure, see our guide on [setting up effective monitoring](https://oneuptime.com/blog/post/effective-monitoring-strategy/view).
+Keep an eye on failed authentication attempts. A spike in failures could mean a brute-force attack or a broken client. Cognito publishes metrics to CloudWatch, and you can set up alarms on `SignInFailures`. For a comprehensive approach to monitoring your authentication infrastructure, see our guide on [setting up effective monitoring](https://oneuptime.com/blog/post/2026-01-24-apm-monitoring/view).
 
 ## Wrapping Up
 

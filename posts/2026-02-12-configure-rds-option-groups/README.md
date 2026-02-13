@@ -306,7 +306,7 @@ resource "aws_db_instance" "sqlserver" {
 4. **Version compatibility**: Option groups are tied to major engine versions. When upgrading, you'll need a new option group for the new version.
 5. **Document your options**: Keep track of why each option was added and who requested it.
 
-For monitoring the impact of option changes, consider setting up [infrastructure monitoring](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) to track performance before and after.
+For monitoring the impact of option changes, consider setting up [infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to track performance before and after.
 
 ## Wrapping Up
 

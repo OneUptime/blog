@@ -315,7 +315,7 @@ const params = {
 
 For items under 4KB, the RCU savings from projection are negligible on the base table. The real benefit is reduced network transfer. If you're fetching thousands of items in a loop, projecting only what you need can cut response times significantly.
 
-Use [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to monitor your DynamoDB latency and throughput. If you see high latency on read operations, check whether large items and full-attribute fetches are contributing.
+Use [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to monitor your DynamoDB latency and throughput. If you see high latency on read operations, check whether large items and full-attribute fetches are contributing.
 
 ## Wrapping Up
 

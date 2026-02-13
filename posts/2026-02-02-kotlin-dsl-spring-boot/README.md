@@ -1233,5 +1233,5 @@ The investment in learning Kotlin DSL pays dividends in reduced bugs, faster dev
 *Need to monitor your Spring Boot application in production? [OneUptime](https://oneuptime.com) provides comprehensive monitoring, alerting, and incident management for Kotlin and Spring Boot applications.*
 
 **Related Reading:**
-- [Building Web Applications with Kotlin and Spring Boot](https://oneuptime.com/blog/post/kotlin-spring-boot-web-applications/view)
-- [Spring Security Best Practices](https://oneuptime.com/blog/post/spring-security-best-practices/view)
+- [Building Web Applications with Kotlin and Spring Boot](https://oneuptime.com/blog/post/2026-01-26-kotlin-spring-boot/view)
+- [Spring Security Best Practices](https://oneuptime.com/blog/post/2026-01-28-jenkins-security-best-practices/view)

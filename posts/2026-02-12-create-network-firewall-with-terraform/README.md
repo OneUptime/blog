@@ -338,7 +338,7 @@ resource "aws_networkfirewall_logging_configuration" "main" {
 }
 ```
 
-Alert logs capture traffic that matches rules with alert or drop actions. Flow logs capture all traffic passing through the firewall. If you're looking for centralized monitoring across your infrastructure, check out our post on [AWS monitoring strategies](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+Alert logs capture traffic that matches rules with alert or drop actions. Flow logs capture all traffic passing through the firewall. If you're looking for centralized monitoring across your infrastructure, check out our post on [AWS monitoring strategies](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Outputs
 

@@ -215,7 +215,7 @@ if not table_exists('Orders'):
     raise RuntimeError("Orders table not found. Check region and table name.")
 ```
 
-Setting up monitoring for these errors is just as important. You don't want to discover a missing table from user complaints. CloudWatch metrics on `UserErrors` for your DynamoDB tables, combined with [proper alerting](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view), will help you catch issues before they affect users.
+Setting up monitoring for these errors is just as important. You don't want to discover a missing table from user complaints. CloudWatch metrics on `UserErrors` for your DynamoDB tables, combined with [proper alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view), will help you catch issues before they affect users.
 
 ## Summary
 

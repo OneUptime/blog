@@ -345,7 +345,7 @@ Each tier needs its own monitoring. Set up CloudWatch dashboards and alarms for:
 - **Application**: ECS CPU/memory, ALB response times, 5xx error rates
 - **Data**: RDS connections, query latency, replication lag, Redis memory usage
 
-For comprehensive monitoring across all three tiers, consider using [OneUptime](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) for unified observability and incident management.
+For comprehensive monitoring across all three tiers, consider using [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) for unified observability and incident management.
 
 ## Summary
 

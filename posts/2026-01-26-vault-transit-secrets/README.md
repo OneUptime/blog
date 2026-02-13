@@ -1383,5 +1383,5 @@ By centralizing cryptographic operations in Vault, you reduce the risk of key ex
 *Need to monitor your Vault cluster and encryption operations? [OneUptime](https://oneuptime.com) provides infrastructure monitoring with custom metrics, alerting, and dashboards to keep your secrets management infrastructure healthy.*
 
 **Related Reading:**
-- [How to Implement Zero Trust Security in Kubernetes](https://oneuptime.com/blog/post/zero-trust-kubernetes-security/view)
-- [How to Set Up Secrets Management with External Secrets Operator](https://oneuptime.com/blog/post/external-secrets-operator/view)
+- [How to Implement Zero Trust Security in Kubernetes](https://oneuptime.com/blog/post/2026-01-06-kubernetes-network-policies-zero-trust/view)
+- [How to Set Up Secrets Management with External Secrets Operator](https://oneuptime.com/blog/post/2026-02-09-external-secrets-operator-aws-secrets-manager/view)

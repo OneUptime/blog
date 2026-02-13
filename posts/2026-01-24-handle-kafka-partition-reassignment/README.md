@@ -671,5 +671,5 @@ Safe partition reassignment requires:
 *Need better visibility during Kafka operations? [OneUptime](https://oneuptime.com) provides real-time monitoring of partition reassignments, consumer lag tracking, and alerting for cluster health issues.*
 
 **Related Reading:**
-- [Understanding Kafka Replication](https://oneuptime.com/blog/post/kafka-replication)
-- [Kafka Cluster Scaling Best Practices](https://oneuptime.com/blog/post/kafka-scaling)
+- [Understanding Kafka Replication](https://oneuptime.com/blog/post/2026-01-21-kafka-cross-datacenter-replication)
+- [Kafka Cluster Scaling Best Practices](https://oneuptime.com/blog/post/2026-02-09-kafka-topic-partitioning-scaling)

@@ -632,5 +632,5 @@ The configuration shown here provides a solid foundation. Adjust memory limits, 
 
 **Related Reading:**
 - [How to Set Up RabbitMQ Message Broker on Ubuntu](https://oneuptime.com/blog/post/2026-01-15-setup-rabbitmq-ubuntu/view)
-- [How to Configure RabbitMQ Clustering](https://oneuptime.com/blog/post/2026-01-20-rabbitmq-clustering/view)
-- [How to Monitor RabbitMQ with Prometheus](https://oneuptime.com/blog/post/2026-01-22-monitor-rabbitmq-prometheus/view)
+- [How to Configure RabbitMQ Clustering](https://oneuptime.com/blog/post/2026-01-24-rabbitmq-clustering/view)
+- [How to Monitor RabbitMQ with Prometheus](https://oneuptime.com/blog/post/2026-01-24-monitor-rabbitmq-prometheus/view)

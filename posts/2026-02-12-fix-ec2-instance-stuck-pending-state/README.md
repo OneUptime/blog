@@ -208,6 +208,6 @@ To avoid instances getting stuck in the future:
 2. **Use multiple AZs** - Don't put all your eggs in one AZ basket
 3. **Clean up unused resources** - Regularly remove detached EBS volumes, unused ENIs, and stopped instances
 4. **Use launch templates** - They make it easier to retry with consistent configurations
-5. **Set up proper monitoring** - Tools like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can alert you when instances fail to launch properly
+5. **Set up proper monitoring** - Tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can alert you when instances fail to launch properly
 
 The pending state problem is almost always a resource limits issue. Once you identify which resource is constrained, the fix is usually straightforward.

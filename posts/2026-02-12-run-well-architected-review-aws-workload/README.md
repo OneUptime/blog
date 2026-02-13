@@ -250,4 +250,4 @@ This doesn't replace the review but provides continuous monitoring of specific b
 
 A Well-Architected Review is one of the highest-ROI activities you can do for your AWS workloads. In a few hours, you identify risks that could take days or weeks to discover through incidents. Use the AWS Well-Architected Tool to structure the review, be honest about your current state, prioritize the findings, and track improvements over time. Make it a regular practice, and your architecture will continuously improve.
 
-For monitoring the improvements you make, see our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For monitoring the improvements you make, see our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

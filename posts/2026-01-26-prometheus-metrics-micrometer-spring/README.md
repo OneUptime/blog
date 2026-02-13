@@ -668,4 +668,4 @@ Micrometer makes it straightforward to expose Prometheus metrics from Spring Boo
 
 **Related Reading:**
 - [How to Implement Circuit Breakers with Resilience4j in Spring](https://oneuptime.com/blog/post/2026-01-25-circuit-breakers-resilience4j-spring/view)
-- [How to Add Custom Metrics to Python Applications with Prometheus](https://oneuptime.com/blog/post/2025-01-06-python-prometheus-metrics/view)
+- [How to Add Custom Metrics to Python Applications with Prometheus](https://oneuptime.com/blog/post/2025-01-06-python-custom-metrics-prometheus/view)

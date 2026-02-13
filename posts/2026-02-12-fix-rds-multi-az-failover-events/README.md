@@ -264,7 +264,7 @@ for metric in DatabaseConnections CPUUtilization ReadLatency WriteLatency; do
 done
 ```
 
-For comprehensive failover monitoring with correlation to application-level impact, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can track database health, failover events, and application errors on a single dashboard, giving you a clear picture of how failovers affect your users.
+For comprehensive failover monitoring with correlation to application-level impact, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can track database health, failover events, and application errors on a single dashboard, giving you a clear picture of how failovers affect your users.
 
 ## Summary
 

@@ -325,7 +325,7 @@ function handler(event) {
 
 ## Monitoring
 
-Track your CloudFront distribution metrics in CloudWatch and set up alerts for error rates. If you're looking for a more complete monitoring solution that covers uptime, performance, and alerting, check out how to [monitor AWS infrastructure](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) effectively.
+Track your CloudFront distribution metrics in CloudWatch and set up alerts for error rates. If you're looking for a more complete monitoring solution that covers uptime, performance, and alerting, check out how to [monitor AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) effectively.
 
 ## Final Thoughts
 

@@ -274,4 +274,4 @@ module "ecs_service" {
 
 The Terraform AWS VPC module handles the heavy lifting of VPC creation. Use it as the foundation for your AWS infrastructure, customize it for your needs, and spend your time on the application-level resources instead of debugging route tables.
 
-For the database layer on top of your VPC, check out our guide on the [Terraform AWS RDS module](https://oneuptime.com/blog/post/2026-02-12-terraform-aws-rds-module/view). And for monitoring the network health of your VPC, consider setting up comprehensive monitoring with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view).
+For the database layer on top of your VPC, check out our guide on the [Terraform AWS RDS module](https://oneuptime.com/blog/post/2026-02-12-terraform-aws-rds-module/view). And for monitoring the network health of your VPC, consider setting up comprehensive monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).

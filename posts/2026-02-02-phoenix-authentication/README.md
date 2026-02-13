@@ -1238,5 +1238,5 @@ Phoenix's built-in authentication tools combined with Elixir's pattern matching 
 *Need to monitor authentication events and security incidents? [OneUptime](https://oneuptime.com) provides real-time alerting for authentication failures, unusual login patterns, and session anomalies to keep your Phoenix application secure.*
 
 **Related Reading:**
-- [How to Handle Background Jobs with Oban](https://oneuptime.com/blog/post/2026-02-02-phoenix-oban-background-jobs/view)
-- [How to Handle LiveView Form Validation in Phoenix](https://oneuptime.com/blog/post/2026-02-02-phoenix-liveview-form-validation/view)
+- [How to Handle Background Jobs with Oban](https://oneuptime.com/blog/post/2026-01-26-elixir-oban-background-jobs/view)
+- [How to Handle LiveView Form Validation in Phoenix](https://oneuptime.com/blog/post/2026-01-24-react-form-validation/view)

@@ -319,4 +319,4 @@ Don't just slap `AdministratorAccess` on your Lambda role. That's a security inc
 4. Use conditions to further restrict access when possible
 5. Review and audit Lambda role permissions regularly
 
-Monitoring your Lambda functions for permission errors helps you catch misconfigurations early. [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can alert you when your functions start throwing AccessDenied errors, so you can fix them before they impact users.
+Monitoring your Lambda functions for permission errors helps you catch misconfigurations early. [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can alert you when your functions start throwing AccessDenied errors, so you can fix them before they impact users.

@@ -254,7 +254,7 @@ When you see resource replacements, understand why. Sometimes it's expected (lik
 
 Keep your `cdk.out` directory in `.gitignore`. It contains generated templates and isn't useful in version control.
 
-For monitoring your deployed infrastructure after changes, consider using [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) to catch issues that the diff couldn't predict - like performance regressions or unexpected cost increases.
+For monitoring your deployed infrastructure after changes, consider using [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch issues that the diff couldn't predict - like performance regressions or unexpected cost increases.
 
 ## Wrapping Up
 

@@ -285,7 +285,7 @@ Run `cdk diff` before every deployment. If the diff shows resource replacements 
 
 Use [CDK Nag](https://oneuptime.com/blog/post/2026-02-12-use-cdk-nag-for-security-best-practice-checks/view) to catch misconfigurations before deployment.
 
-Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) so you catch deployment-related issues quickly if something does slip through.
+Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) so you catch deployment-related issues quickly if something does slip through.
 
 ## Wrapping Up
 

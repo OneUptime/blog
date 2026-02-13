@@ -351,7 +351,7 @@ Schema validation adds a small overhead to each invocation. For most functions, 
 - Use `validate()` selectively on the parts that actually need checking rather than validating the entire event.
 - Cache compiled schemas if you're using the standalone function in a loop.
 
-For monitoring the performance impact of validation on your Lambda functions, check out our guide on [observability for serverless applications](https://oneuptime.com/blog/post/aws-lambda-monitoring-best-practices/view).
+For monitoring the performance impact of validation on your Lambda functions, check out our guide on [observability for serverless applications](https://oneuptime.com/blog/post/2026-02-12-logging-monitoring-best-practices-aws/view).
 
 ## Wrapping Up
 

@@ -655,5 +655,5 @@ When in doubt, use `bash script.sh` to bypass execute permission requirements.
 *Monitoring your scripts in production? [OneUptime](https://oneuptime.com) provides real-time alerting when your automation encounters permission or execution failures.*
 
 **Related Reading:**
-- [Linux File Permissions Guide](https://oneuptime.com/blog/post/linux-file-permissions)
-- [SELinux Troubleshooting](https://oneuptime.com/blog/post/selinux-troubleshooting)
+- [Linux File Permissions Guide](https://oneuptime.com/blog/post/2026-02-06-debug-collector-file-permissions-linux)
+- [SELinux Troubleshooting](https://oneuptime.com/blog/post/2026-02-13-selinux-troubleshooting)

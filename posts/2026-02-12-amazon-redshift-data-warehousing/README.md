@@ -288,7 +288,7 @@ ANALYZE fact_orders;
 
 ## Monitoring Your Cluster
 
-Keep an eye on these metrics in CloudWatch: `CPUUtilization`, `PercentageDiskSpaceUsed`, `ReadLatency`, and `DatabaseConnections`. For alerting, consider setting up [monitoring with OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-metrics/view) alongside CloudWatch.
+Keep an eye on these metrics in CloudWatch: `CPUUtilization`, `PercentageDiskSpaceUsed`, `ReadLatency`, and `DatabaseConnections`. For alerting, consider setting up [monitoring with OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) alongside CloudWatch.
 
 ## Wrapping Up
 

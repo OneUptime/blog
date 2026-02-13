@@ -264,7 +264,7 @@ aws license-manager list-received-licenses \
 
 ## Monitoring and Alerting
 
-For comprehensive monitoring of your license usage alongside the rest of your infrastructure, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can help consolidate alerts from License Manager with your other operational metrics.
+For comprehensive monitoring of your license usage alongside the rest of your infrastructure, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help consolidate alerts from License Manager with your other operational metrics.
 
 ## Wrapping Up
 

@@ -340,7 +340,7 @@ aws dynamodb describe-table --table-name Orders \
   --query "Table.GlobalSecondaryIndexes[?IndexName=='needs-attention-index'].{ItemCount:ItemCount,SizeBytes:IndexSizeBytes}"
 ```
 
-If your sparse index grows to contain a large percentage of your base table, it's not really sparse anymore. Reconsider whether the flag attribute is being removed properly. Monitor index sizes with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to catch unexpected growth.
+If your sparse index grows to contain a large percentage of your base table, it's not really sparse anymore. Reconsider whether the flag attribute is being removed properly. Monitor index sizes with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch unexpected growth.
 
 ## Wrapping Up
 

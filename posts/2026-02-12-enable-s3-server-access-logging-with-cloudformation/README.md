@@ -299,4 +299,4 @@ LIMIT 10;
 
 ## Wrapping Up
 
-S3 access logging gives you visibility into who's accessing your data and how. CloudFormation makes the setup reproducible across environments. The key things to remember: always use a separate logging bucket, set lifecycle policies on the log bucket, and use Athena for analysis. For monitoring your entire AWS setup, including getting alerted on unusual access patterns, check out our [infrastructure monitoring guide](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+S3 access logging gives you visibility into who's accessing your data and how. CloudFormation makes the setup reproducible across environments. The key things to remember: always use a separate logging bucket, set lifecycle policies on the log bucket, and use Athena for analysis. For monitoring your entire AWS setup, including getting alerted on unusual access patterns, check out our [infrastructure monitoring guide](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

@@ -658,5 +658,5 @@ Start with basic multi-match queries and add features like facets and autocomple
 *Running Elasticsearch in production? [OneUptime](https://oneuptime.com) monitors your clusters, tracks query performance, and alerts you before issues impact users.*
 
 **Related Reading:**
-- [How to Build Full-Text Search with Meilisearch in Node.js](https://oneuptime.com/blog/post/2026-01-06-nodejs-full-text-search-meilisearch/view)
+- [How to Build Full-Text Search with Meilisearch in Node.js](https://oneuptime.com/blog/post/2026-01-21-clickhouse-full-text-search/view)
 - [How to Implement Structured Logging with OpenTelemetry in Python](https://oneuptime.com/blog/post/2025-01-06-python-structured-logging-opentelemetry/view)

@@ -400,7 +400,7 @@ export function response(ctx) {
 
 Each function in the pipeline generates its own CloudWatch metrics, so you can identify which step is slow or failing. Look at the per-resolver metrics in the AppSync CloudWatch dashboard to find bottlenecks.
 
-For overall API monitoring, check out our post on [monitoring strategies for serverless applications](https://oneuptime.com/blog/post/effective-monitoring-strategy/view).
+For overall API monitoring, check out our post on [monitoring strategies for serverless applications](https://oneuptime.com/blog/post/2026-01-24-apm-monitoring/view).
 
 ## Wrapping Up
 

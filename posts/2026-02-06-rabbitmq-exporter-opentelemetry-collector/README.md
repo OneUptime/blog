@@ -657,7 +657,7 @@ Monitor these key metrics:
 - Publish confirmation latency
 - Queue depth and consumer lag (from RabbitMQ management API)
 
-For more details on collector monitoring, see our guide on [monitoring the OpenTelemetry Collector](https://oneuptime.com/blog/post/monitoring-opentelemetry-collector/view).
+For more details on collector monitoring, see our guide on [monitoring the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-google-cloud-monitoring-receiver-opentelemetry-collector/view).
 
 ## Best Practices
 
@@ -681,7 +681,7 @@ Follow these best practices when using the RabbitMQ exporter:
 
 ## Integration with Event-Driven Architectures
 
-The RabbitMQ exporter enables integration with event-driven observability systems. For more information on building event-driven observability pipelines, see our posts on [OpenTelemetry architecture patterns](https://oneuptime.com/blog/post/opentelemetry-architecture-patterns/view) and [asynchronous telemetry processing](https://oneuptime.com/blog/post/asynchronous-telemetry-processing/view).
+The RabbitMQ exporter enables integration with event-driven observability systems. For more information on building event-driven observability pipelines, see our posts on [OpenTelemetry architecture patterns](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view) and [asynchronous telemetry processing](https://oneuptime.com/blog/post/2026-02-13-asynchronous-telemetry-processing/view).
 
 ## Conclusion
 

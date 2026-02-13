@@ -357,4 +357,4 @@ The stop condition is critical - it automatically halts the experiment if your e
 
 ## Summary
 
-Reliability on AWS is about building systems that expect failure and handle it gracefully. Use Multi-AZ deployments for high availability, auto-scaling for capacity management, and automated recovery for fault tolerance. Test everything - your backups, your failover, your scaling. And build monitoring so you know when something is degrading before it fails completely. For monitoring strategies, see our post on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+Reliability on AWS is about building systems that expect failure and handle it gracefully. Use Multi-AZ deployments for high availability, auto-scaling for capacity management, and automated recovery for fault tolerance. Test everything - your backups, your failover, your scaling. And build monitoring so you know when something is degrading before it fails completely. For monitoring strategies, see our post on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

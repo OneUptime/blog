@@ -217,7 +217,7 @@ After configuring a custom domain, CloudFront needs to cache your content at edg
 
 ## Monitoring Domain Health
 
-Once your custom domain is live, keep an eye on SSL certificate expiration and DNS resolution. Amplify renews ACM certificates automatically, but DNS misconfigurations can cause outages. Consider setting up uptime monitoring through [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to get alerts if your domain becomes unreachable.
+Once your custom domain is live, keep an eye on SSL certificate expiration and DNS resolution. Amplify renews ACM certificates automatically, but DNS misconfigurations can cause outages. Consider setting up uptime monitoring through [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to get alerts if your domain becomes unreachable.
 
 ## Wrapping Up
 

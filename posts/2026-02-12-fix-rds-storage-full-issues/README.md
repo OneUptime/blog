@@ -266,7 +266,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
-For comprehensive database monitoring including storage trends and capacity planning, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can help you visualize storage consumption over time and predict when you'll need more space.
+For comprehensive database monitoring including storage trends and capacity planning, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help you visualize storage consumption over time and predict when you'll need more space.
 
 ## Summary
 

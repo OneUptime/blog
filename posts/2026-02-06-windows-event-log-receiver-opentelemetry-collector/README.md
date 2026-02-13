@@ -10,7 +10,7 @@ Description: Learn how to configure the Windows Event Log Receiver in the OpenTe
 
 The Windows Event Log Receiver collects logs from Windows Event Log channels, enabling centralized log management and analysis for Windows systems. This receiver is essential for monitoring Windows servers, workstations, and applications, providing visibility into system events, security audits, application errors, and more.
 
-For more on log collection, see our guide on [OpenTelemetry log receivers](https://oneuptime.com/blog/post/opentelemetry-log-receivers/view).
+For more on log collection, see our guide on [OpenTelemetry log receivers](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view).
 
 ## What is the Windows Event Log Receiver?
 

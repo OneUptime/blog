@@ -301,7 +301,7 @@ const item = {
 
 ## Monitoring Hierarchy Queries
 
-Complex hierarchy queries can consume significant read capacity, especially when fetching entire subtrees. Monitor your DynamoDB consumed capacity and query latency with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to ensure your hierarchy model scales with your data growth.
+Complex hierarchy queries can consume significant read capacity, especially when fetching entire subtrees. Monitor your DynamoDB consumed capacity and query latency with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to ensure your hierarchy model scales with your data growth.
 
 ## Wrapping Up
 

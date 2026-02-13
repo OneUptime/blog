@@ -764,4 +764,4 @@ The combination handles everything from small applications to large-scale system
 
 **Related Reading:**
 - [How to Configure Entity Framework Core Relationships](https://oneuptime.com/blog/post/2025-12-23-configure-entity-framework-core-relationships/view)
-- [How to Optimize Entity Framework Core Queries](https://oneuptime.com/blog/post/2025-12-23-optimize-entity-framework-core-queries/view)
+- [How to Optimize Entity Framework Core Queries](https://oneuptime.com/blog/post/2026-01-28-optimize-entity-framework-core-queries/view)

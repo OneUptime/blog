@@ -269,7 +269,7 @@ fi
 
 Since a NAT instance is a single point of failure for your private subnets' internet access, monitoring is critical. Set up alerts for CPU usage, network throughput, and instance health checks. If the NAT instance goes down, nothing in your private subnets can reach the internet.
 
-For a comprehensive monitoring approach, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) to make sure you catch NAT issues before they impact your workloads.
+For a comprehensive monitoring approach, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to make sure you catch NAT issues before they impact your workloads.
 
 ## Wrapping Up
 

@@ -384,6 +384,6 @@ Common issues when connecting CodeBuild to external Git providers:
 - **Permission denied on clone**: Verify your GitHub token hasn't expired and has `repo` scope.
 - **Rate limiting**: GitHub has API rate limits. If you're running many builds, use a GitHub App token instead of a personal access token.
 
-For end-to-end CI/CD pipeline monitoring, check out how to set up [infrastructure monitoring](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view) that covers your entire build and deployment chain.
+For end-to-end CI/CD pipeline monitoring, check out how to set up [infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) that covers your entire build and deployment chain.
 
 Using CodeBuild with GitHub or Bitbucket gives you the best of both worlds: your code stays on the platform your team already knows and loves, while your CI runs on AWS infrastructure close to your deployment targets. The webhook integration means builds start automatically, and status reporting closes the feedback loop right on your pull requests.

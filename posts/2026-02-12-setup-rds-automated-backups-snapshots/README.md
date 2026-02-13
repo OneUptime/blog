@@ -272,7 +272,7 @@ For a 100 GB database with 14 days of automated retention and a few manual snaps
 3. **Enable cross-region backup replication**: Protects against regional failures.
 4. **Tag your snapshots**: Make it easy to identify why each snapshot was created.
 5. **Test restores regularly**: A backup you've never tested is not a backup. For details on restoring, see [restoring from a snapshot](https://oneuptime.com/blog/post/2026-02-12-restore-rds-instance-from-snapshot/view) and [point-in-time recovery](https://oneuptime.com/blog/post/2026-02-12-restore-rds-instance-point-in-time/view).
-6. **Monitor backup events**: Set up alerts for backup failures using [CloudWatch](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view).
+6. **Monitor backup events**: Set up alerts for backup failures using [CloudWatch](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view).
 7. **Final snapshot on deletion**: Always take a final snapshot before deleting an instance.
 
 ## Wrapping Up

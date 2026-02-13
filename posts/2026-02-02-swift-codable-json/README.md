@@ -1110,4 +1110,4 @@ Codable eliminates the boilerplate of manual JSON parsing while maintaining comp
 *Building iOS apps that consume APIs? [OneUptime](https://oneuptime.com) provides API monitoring to ensure your backend services stay reliable and performant.*
 
 **Related Reading:**
-- [How to Implement Networking in Swift with URLSession](https://oneuptime.com/blog/post/2025-01-06-swift-urlsession-networking/view)
+- [How to Implement Networking in Swift with URLSession](https://oneuptime.com/blog/post/2026-02-02-swift-urlsession-networking/view)

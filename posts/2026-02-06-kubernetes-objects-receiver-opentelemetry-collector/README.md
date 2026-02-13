@@ -10,7 +10,7 @@ Description: Learn how to configure the Kubernetes Objects Receiver in the OpenT
 
 The Kubernetes Objects Receiver collects data about Kubernetes resources by watching the Kubernetes API server. It captures events like pod creations, deletions, failures, and state changes, converting them into OpenTelemetry logs for centralized monitoring and analysis.
 
-For more on Kubernetes observability, see our guide on [monitoring Kubernetes with OpenTelemetry](https://oneuptime.com/blog/post/kubernetes-monitoring-opentelemetry/view).
+For more on Kubernetes observability, see our guide on [monitoring Kubernetes with OpenTelemetry](https://oneuptime.com/blog/post/2026-01-24-opentelemetry-kubernetes/view).
 
 ## What is the Kubernetes Objects Receiver?
 
@@ -858,4 +858,4 @@ service:
 
 The Kubernetes Objects Receiver provides visibility into Kubernetes cluster operations by watching API resources and events. By collecting pod lifecycle events, deployment changes, and node conditions, you can monitor cluster health, track deployments, debug scheduling issues, and maintain audit trails. Combined with transform processors, you can extract structured data and create actionable alerts for your Kubernetes infrastructure.
 
-For more on Kubernetes monitoring, see our guides on [Kubernetes metrics](https://oneuptime.com/blog/post/kubernetes-metrics-opentelemetry/view) and [pod monitoring](https://oneuptime.com/blog/post/kubernetes-pod-monitoring/view).
+For more on Kubernetes monitoring, see our guides on [Kubernetes metrics](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view) and [pod monitoring](https://oneuptime.com/blog/post/2025-12-05-prometheus-kubernetes-monitoring/view).

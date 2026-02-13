@@ -417,7 +417,7 @@ sudo -u apache wp plugin install wordfence --activate
 
 ## Monitoring WordPress
 
-Monitor your WordPress site for uptime, performance, and errors. Track page load times, PHP error rates, and database query performance. For a complete monitoring approach, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+Monitor your WordPress site for uptime, performance, and errors. Track page load times, PHP error rates, and database query performance. For a complete monitoring approach, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 

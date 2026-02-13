@@ -349,7 +349,7 @@ Live streams need real-time monitoring. MediaLive pushes metrics to CloudWatch, 
 - Active alerts (signal loss, encoder errors)
 - Network in/out throughput
 
-Set up CloudWatch alarms for critical conditions like signal loss. For a broader monitoring setup across your infrastructure, check out how [OneUptime handles multi-service monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view).
+Set up CloudWatch alarms for critical conditions like signal loss. For a broader monitoring setup across your infrastructure, check out how [OneUptime handles multi-service monitoring](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ```bash
 # Create an alarm for when input goes black

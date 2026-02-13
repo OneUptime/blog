@@ -296,7 +296,7 @@ curl -X POST https://abc123.execute-api.us-east-1.amazonaws.com/prod/items \
 
 ## Monitoring Your API
 
-API Gateway provides built-in metrics for latency, error rates, and request counts. For production APIs, you'll want alerting when error rates spike or latency degrades. Consider pairing API Gateway's CloudWatch metrics with a monitoring tool like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) to get a complete picture of your API's health.
+API Gateway provides built-in metrics for latency, error rates, and request counts. For production APIs, you'll want alerting when error rates spike or latency degrades. Consider pairing API Gateway's CloudWatch metrics with a monitoring tool like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to get a complete picture of your API's health.
 
 ## Wrapping Up
 

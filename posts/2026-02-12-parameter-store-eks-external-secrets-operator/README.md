@@ -306,7 +306,7 @@ Keep in mind that very short intervals increase API calls to Parameter Store. Fo
 
 ## Monitoring Your Secrets Pipeline
 
-Once you've got this running in production, you'll want visibility into sync failures and latency. ESO exposes Prometheus metrics that you can scrape and alert on. For a broader monitoring setup that covers your entire infrastructure, take a look at our guide on [monitoring Kubernetes clusters](https://oneuptime.com/blog/post/kubernetes-monitoring-best-practices/view).
+Once you've got this running in production, you'll want visibility into sync failures and latency. ESO exposes Prometheus metrics that you can scrape and alert on. For a broader monitoring setup that covers your entire infrastructure, take a look at our guide on [monitoring Kubernetes clusters](https://oneuptime.com/blog/post/2026-01-06-kubernetes-rbac-best-practices/view).
 
 ## Wrapping Up
 

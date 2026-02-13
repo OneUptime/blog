@@ -732,5 +732,5 @@ With Eureka, your services can find each other dynamically without hardcoded URL
 *Want to monitor your microservices? [OneUptime](https://oneuptime.com) provides comprehensive monitoring for Spring Boot applications, including service health tracking and alerting when services become unavailable.*
 
 **Related Reading:**
-- [How to Build API Gateways with Spring Cloud Gateway](https://oneuptime.com/blog/post/2026-01-24-api-gateway-spring-cloud/view)
+- [How to Build API Gateways with Spring Cloud Gateway](https://oneuptime.com/blog/post/2026-01-25-api-gateways-spring-cloud-gateway/view)
 - [How to Build Health Checks and Readiness Probes in Python for Kubernetes](https://oneuptime.com/blog/post/2025-01-06-python-health-checks-kubernetes/view)

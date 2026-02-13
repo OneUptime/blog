@@ -349,7 +349,7 @@ const efficiency = (result.Count / result.ScannedCount * 100).toFixed(1);
 console.log(`Query efficiency: ${efficiency}% (${result.Count}/${result.ScannedCount})`);
 ```
 
-Monitor these metrics in production with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to catch scan-heavy patterns before they cause throttling.
+Monitor these metrics in production with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch scan-heavy patterns before they cause throttling.
 
 ## Wrapping Up
 

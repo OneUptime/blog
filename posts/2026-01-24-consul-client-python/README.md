@@ -875,4 +875,4 @@ Start simple with basic service discovery, then add features like caching and lo
 
 **Related Reading:**
 - [How to Build Health Checks in Python for Kubernetes](https://oneuptime.com/blog/post/2025-01-06-python-health-checks-kubernetes/view)
-- [How to Implement Circuit Breakers in Python](https://oneuptime.com/blog/post/2025-01-06-python-circuit-breakers/view)
+- [How to Implement Circuit Breakers in Python](https://oneuptime.com/blog/post/2026-01-23-python-circuit-breakers/view)

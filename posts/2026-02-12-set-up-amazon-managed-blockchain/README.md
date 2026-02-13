@@ -256,7 +256,7 @@ Amazon Managed Blockchain integrates with CloudWatch for monitoring. Key metrics
 - **TransactionCount** - Track throughput over time
 - **BlockHeight** - Confirm your peer stays in sync
 
-For a deeper look at monitoring practices, check out our post on [AWS CloudWatch monitoring strategies](https://oneuptime.com/blog/post/set-up-aws-cloudwatch/view).
+For a deeper look at monitoring practices, check out our post on [AWS CloudWatch monitoring strategies](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ## Cost Considerations
 

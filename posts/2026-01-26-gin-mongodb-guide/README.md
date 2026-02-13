@@ -1047,5 +1047,5 @@ This architecture scales well from small projects to production applications han
 *Need to monitor your Gin and MongoDB application in production? [OneUptime](https://oneuptime.com) provides comprehensive application monitoring with distributed tracing and error tracking.*
 
 **Related Reading:**
-- [How to Implement Connection Pooling in MongoDB](https://oneuptime.com/blog/post/2025-01-06-mongodb-connection-management)
-- [How to Instrument Go Applications with OpenTelemetry](https://oneuptime.com/blog/post/2025-01-06-go-opentelemetry)
+- [How to Implement Connection Pooling in MongoDB](https://oneuptime.com/blog/post/2025-12-15-mongodb-connection-closed-errors)
+- [How to Instrument Go Applications with OpenTelemetry](https://oneuptime.com/blog/post/2026-01-07-go-opentelemetry-instrumentation)

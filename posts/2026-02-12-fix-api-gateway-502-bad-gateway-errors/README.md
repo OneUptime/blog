@@ -285,4 +285,4 @@ def lambda_handler(event, context):
         return response(500, {'error': str(e)})
 ```
 
-Set up monitoring for your API Gateway endpoints with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) to catch 502 errors as soon as they start occurring. A spike in 502s usually indicates a code deployment that broke the response format.
+Set up monitoring for your API Gateway endpoints with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch 502 errors as soon as they start occurring. A spike in 502s usually indicates a code deployment that broke the response format.

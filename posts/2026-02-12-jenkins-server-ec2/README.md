@@ -348,7 +348,7 @@ curl -s http://localhost:8080/queue/api/json | python3 -m json.tool
 curl -s http://localhost:8080/computer/api/json
 ```
 
-For broader infrastructure monitoring including Jenkins, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For broader infrastructure monitoring including Jenkins, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 

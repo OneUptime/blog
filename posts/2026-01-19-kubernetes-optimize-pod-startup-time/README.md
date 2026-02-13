@@ -586,6 +586,6 @@ For monitoring pod startup times and application performance, check out [OneUpti
 
 ## Related Resources
 
-- [How to Right-Size Resources with VPA](https://oneuptime.com/blog/post/kubernetes-resource-right-sizing-vpa/view)
-- [How to Set Up Horizontal Pod Autoscaler](https://oneuptime.com/blog/post/kubernetes-hpa-autoscaling/view)
+- [How to Right-Size Resources with VPA](https://oneuptime.com/blog/post/2026-01-30-resource-right-sizing/view)
+- [How to Set Up Horizontal Pod Autoscaler](https://oneuptime.com/blog/post/2025-12-02-tune-kubernetes-autoscaling-for-bursty-workloads/view)
 - [How to Handle Pod Evictions](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-evictions-resource-pressure/view)

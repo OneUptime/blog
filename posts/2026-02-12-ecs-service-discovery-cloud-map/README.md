@@ -288,7 +288,7 @@ Service discovery and load balancers solve overlapping problems, but they're not
 
 Many architectures use both - a load balancer for external traffic and service discovery for internal communication. It's not an either-or decision.
 
-For monitoring service-to-service communication and tracking down failures in your discovery setup, check out our guide on [monitoring microservices](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) for observability patterns that work well with Cloud Map.
+For monitoring service-to-service communication and tracking down failures in your discovery setup, check out our guide on [monitoring microservices](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) for observability patterns that work well with Cloud Map.
 
 ## Troubleshooting
 

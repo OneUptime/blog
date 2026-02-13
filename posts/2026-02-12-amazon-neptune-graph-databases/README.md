@@ -200,7 +200,7 @@ Neptune publishes metrics to CloudWatch. The ones you'll want to watch most clos
 - **VolumeBytesUsed** - storage consumption
 - **BufferCacheHitRatio** - if this drops below 99%, you probably need a larger instance
 
-Setting up alarms on these metrics is straightforward and something you should do before going to production. For a complete monitoring setup, consider using [OneUptime to monitor your Neptune cluster](https://oneuptime.com/blog/post/aws-cloudwatch-metrics/view) alongside CloudWatch.
+Setting up alarms on these metrics is straightforward and something you should do before going to production. For a complete monitoring setup, consider using [OneUptime to monitor your Neptune cluster](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) alongside CloudWatch.
 
 ## Common Gotchas
 

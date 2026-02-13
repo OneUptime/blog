@@ -389,7 +389,7 @@ Track these CloudWatch metrics for your Lambda-Proxy-RDS stack:
 - **RDS Proxy**: ClientConnections, DatabaseConnections, QueryRequests
 - **RDS**: DatabaseConnections, CPUUtilization, FreeableMemory
 
-Set up dashboards to see all three layers at once. [OneUptime](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) can consolidate these metrics into a single view.
+Set up dashboards to see all three layers at once. [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) can consolidate these metrics into a single view.
 
 ## Common Issues
 

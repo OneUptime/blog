@@ -362,7 +362,7 @@ After validation, update your CloudFront distribution's alternate domain names a
 
 ## Monitoring
 
-Track error rates, cache hit ratios, and latency in CloudFront's built-in metrics. For a more comprehensive monitoring setup that includes uptime checks and alerting, look into integrating with [OneUptime](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view).
+Track error rates, cache hit ratios, and latency in CloudFront's built-in metrics. For a more comprehensive monitoring setup that includes uptime checks and alerting, look into integrating with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view).
 
 ## Summary
 

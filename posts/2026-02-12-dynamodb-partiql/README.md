@@ -331,7 +331,7 @@ SELECT * FROM Users WHERE userId = 'user-001'
 
 ## Monitoring
 
-Monitor PartiQL operations the same way you'd monitor native API calls. The underlying DynamoDB metrics (consumed capacity, throttling, latency) are identical. Track these with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) for comprehensive visibility.
+Monitor PartiQL operations the same way you'd monitor native API calls. The underlying DynamoDB metrics (consumed capacity, throttling, latency) are identical. Track these with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) for comprehensive visibility.
 
 ## Wrapping Up
 

@@ -155,4 +155,4 @@ The framework doesn't tell you which tradeoff to make - it ensures you're making
 
 ## Summary
 
-The Well-Architected Framework isn't a compliance checkbox. It's a way of thinking about cloud architecture that ensures you're not neglecting critical dimensions. Start with a review of your most important workload, address the high-risk items, and make the review process ongoing. For monitoring the operational health of your AWS workloads, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+The Well-Architected Framework isn't a compliance checkbox. It's a way of thinking about cloud architecture that ensures you're not neglecting critical dimensions. Start with a review of your most important workload, address the high-risk items, and make the review process ongoing. For monitoring the operational health of your AWS workloads, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

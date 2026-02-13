@@ -372,7 +372,7 @@ def refresh_access_token(refresh_token, client_id):
     }
 ```
 
-For monitoring your OAuth 2.0 flows and catching authentication failures early, take a look at our post on [API monitoring strategies](https://oneuptime.com/blog/post/api-monitoring-best-practices/view).
+For monitoring your OAuth 2.0 flows and catching authentication failures early, take a look at our post on [API monitoring strategies](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 

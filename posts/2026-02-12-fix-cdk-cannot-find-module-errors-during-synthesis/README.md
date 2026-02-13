@@ -236,7 +236,7 @@ NODE_DEBUG=module npx cdk synth 2>&1 | head -50
 npx ts-node -e "require('aws-cdk-lib')"
 ```
 
-For monitoring your CDK deployment pipelines and catching these issues before they block releases, set up [CI/CD monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) that alerts on synthesis and deployment failures.
+For monitoring your CDK deployment pipelines and catching these issues before they block releases, set up [CI/CD monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) that alerts on synthesis and deployment failures.
 
 ## Summary
 

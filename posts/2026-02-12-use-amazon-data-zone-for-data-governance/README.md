@@ -294,6 +294,6 @@ aws datazone list-subscription-requests \
   --status PENDING
 ```
 
-DataZone integrates with CloudTrail for audit logging, so every data access request, approval, and subscription is tracked. For alerting on governance events, set up [CloudWatch monitoring](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view) to notify you when subscription requests pile up or data source runs fail.
+DataZone integrates with CloudTrail for audit logging, so every data access request, approval, and subscription is tracked. For alerting on governance events, set up [CloudWatch monitoring](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) to notify you when subscription requests pile up or data source runs fail.
 
 DataZone won't solve all your governance problems overnight, but it gives you the framework to manage data access at scale. Start with a single domain, get one team publishing and subscribing successfully, then expand from there.

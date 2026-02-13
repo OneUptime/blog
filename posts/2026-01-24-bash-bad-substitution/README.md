@@ -495,5 +495,5 @@ When writing portable scripts, stick to POSIX-compliant syntax or explicitly req
 *Monitoring your shell scripts in production? [OneUptime](https://oneuptime.com) provides real-time alerting when your automation fails.*
 
 **Related Reading:**
-- [Bash Parameter Expansion Guide](https://oneuptime.com/blog/post/bash-parameter-expansion)
-- [POSIX Shell Compatibility](https://oneuptime.com/blog/post/posix-shell-compatibility)
+- [Bash Parameter Expansion Guide](https://oneuptime.com/blog/post/2026-02-13-bash-parameter-expansion)
+- [POSIX Shell Compatibility](https://oneuptime.com/blog/post/2026-02-13-posix-shell-compatibility)

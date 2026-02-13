@@ -253,7 +253,7 @@ If your S3 objects are encrypted with SSE-KMS, the CloudFront service needs perm
 
 Add this as a key policy statement on your KMS key.
 
-For monitoring access patterns and catching 403 errors in production, set up [alerting on CloudFront error rates](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) so you know when access issues start affecting users.
+For monitoring access patterns and catching 403 errors in production, set up [alerting on CloudFront error rates](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) so you know when access issues start affecting users.
 
 ## Summary
 

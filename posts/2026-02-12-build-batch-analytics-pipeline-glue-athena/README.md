@@ -359,6 +359,6 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:pipeline-alerts"
 ```
 
-For more on setting up comprehensive monitoring, see our guide on [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view).
+For more on setting up comprehensive monitoring, see our guide on [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view).
 
 This pipeline handles the vast majority of batch analytics use cases. Raw data lands in S3, Glue transforms it into optimized Parquet with proper partitioning, and Athena queries it with SQL. The whole thing runs on a schedule with no servers to manage. Scale it up by adding more Glue workers or optimizing your Parquet file sizes - but the architecture stays the same whether you're processing megabytes or petabytes.

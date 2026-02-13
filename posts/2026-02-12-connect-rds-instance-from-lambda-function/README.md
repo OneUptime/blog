@@ -340,7 +340,7 @@ Watch these metrics to stay healthy:
 - **Lambda errors**: Watch for connection timeouts
 - **RDS Proxy connection borrow rate**: If using proxy, monitor how quickly connections are being claimed
 
-Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) to get alerts before connection exhaustion becomes a problem.
+Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to get alerts before connection exhaustion becomes a problem.
 
 ## Wrapping Up
 

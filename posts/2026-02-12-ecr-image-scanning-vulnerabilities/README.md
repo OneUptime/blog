@@ -359,7 +359,7 @@ aws ecr describe-repositories \
   --output table
 ```
 
-For comprehensive security monitoring across your container infrastructure, including vulnerability management, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For comprehensive security monitoring across your container infrastructure, including vulnerability management, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Cost Considerations
 

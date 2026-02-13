@@ -724,4 +724,4 @@ Choose the right network type based on your security requirements, performance n
 *Need to monitor your containerized applications? [OneUptime](https://oneuptime.com) provides observability for Podman containers including metrics, logs, and alerts for your containerized infrastructure.*
 
 **Related Reading:**
-- [How to Monitor Docker Containers with Prometheus](https://oneuptime.com/blog/post/2025-01-06-docker-prometheus-monitoring/view)
+- [How to Monitor Docker Containers with Prometheus](https://oneuptime.com/blog/post/2025-12-05-prometheus-kubernetes-monitoring/view)

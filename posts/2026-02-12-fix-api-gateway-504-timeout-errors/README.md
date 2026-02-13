@@ -310,7 +310,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
-Use [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) for comprehensive API monitoring that tracks response times, error rates, and timeout patterns across all your endpoints.
+Use [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) for comprehensive API monitoring that tracks response times, error rates, and timeout patterns across all your endpoints.
 
 ## Summary
 

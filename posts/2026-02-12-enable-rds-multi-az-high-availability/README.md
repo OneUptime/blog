@@ -252,7 +252,7 @@ Is it worth it? If your application generates revenue or serves users who expect
 
 ## Monitoring and Alerting
 
-Set up CloudWatch alerts for failover events. Use [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) or CloudWatch to monitor these event types:
+Set up CloudWatch alerts for failover events. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) or CloudWatch to monitor these event types:
 
 - `RDS-EVENT-0049`: Multi-AZ failover started
 - `RDS-EVENT-0050`: Multi-AZ failover completed

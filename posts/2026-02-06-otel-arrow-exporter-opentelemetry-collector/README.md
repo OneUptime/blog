@@ -561,8 +561,8 @@ Expected performance improvements with Arrow versus standard OTLP:
 
 Learn more about optimizing OpenTelemetry Collector performance:
 
-- [OpenTelemetry Collector Performance Tuning](https://oneuptime.com/blog/post/opentelemetry-collector-performance/view)
-- [Understanding OTLP Protocol](https://oneuptime.com/blog/post/opentelemetry-protocol-overview/view)
+- [OpenTelemetry Collector Performance Tuning](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view)
+- [Understanding OTLP Protocol](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view)
 
 ## Conclusion
 

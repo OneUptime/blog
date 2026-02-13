@@ -545,4 +545,4 @@ The goal is not perfect predictions - it is having enough visibility and lead ti
 
 **Related Reading:**
 - [How to Fix Capacity Planning Issues](https://oneuptime.com/blog/post/2026-01-24-capacity-planning-issues/view)
-- [How to Scale Microservices with Kubernetes HPA](https://oneuptime.com/blog/post/kubernetes-hpa-scaling/view)
+- [How to Scale Microservices with Kubernetes HPA](https://oneuptime.com/blog/post/2026-01-06-kubernetes-hpa-setup/view)

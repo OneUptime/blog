@@ -257,7 +257,7 @@ Then update your Route 53 records to point to CloudFront instead of S3 directly.
 
 ## Monitoring Your Static Site
 
-Once your site is live, you'll want to know if it goes down. Route 53 health checks can monitor the HTTP endpoint, but for comprehensive monitoring including SSL expiry alerts, response time tracking, and status page updates, a dedicated monitoring tool makes life easier. You can learn more about monitoring approaches in our post on [Route 53 health checks and monitoring](https://oneuptime.com/blog/post/aws-route-53-health-checks/view).
+Once your site is live, you'll want to know if it goes down. Route 53 health checks can monitor the HTTP endpoint, but for comprehensive monitoring including SSL expiry alerts, response time tracking, and status page updates, a dedicated monitoring tool makes life easier. You can learn more about monitoring approaches in our post on [Route 53 health checks and monitoring](https://oneuptime.com/blog/post/2026-02-12-route-53-health-checks/view).
 
 ## Summary
 

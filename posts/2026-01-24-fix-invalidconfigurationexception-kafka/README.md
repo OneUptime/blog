@@ -625,5 +625,5 @@ To avoid `InvalidConfigurationException`:
 *Need help monitoring your Kafka configuration across environments? [OneUptime](https://oneuptime.com) provides configuration tracking and alerting for Kafka clusters, helping you catch misconfigurations before they cause issues.*
 
 **Related Reading:**
-- [Kafka Security Best Practices](https://oneuptime.com/blog/post/kafka-security)
-- [Managing Kafka Configuration at Scale](https://oneuptime.com/blog/post/kafka-config-management)
+- [Kafka Security Best Practices](https://oneuptime.com/blog/post/2026-01-21-kafka-security-sasl-ssl)
+- [Managing Kafka Configuration at Scale](https://oneuptime.com/blog/post/2026-01-21-kafka-offset-management)

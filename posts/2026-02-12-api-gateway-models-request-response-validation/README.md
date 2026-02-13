@@ -363,7 +363,7 @@ curl -X POST \
   }'
 ```
 
-For monitoring validation failure rates and tracking API health metrics, check out our guide on [API monitoring best practices](https://oneuptime.com/blog/post/api-monitoring-best-practices/view).
+For monitoring validation failure rates and tracking API health metrics, check out our guide on [API monitoring best practices](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 

@@ -714,8 +714,8 @@ watch -n 1 'curl -s http://localhost:13133/health && echo " - $(date)"'
 
 Learn more about OpenTelemetry Collector operations:
 
-- [OpenTelemetry Collector Production Deployment Guide](https://oneuptime.com/blog/post/opentelemetry-collector-production/view)
-- [Monitoring OpenTelemetry Collector with Prometheus](https://oneuptime.com/blog/post/monitoring-otel-collector/view)
+- [OpenTelemetry Collector Production Deployment Guide](https://oneuptime.com/blog/post/2026-01-25-opentelemetry-collector-production-setup/view)
+- [Monitoring OpenTelemetry Collector with Prometheus](https://oneuptime.com/blog/post/2026-02-06-dev-container-otel-collector-jaeger/view)
 
 ## Conclusion
 

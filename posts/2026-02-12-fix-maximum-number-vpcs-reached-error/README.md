@@ -220,6 +220,6 @@ If it's a CloudFormation-managed VPC, delete the stack instead.
 
 ## Monitoring VPC Usage
 
-Set up monitoring so you don't get surprised by this error in the middle of a deployment. You can track your VPC count with a simple script or use a monitoring platform like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) to alert you when you're approaching limits.
+Set up monitoring so you don't get surprised by this error in the middle of a deployment. You can track your VPC count with a simple script or use a monitoring platform like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to alert you when you're approaching limits.
 
 The VPC limit error is annoying, but it's one of the easier AWS issues to resolve. Either clean up what you're not using or ask for more - both are quick fixes.

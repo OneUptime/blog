@@ -396,7 +396,7 @@ response = router.invoke("Design a complete CI/CD pipeline architecture for a mi
 
 ## Monitoring Model Usage
 
-Track your Bedrock usage across models with CloudWatch and [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) for full observability.
+Track your Bedrock usage across models with CloudWatch and [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for full observability.
 
 ```python
 import boto3

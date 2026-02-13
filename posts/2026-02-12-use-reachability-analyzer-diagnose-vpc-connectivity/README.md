@@ -209,7 +209,7 @@ Here are some practical tips from experience:
 
 ## Integrating with Monitoring
 
-Reachability Analyzer is a diagnostic tool, not a monitoring tool. It tells you the current state of network configuration, not whether traffic is actually flowing. For ongoing monitoring, you'll want to combine it with tools like VPC Flow Logs and application-level health checks. Check out [monitoring your AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) for a broader view of keeping your cloud environment healthy.
+Reachability Analyzer is a diagnostic tool, not a monitoring tool. It tells you the current state of network configuration, not whether traffic is actually flowing. For ongoing monitoring, you'll want to combine it with tools like VPC Flow Logs and application-level health checks. Check out [monitoring your AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) for a broader view of keeping your cloud environment healthy.
 
 ## Wrapping Up
 

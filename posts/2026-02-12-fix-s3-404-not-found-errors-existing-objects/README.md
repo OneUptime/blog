@@ -210,7 +210,7 @@ aws s3api get-bucket-request-payment --bucket $BUCKET
 
 1. Use consistent naming conventions for S3 keys - stick to lowercase and hyphens
 2. Always verify the key after upload with `head-object`
-3. Log all 404 errors and monitor for spikes using a tool like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view)
+3. Log all 404 errors and monitor for spikes using a tool like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view)
 4. Enable S3 access logging to track failed requests
 5. Be careful with URL encoding when building S3 URLs programmatically
 

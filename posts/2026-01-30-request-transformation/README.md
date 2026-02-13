@@ -1205,6 +1205,6 @@ Start with simple transformations and add complexity only when needed. Monitor t
 
 **Related Reading:**
 
-- [What is an API Gateway?](https://oneuptime.com/blog/post/what-is-an-api-gateway)
-- [Monitoring Microservices with OneUptime](https://oneuptime.com/blog/post/monitoring-microservices)
-- [Rate Limiting Best Practices](https://oneuptime.com/blog/post/rate-limiting-best-practices)
+- [What is an API Gateway?](https://oneuptime.com/blog/post/2025-12-24-waf-rules-api-gateway)
+- [Monitoring Microservices with OneUptime](https://oneuptime.com/blog/post/2026-02-13-monitoring-microservices)
+- [Rate Limiting Best Practices](https://oneuptime.com/blog/post/2025-01-06-fastapi-rate-limiting)

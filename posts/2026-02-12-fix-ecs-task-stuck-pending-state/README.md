@@ -221,7 +221,7 @@ Look for messages like:
 
 These messages are the single best source of debugging information for PENDING tasks.
 
-For continuous visibility into task placement issues, set up [monitoring on your ECS cluster](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to alert you when tasks stay pending for too long.
+For continuous visibility into task placement issues, set up [monitoring on your ECS cluster](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to alert you when tasks stay pending for too long.
 
 ## Summary
 

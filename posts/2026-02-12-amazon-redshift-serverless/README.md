@@ -313,7 +313,7 @@ aws redshift-serverless list-usage-limits \
   --resource-arn arn:aws:redshift-serverless:us-east-1:123456789012:workgroup/analytics-workgroup
 ```
 
-For dashboards and alerts on your Redshift Serverless performance, check out our post on [data warehouse monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-dashboards/view).
+For dashboards and alerts on your Redshift Serverless performance, check out our post on [data warehouse monitoring](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ## Wrapping Up
 

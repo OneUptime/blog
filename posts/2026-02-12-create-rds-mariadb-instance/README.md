@@ -227,7 +227,7 @@ Monitor these MariaDB-specific metrics alongside the standard RDS metrics:
 - **Innodb_buffer_pool_hit_rate**: Should be above 99%
 - **Slow_queries**: Count of queries exceeding `long_query_time`
 
-Set up comprehensive monitoring with [CloudWatch alerting](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) to catch issues early.
+Set up comprehensive monitoring with [CloudWatch alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to catch issues early.
 
 ## Cost Comparison
 

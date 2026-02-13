@@ -300,7 +300,7 @@ The recommended approach is connecting your repo to Amplify Hosting. Every push 
 
 ## Monitoring Your Full-Stack App
 
-With your entire stack on AWS, monitoring becomes important. AppSync, Lambda, DynamoDB, and Cognito all emit CloudWatch metrics. For a unified view of your application's health, check out [OneUptime's monitoring capabilities](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to aggregate metrics across services.
+With your entire stack on AWS, monitoring becomes important. AppSync, Lambda, DynamoDB, and Cognito all emit CloudWatch metrics. For a unified view of your application's health, check out [OneUptime's monitoring capabilities](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to aggregate metrics across services.
 
 ## Wrapping Up
 

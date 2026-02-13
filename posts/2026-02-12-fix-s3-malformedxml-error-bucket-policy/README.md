@@ -297,4 +297,4 @@ When you hit a MalformedPolicy or MalformedXML error:
 6. Use `file://` to load policies from a file instead of inline
 7. Condition values should be strings (`"true"` not `true`)
 
-For ongoing policy management, consider using infrastructure as code tools like Terraform or CloudFormation, which validate policies before applying them. And set up monitoring with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) to catch policy-related access issues in production.
+For ongoing policy management, consider using infrastructure as code tools like Terraform or CloudFormation, which validate policies before applying them. And set up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch policy-related access issues in production.

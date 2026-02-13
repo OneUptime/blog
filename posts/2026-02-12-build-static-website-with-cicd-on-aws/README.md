@@ -397,7 +397,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:ACCOUNT_ID:alerts
 ```
 
-For comprehensive website monitoring including uptime checks and performance tracking, check out [OneUptime](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view).
+For comprehensive website monitoring including uptime checks and performance tracking, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view).
 
 ## Summary
 

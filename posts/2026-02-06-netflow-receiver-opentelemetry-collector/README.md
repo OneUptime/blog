@@ -10,7 +10,7 @@ Description: Learn how to configure the Netflow Receiver in the OpenTelemetry Co
 
 The Netflow Receiver collects network flow data from routers, switches, and other network devices that export flow information. It supports Netflow v5, v9, IPFIX, and sFlow protocols, converting network flow records into OpenTelemetry logs and metrics for traffic analysis, security monitoring, and capacity planning.
 
-For more on network observability, see our guide on [network monitoring with OpenTelemetry](https://oneuptime.com/blog/post/network-monitoring-opentelemetry/view).
+For more on network observability, see our guide on [network monitoring with OpenTelemetry](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view).
 
 ## What is the Netflow Receiver?
 
@@ -722,4 +722,4 @@ set forwarding-options sampling instance netflow-instance family inet output flo
 
 The Netflow Receiver enables comprehensive network traffic analysis by collecting flow data from routers and switches. By processing network flows, you can identify traffic patterns, detect security threats, perform capacity planning, and troubleshoot network issues. Combined with transform processors and security filters, you can build powerful network monitoring and security solutions.
 
-For more on network monitoring, see our guides on [SNMP receiver](https://oneuptime.com/blog/post/2026-02-06-snmp-receiver-opentelemetry-collector/view) and [network metrics](https://oneuptime.com/blog/post/network-metrics-opentelemetry/view).
+For more on network monitoring, see our guides on [SNMP receiver](https://oneuptime.com/blog/post/2026-02-06-snmp-receiver-opentelemetry-collector/view) and [network metrics](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view).

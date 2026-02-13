@@ -261,7 +261,7 @@ async function getDbCredentials() {
 
 ## Monitoring
 
-RDS provides CloudWatch metrics for CPU, memory, disk I/O, and connection count. Performance Insights (which we enabled) gives you a detailed view of database load and query performance. For comprehensive monitoring that ties database health to application performance, consider using [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) alongside CloudWatch.
+RDS provides CloudWatch metrics for CPU, memory, disk I/O, and connection count. Performance Insights (which we enabled) gives you a detailed view of database load and query performance. For comprehensive monitoring that ties database health to application performance, consider using [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) alongside CloudWatch.
 
 ## Wrapping Up
 

@@ -365,7 +365,7 @@ HttpServer::new(|| {
 
 ## Monitoring
 
-For production Rust services, combine CloudWatch Logs with external monitoring. Structured JSON logging makes CloudWatch Logs Insights queries straightforward. For comprehensive uptime and performance monitoring, consider pairing with [OneUptime](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) for alerting and incident management.
+For production Rust services, combine CloudWatch Logs with external monitoring. Structured JSON logging makes CloudWatch Logs Insights queries straightforward. For comprehensive uptime and performance monitoring, consider pairing with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) for alerting and incident management.
 
 ## Wrapping Up
 

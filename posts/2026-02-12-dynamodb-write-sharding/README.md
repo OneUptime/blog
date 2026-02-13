@@ -342,7 +342,7 @@ setInterval(() => {
 }, 60000);
 ```
 
-Use [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to track throttling metrics across your DynamoDB tables. If you see throttling drop after implementing sharding, you know it's working.
+Use [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to track throttling metrics across your DynamoDB tables. If you see throttling drop after implementing sharding, you know it's working.
 
 ## Wrapping Up
 

@@ -890,5 +890,5 @@ curl 'http://localhost:9090/api/v1/query?query=up' | jq
 ## Related Posts
 
 - [How to Create Custom Kubernetes Metrics with kube-state-metrics](https://oneuptime.com/blog/post/2026-01-19-kubernetes-kube-state-metrics-custom/view) - Custom metrics collection
-- [How to Set Up Kubernetes Alerts with Alertmanager](https://oneuptime.com/blog/post/2026-01-19-kubernetes-alertmanager-notifications/view) - Alert configuration
+- [How to Set Up Kubernetes Alerts with Alertmanager](https://oneuptime.com/blog/post/2025-12-11-consul-kubernetes/view) - Alert configuration
 - [How to Monitor Kubernetes etcd Health and Performance](https://oneuptime.com/blog/post/2026-01-19-kubernetes-etcd-monitoring-health/view) - etcd monitoring

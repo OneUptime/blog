@@ -291,4 +291,4 @@ Here are some things that'll save you time:
 
 **Review the topology map weekly.** It's easy to set this up and forget about it. Make topology review part of your regular operational cadence. You'll catch drift, abandoned resources, and potential issues before they become incidents.
 
-Network Manager is free - there's no additional charge beyond your existing networking resources. For teams managing multi-region or hybrid AWS networks, it's an essential part of the monitoring stack. Pair it with [CloudWatch alarms](https://oneuptime.com/blog/post/aws-cloudwatch-monitoring/view) and you've got comprehensive network observability.
+Network Manager is free - there's no additional charge beyond your existing networking resources. For teams managing multi-region or hybrid AWS networks, it's an essential part of the monitoring stack. Pair it with [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) and you've got comprehensive network observability.

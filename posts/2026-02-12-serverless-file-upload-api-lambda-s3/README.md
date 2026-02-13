@@ -339,7 +339,7 @@ aws s3api put-bucket-lifecycle-configuration \
 
 ## Monitoring and Troubleshooting
 
-If uploads start failing, you'll want to know quickly. Make sure you have CloudWatch alarms set up for your Lambda errors and S3 request metrics. For a deeper dive into monitoring serverless workloads, check out our post on [AWS CloudWatch monitoring best practices](https://oneuptime.com/blog/post/aws-cloudwatch-monitoring/view).
+If uploads start failing, you'll want to know quickly. Make sure you have CloudWatch alarms set up for your Lambda errors and S3 request metrics. For a deeper dive into monitoring serverless workloads, check out our post on [AWS CloudWatch monitoring best practices](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 Common issues include CORS misconfiguration (the browser will block the upload silently), expired presigned URLs (increase the expiry or retry), and IAM permission errors on the Lambda execution role.
 

@@ -430,5 +430,5 @@ WASM modules are ideal for CPU-intensive tasks like image processing, cryptograp
 *Building performance-critical web applications? [OneUptime](https://oneuptime.com) provides comprehensive observability for your applications, helping you identify bottlenecks and optimize performance across your entire stack.*
 
 **Related Reading:**
-- [How to Build a TCP Echo Server in Rust](https://oneuptime.com/blog/post/2025-08-10-rust-tcp-echo-server/view)
-- [How to Extend Istio with WebAssembly Plugins](https://oneuptime.com/blog/post/2025-07-15-istio-wasm-plugins/view)
+- [How to Build a TCP Echo Server in Rust](https://oneuptime.com/blog/post/2026-01-30-rust-tcp-echo-server/view)
+- [How to Extend Istio with WebAssembly Plugins](https://oneuptime.com/blog/post/2026-01-07-istio-wasm-plugins/view)

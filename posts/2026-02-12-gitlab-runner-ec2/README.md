@@ -360,7 +360,7 @@ sudo gitlab-runner register \
 - Rotate the runner token periodically
 - Keep the runner and Docker updated for security patches
 
-For monitoring your CI/CD infrastructure health, check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For monitoring your CI/CD infrastructure health, check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 

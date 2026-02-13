@@ -318,7 +318,7 @@ There are a few things that trip people up when working with CloudFront and Terr
 
 ## Monitoring Your Distribution
 
-Once your CloudFront distribution is live, you'll want to monitor its performance and error rates. Tools like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) can help you set up comprehensive monitoring for your entire AWS infrastructure, including CloudFront distributions.
+Once your CloudFront distribution is live, you'll want to monitor its performance and error rates. Tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) can help you set up comprehensive monitoring for your entire AWS infrastructure, including CloudFront distributions.
 
 ## Wrapping Up
 

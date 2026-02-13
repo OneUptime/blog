@@ -349,7 +349,7 @@ WHERE status = 'Running'
   AND TRIM(querytxt) LIKE 'COPY%';
 ```
 
-For comprehensive monitoring of your Redshift data loading pipelines, check out our guide on [data pipeline monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-dashboards/view).
+For comprehensive monitoring of your Redshift data loading pipelines, check out our guide on [data pipeline monitoring](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ## Wrapping Up
 

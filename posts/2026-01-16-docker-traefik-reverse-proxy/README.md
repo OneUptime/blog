@@ -404,5 +404,5 @@ http:
 | Path Routing | PathPrefix rule |
 | Redirect | entrypoint redirections |
 
-Traefik simplifies reverse proxy configuration for Docker with automatic service discovery and Let's Encrypt integration. Use labels to configure routing, middleware for security features, and the dashboard for monitoring. For alternative reverse proxy setup, see our post on [Docker with Nginx Reverse Proxy](https://oneuptime.com/blog/post/2026-01-13-docker-nginx-reverse-proxy/view).
+Traefik simplifies reverse proxy configuration for Docker with automatic service discovery and Let's Encrypt integration. Use labels to configure routing, middleware for security features, and the dashboard for monitoring. For alternative reverse proxy setup, see our post on [Docker with Nginx Reverse Proxy](https://oneuptime.com/blog/post/2026-01-16-docker-nginx-reverse-proxy/view).
 

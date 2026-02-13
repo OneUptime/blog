@@ -295,7 +295,7 @@ aws cloudwatch get-metric-statistics \
   --statistics Sum
 ```
 
-For production pipelines, make sure you've got alerting configured for pipeline errors. If your ingestion pipeline goes down, data backs up fast. You can set up [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view) to catch failures early.
+For production pipelines, make sure you've got alerting configured for pipeline errors. If your ingestion pipeline goes down, data backs up fast. You can set up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) to catch failures early.
 
 ## Sending Data to Your Pipeline
 

@@ -1149,5 +1149,5 @@ Choose the versioning strategy that best fits your API consumers and maintainabi
 *Need to monitor your Django REST Framework APIs in production? [OneUptime](https://oneuptime.com) provides comprehensive API monitoring with endpoint health checks, response time tracking, and alerting for versioned APIs.*
 
 **Related Reading:**
-- [How to Implement Rate Limiting in Django](https://oneuptime.com/blog/post/django-rate-limiting/view)
+- [How to Implement Rate Limiting in Django](https://oneuptime.com/blog/post/2025-01-06-fastapi-rate-limiting/view)
 - [How to Add Background Tasks to Django](https://oneuptime.com/blog/post/2026-02-02-django-background-tasks/view)

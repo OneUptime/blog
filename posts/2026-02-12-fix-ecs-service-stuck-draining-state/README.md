@@ -220,7 +220,7 @@ aws ecs describe-container-instances \
     --query 'containerInstances[0].{Status:status,RunningTasks:runningTasksCount,PendingTasks:pendingTasksCount}'
 ```
 
-For production environments, set up [automated monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to track how long instances stay in draining state. If it consistently takes more than a few minutes, something in your architecture needs attention.
+For production environments, set up [automated monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to track how long instances stay in draining state. If it consistently takes more than a few minutes, something in your architecture needs attention.
 
 ## Summary
 

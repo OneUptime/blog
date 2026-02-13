@@ -2647,5 +2647,5 @@ Start with one service or region. Map your current coverage, identify the larges
 **Related Reading:**
 
 - [What Is FinOps and Why It Matters](https://oneuptime.com/blog/post/2026-01-30-finops-fundamentals/view)
-- [How to Right-Size Your Cloud Resources](https://oneuptime.com/blog/post/2026-01-30-rightsizing-guide/view)
+- [How to Right-Size Your Cloud Resources](https://oneuptime.com/blog/post/2026-01-08-dnssec-beginners-guide/view)
 - [Understanding Reserved Instances vs Savings Plans](https://oneuptime.com/blog/post/2026-01-30-ri-vs-sp/view)

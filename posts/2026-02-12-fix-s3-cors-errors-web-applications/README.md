@@ -305,4 +305,4 @@ Here's a comprehensive CORS config that covers most web application needs:
 }
 ```
 
-Remember to remove `http://localhost:3000` before deploying to production, or keep it in a separate CORS rule that you can manage independently. Monitoring your application for CORS-related errors with a tool like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) helps you catch these issues before your users report them.
+Remember to remove `http://localhost:3000` before deploying to production, or keep it in a separate CORS rule that you can manage independently. Monitoring your application for CORS-related errors with a tool like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) helps you catch these issues before your users report them.

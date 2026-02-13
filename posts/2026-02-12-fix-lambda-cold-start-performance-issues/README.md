@@ -250,6 +250,6 @@ VPC-attached Lambda functions used to have significantly longer cold starts (10+
 
 ## Monitoring Cold Starts
 
-Track your cold start frequency and duration over time with monitoring tools. [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) can help you set up alerts for cold start spikes and track the impact on your API latency.
+Track your cold start frequency and duration over time with monitoring tools. [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help you set up alerts for cold start spikes and track the impact on your API latency.
 
 The key is to measure first, then optimize. Not every function needs sub-100ms cold starts. Focus your optimization effort where it actually matters to your users.

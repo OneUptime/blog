@@ -290,6 +290,6 @@ QuickSight's pricing is per-user, which is great for organizations with many occ
 - **Use Reader sessions wisely.** Readers are charged per session (30-minute blocks), not monthly. If someone only checks a dashboard once a week, that's much cheaper than a full BI license.
 - **Import into SPICE when possible.** Direct query mode hits your source databases and can be slower. SPICE is faster and reduces load on production systems.
 - **Use calculated fields in SPICE.** Pre-compute aggregations during import rather than at query time.
-- **Monitor SPICE refresh failures.** A failed refresh means stale data. Set up monitoring to catch failures quickly - tools like [OneUptime](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view) can alert you when refresh jobs fail.
+- **Monitor SPICE refresh failures.** A failed refresh means stale data. Set up monitoring to catch failures quickly - tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) can alert you when refresh jobs fail.
 
 QuickSight isn't the flashiest BI tool, but it's deeply integrated with AWS and the pricing model works well for organizations where most users just need to view dashboards occasionally. Start with a single dashboard, prove the value, and expand from there.

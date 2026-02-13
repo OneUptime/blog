@@ -269,7 +269,7 @@ For Express workflows, your primary monitoring tools are CloudWatch Logs Insight
 
 Set up alarms before you need them, not after your first incident. Start with these three: execution failure rate above your baseline, execution duration above your expected P95, and any executions that timeout. Review your dashboards weekly to understand normal patterns so you can spot anomalies. Use execution names that include business identifiers (like order IDs) so you can search for specific executions easily.
 
-For a broader monitoring strategy, check out our post on [setting up effective monitoring](https://oneuptime.com/blog/post/effective-monitoring-strategy/view).
+For a broader monitoring strategy, check out our post on [setting up effective monitoring](https://oneuptime.com/blog/post/2026-01-24-apm-monitoring/view).
 
 ## Wrapping Up
 

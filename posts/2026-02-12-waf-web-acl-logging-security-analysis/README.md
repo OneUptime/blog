@@ -279,7 +279,7 @@ aws wafv2 put-logging-configuration \
 
 WAF logs become even more valuable when you combine them with other security data. Consider feeding them into Amazon Security Lake or a SIEM like Splunk or Elastic. You can correlate WAF blocks with VPC Flow Logs, CloudTrail events, and GuardDuty findings to get a complete picture of an attack.
 
-If you're building a monitoring pipeline, check out our guide on [AWS CloudWatch monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-infrastructure-monitoring/view) for more on centralized observability.
+If you're building a monitoring pipeline, check out our guide on [AWS CloudWatch monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) for more on centralized observability.
 
 ## Wrapping Up
 

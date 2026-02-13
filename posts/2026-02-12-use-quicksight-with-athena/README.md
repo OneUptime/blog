@@ -308,6 +308,6 @@ aws athena get-query-execution \
   --query 'QueryExecution.Statistics.DataScannedInBytes'
 ```
 
-For ongoing cost monitoring, set up a [CloudWatch alarm](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view) on the `DataScannedInBytes` metric for your Athena workgroup. This catches unexpected cost spikes from poorly written queries or data growth.
+For ongoing cost monitoring, set up a [CloudWatch alarm](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) on the `DataScannedInBytes` metric for your Athena workgroup. This catches unexpected cost spikes from poorly written queries or data growth.
 
 The Athena-QuickSight combination gives you a serverless analytics stack that scales from gigabytes to petabytes. The key is designing your queries carefully, using partitions and columnar formats, and letting SPICE handle the caching so you're not scanning the same data over and over.

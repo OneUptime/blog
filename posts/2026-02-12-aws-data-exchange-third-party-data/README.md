@@ -227,7 +227,7 @@ LIMIT 100;
 
 You should keep an eye on your Data Exchange usage, especially for paid subscriptions. CloudWatch metrics can help here. You can track export job failures, data freshness, and costs.
 
-For monitoring your AWS infrastructure more broadly, tools like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can give you a unified view of your services' health.
+For monitoring your AWS infrastructure more broadly, tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can give you a unified view of your services' health.
 
 ## Cost Considerations
 

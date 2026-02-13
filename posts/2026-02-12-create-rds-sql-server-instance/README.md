@@ -216,7 +216,7 @@ SQL Server on RDS has some performance characteristics to be aware of:
 
 ## Monitoring
 
-Set up alerts for these key metrics. For a comprehensive monitoring approach, you might want to check out [AWS CloudWatch alerting](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view).
+Set up alerts for these key metrics. For a comprehensive monitoring approach, you might want to check out [AWS CloudWatch alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view).
 
 Key metrics to watch:
 

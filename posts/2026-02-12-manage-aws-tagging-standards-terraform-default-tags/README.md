@@ -348,4 +348,4 @@ Activated cost allocation tags appear in AWS Cost Explorer and billing reports, 
 
 Terraform's `default_tags` is the simplest and most effective way to enforce tagging standards. Set it once at the provider level, and every resource gets tagged automatically. Layer on variable validation for format enforcement, AWS tag policies for organizational governance, and AWS Config rules for compliance monitoring. The result is a tagging strategy that works without relying on developers remembering to add tags to every resource.
 
-For monitoring your AWS costs and resource utilization, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For monitoring your AWS costs and resource utilization, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

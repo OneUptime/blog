@@ -220,4 +220,4 @@ aws s3api create-bucket --bucket my-bucket
 5. **Avoid periods in names** - They cause SSL certificate issues with HTTPS access
 6. **Make your code idempotent** - Always check before creating
 
-Following a consistent naming convention from the start saves you from bucket naming headaches down the road. And if you're managing many buckets across environments, proper monitoring with tools like [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) helps you keep track of your S3 resources and catch configuration issues early.
+Following a consistent naming convention from the start saves you from bucket naming headaches down the road. And if you're managing many buckets across environments, proper monitoring with tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) helps you keep track of your S3 resources and catch configuration issues early.

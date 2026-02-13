@@ -188,5 +188,5 @@ echo "get mykey" | nc localhost 11211
 | -I | 1m | Max item size |
 | -p | 11211 | TCP port |
 
-Memcached provides simple, high-performance caching. Use appropriate memory limits and multiple instances for high availability. For persistent caching needs, consider Redis instead as described in our post on [Running Redis in Docker](https://oneuptime.com/blog/post/2026-01-14-docker-redis-setup/view).
+Memcached provides simple, high-performance caching. Use appropriate memory limits and multiple instances for high availability. For persistent caching needs, consider Redis instead as described in our post on [Running Redis in Docker](https://oneuptime.com/blog/post/2026-01-15-setup-private-docker-registry-ubuntu/view).
 

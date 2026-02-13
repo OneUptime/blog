@@ -247,7 +247,7 @@ If your service keeps launching and crashing in a loop, it can cause cascading p
 }
 ```
 
-This automatically rolls back to the previous working version if the new tasks keep failing. And set up [monitoring on your ECS services](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to get alerted when tasks are failing rather than discovering it from user reports.
+This automatically rolls back to the previous working version if the new tasks keep failing. And set up [monitoring on your ECS services](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to get alerted when tasks are failing rather than discovering it from user reports.
 
 ## Summary
 

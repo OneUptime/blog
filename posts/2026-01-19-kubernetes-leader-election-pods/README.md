@@ -664,4 +664,4 @@ spec:
 
 - [How to Run Kubernetes DaemonSets for Node-Level Services](https://oneuptime.com/blog/post/2026-01-19-kubernetes-daemonsets-node-services/view) - Node-level services
 - [How to Set Up Pod Disruption Budgets for High Availability](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-disruption-budgets-ha/view) - Maintaining availability
-- [How to Handle Kubernetes Pod Lifecycle Hooks](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-lifecycle-hooks/view) - Graceful transitions
+- [How to Handle Kubernetes Pod Lifecycle Hooks](https://oneuptime.com/blog/post/2026-01-25-pod-lifecycle-hooks-prestop-poststart/view) - Graceful transitions

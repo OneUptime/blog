@@ -264,7 +264,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
-For more comprehensive monitoring across your Lambda functions and other AWS services, consider using [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) which can correlate Lambda timeouts with downstream service health.
+For more comprehensive monitoring across your Lambda functions and other AWS services, consider using [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) which can correlate Lambda timeouts with downstream service health.
 
 ## Summary
 

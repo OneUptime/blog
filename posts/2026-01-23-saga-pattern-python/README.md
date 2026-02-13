@@ -767,5 +767,5 @@ Start with orchestration for complex workflows where you need visibility. Use ch
 *Need to monitor your distributed transactions? [OneUptime](https://oneuptime.com) provides distributed tracing to track saga execution across services.*
 
 **Related Reading:**
-- [How to Implement Circuit Breakers in Python](https://oneuptime.com/blog/post/2025-01-06-python-circuit-breakers/view)
-- [How to Build a Message Queue Consumer in Python](https://oneuptime.com/blog/post/2025-01-06-python-message-queue-consumer/view)
+- [How to Implement Circuit Breakers in Python](https://oneuptime.com/blog/post/2026-01-23-python-circuit-breakers/view)
+- [How to Build a Message Queue Consumer in Python](https://oneuptime.com/blog/post/2026-02-06-debug-message-queue-consumer-lag-bottlenecks/view)

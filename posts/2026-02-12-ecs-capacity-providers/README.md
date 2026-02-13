@@ -196,7 +196,7 @@ You'll want to keep an eye on how your capacity providers are performing. CloudW
 - `CapacityProviderReservation` - Shows how much of your capacity is being used. If this is consistently high, you might need to increase your ASG max size.
 - `BacklogPerCapacityProvider` - Tasks waiting to be placed. If you see a backlog, scaling isn't keeping up.
 
-For monitoring ECS clusters and the services running on them, it's worth setting up proper observability. Check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) for tips on building dashboards and alerts.
+For monitoring ECS clusters and the services running on them, it's worth setting up proper observability. Check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) for tips on building dashboards and alerts.
 
 ## Common Pitfalls
 

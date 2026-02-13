@@ -299,7 +299,7 @@ rcf.fit({
 })
 ```
 
-This is really useful for monitoring applications. If your system generates metrics, you can train RCF on historical data and use it to detect anomalies in real-time. Pair it with [OneUptime's monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) for a robust anomaly detection pipeline.
+This is really useful for monitoring applications. If your system generates metrics, you can train RCF on historical data and use it to detect anomalies in real-time. Pair it with [OneUptime's monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for a robust anomaly detection pipeline.
 
 ## Choosing the Right Algorithm
 

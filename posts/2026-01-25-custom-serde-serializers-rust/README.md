@@ -541,5 +541,5 @@ With these techniques, you can make Rust types serialize to any format your syst
 ---
 
 **Related Reading:**
-- [Rust Performance Tips for Production Systems](https://oneuptime.com/blog/post/rust-performance-production)
-- [Building Reliable APIs with Rust](https://oneuptime.com/blog/post/rust-reliable-apis)
+- [Rust Performance Tips for Production Systems](https://oneuptime.com/blog/post/2026-01-25-high-performance-web-crawler-async-rust)
+- [Building Reliable APIs with Rust](https://oneuptime.com/blog/post/2026-01-25-multi-tenant-apis-tenant-isolation-rust)

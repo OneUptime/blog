@@ -337,7 +337,7 @@ for step in steps:
     print()
 ```
 
-For production pipelines, set up monitoring through [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) to get alerted when pipeline executions fail or take longer than expected.
+For production pipelines, set up monitoring through [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to get alerted when pipeline executions fail or take longer than expected.
 
 ## Triggering Pipelines Automatically
 

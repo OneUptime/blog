@@ -246,7 +246,7 @@ cat ~/.docker/config.json | python3 -m json.tool
 
 If you see `"credsStore": "osxkeychain"`, ECR credentials might be stored and retrieved differently. Switch to using `credHelpers` for ECR specifically rather than the global credential store.
 
-For monitoring your CI/CD pipelines and catching push failures early, check out [setting up alerts](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to notify your team when builds or deployments fail.
+For monitoring your CI/CD pipelines and catching push failures early, check out [setting up alerts](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to notify your team when builds or deployments fail.
 
 ## Summary
 

@@ -305,7 +305,7 @@ output "accelerator_dns" {
 
 ## Monitoring
 
-Monitor the accelerator's health and traffic distribution to make sure things are working as expected. For a comprehensive approach to multi-region monitoring, check out our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+Monitor the accelerator's health and traffic distribution to make sure things are working as expected. For a comprehensive approach to multi-region monitoring, check out our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Summary
 

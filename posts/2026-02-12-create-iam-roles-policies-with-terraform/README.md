@@ -278,7 +278,7 @@ It's tempting to slap `"Action": "*"` on a policy and call it a day. Don't. Ever
 4. **Use separate roles.** Don't share roles between services with different needs.
 5. **Review regularly.** Use IAM Access Analyzer to find unused permissions.
 
-If you're managing IAM at scale, you should also have monitoring in place to catch unexpected permission changes. Take a look at [monitoring your AWS infrastructure](https://oneuptime.com/blog/post/aws-cloudwatch-setup-guide/view) for ideas on alerting.
+If you're managing IAM at scale, you should also have monitoring in place to catch unexpected permission changes. Take a look at [monitoring your AWS infrastructure](https://oneuptime.com/blog/post/2026-01-21-loki-vs-cloudwatch/view) for ideas on alerting.
 
 ## Common Mistakes
 

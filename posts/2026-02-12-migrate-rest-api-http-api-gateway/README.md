@@ -392,7 +392,7 @@ Resources:
       Target: !Sub "integrations/${LambdaIntegration}"
 ```
 
-For monitoring during your migration and comparing performance between REST and HTTP API, see our post on [API monitoring best practices](https://oneuptime.com/blog/post/api-monitoring-best-practices/view).
+For monitoring during your migration and comparing performance between REST and HTTP API, see our post on [API monitoring best practices](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 

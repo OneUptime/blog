@@ -375,6 +375,6 @@ aws cloudwatch get-metric-statistics \
   --statistics Maximum
 ```
 
-Iterator age is the most important metric. It tells you how far behind your Lambda consumer is from the latest data. If it's growing, your processing can't keep up with the incoming event rate. For comprehensive pipeline monitoring, check out our guide on [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view).
+Iterator age is the most important metric. It tells you how far behind your Lambda consumer is from the latest data. If it's growing, your processing can't keep up with the incoming event rate. For comprehensive pipeline monitoring, check out our guide on [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view).
 
 This architecture handles thousands of events per second at low latency, scales automatically, and costs nothing during quiet periods. It's the go-to pattern for real-time analytics on AWS.

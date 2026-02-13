@@ -249,7 +249,7 @@ This shifts traffic gradually to the new version and rolls back automatically if
 
 ## Monitoring Your Pipeline
 
-A pipeline you can't observe is a pipeline you can't trust. Set up notifications for pipeline failures. CloudWatch Events can trigger SNS notifications when a pipeline stage fails. For more comprehensive monitoring of your deployed applications, check out how to [monitor AWS Lambda functions](https://oneuptime.com/blog/post/monitor-aws-lambda-functions/view) effectively.
+A pipeline you can't observe is a pipeline you can't trust. Set up notifications for pipeline failures. CloudWatch Events can trigger SNS notifications when a pipeline stage fails. For more comprehensive monitoring of your deployed applications, check out how to [monitor AWS Lambda functions](https://oneuptime.com/blog/post/2026-02-02-aws-lambda-functions/view) effectively.
 
 ## Wrapping Up
 

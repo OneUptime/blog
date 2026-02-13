@@ -366,7 +366,7 @@ Consider moving to ECS or EKS when:
 - You want automatic container health management and replacement
 - Multiple teams need to deploy independently to the same cluster
 
-For monitoring your Docker containers on EC2, set up health checks and log aggregation early. Our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) covers the fundamentals of getting visibility into your containerized workloads.
+For monitoring your Docker containers on EC2, set up health checks and log aggregation early. Our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) covers the fundamentals of getting visibility into your containerized workloads.
 
 ## Wrapping Up
 

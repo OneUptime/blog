@@ -1358,6 +1358,6 @@ flowchart TB
 *Building event-sourced systems requires robust monitoring to track event throughput, projection lag, and system health. [OneUptime](https://oneuptime.com) provides comprehensive observability for Scala applications, including distributed tracing with Akka integration, real-time metrics dashboards, and intelligent alerting to ensure your event-sourced architecture runs smoothly in production.*
 
 **Related Reading:**
-- [How to Build Applications with ZIO](https://oneuptime.com/blog/post/how-to-build-applications-with-zio/view)
-- [How to Use Kafka with Scala](https://oneuptime.com/blog/post/how-to-use-kafka-with-scala/view)
-- [How to Handle JSON with Circe](https://oneuptime.com/blog/post/how-to-handle-json-with-circe/view)
+- [How to Build Applications with ZIO](https://oneuptime.com/blog/post/2026-02-02-scala-zio-applications/view)
+- [How to Use Kafka with Scala](https://oneuptime.com/blog/post/2026-02-13-how-to-use-kafka-with-scala/view)
+- [How to Handle JSON with Circe](https://oneuptime.com/blog/post/2026-02-02-scala-circe-json/view)

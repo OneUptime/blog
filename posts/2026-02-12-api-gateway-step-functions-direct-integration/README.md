@@ -349,7 +349,7 @@ GetStatusMethod:
 
 The client calls the start endpoint, gets back a status URL, and polls it until the execution completes.
 
-For monitoring your Step Functions executions triggered through API Gateway, check out our guide on [workflow monitoring](https://oneuptime.com/blog/post/aws-step-functions-monitoring/view).
+For monitoring your Step Functions executions triggered through API Gateway, check out our guide on [workflow monitoring](https://oneuptime.com/blog/post/2025-12-18-fix-json-parsing-errors-aws-step-functions/view).
 
 ## Wrapping Up
 

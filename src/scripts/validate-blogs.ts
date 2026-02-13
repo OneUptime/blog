@@ -16,9 +16,10 @@
  * 10. Checks for duplicate posts
  * 11. Validates tags are not empty and have no duplicates
  * 12. Validates minimum description length
- * 13. AUTO-FIX: Automatically adds missing entries to Blogs.json from README.md
- * 14. AUTO-FIX: Automatically generates missing social-media.png images
- * 15. AUTO-FIX: Fixes header spacing (ensures blank lines between metadata lines)
+ * 13. Checks for broken internal cross-reference links between blog posts
+ * 14. AUTO-FIX: Automatically adds missing entries to Blogs.json from README.md
+ * 15. AUTO-FIX: Automatically generates missing social-media.png images
+ * 16. AUTO-FIX: Fixes header spacing (ensures blank lines between metadata lines)
  *
  * Run with: npm run validate
  */
@@ -831,6 +832,139 @@ function displaySummary(
 }
 
 /**
+ * Check for broken internal cross-reference links in all blog posts.
+ * Scans README.md files for links matching oneuptime.com/blog/post/<slug>
+ * and verifies each slug corresponds to an existing post directory.
+ */
+function checkBrokenLinks(postsDir: string[]): void {
+  logHeader('Checking for broken internal cross-reference links');
+
+  // Build a set of all existing post directory names for fast lookup
+  const existingPosts = new Set(postsDir);
+
+  // Also build a set of slugs without the date prefix so we can detect
+  // links that are missing the date prefix
+  const slugWithoutDateMap = new Map<string, string>();
+  for (const dir of postsDir) {
+    const match = dir.match(/^\d{4}-\d{2}-\d{2}-(.+)$/);
+    if (match) {
+      slugWithoutDateMap.set(match[1], dir);
+    }
+  }
+
+  // Regex to match internal blog links in various formats:
+  //   oneuptime.com/blog/post/<slug>/view
+  //   oneuptime.com/blog/post/<slug>)
+  //   oneuptime.com/blog/post/<slug>
+  const linkRegex = /oneuptime\.com\/blog\/post\/([a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])(?:\/view)?/g;
+
+  interface BrokenLink {
+    sourcePost: string;
+    line: number;
+    slug: string;
+    suggestion: string | null;
+  }
+
+  const brokenLinks: BrokenLink[] = [];
+  const brokenSlugs = new Set<string>();
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) {
+      continue;
+    }
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      let match: RegExpExecArray | null;
+      // Reset regex state for each line
+      linkRegex.lastIndex = 0;
+
+      while ((match = linkRegex.exec(lines[i])) !== null) {
+        const slug = match[1];
+
+        // Check if the slug directly matches an existing post directory
+        if (existingPosts.has(slug)) {
+          continue;
+        }
+
+        // Check if the slug is missing the date prefix
+        const suggestedDir = slugWithoutDateMap.get(slug) || null;
+
+        brokenLinks.push({
+          sourcePost: dir,
+          line: i + 1,
+          slug,
+          suggestion: suggestedDir,
+        });
+        brokenSlugs.add(slug);
+      }
+    }
+  }
+
+  if (brokenLinks.length > 0) {
+    hasErrors = true;
+
+    // Group by slug for a cleaner output
+    const bySlug = new Map<string, BrokenLink[]>();
+    for (const link of brokenLinks) {
+      const existing = bySlug.get(link.slug) || [];
+      existing.push(link);
+      bySlug.set(link.slug, existing);
+    }
+
+    // Separate into missing-date-prefix vs truly missing
+    const missingDatePrefix: Array<[string, BrokenLink[]]> = [];
+    const trulyMissing: Array<[string, BrokenLink[]]> = [];
+
+    for (const [slug, links] of bySlug) {
+      if (links[0].suggestion) {
+        missingDatePrefix.push([slug, links]);
+      } else {
+        trulyMissing.push([slug, links]);
+      }
+    }
+
+    logError(
+      `Found ${brokenLinks.length} broken internal link${brokenLinks.length === 1 ? '' : 's'} across ${brokenSlugs.size} unique slug${brokenSlugs.size === 1 ? '' : 's'}\n`
+    );
+
+    if (missingDatePrefix.length > 0) {
+      console.log(`  ${colors.bold}Links missing date prefix (${missingDatePrefix.length} slugs):${colors.reset}`);
+      for (const [slug, links] of missingDatePrefix) {
+        console.log(`    ${colors.red}${slug}${colors.reset} -> should be ${colors.green}${links[0].suggestion}${colors.reset} (${links.length} reference${links.length === 1 ? '' : 's'})`);
+      }
+      console.log('');
+    }
+
+    if (trulyMissing.length > 0) {
+      console.log(`  ${colors.bold}Links to non-existent posts (${trulyMissing.length} slugs):${colors.reset}`);
+      for (const [slug, links] of trulyMissing) {
+        console.log(`    ${colors.red}${slug}${colors.reset} (${links.length} reference${links.length === 1 ? '' : 's'})`);
+        // Show up to 3 source files
+        const shown = links.slice(0, 3);
+        for (const link of shown) {
+          console.log(`      - ${link.sourcePost}:${link.line}`);
+        }
+        if (links.length > 3) {
+          console.log(`      ... and ${links.length - 3} more`);
+        }
+      }
+      console.log('');
+    }
+
+    console.log(`${colors.bold}How to fix:${colors.reset}
+  - For links missing date prefix: update the link to include the full directory name (e.g. 2025-01-01-slug)
+  - For non-existent posts: either create the missing blog post, or update the link to point to an existing post
+`);
+  } else {
+    logSuccess('All internal cross-reference links are valid');
+  }
+}
+
+/**
  * Fix header spacing in a single README.md file
  * Ensures blank lines exist between title, Author:, Tags:, Description:, and ---
  * Only touches the 4 known metadata lines and the --- separator, nothing else.
@@ -983,6 +1117,9 @@ function main(): void {
   // Check for Blogs.json entries missing directories
   const missingDirs = checkMissingDirs(postsDir, sortedBlogs.map((b) => b.post));
   
+  // Check for broken internal cross-reference links
+  checkBrokenLinks(postsDir);
+
   // Fix header spacing in README.md files
   fixAllHeaderSpacing(postsDir);
 

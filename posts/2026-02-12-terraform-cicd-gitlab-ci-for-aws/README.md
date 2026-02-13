@@ -378,7 +378,7 @@ validate:deployment:
     - if: $CI_COMMIT_BRANCH == "main"
 ```
 
-For comprehensive post-deployment monitoring, pair this with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) to get alerts when deployments affect service health.
+For comprehensive post-deployment monitoring, pair this with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to get alerts when deployments affect service health.
 
 ## Wrapping Up
 

@@ -299,7 +299,7 @@ aws controltower list-landing-zone-operations \
   --output table
 ```
 
-For centralized monitoring across all your AWS accounts and services, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can aggregate metrics, logs, and alerts from your entire multi-account environment.
+For centralized monitoring across all your AWS accounts and services, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can aggregate metrics, logs, and alerts from your entire multi-account environment.
 
 ## Common Mistakes to Avoid
 

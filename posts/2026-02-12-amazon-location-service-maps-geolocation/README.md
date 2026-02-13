@@ -304,7 +304,7 @@ A few tips to keep costs down:
 
 ## Monitoring
 
-Keep an eye on your API usage through CloudWatch metrics. Amazon Location Service publishes metrics like `CallCount` and `ErrorCount` for each resource type. For broader infrastructure monitoring, check out how [OneUptime can help track your AWS services](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view).
+Keep an eye on your API usage through CloudWatch metrics. Amazon Location Service publishes metrics like `CallCount` and `ErrorCount` for each resource type. For broader infrastructure monitoring, check out how [OneUptime can help track your AWS services](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ## Final Thoughts
 

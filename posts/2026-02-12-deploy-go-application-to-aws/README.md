@@ -387,7 +387,7 @@ func Info(msg string, requestID string) {
 
 ## Monitoring
 
-Go's built-in `expvar` package and libraries like Prometheus client work well for metrics collection on AWS. For end-to-end monitoring that covers uptime, response times, and alerting, see our guide on [AWS monitoring tools](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view).
+Go's built-in `expvar` package and libraries like Prometheus client work well for metrics collection on AWS. For end-to-end monitoring that covers uptime, response times, and alerting, see our guide on [AWS monitoring tools](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view).
 
 ## Summary
 

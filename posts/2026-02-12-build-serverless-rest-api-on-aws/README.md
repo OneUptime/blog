@@ -400,7 +400,7 @@ provider:
 
 ## Monitoring
 
-Lambda provides built-in metrics for invocations, errors, and duration. Set up CloudWatch alarms for error rates above your threshold. For comprehensive API monitoring including latency tracking and uptime checks, check out [OneUptime's monitoring capabilities](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view).
+Lambda provides built-in metrics for invocations, errors, and duration. Set up CloudWatch alarms for error rates above your threshold. For comprehensive API monitoring including latency tracking and uptime checks, check out [OneUptime's monitoring capabilities](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view).
 
 ## Summary
 

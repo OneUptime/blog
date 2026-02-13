@@ -238,7 +238,7 @@ SELECT tablespace_name,
 FROM dba_tablespace_usage_metrics;
 ```
 
-For external monitoring, consider setting up [infrastructure monitoring with OneUptime](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) to keep an eye on both CloudWatch metrics and application-level health checks.
+For external monitoring, consider setting up [infrastructure monitoring with OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to keep an eye on both CloudWatch metrics and application-level health checks.
 
 ## Cost Considerations
 

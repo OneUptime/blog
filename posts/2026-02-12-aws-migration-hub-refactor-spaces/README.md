@@ -334,7 +334,7 @@ aws cloudwatch get-metric-statistics \
   --statistics "Sum"
 ```
 
-For comprehensive monitoring during your migration, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can give you a unified dashboard across legacy and new services.
+For comprehensive monitoring during your migration, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can give you a unified dashboard across legacy and new services.
 
 ## Cleaning Up After Migration
 

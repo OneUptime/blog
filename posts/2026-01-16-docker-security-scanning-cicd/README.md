@@ -599,5 +599,5 @@ jobs:
 | Clair | Registry integration | No | No |
 | Anchore | Policy enforcement | Yes | Yes |
 
-Implement security scanning early in your CI/CD pipeline to catch vulnerabilities before they reach production. Use multiple tools for comprehensive coverage, configure appropriate severity thresholds, and set up notifications for critical findings. For more on vulnerability scanning, see our detailed post on [Scanning Docker Images with Trivy](https://oneuptime.com/blog/post/2026-01-15-docker-trivy-vulnerability-scan/view).
+Implement security scanning early in your CI/CD pipeline to catch vulnerabilities before they reach production. Use multiple tools for comprehensive coverage, configure appropriate severity thresholds, and set up notifications for critical findings. For more on vulnerability scanning, see our detailed post on [Scanning Docker Images with Trivy](https://oneuptime.com/blog/post/2026-01-16-docker-scan-images-trivy/view).
 

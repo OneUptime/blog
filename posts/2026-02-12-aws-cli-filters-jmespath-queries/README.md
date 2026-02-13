@@ -270,7 +270,7 @@ aws ec2 describe-instances --query "..." --output text
 aws ec2 describe-instances --query "..." --output yaml
 ```
 
-For comprehensive monitoring of the resources you're querying, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) provides dashboards that go beyond CLI queries.
+For comprehensive monitoring of the resources you're querying, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) provides dashboards that go beyond CLI queries.
 
 ## Wrapping Up
 

@@ -229,6 +229,6 @@ For this to work, your CORS config needs to allow PUT from your app's origin and
 
 CORS errors with S3 are almost always a configuration issue. The fix is usually straightforward - you just need to tell S3 which origins, methods, and headers to allow. Start with the specific configuration you need, test it with curl, and then verify in the browser.
 
-If you're setting up monitoring for your S3-backed application, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view) to catch issues before your users do.
+If you're setting up monitoring for your S3-backed application, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view) to catch issues before your users do.
 
 Remember to keep your CORS configuration as restrictive as possible. Allow only the origins and methods you actually need, and review the configuration periodically as your application evolves.

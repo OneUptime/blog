@@ -217,7 +217,7 @@ Use stack policies to prevent accidental modifications to critical resources:
 }
 ```
 
-Set up [monitoring for your CloudFormation stack statuses](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) so you catch `UPDATE_ROLLBACK_FAILED` states immediately rather than discovering them during the next deployment.
+Set up [monitoring for your CloudFormation stack statuses](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) so you catch `UPDATE_ROLLBACK_FAILED` states immediately rather than discovering them during the next deployment.
 
 ## Summary
 

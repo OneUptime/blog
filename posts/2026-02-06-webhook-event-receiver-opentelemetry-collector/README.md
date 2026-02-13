@@ -10,7 +10,7 @@ Description: Learn how to configure the Webhook Event Receiver in the OpenTeleme
 
 The Webhook Event Receiver enables the OpenTelemetry Collector to receive events from external systems via HTTP POST requests. This receiver is ideal for ingesting events from CI/CD systems, monitoring tools, alerting platforms, and any system that can send HTTP webhooks.
 
-For more on OpenTelemetry event handling, see our guide on [logs and events](https://oneuptime.com/blog/post/opentelemetry-logs-events/view).
+For more on OpenTelemetry event handling, see our guide on [logs and events](https://oneuptime.com/blog/post/2026-02-06-collect-kubernetes-events-opentelemetry-logs/view).
 
 ## What is the Webhook Event Receiver?
 

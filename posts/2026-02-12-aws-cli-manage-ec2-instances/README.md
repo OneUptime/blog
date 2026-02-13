@@ -314,7 +314,7 @@ aws ssm start-session --target i-0abc123
 
 Session Manager is the recommended approach since it doesn't require opening port 22 or managing SSH keys.
 
-For monitoring the instances you manage through the CLI, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) to set up proper alerting and dashboards.
+For monitoring the instances you manage through the CLI, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to set up proper alerting and dashboards.
 
 ## Wrapping Up
 

@@ -1489,4 +1489,4 @@ With these patterns, you can build secure, high-performance reactive application
 *Want to monitor your WebFlux application in production? [OneUptime](https://oneuptime.com) provides comprehensive observability for reactive applications, including request tracing, error tracking, and performance monitoring.*
 
 **Related Reading:**
-- [How to Build Non-Blocking APIs with Spring WebFlux](https://oneuptime.com/blog/post/spring-webflux-non-blocking-apis/view)
+- [How to Build Non-Blocking APIs with Spring WebFlux](https://oneuptime.com/blog/post/2026-01-25-non-blocking-apis-spring-webflux/view)

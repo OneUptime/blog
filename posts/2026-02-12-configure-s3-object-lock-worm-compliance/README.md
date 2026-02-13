@@ -265,7 +265,7 @@ cloudtrail.put_event_selectors(
 )
 ```
 
-For comprehensive monitoring of your compliance infrastructure, consider integrating with [OneUptime's monitoring platform](https://oneuptime.com/blog/post/aws-cloudwatch-monitoring/view) to get alerts when something goes wrong.
+For comprehensive monitoring of your compliance infrastructure, consider integrating with [OneUptime's monitoring platform](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to get alerts when something goes wrong.
 
 ## Wrapping Up
 

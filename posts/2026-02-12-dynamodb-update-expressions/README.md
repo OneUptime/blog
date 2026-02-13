@@ -413,7 +413,7 @@ await updateItem('Users', { userId: 'u1' }, {
 
 ## Monitoring Update Performance
 
-Track your update operations for latency and throttling. Frequent `ConditionalCheckFailedExceptions` combined with updates on the same keys can indicate contention. Monitor with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to catch these patterns early.
+Track your update operations for latency and throttling. Frequent `ConditionalCheckFailedExceptions` combined with updates on the same keys can indicate contention. Monitor with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch these patterns early.
 
 ## Wrapping Up
 

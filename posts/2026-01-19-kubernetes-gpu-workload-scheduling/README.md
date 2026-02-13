@@ -673,4 +673,4 @@ tolerations:
 
 - [How to Set Up Kubernetes Topology Spread Constraints](https://oneuptime.com/blog/post/2026-01-19-kubernetes-topology-spread-constraints/view) - Pod distribution
 - [How to Set Up Prometheus and Grafana on Kubernetes](https://oneuptime.com/blog/post/2026-01-19-kubernetes-prometheus-grafana-setup/view) - Monitoring setup
-- [How to Configure Kubernetes Resource Requests and Limits](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-requests-limits/view) - Resource management
+- [How to Configure Kubernetes Resource Requests and Limits](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-requests-limits-rightsizing/view) - Resource management

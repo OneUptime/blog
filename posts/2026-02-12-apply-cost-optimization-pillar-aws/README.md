@@ -385,4 +385,4 @@ Data transfer is the hidden cost killer on AWS. A few strategies to reduce it:
 
 Cost optimization is an ongoing process, not a one-time exercise. The three biggest levers are: right-sizing (stop paying for capacity you don't use), pricing models (Savings Plans and Spot for predictable and interruptible workloads), and waste elimination (schedule non-production, clean up unused resources, use serverless). Set up budgets and anomaly detection so cost surprises are caught early, and make cost visibility available to the teams that control spending.
 
-For monitoring your infrastructure alongside costs, check out our post on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For monitoring your infrastructure alongside costs, check out our post on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

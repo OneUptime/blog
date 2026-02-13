@@ -332,7 +332,7 @@ After importing, run `terraform plan` to see what differences exist between your
 
 When working with S3 in Terraform, keep these things in mind. Always use remote state storage (ironically, often in S3 itself). Enable state locking with DynamoDB to prevent concurrent modifications. Use separate state files for different environments.
 
-For monitoring your Terraform-managed infrastructure, consider setting up automated checks. You can learn more about monitoring cloud resources in our [infrastructure monitoring guide](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For monitoring your Terraform-managed infrastructure, consider setting up automated checks. You can learn more about monitoring cloud resources in our [infrastructure monitoring guide](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Wrapping Up
 

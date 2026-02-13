@@ -1569,6 +1569,6 @@ Answer generation is where RAG systems deliver value. By combining solid prompt 
 
 **Related Reading:**
 
-- [What is RAG? Retrieval-Augmented Generation Explained](https://oneuptime.com/blog/post/2025-08-20-what-is-rag/view)
+- [What is RAG? Retrieval-Augmented Generation Explained](https://oneuptime.com/blog/post/2026-01-25-llamaindex-rag-applications/view)
 - [Vector Embeddings for Search and Retrieval](https://oneuptime.com/blog/post/2025-08-21-vector-embeddings/view)
 - [Building Production LLM Applications](https://oneuptime.com/blog/post/2025-09-01-production-llm-apps/view)

@@ -310,7 +310,7 @@ Resources:
         - reporting
 ```
 
-For monitoring the health and performance of your data sharing setup, see our guide on [data pipeline monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-dashboards/view).
+For monitoring the health and performance of your data sharing setup, see our guide on [data pipeline monitoring](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ## Wrapping Up
 

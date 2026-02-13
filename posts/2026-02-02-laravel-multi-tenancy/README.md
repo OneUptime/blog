@@ -2394,4 +2394,4 @@ Multi-tenancy adds complexity to your application, but with proper architecture 
 
 **Related Reading:**
 - [How to Build Multi-Tenant Applications in Laravel](https://oneuptime.com/blog/post/2025-07-02-laravel-multi-tenant)
-- [How to Implement Caching Strategies in Laravel](https://oneuptime.com/blog/post/laravel-caching)
+- [How to Implement Caching Strategies in Laravel](https://oneuptime.com/blog/post/2025-07-02-laravel-caching-strategies)

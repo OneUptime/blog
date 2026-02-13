@@ -356,7 +356,7 @@ function useOrderPagination(customerId) {
 
 Track how many pages users typically traverse. If most users never go past page 1, you might be over-engineering your pagination. If they frequently page deep, consider whether a different access pattern (like search or date filtering) would serve them better.
 
-Monitor your DynamoDB query latency across pages with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to ensure consistent performance as data grows.
+Monitor your DynamoDB query latency across pages with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to ensure consistent performance as data grows.
 
 ## Wrapping Up
 

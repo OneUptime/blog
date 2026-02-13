@@ -781,8 +781,8 @@ Common issues and solutions:
 
 Explore more about OpenTelemetry and data analytics:
 
-- [OpenTelemetry Data Modeling Best Practices](https://oneuptime.com/blog/post/opentelemetry-data-modeling/view)
-- [Building Analytics on Observability Data](https://oneuptime.com/blog/post/observability-analytics/view)
+- [OpenTelemetry Data Modeling Best Practices](https://oneuptime.com/blog/post/2026-02-06-what-opentelemetry-does-not-do/view)
+- [Building Analytics on Observability Data](https://oneuptime.com/blog/post/2026-02-13-observability-analytics/view)
 
 ## Conclusion
 

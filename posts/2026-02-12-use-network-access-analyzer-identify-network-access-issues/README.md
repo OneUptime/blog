@@ -340,7 +340,7 @@ Network Access Analyzer charges based on the number of ENIs analyzed. The first 
 1. **Run regularly**: Schedule monthly analyses to catch configuration drift.
 2. **Start with built-in scopes**: AWS provides good defaults. Use them before building custom scopes.
 3. **Exclude known good paths**: Reduce noise by excluding intentionally public resources.
-4. **Integrate with alerting**: Pipe findings into your monitoring stack. If you're using [OneUptime for infrastructure monitoring](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view), you can create alerts based on unexpected findings.
+4. **Integrate with alerting**: Pipe findings into your monitoring stack. If you're using [OneUptime for infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view), you can create alerts based on unexpected findings.
 5. **Use tags for filtering**: Tag your resources consistently so you can filter findings by environment, team, or application.
 
 ## Wrapping Up

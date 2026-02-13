@@ -997,6 +997,6 @@ The pattern adds minimal overhead (one database lookup per message) but provides
 
 ### Related Reading
 
-- [The Outbox Pattern for Reliable Event Publishing](https://oneuptime.com/blog/post/2026-01-30-outbox-pattern-microservices/view)
-- [Distributed Transactions: Saga Pattern Explained](https://oneuptime.com/blog/post/2026-01-30-saga-pattern-microservices/view)
+- [The Outbox Pattern for Reliable Event Publishing](https://oneuptime.com/blog/post/2026-01-25-bulkhead-pattern-go-microservices/view)
+- [Distributed Transactions: Saga Pattern Explained](https://oneuptime.com/blog/post/2026-01-21-kafka-saga-pattern/view)
 - [Building Resilient Services with Circuit Breakers](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view)

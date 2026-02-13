@@ -315,4 +315,4 @@ async function consumeStream(url) {
 
 ## Wrapping Up
 
-Response streaming unlocks patterns that simply weren't possible with Lambda before. The time-to-first-byte improvement alone makes it worth considering for any function that generates large responses. Just keep in mind the function URL requirement - if you need API Gateway features, you'll need to put CloudFront in front of the function URL or find a different approach. For monitoring the performance of your streaming functions, check out how to [set up Lambda monitoring](https://oneuptime.com/blog/post/aws-lambda-monitoring-best-practices/view).
+Response streaming unlocks patterns that simply weren't possible with Lambda before. The time-to-first-byte improvement alone makes it worth considering for any function that generates large responses. Just keep in mind the function URL requirement - if you need API Gateway features, you'll need to put CloudFront in front of the function URL or find a different approach. For monitoring the performance of your streaming functions, check out how to [set up Lambda monitoring](https://oneuptime.com/blog/post/2026-02-12-logging-monitoring-best-practices-aws/view).

@@ -1478,5 +1478,5 @@ Firebase eliminates the need for building and maintaining backend infrastructure
 *Need to monitor your Firebase-powered Android app in production? [OneUptime](https://oneuptime.com) provides comprehensive monitoring with error tracking and performance insights.*
 
 **Related Reading:**
-- [How to Implement Clean Architecture in Android](https://oneuptime.com/blog/post/android-clean-architecture/view)
-- [Kotlin Coroutines Best Practices](https://oneuptime.com/blog/post/kotlin-coroutines-guide/view)
+- [How to Implement Clean Architecture in Android](https://oneuptime.com/blog/post/2026-01-07-go-clean-architecture/view)
+- [Kotlin Coroutines Best Practices](https://oneuptime.com/blog/post/2026-01-26-kotlin-coroutines/view)

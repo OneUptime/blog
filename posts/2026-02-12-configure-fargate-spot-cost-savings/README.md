@@ -267,7 +267,7 @@ aws ecs list-tasks \
     --query 'tasks[?stoppedReason==`Your task was stopped because a Spot interruption occurred.`]'
 ```
 
-For comprehensive monitoring of your ECS services, including tracking Spot interruptions and their impact on availability, check out our post on [monitoring container workloads](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For comprehensive monitoring of your ECS services, including tracking Spot interruptions and their impact on availability, check out our post on [monitoring container workloads](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Pitfalls to Avoid
 

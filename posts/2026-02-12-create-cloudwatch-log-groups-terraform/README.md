@@ -320,7 +320,7 @@ CloudWatch Logs charges for ingestion and storage separately. Here are some prac
 3. **Consider tiered retention.** Keep application logs for 30 days, audit logs for 365 days, and debug logs for 7 days.
 4. **Export to S3 for long-term storage.** It's dramatically cheaper than CloudWatch retention for logs you rarely query.
 
-For broader monitoring cost management, our guide on [managing your monitoring costs](https://oneuptime.com/blog/post/reduce-monitoring-costs/view) covers strategies that apply beyond just CloudWatch.
+For broader monitoring cost management, our guide on [managing your monitoring costs](https://oneuptime.com/blog/post/2026-02-06-reduce-observability-costs-intelligent-sampling/view) covers strategies that apply beyond just CloudWatch.
 
 ## Wrapping Up
 

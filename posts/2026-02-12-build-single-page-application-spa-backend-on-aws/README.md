@@ -543,7 +543,7 @@ export const api = new ApiClient();
 
 ## Monitoring
 
-Track API latency, error rates, and Lambda execution metrics. For a complete SPA monitoring setup that includes frontend performance and backend health, check out [OneUptime](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) for end-to-end observability.
+Track API latency, error rates, and Lambda execution metrics. For a complete SPA monitoring setup that includes frontend performance and backend health, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) for end-to-end observability.
 
 ## Summary
 

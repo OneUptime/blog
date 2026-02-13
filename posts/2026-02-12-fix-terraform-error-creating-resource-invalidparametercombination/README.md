@@ -279,7 +279,7 @@ resource "aws_instance" "web" {
 }
 ```
 
-For tracking deployment failures and catching these parameter issues in your CI/CD pipelines, set up [infrastructure monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to alert your team immediately.
+For tracking deployment failures and catching these parameter issues in your CI/CD pipelines, set up [infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to alert your team immediately.
 
 ## Summary
 

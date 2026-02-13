@@ -231,7 +231,7 @@ resource "aws_cloudwatch_metric_alarm" "dx_connection_state" {
 }
 ```
 
-For comprehensive monitoring of your hybrid network infrastructure, check out our post on [infrastructure monitoring best practices](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For comprehensive monitoring of your hybrid network infrastructure, check out our post on [infrastructure monitoring best practices](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Variables
 

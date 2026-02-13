@@ -313,7 +313,7 @@ cloudwatch.put_metric_alarm(
 )
 ```
 
-For more comprehensive alerting that goes beyond CloudWatch, consider piping these alerts into [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) for unified incident management.
+For more comprehensive alerting that goes beyond CloudWatch, consider piping these alerts into [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for unified incident management.
 
 ## Handling Drift
 

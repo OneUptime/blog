@@ -528,7 +528,7 @@ Key metrics to monitor include:
 - Buffer overflow and dropped logs
 - Export latency
 
-For more information on monitoring the OpenTelemetry Collector, see our guide on [OpenTelemetry Collector observability](https://oneuptime.com/blog/post/monitoring-opentelemetry-collector/view).
+For more information on monitoring the OpenTelemetry Collector, see our guide on [OpenTelemetry Collector observability](https://oneuptime.com/blog/post/2026-02-06-google-cloud-monitoring-receiver-opentelemetry-collector/view).
 
 ## Best Practices
 

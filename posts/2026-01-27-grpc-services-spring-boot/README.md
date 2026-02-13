@@ -708,5 +708,5 @@ For internal microservice communication, gRPC offers significant advantages over
 *Want to monitor your gRPC services? [OneUptime](https://oneuptime.com) provides end-to-end visibility into gRPC latency, error rates, and service health.*
 
 **Related Reading:**
-- [How to Build Reactive HTTP Clients with WebClient in Spring](https://oneuptime.com/blog/post/2026-01-24-reactive-http-client-webclient-spring/view)
+- [How to Build Reactive HTTP Clients with WebClient in Spring](https://oneuptime.com/blog/post/2026-01-25-reactive-http-clients-webclient-spring/view)
 - [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)

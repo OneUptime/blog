@@ -302,7 +302,7 @@ aws sns subscribe \
   --notification-endpoint team@mycompany.com
 ```
 
-For more comprehensive monitoring beyond SNS alerts, check out how to set up [proper infrastructure monitoring](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view) that covers all your data pipeline components.
+For more comprehensive monitoring beyond SNS alerts, check out how to set up [proper infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) that covers all your data pipeline components.
 
 ## When to Use Data Pipeline vs Alternatives
 

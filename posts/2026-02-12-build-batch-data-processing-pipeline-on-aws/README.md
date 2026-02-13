@@ -401,7 +401,7 @@ aws stepfunctions list-executions \
   --max-results 10
 ```
 
-For production pipelines, set up alerts on execution failures and duration anomalies. Consider using [OneUptime](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) for comprehensive pipeline monitoring with incident management.
+For production pipelines, set up alerts on execution failures and duration anomalies. Consider using [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) for comprehensive pipeline monitoring with incident management.
 
 ## Summary
 

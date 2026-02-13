@@ -305,7 +305,7 @@ aws events put-targets \
   --targets "Id=1,Arn=arn:aws:sns:us-east-1:123456789012:security-alerts"
 ```
 
-For comprehensive alerting across your AWS environment, check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For comprehensive alerting across your AWS environment, check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Unused Access Findings
 

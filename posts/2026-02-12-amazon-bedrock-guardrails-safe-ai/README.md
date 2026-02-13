@@ -297,7 +297,7 @@ bedrock.update_guardrail(
 
 Keeping track of how often your guardrails fire is essential. It helps you tune sensitivity levels and spot abuse patterns. Bedrock publishes guardrail metrics to CloudWatch, so you can build dashboards and set up alerts.
 
-For a complete monitoring setup across your AI services, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view) - it pairs well with guardrail monitoring.
+For a complete monitoring setup across your AI services, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view) - it pairs well with guardrail monitoring.
 
 ## Practical Recommendations
 

@@ -322,7 +322,7 @@ For production access, consider shorter durations. For development, longer durat
 
 **"Invalid MFA code"** - Make sure your device's clock is synchronized. TOTP codes are time-sensitive.
 
-For monitoring access patterns and detecting unusual authentication attempts, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can help track API call patterns across your AWS accounts.
+For monitoring access patterns and detecting unusual authentication attempts, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help track API call patterns across your AWS accounts.
 
 ## Wrapping Up
 

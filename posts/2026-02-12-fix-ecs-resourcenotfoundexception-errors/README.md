@@ -240,7 +240,7 @@ def ensure_cluster_exists(cluster_name, region='us-east-1'):
     return response['clusters'][0]
 ```
 
-Set up [monitoring and alerting](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) for your ECS deployments so you catch resource issues immediately, not during an incident at 2 AM.
+Set up [monitoring and alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for your ECS deployments so you catch resource issues immediately, not during an incident at 2 AM.
 
 ## Summary
 

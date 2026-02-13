@@ -289,7 +289,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
-Use [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alternatives/view) to monitor your database connectivity holistically, tracking connection errors alongside application performance so you can quickly correlate connection failures with user impact.
+Use [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to monitor your database connectivity holistically, tracking connection errors alongside application performance so you can quickly correlate connection failures with user impact.
 
 ## Summary
 

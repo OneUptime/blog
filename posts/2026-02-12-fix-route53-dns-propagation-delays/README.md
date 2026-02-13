@@ -229,7 +229,7 @@ for resolver, result in results.items():
     print(f"{resolver}: {result}")
 ```
 
-For a more comprehensive approach to monitoring DNS and infrastructure changes, check out [setting up proper alerting](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) to track propagation and catch issues before they affect users.
+For a more comprehensive approach to monitoring DNS and infrastructure changes, check out [setting up proper alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to track propagation and catch issues before they affect users.
 
 ## Summary
 

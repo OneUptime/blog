@@ -317,7 +317,7 @@ exports.handler = async (event) => {
 
 ## Monitoring Configuration Issues
 
-Configuration problems are a sneaky source of production incidents. A missing or incorrect environment variable can cause subtle bugs that are hard to track down. Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to catch errors that spike after deployments - they're often caused by misconfigured environment variables.
+Configuration problems are a sneaky source of production incidents. A missing or incorrect environment variable can cause subtle bugs that are hard to track down. Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch errors that spike after deployments - they're often caused by misconfigured environment variables.
 
 ## Wrapping Up
 

@@ -291,7 +291,7 @@ A few things to keep in mind when working with AWS PowerShell tools:
 Get-AWSCmdletName -ApiOperation DescribeInstances
 ```
 
-For monitoring your AWS infrastructure beyond what PowerShell scripts provide, consider pairing with [dedicated monitoring tools](https://oneuptime.com/blog/post/aws-monitoring-tools-comparison/view) that can provide continuous uptime checks and alerting.
+For monitoring your AWS infrastructure beyond what PowerShell scripts provide, consider pairing with [dedicated monitoring tools](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view) that can provide continuous uptime checks and alerting.
 
 ## Summary
 

@@ -268,7 +268,7 @@ aws cloudwatch put-metric-alarm \
     --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
-For comprehensive monitoring of your SQS-Lambda integration, including backlog growth, error rates, and DLQ activity, check out [setting up proper alerting](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) for your serverless architecture.
+For comprehensive monitoring of your SQS-Lambda integration, including backlog growth, error rates, and DLQ activity, check out [setting up proper alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for your serverless architecture.
 
 ## Summary
 

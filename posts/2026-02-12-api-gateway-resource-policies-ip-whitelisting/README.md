@@ -376,7 +376,7 @@ When your resource policy isn't working as expected:
 4. **Watch for CloudFront** - if your API is behind CloudFront, the source IP is CloudFront's IP, not the client's.
 5. **Check logs** - enable execution logging temporarily to see policy evaluation results.
 
-For ongoing monitoring of blocked requests and security events on your APIs, see our post on [API monitoring best practices](https://oneuptime.com/blog/post/api-monitoring-best-practices/view).
+For ongoing monitoring of blocked requests and security events on your APIs, see our post on [API monitoring best practices](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 

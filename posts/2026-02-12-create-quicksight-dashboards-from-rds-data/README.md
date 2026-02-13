@@ -273,6 +273,6 @@ A few tricks to keep your dashboards snappy:
 - **Use calculated fields wisely.** SPICE pre-computes calculated fields during import, so they're free at query time. In direct query mode, they're computed on every request.
 - **Create separate datasets for different dashboards.** One giant dataset serving ten dashboards is worse than ten focused datasets.
 
-For monitoring your dashboard refresh health and RDS query performance, you can set up [CloudWatch alarms](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view) that notify you when ingestion fails or your RDS CPU spikes during refresh windows.
+For monitoring your dashboard refresh health and RDS query performance, you can set up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) that notify you when ingestion fails or your RDS CPU spikes during refresh windows.
 
 Building QuickSight dashboards from RDS data is one of the quickest paths from raw database tables to business insights. The SPICE layer means your dashboards stay fast even as your data grows, and scheduled refreshes keep everything current without manual intervention.

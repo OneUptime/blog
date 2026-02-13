@@ -321,7 +321,7 @@ Be cautious with these scenarios:
 - Windows workloads (Graviton supports Linux and some macOS, not Windows)
 - If your build pipeline can't produce ARM64 artifacts
 
-For monitoring your Graviton fleet's performance against your x86 baseline, set up proper observability from day one. Check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For monitoring your Graviton fleet's performance against your x86 baseline, set up proper observability from day one. Check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 

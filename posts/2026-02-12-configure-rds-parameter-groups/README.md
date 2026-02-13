@@ -310,7 +310,7 @@ resource "aws_db_parameter_group" "postgres" {
 4. **Test changes in dev first**: Parameter changes can cause unexpected behavior. Test in non-production first.
 5. **Monitor after changes**: Watch CloudWatch metrics after any parameter change to verify the impact.
 
-For monitoring the impact of parameter changes, set up [CloudWatch alerting](https://oneuptime.com/blog/post/aws-cloudwatch-alerting/view) to catch any performance regressions.
+For monitoring the impact of parameter changes, set up [CloudWatch alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to catch any performance regressions.
 
 ## Wrapping Up
 

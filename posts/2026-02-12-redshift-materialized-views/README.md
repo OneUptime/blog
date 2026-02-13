@@ -319,7 +319,7 @@ A few constraints to be aware of:
 - Late binding views (`WITH NO SCHEMA BINDING`) can't be materialized
 - Incremental refresh has its own restrictions on which SQL patterns are supported
 
-For monitoring the performance of your materialized views and alerting on refresh failures, see our post on [data warehouse monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-dashboards/view).
+For monitoring the performance of your materialized views and alerting on refresh failures, see our post on [data warehouse monitoring](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ## Wrapping Up
 

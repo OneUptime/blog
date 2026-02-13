@@ -2098,4 +2098,4 @@ By following these patterns, you can build resilient Python applications that le
 
 **Related Reading:**
 - [How to Implement Health Checks in Python for Kubernetes](https://oneuptime.com/blog/post/2025-01-06-python-health-checks-kubernetes/view)
-- [How to Handle Database Migrations in MySQL](https://oneuptime.com/blog/post/2026-02-02-mysql-migrations/view)
+- [How to Handle Database Migrations in MySQL](https://oneuptime.com/blog/post/2026-02-02-mysql-database-migrations/view)

@@ -317,7 +317,7 @@ resource "aws_cloudwatch_metric_alarm" "redshift_disk" {
 }
 ```
 
-For broader monitoring strategies, take a look at our guide on [monitoring data infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For broader monitoring strategies, take a look at our guide on [monitoring data infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Variables and Outputs
 

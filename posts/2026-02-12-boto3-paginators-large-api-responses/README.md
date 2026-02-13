@@ -445,7 +445,7 @@ for page in resilient_paginate(s3, 'list_objects_v2', Bucket='my-bucket'):
 
 ## Monitoring
 
-When your Python applications are processing large paginated datasets, monitoring performance and API usage is important. [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) can help you track API call rates, latencies, and errors across your boto3-powered services.
+When your Python applications are processing large paginated datasets, monitoring performance and API usage is important. [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help you track API call rates, latencies, and errors across your boto3-powered services.
 
 ## Which Operations Support Paginators?
 

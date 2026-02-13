@@ -599,5 +599,5 @@ With proper instrumentation, you gain visibility into your application's behavio
 *Need to visualize your Prometheus metrics? [OneUptime](https://oneuptime.com) integrates with Prometheus and provides dashboards, alerting, and incident management in one platform.*
 
 **Related Reading:**
-- [How to Add Custom Metrics to Python Applications with Prometheus](https://oneuptime.com/blog/post/2025-01-06-python-prometheus-custom-metrics/view)
+- [How to Add Custom Metrics to Python Applications with Prometheus](https://oneuptime.com/blog/post/2025-01-06-python-custom-metrics-prometheus/view)
 - [How to Instrument Python Applications with OpenTelemetry](https://oneuptime.com/blog/post/2025-01-06-instrument-python-opentelemetry/view)

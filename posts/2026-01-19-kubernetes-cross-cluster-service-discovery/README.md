@@ -557,5 +557,5 @@ For monitoring cross-cluster services, check out [OneUptime's multi-cluster moni
 ## Related Resources
 
 - [How to Set Up Kubernetes Federation](https://oneuptime.com/blog/post/2026-01-19-kubernetes-federation-multi-cluster/view)
-- [How to Configure Service Mesh with Istio](https://oneuptime.com/blog/post/kubernetes-istio-service-mesh/view)
+- [How to Configure Service Mesh with Istio](https://oneuptime.com/blog/post/2026-01-06-kubernetes-service-mesh-istio-linkerd/view)
 - [How to Set Up Network Policies](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-communication-across-namespaces/view)

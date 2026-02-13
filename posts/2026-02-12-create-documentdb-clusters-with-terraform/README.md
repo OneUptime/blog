@@ -297,7 +297,7 @@ resource "aws_cloudwatch_metric_alarm" "docdb_memory" {
 }
 ```
 
-For a broader look at database monitoring strategies, check out our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For a broader look at database monitoring strategies, check out our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Variables
 

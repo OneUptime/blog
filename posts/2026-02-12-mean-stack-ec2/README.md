@@ -394,7 +394,7 @@ rm -rf $BACKUP_DIR/backup_$DATE
 find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
 ```
 
-For monitoring your MEAN stack application, including Node.js process health, MongoDB query performance, and Express response times, take a look at our [AWS infrastructure monitoring guide](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For monitoring your MEAN stack application, including Node.js process health, MongoDB query performance, and Express response times, take a look at our [AWS infrastructure monitoring guide](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 

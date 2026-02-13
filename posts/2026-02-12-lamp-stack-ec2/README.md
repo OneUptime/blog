@@ -375,7 +375,7 @@ Schedule it with cron:
 echo "0 2 * * * /usr/local/bin/backup-db.sh >> /var/log/db-backup.log 2>&1" | sudo crontab -
 ```
 
-For comprehensive monitoring of your LAMP stack, including Apache performance, MySQL query times, and PHP error rates, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For comprehensive monitoring of your LAMP stack, including Apache performance, MySQL query times, and PHP error rates, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 

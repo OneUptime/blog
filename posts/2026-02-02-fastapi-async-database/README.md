@@ -1815,5 +1815,5 @@ With proper async database patterns, your FastAPI application can handle thousan
 *Need to monitor your FastAPI database performance in production? [OneUptime](https://oneuptime.com) provides real-time monitoring for API latency, database query performance, and connection pool health.*
 
 **Related Reading:**
-- [How to Build REST APIs with FastAPI and SQLAlchemy](https://oneuptime.com/blog/post/fastapi-sqlalchemy-rest-api/view)
+- [How to Build REST APIs with FastAPI and SQLAlchemy](https://oneuptime.com/blog/post/2026-01-27-sqlalchemy-fastapi/view)
 - [How to Implement Rate Limiting in FastAPI Without External Services](https://oneuptime.com/blog/post/2025-01-06-fastapi-rate-limiting/view)

@@ -400,4 +400,4 @@ Don't try to fix everything at once. Start with your most sensitive workloads an
 
 Least privilege on AWS is a continuous practice, not a checkbox. Start with zero permissions, add what's needed, and regularly remove what's not. Use IAM Access Analyzer to find unused permissions, permission boundaries to set ceilings, condition keys for context-based control, and SCPs for organizational guardrails. The goal isn't perfection - it's steadily reducing your blast radius so that when (not if) a credential is compromised, the damage is contained.
 
-For monitoring access patterns and detecting anomalies, see our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For monitoring access patterns and detecting anomalies, see our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

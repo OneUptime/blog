@@ -1504,6 +1504,6 @@ With this setup, your Spring Boot application has enterprise-grade identity mana
 *Need to monitor authentication failures and security events? [OneUptime](https://oneuptime.com) provides comprehensive monitoring and alerting for your applications.*
 
 **Related Reading:**
-- [How to Implement OAuth2 Resource Server in Spring Boot](https://oneuptime.com/blog/post/2026-01-28-spring-boot-oauth2-resource-server/view)
+- [How to Implement OAuth2 Resource Server in Spring Boot](https://oneuptime.com/blog/post/2026-01-27-spring-oauth2-resource-server/view)
 - [How to Configure Keycloak Realms and Clients](https://oneuptime.com/blog/post/2026-01-27-keycloak-realms-clients/view)
 - [How to Debug Keycloak Authentication Issues](https://oneuptime.com/blog/post/2026-01-28-keycloak-debug-authentication/view)

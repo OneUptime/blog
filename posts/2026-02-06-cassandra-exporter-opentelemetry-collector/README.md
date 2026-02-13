@@ -763,7 +763,7 @@ Monitor these key metrics:
 - Batch sizes and flush rates
 - Timeout and retry counts
 
-Also monitor Cassandra cluster metrics including write throughput, compaction rates, disk usage, and read/write latencies. For more information, see our guide on [monitoring the OpenTelemetry Collector](https://oneuptime.com/blog/post/monitoring-opentelemetry-collector/view).
+Also monitor Cassandra cluster metrics including write throughput, compaction rates, disk usage, and read/write latencies. For more information, see our guide on [monitoring the OpenTelemetry Collector](https://oneuptime.com/blog/post/2026-02-06-google-cloud-monitoring-receiver-opentelemetry-collector/view).
 
 ## Best Practices
 
@@ -789,7 +789,7 @@ Follow these best practices when using the Cassandra exporter:
 
 ## Integration with Time-Series Data
 
-Cassandra excels at storing time-series telemetry data. For more information on time-series patterns, see our posts on [time-series data modeling](https://oneuptime.com/blog/post/timeseries-data-modeling/view) and [long-term telemetry storage](https://oneuptime.com/blog/post/longterm-telemetry-storage/view).
+Cassandra excels at storing time-series telemetry data. For more information on time-series patterns, see our posts on [time-series data modeling](https://oneuptime.com/blog/post/2026-01-25-mongodb-data-modeling-relationships/view) and [long-term telemetry storage](https://oneuptime.com/blog/post/2026-02-06-monitor-predict-storage-capacity-opentelemetry-telemetry-volume/view).
 
 ## Conclusion
 

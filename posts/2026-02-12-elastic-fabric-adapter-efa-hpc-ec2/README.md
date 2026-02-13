@@ -253,7 +253,7 @@ Scheduling:
 
 You'll want to keep an eye on your EFA cluster's performance. CloudWatch doesn't have EFA-specific metrics out of the box, but you can monitor network throughput and use custom metrics.
 
-For comprehensive monitoring of your HPC infrastructure, consider setting up a monitoring solution that tracks node health, network latency, and job performance. Our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view) covers the fundamentals of setting up observability for EC2-based workloads.
+For comprehensive monitoring of your HPC infrastructure, consider setting up a monitoring solution that tracks node health, network latency, and job performance. Our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) covers the fundamentals of setting up observability for EC2-based workloads.
 
 ## Troubleshooting
 

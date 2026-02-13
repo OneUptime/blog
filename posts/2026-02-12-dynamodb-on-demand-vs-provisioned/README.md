@@ -233,7 +233,7 @@ In on-demand mode, GSIs scale independently without any configuration.
 
 Whichever mode you choose, monitor continuously. Traffic patterns change as your app grows. What started as a spiky workload might become steady, or vice versa.
 
-Set up alerts for throttled requests (which mean you're under-provisioned) and for low utilization (which means you're over-provisioned). You can track both through [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to get a unified view of your DynamoDB costs and performance.
+Set up alerts for throttled requests (which mean you're under-provisioned) and for low utilization (which means you're over-provisioned). You can track both through [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to get a unified view of your DynamoDB costs and performance.
 
 ## Decision Framework
 

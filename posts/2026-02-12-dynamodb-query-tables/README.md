@@ -328,7 +328,7 @@ const result = await docClient.query(params).promise();
 console.log('Consumed capacity:', result.ConsumedCapacity);
 ```
 
-Track query latency and consumed capacity in production with [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to spot slow queries and optimize them before they become problems.
+Track query latency and consumed capacity in production with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to spot slow queries and optimize them before they become problems.
 
 ## Wrapping Up
 

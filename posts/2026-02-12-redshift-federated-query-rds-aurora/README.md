@@ -368,7 +368,7 @@ A few things to keep in mind:
 - Not all PostgreSQL and MySQL data types map perfectly to Redshift types
 - Connection limits on your RDS instance apply - many concurrent federated queries can exhaust RDS connections
 
-For monitoring federated query performance and RDS connection usage, check out our post on [database monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-dashboards/view).
+For monitoring federated query performance and RDS connection usage, check out our post on [database monitoring](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ## Wrapping Up
 

@@ -328,7 +328,7 @@ module.exports = {
 
 ## Monitoring Multi-App Deployments
 
-When you've got multiple apps deploying from one repo, tracking which deployments succeeded and which failed becomes important. Use [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) to monitor deployment health and set up alerts for build failures across your apps.
+When you've got multiple apps deploying from one repo, tracking which deployments succeeded and which failed becomes important. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to monitor deployment health and set up alerts for build failures across your apps.
 
 ## Wrapping Up
 

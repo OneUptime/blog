@@ -256,7 +256,7 @@ This approach eliminates key rotation entirely since there are no keys to rotate
 5. **Automate the process** - manual rotation leads to skipped rotations
 6. **Consider eliminating SSH keys** - Session Manager is often a better approach
 
-For monitoring SSH access and security events on your EC2 instances, check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For monitoring SSH access and security events on your EC2 instances, check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 

@@ -1244,4 +1244,4 @@ The combination of Go's performance and Gin's simplicity makes it an excellent c
 
 **Related Reading:**
 - [How to Implement Rate Limiting in FastAPI](https://oneuptime.com/blog/post/2025-01-06-fastapi-rate-limiting/view)
-- [Best Practices for API Security](https://oneuptime.com/blog/post/api-security-best-practices/view)
+- [Best Practices for API Security](https://oneuptime.com/blog/post/2026-02-12-api-security-best-practices-aws/view)

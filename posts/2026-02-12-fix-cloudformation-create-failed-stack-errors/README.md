@@ -220,7 +220,7 @@ aws cloudformation describe-change-set \
     --change-set-name preview-changes
 ```
 
-And integrate your stack deployments with [monitoring and alerting](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) so you're notified immediately when deployments fail rather than discovering it hours later.
+And integrate your stack deployments with [monitoring and alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) so you're notified immediately when deployments fail rather than discovering it hours later.
 
 ## Summary
 

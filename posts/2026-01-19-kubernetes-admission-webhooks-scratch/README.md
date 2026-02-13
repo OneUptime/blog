@@ -854,5 +854,5 @@ kubectl get pod test-pod -o jsonpath='{.spec.containers[*].name}'
 ## Related Posts
 
 - [How to Test Kubernetes Manifests with Conftest and OPA](https://oneuptime.com/blog/post/2026-01-19-kubernetes-conftest-opa-testing/view) - Policy as code
-- [How to Implement Custom Resource Definitions in Kubernetes](https://oneuptime.com/blog/post/2026-01-19-kubernetes-crds-implementation/view) - Extending Kubernetes
+- [How to Implement Custom Resource Definitions in Kubernetes](https://oneuptime.com/blog/post/2025-12-11-consul-kubernetes/view) - Extending Kubernetes
 - [How to Implement Pod Security Contexts Correctly](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-security-contexts/view) - Security best practices

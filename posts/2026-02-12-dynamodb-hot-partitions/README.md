@@ -302,7 +302,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions "arn:aws:sns:us-east-1:123456789:alerts"
 ```
 
-For comprehensive monitoring across all your DynamoDB tables, [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-alarms/view) can aggregate throttling metrics and alert your team before hot partitions cause outages.
+For comprehensive monitoring across all your DynamoDB tables, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can aggregate throttling metrics and alert your team before hot partitions cause outages.
 
 ## Wrapping Up
 

@@ -1048,6 +1048,6 @@ Whether you implement Type 2 SCD manually with SQL or leverage dbt's snapshot fe
 *Building a modern data warehouse? Proper dimension management is crucial for reliable analytics. Start with the patterns in this guide and adapt them to your specific business requirements.*
 
 **Related Reading:**
-- [Introduction to Dimensional Modeling](https://oneuptime.com/blog/post/dimensional-modeling-guide/view)
-- [ETL Best Practices for Data Warehouses](https://oneuptime.com/blog/post/etl-best-practices/view)
-- [Data Quality Monitoring Strategies](https://oneuptime.com/blog/post/data-quality-monitoring/view)
+- [Introduction to Dimensional Modeling](https://oneuptime.com/blog/post/2026-02-13-dimensional-modeling-guide/view)
+- [ETL Best Practices for Data Warehouses](https://oneuptime.com/blog/post/2026-02-13-etl-best-practices/view)
+- [Data Quality Monitoring Strategies](https://oneuptime.com/blog/post/2026-01-24-data-quality-validation/view)

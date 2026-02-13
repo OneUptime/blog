@@ -233,7 +233,7 @@ aws ecs update-cluster-settings \
     --settings name=containerInsights,value=enabled
 ```
 
-For comprehensive monitoring of your containerized applications, including memory trends and OOM detection, consider setting up [proper alerting](https://oneuptime.com/blog/post/aws-cloudwatch-alerting-best-practices/view) so you catch memory issues before they cause outages.
+For comprehensive monitoring of your containerized applications, including memory trends and OOM detection, consider setting up [proper alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) so you catch memory issues before they cause outages.
 
 ## Summary
 

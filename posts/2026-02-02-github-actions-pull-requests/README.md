@@ -1166,4 +1166,4 @@ Start with basic checks and gradually add more sophisticated workflows as your n
 *Want to monitor your CI/CD pipelines and get alerted when builds fail? [OneUptime](https://oneuptime.com) provides comprehensive monitoring for your development infrastructure, helping you maintain high availability and fast feedback loops.*
 
 **Related Reading:**
-- [How to Implement Infrastructure as Code Best Practices](https://oneuptime.com/blog/post/2026-02-02-infrastructure-as-code-best-practices/view)
+- [How to Implement Infrastructure as Code Best Practices](https://oneuptime.com/blog/post/2026-01-24-infrastructure-as-code-best-practices/view)

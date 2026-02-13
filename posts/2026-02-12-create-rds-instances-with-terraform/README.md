@@ -330,7 +330,7 @@ output "db_port" {
 
 **Deletion protection.** Always enable `deletion_protection = true` for production databases. Terraform will require you to explicitly disable it before destroying the instance, which is exactly the kind of speed bump you want.
 
-For monitoring your database performance and catching issues early, consider integrating with a proper observability platform. Check out our post on [infrastructure monitoring best practices](https://oneuptime.com/blog/post/aws-cloudwatch-setup-guide/view) for ideas.
+For monitoring your database performance and catching issues early, consider integrating with a proper observability platform. Check out our post on [infrastructure monitoring best practices](https://oneuptime.com/blog/post/2026-01-21-loki-vs-cloudwatch/view) for ideas.
 
 ## Wrapping Up
 

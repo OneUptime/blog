@@ -345,7 +345,7 @@ Both URLs should return the same response. The custom domain just provides a cle
 - **DNS not resolving** - Route 53 alias record might need time to propagate. Wait a few minutes and try again.
 - **Certificate in wrong region** - Edge-optimized domains need us-east-1 certificates. Regional domains need certificates in the same region.
 
-For monitoring the health and latency of your custom domain endpoints, check out our guide on [API monitoring](https://oneuptime.com/blog/post/api-monitoring-best-practices/view).
+For monitoring the health and latency of your custom domain endpoints, check out our guide on [API monitoring](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 

@@ -192,7 +192,7 @@ aws outposts get-outpost-instance-types \
   --query "InstanceTypeItems[].InstanceType"
 ```
 
-For comprehensive monitoring across your hybrid environment - both Outpost and cloud resources - consider using [OneUptime](https://oneuptime.com/blog/post/aws-cloudwatch-logs-setup/view) to get a single pane of glass across everything.
+For comprehensive monitoring across your hybrid environment - both Outpost and cloud resources - consider using [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to get a single pane of glass across everything.
 
 ## What Happens If the Service Link Goes Down?
 

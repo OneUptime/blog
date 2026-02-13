@@ -360,7 +360,7 @@ sudo cat > /etc/logrotate.d/openvpn << 'EOF'
 EOF
 ```
 
-For comprehensive VPN server monitoring, including connection counts, bandwidth usage, and server health, check out [monitoring AWS infrastructure](https://oneuptime.com/blog/post/aws-infrastructure-monitoring/view).
+For comprehensive VPN server monitoring, including connection counts, bandwidth usage, and server health, check out [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 

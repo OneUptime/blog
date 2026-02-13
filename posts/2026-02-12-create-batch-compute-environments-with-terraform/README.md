@@ -407,4 +407,4 @@ resource "aws_cloudwatch_log_group" "batch" {
 
 With this setup, you have a flexible batch processing infrastructure that can handle everything from lightweight data processing on Fargate to GPU-intensive ML training on EC2. The spot compute environment keeps costs down for non-urgent jobs, while the Fargate environment gives you simplicity for lighter workloads. Package your code in Docker images, push to ECR, and submit jobs to the queue.
 
-For monitoring job success rates and processing times, see our guide on [observability for AWS workloads](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For monitoring job success rates and processing times, see our guide on [observability for AWS workloads](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

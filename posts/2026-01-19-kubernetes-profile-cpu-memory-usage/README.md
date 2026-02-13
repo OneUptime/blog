@@ -598,6 +598,6 @@ For comprehensive application performance monitoring, check out [OneUptime's APM
 
 ## Related Resources
 
-- [How to Right-Size Resources with VPA](https://oneuptime.com/blog/post/kubernetes-resource-right-sizing-vpa/view)
+- [How to Right-Size Resources with VPA](https://oneuptime.com/blog/post/2026-01-30-resource-right-sizing/view)
 - [How to Optimize Pod Startup Time](https://oneuptime.com/blog/post/2026-01-19-kubernetes-optimize-pod-startup-time/view)
 - [How to Set Up Resource Quotas](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-quotas-limit-ranges/view)

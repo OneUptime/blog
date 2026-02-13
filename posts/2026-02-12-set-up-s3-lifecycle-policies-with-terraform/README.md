@@ -310,7 +310,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "configurable" {
 
 After deploying lifecycle rules, you'll want to verify they're working. Check S3 Storage Lens or CloudWatch metrics to see if objects are actually transitioning. You can also use S3 Inventory to get a full report of your objects and their storage classes.
 
-For broader infrastructure monitoring, consider setting up alerts when storage costs spike unexpectedly. Our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view) covers how to keep an eye on your cloud resources.
+For broader infrastructure monitoring, consider setting up alerts when storage costs spike unexpectedly. Our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view) covers how to keep an eye on your cloud resources.
 
 ## Common Pitfalls
 

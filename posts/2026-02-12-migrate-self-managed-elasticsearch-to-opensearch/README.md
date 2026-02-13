@@ -266,7 +266,7 @@ curl -X PUT "https://my-search-cluster.us-east-1.es.amazonaws.com/_index_templat
 
 ## Monitoring After Migration
 
-Once migration is complete, you'll want to keep a close eye on cluster health. OpenSearch integrates with CloudWatch for metrics, but you should also set up proper monitoring for your search endpoints. For application-level monitoring of your search latency and availability, consider setting up [uptime monitoring](https://oneuptime.com/blog/post/set-up-aws-cloudwatch-alarms/view) to catch issues before your users do.
+Once migration is complete, you'll want to keep a close eye on cluster health. OpenSearch integrates with CloudWatch for metrics, but you should also set up proper monitoring for your search endpoints. For application-level monitoring of your search latency and availability, consider setting up [uptime monitoring](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) to catch issues before your users do.
 
 ```bash
 # Quick health check

@@ -309,6 +309,6 @@ def retry_failed_records(errors, original_input_file, retry_output_file):
     print(f"Created retry file with {len(retry_records)} records")
 ```
 
-For monitoring your batch jobs alongside other AWS workloads, a comprehensive observability setup helps you track processing times, error rates, and costs across all your services. Check out our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view) for strategies that work well here.
+For monitoring your batch jobs alongside other AWS workloads, a comprehensive observability setup helps you track processing times, error rates, and costs across all your services. Check out our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view) for strategies that work well here.
 
 Batch inference is one of those features that pays for itself almost immediately once you find the right use case. If you're running any kind of bulk AI processing, it should be your default choice over real-time invocations.

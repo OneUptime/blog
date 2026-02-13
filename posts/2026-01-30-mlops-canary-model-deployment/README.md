@@ -1153,5 +1153,5 @@ By combining these components with the code examples provided in this guide, you
 **Related Reading:**
 
 - [Monitoring LLM Applications with OpenLIT and OneUptime](https://oneuptime.com/blog/post/2024-09-13-monitoring-llm-with-openlit-and-oneuptime/view)
-- [Kubernetes Service Mesh Comparison](https://oneuptime.com/blog/post/2025-01-27-kubernetes-service-mesh-comparison/view)
+- [Kubernetes Service Mesh Comparison](https://oneuptime.com/blog/post/2026-02-02-kubernetes-service-mesh/view)
 - [OpenTelemetry for ML Model Observability](https://oneuptime.com/blog/post/2025-01-06-instrument-python-opentelemetry/view)

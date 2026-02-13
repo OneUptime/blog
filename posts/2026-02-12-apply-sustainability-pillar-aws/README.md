@@ -337,4 +337,4 @@ This goes beyond infrastructure, but it matters. Efficient code runs faster, whi
 
 Sustainability on AWS starts with the basics: right-size your resources, use Graviton processors, leverage managed services, and clean up what you don't need. These practices reduce your environmental impact while also reducing costs - a rare win-win in engineering tradeoffs. Measure your utilization rates, track your carbon footprint with the AWS Customer Carbon Footprint Tool, and make sustainability a regular part of your architecture reviews.
 
-For monitoring resource utilization and identifying inefficiencies, check out our post on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/monitor-aws-infrastructure/view).
+For monitoring resource utilization and identifying inefficiencies, check out our post on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).

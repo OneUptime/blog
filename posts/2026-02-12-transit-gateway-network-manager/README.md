@@ -264,4 +264,4 @@ A few things I've learned from running Network Manager in production:
 
 Transit Gateway Network Manager won't cost you a dime - it's free to use with your existing transit gateways. There's really no reason not to set it up. If you're managing multi-region or hybrid networks on AWS, this tool should be in your operational toolkit.
 
-For more on monitoring your infrastructure, check out our guide on [AWS CloudWatch monitoring best practices](https://oneuptime.com/blog/post/aws-cloudwatch-monitoring/view).
+For more on monitoring your infrastructure, check out our guide on [AWS CloudWatch monitoring best practices](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).

@@ -228,7 +228,7 @@ For a production workload, make sure you model these costs. The latency improvem
 
 ## Monitoring Your MRAP
 
-Keep an eye on your MRAP's performance using CloudWatch. You can track metrics like request counts per region, latency distribution, and replication lag. If you're looking for a comprehensive monitoring solution that covers your entire AWS infrastructure, check out how [OneUptime can help with AWS monitoring](https://oneuptime.com/blog/post/aws-cloudwatch-monitoring/view).
+Keep an eye on your MRAP's performance using CloudWatch. You can track metrics like request counts per region, latency distribution, and replication lag. If you're looking for a comprehensive monitoring solution that covers your entire AWS infrastructure, check out how [OneUptime can help with AWS monitoring](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Common Pitfalls
 

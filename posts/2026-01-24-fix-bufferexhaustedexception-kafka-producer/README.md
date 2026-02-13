@@ -658,4 +658,4 @@ To fix and prevent `BufferExhaustedException`:
 
 **Related Reading:**
 - [How to Configure Kafka for High Throughput](https://oneuptime.com/blog/post/2026-01-24-configure-kafka-high-throughput)
-- [Understanding Kafka Producer Internals](https://oneuptime.com/blog/post/kafka-producer-internals)
+- [Understanding Kafka Producer Internals](https://oneuptime.com/blog/post/2026-01-21-kafka-high-throughput-producer)
