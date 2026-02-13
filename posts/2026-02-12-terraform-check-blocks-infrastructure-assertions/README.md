@@ -269,7 +269,7 @@ resource "aws_lb" "main" {
 }
 ```
 
-For details on lifecycle rules including preconditions and postconditions, see our post on [Terraform lifecycle rules](https://oneuptime.com/blog/post/terraform-lifecycle-rules/view).
+For details on lifecycle rules including preconditions and postconditions, see our post on [Terraform lifecycle rules](https://oneuptime.com/blog/post/2026-01-24-terraform-lifecycle-rules/view).
 
 ## Using Check Blocks with HTTP Data Source
 

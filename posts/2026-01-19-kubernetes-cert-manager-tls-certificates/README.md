@@ -635,4 +635,4 @@ For monitoring your TLS certificates and application security, check out [OneUpt
 
 - [How to Set Up Secure Ingress with NGINX](https://oneuptime.com/blog/post/kubernetes-ingress-nginx-controller/view)
 - [How to Integrate HashiCorp Vault](https://oneuptime.com/blog/post/kubernetes-hashicorp-vault-secrets/view)
-- [How to Implement Pod Security Standards](https://oneuptime.com/blog/post/kubernetes-pod-security-standards/view)
+- [How to Implement Pod Security Standards](https://oneuptime.com/blog/post/2026-01-06-kubernetes-pod-security-standards/view)

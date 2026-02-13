@@ -275,7 +275,7 @@ async function getOrdersPage(customerId, pageSize, startKey) {
 }
 ```
 
-For a deeper dive into pagination, see our post on [implementing pagination in DynamoDB queries](https://oneuptime.com/blog/post/dynamodb-pagination/view).
+For a deeper dive into pagination, see our post on [implementing pagination in DynamoDB queries](https://oneuptime.com/blog/post/2026-02-02-dynamodb-pagination/view).
 
 ## Querying Global Secondary Indexes
 

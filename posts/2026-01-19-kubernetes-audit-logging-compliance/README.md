@@ -750,6 +750,6 @@ For monitoring your audit logs and compliance status, check out [OneUptime's sec
 
 ## Related Resources
 
-- [How to Implement Pod Security Standards](https://oneuptime.com/blog/post/kubernetes-pod-security-standards/view)
+- [How to Implement Pod Security Standards](https://oneuptime.com/blog/post/2026-01-06-kubernetes-pod-security-standards/view)
 - [How to Configure RBAC](https://oneuptime.com/blog/post/kubernetes-rbac-configuration/view)
 - [How to Set Up OPA Gatekeeper](https://oneuptime.com/blog/post/kubernetes-opa-gatekeeper-policies/view)
