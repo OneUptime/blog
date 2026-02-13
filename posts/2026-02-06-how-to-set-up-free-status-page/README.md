@@ -242,7 +242,7 @@ You now have a professional status page that:
 - Matches your brand
 - Builds trust with your users
 
-The whole setup takes about 10 minutes. Your users will thank you the next time something goes wrong — because they'll know what's happening.
+The whole setup takes about 10 minutes. Your users will thank you the next time something goes wrong - because they'll know what's happening.
 
 ---
 
@@ -250,4 +250,4 @@ The whole setup takes about 10 minutes. Your users will thank you the next time 
 
 **Video tutorial:** [Watch on YouTube](https://youtu.be/F6BNipy5VCk)
 
-**Need more?** OneUptime also includes monitoring, on-call scheduling, logs, and traces — all in one platform.
+**Need more?** OneUptime also includes monitoring, on-call scheduling, logs, and traces - all in one platform.

@@ -242,7 +242,7 @@ const getItemLayoutVariable = (
 
 ## keyExtractor: More Than Just a Warning Fix
 
-The `keyExtractor` prop isn't just about silencing React warnings—it's crucial for performance.
+The `keyExtractor` prop isn't just about silencing React warnings-it's crucial for performance.
 
 ### Why Keys Matter
 
@@ -1580,7 +1580,7 @@ Before shipping your FlatList implementation, verify:
 
 ## Conclusion
 
-FlatList optimization is not about applying every technique available—it's about understanding your specific use case and applying the right optimizations. Start with the basics: proper keys, memoization, and `getItemLayout`. Then profile your app on real devices to identify bottlenecks and apply targeted optimizations.
+FlatList optimization is not about applying every technique available-it's about understanding your specific use case and applying the right optimizations. Start with the basics: proper keys, memoization, and `getItemLayout`. Then profile your app on real devices to identify bottlenecks and apply targeted optimizations.
 
 Remember that performance optimization is iterative. What works for a simple list might not work for a complex one. Always measure before and after applying optimizations, and test on the lowest-spec devices your app supports.
 

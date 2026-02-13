@@ -10,7 +10,7 @@ Description: Learn how to detect jailbroken iOS devices and rooted Android devic
 
 ## Introduction
 
-Mobile application security is a critical concern for developers, especially when building apps that handle sensitive data such as financial information, personal health records, or corporate secrets. One fundamental aspect of mobile security is detecting whether an app is running on a compromised device—specifically, a jailbroken iOS device or a rooted Android device.
+Mobile application security is a critical concern for developers, especially when building apps that handle sensitive data such as financial information, personal health records, or corporate secrets. One fundamental aspect of mobile security is detecting whether an app is running on a compromised device-specifically, a jailbroken iOS device or a rooted Android device.
 
 In this comprehensive guide, we will explore why jailbreak and root detection matters, the risks associated with compromised devices, and how to implement robust detection mechanisms in your React Native applications.
 

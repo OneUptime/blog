@@ -8,7 +8,7 @@ Description: Learn how to use Kubernetes init containers for dependency checks, 
 
 ---
 
-Init containers run before the main application containers and are perfect for pre-flight checks—ensuring dependencies are available, running migrations, downloading configurations, or setting up the environment. They run to completion sequentially before any app container starts.
+Init containers run before the main application containers and are perfect for pre-flight checks-ensuring dependencies are available, running migrations, downloading configurations, or setting up the environment. They run to completion sequentially before any app container starts.
 
 ## Init Container Lifecycle
 

@@ -30,7 +30,7 @@ flowchart TB
 
 ## Building from Scratch
 
-The `scratch` image is completely empty—no shell, no libraries, nothing.
+The `scratch` image is completely empty-no shell, no libraries, nothing.
 
 ### Static Go Binary
 

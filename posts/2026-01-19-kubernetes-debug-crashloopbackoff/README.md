@@ -8,7 +8,7 @@ Description: CrashLoopBackOff is one of the most common issues in Kubernetes. Th
 
 ---
 
-You've deployed your application to Kubernetes, checked the pods, and there it is: the dreaded `CrashLoopBackOff` status. The pod starts, crashes, restarts, and crashes again—each time with a longer delay before the next attempt.
+You've deployed your application to Kubernetes, checked the pods, and there it is: the dreaded `CrashLoopBackOff` status. The pod starts, crashes, restarts, and crashes again-each time with a longer delay before the next attempt.
 
 This guide provides a systematic debugging workflow that will help you identify and fix the root cause, regardless of what's causing your pods to crash.
 
@@ -37,7 +37,7 @@ flowchart LR
     end
 ```
 
-**CrashLoopBackOff** is not an error itself—it's a **state** indicating that:
+**CrashLoopBackOff** is not an error itself-it's a **state** indicating that:
 1. A container has crashed (exited with non-zero code)
 2. Kubernetes is waiting before restarting it
 3. The wait time increases exponentially (10s, 20s, 40s, 80s, 160s, capped at 5 minutes)

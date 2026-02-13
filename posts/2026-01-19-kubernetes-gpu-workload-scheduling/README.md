@@ -8,7 +8,7 @@ Description: Learn how to configure Kubernetes for GPU workloads including NVIDI
 
 ---
 
-GPU workloads in Kubernetes require special configuration—device plugins, resource requests, and scheduling considerations. This guide covers everything from basic GPU scheduling to advanced features like GPU sharing and Multi-Instance GPU (MIG).
+GPU workloads in Kubernetes require special configuration-device plugins, resource requests, and scheduling considerations. This guide covers everything from basic GPU scheduling to advanced features like GPU sharing and Multi-Instance GPU (MIG).
 
 ## GPU Architecture in Kubernetes
 

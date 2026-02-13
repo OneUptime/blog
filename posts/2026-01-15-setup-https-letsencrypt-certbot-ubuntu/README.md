@@ -8,7 +8,7 @@ Description: Comprehensive guide to securing your websites with free SSL/TLS cer
 
 ---
 
-HTTPS is no longer optional—browsers mark HTTP sites as insecure, and search engines penalize them. Let's Encrypt provides free, automated SSL/TLS certificates, and Certbot makes obtaining and renewing them simple. This guide covers setup for Apache and Nginx on Ubuntu.
+HTTPS is no longer optional-browsers mark HTTP sites as insecure, and search engines penalize them. Let's Encrypt provides free, automated SSL/TLS certificates, and Certbot makes obtaining and renewing them simple. This guide covers setup for Apache and Nginx on Ubuntu.
 
 ## Prerequisites
 

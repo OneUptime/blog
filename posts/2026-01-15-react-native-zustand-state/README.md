@@ -10,7 +10,7 @@ Description: Learn how to implement lightweight and performant global state mana
 
 ## Introduction
 
-State management is one of the most critical architectural decisions in any React Native application. While solutions like Redux have dominated the ecosystem for years, developers often find themselves writing excessive boilerplate code for simple state operations. Enter Zustand—a small, fast, and scalable state management solution that has gained tremendous popularity for its simplicity and performance.
+State management is one of the most critical architectural decisions in any React Native application. While solutions like Redux have dominated the ecosystem for years, developers often find themselves writing excessive boilerplate code for simple state operations. Enter Zustand-a small, fast, and scalable state management solution that has gained tremendous popularity for its simplicity and performance.
 
 In this comprehensive guide, we will explore how to implement global state management in React Native using Zustand. We will cover everything from basic store creation to advanced patterns like middleware, persistence, and multi-store architectures.
 
@@ -28,7 +28,7 @@ Unlike Redux or Context-based solutions, Zustand does not require wrapping your 
 
 ### 3. Hooks-Based API
 
-Zustand provides a clean, hooks-based API that feels natural in React Native applications. You simply call a hook to access state—no connect functions, no mapStateToProps, no dispatch calls.
+Zustand provides a clean, hooks-based API that feels natural in React Native applications. You simply call a hook to access state-no connect functions, no mapStateToProps, no dispatch calls.
 
 ### 4. TypeScript First
 

@@ -8,7 +8,7 @@ Description: Learn how to monitor etcd cluster health, performance metrics, and 
 
 ---
 
-etcd is the heart of Kubernetes—it stores all cluster state including configurations, secrets, and service discovery information. Poor etcd performance can cause API server slowdowns, failed deployments, and cluster instability. This guide covers comprehensive etcd monitoring and alerting.
+etcd is the heart of Kubernetes-it stores all cluster state including configurations, secrets, and service discovery information. Poor etcd performance can cause API server slowdowns, failed deployments, and cluster instability. This guide covers comprehensive etcd monitoring and alerting.
 
 ## etcd Architecture in Kubernetes
 

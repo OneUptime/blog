@@ -8,7 +8,7 @@ Description: Learn how to implement leader election in Kubernetes to ensure only
 
 ---
 
-Leader election is essential when you need exactly one instance of a workload to be active at any time—for schedulers, controllers, cron-like jobs, or any singleton pattern. Kubernetes provides primitives that make implementing leader election straightforward.
+Leader election is essential when you need exactly one instance of a workload to be active at any time-for schedulers, controllers, cron-like jobs, or any singleton pattern. Kubernetes provides primitives that make implementing leader election straightforward.
 
 ## Why Leader Election?
 

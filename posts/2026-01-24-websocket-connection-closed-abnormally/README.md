@@ -635,4 +635,4 @@ ws.onclose = (event) => {
 
 The key to handling abnormal closures is detecting them quickly through heartbeats and recovering gracefully through automatic reconnection with exponential backoff. Always send close frames when intentionally closing connections to help distinguish between intentional and unintentional disconnections.
 
-For production WebSocket services, consider setting up monitoring to track connection metrics and error rates. [OneUptime](https://oneuptime.com/product/apm) can help you monitor WebSocket server health, track error rates by close code, and alert you when abnormal closures spike—often a leading indicator of infrastructure issues.
+For production WebSocket services, consider setting up monitoring to track connection metrics and error rates. [OneUptime](https://oneuptime.com/product/apm) can help you monitor WebSocket server health, track error rates by close code, and alert you when abnormal closures spike-often a leading indicator of infrastructure issues.

@@ -8,7 +8,7 @@ Description: Learn how to configure Pod Disruption Budgets (PDBs) to maintain ap
 
 ---
 
-Pod Disruption Budgets (PDBs) protect your applications during voluntary disruptions—node drains, cluster upgrades, or autoscaling events. Without PDBs, Kubernetes might evict all your pods simultaneously, causing downtime. PDBs ensure a minimum number of pods remain available.
+Pod Disruption Budgets (PDBs) protect your applications during voluntary disruptions-node drains, cluster upgrades, or autoscaling events. Without PDBs, Kubernetes might evict all your pods simultaneously, causing downtime. PDBs ensure a minimum number of pods remain available.
 
 ## Understanding Disruptions
 

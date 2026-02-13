@@ -8,7 +8,7 @@ Description: Learn how to safely perform Kubernetes node maintenance using drain
 
 ---
 
-Regular node maintenance is essential for keeping your Kubernetes cluster healthy—whether you're applying security patches, upgrading the kernel, replacing hardware, or scaling down your cluster. Kubernetes provides `cordon` and `drain` commands to safely evacuate workloads before taking a node offline.
+Regular node maintenance is essential for keeping your Kubernetes cluster healthy-whether you're applying security patches, upgrading the kernel, replacing hardware, or scaling down your cluster. Kubernetes provides `cordon` and `drain` commands to safely evacuate workloads before taking a node offline.
 
 This guide covers the complete workflow for safe node maintenance.
 

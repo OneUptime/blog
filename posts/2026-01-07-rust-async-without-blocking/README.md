@@ -10,7 +10,7 @@ Description: Learn how to properly use async Rust without blocking the runtime. 
 
 > Async Rust gives you the performance of threads with the simplicity of sequential code, but only if you follow the rules. One blocking call can grind your entire async runtime to a halt. This guide shows you how to avoid the pitfalls and write truly non-blocking async code.
 
-The async runtime (like Tokio) uses a small number of threads to handle many concurrent tasks. When you block a thread, you're not just blocking your task—you're stealing a thread from all other tasks. Understanding this is crucial for building performant async applications.
+The async runtime (like Tokio) uses a small number of threads to handle many concurrent tasks. When you block a thread, you're not just blocking your task-you're stealing a thread from all other tasks. Understanding this is crucial for building performant async applications.
 
 ---
 
@@ -88,7 +88,7 @@ async fn main() {
 }
 ```
 
-If you have 4 runtime threads and each request blocks for 100ms, you can only handle 40 requests per second—regardless of how many tasks are waiting!
+If you have 4 runtime threads and each request blocks for 100ms, you can only handle 40 requests per second-regardless of how many tasks are waiting!
 
 ---
 

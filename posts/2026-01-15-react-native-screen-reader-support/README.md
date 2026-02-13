@@ -10,7 +10,7 @@ Description: Learn how to optimize React Native apps for screen readers like Voi
 
 ## Introduction
 
-Screen readers are essential assistive technologies that enable visually impaired users to interact with mobile applications. In the React Native ecosystem, supporting VoiceOver (iOS) and TalkBack (Android) is not just a best practice—it's a fundamental requirement for creating inclusive applications that serve all users.
+Screen readers are essential assistive technologies that enable visually impaired users to interact with mobile applications. In the React Native ecosystem, supporting VoiceOver (iOS) and TalkBack (Android) is not just a best practice-it's a fundamental requirement for creating inclusive applications that serve all users.
 
 This comprehensive guide will walk you through everything you need to know about implementing robust screen reader support in your React Native applications. From basic concepts to advanced techniques, you'll learn how to create truly accessible mobile experiences.
 

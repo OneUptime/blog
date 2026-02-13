@@ -8,7 +8,7 @@ Description: Learn how to build a robust job queue in Rust using Tokio and Redis
 
 ---
 
-> Not everything needs to happen in the request-response cycle. Email sending, image processing, report generation—these belong in a job queue. This guide shows you how to build a production-ready job queue in Rust with proper retry handling and failure recovery.
+> Not everything needs to happen in the request-response cycle. Email sending, image processing, report generation-these belong in a job queue. This guide shows you how to build a production-ready job queue in Rust with proper retry handling and failure recovery.
 
 A well-designed job queue decouples slow operations from user requests, improves system resilience, and enables horizontal scaling of workers.
 

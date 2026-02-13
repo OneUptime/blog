@@ -8,7 +8,7 @@ Description: Learn how to significantly reduce Kubernetes infrastructure costs b
 
 ---
 
-Cloud costs can spiral out of control quickly when running Kubernetes clusters at scale. Spot instances (AWS), preemptible VMs (GCP), and spot VMs (Azure) offer up to 90% cost savings compared to on-demand pricing—but they come with a catch: they can be terminated with little notice.
+Cloud costs can spiral out of control quickly when running Kubernetes clusters at scale. Spot instances (AWS), preemptible VMs (GCP), and spot VMs (Azure) offer up to 90% cost savings compared to on-demand pricing-but they come with a catch: they can be terminated with little notice.
 
 This guide covers strategies for safely using interruptible nodes in production Kubernetes clusters.
 

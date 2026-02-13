@@ -8,7 +8,7 @@ Description: Learn how to use Kubernetes Topology Spread Constraints to distribu
 
 ---
 
-Topology Spread Constraints ensure your pods are distributed evenly across failure domains—nodes, zones, or regions. This prevents all replicas from landing on the same node or zone, improving availability during failures.
+Topology Spread Constraints ensure your pods are distributed evenly across failure domains-nodes, zones, or regions. This prevents all replicas from landing on the same node or zone, improving availability during failures.
 
 ## Why Topology Spread?
 

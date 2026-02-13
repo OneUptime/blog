@@ -83,13 +83,13 @@ The consistent 4-5x variance isn't coincidence. It's the pricing model working a
 
 ### Trap 1: The Container Tax
 
-In Kubernetes, you pay for every container running the Datadog agent. A 3-replica deployment across 4 microservices isn't 4 hosts—it's 12.
+In Kubernetes, you pay for every container running the Datadog agent. A 3-replica deployment across 4 microservices isn't 4 hosts-it's 12.
 
 **Real example:** One company with "20 services" had 340 billable units after accounting for replicas, sidecars, and init containers.
 
 ### Trap 2: The Cardinality Bomb
 
-Custom metrics are priced per unique time series. A metric with two tags—say, `environment` (3 values) and `endpoint` (100 values)—creates 300 time series per metric.
+Custom metrics are priced per unique time series. A metric with two tags-say, `environment` (3 values) and `endpoint` (100 values)-creates 300 time series per metric.
 
 Add `customer_id` as a tag? You've just multiplied by your customer count.
 
@@ -176,7 +176,7 @@ Before signing or renewing:
 
 ## The Uncomfortable Truth
 
-Datadog's pricing isn't predatory—it's designed for their business model. High margins require per-unit pricing that scales with usage.
+Datadog's pricing isn't predatory-it's designed for their business model. High margins require per-unit pricing that scales with usage.
 
 But "usage" in observability grows faster than your business. More microservices. More containers. More logs. More metrics. The bill compounds while revenue grows linearly.
 

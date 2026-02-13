@@ -8,7 +8,7 @@ Description: Learn how to build Kubernetes admission webhooks to validate and mu
 
 ---
 
-Admission webhooks are HTTP callbacks that intercept requests to the Kubernetes API server before objects are persisted. They enable custom validation, mutation, and policy enforcement—essential for security and standardization.
+Admission webhooks are HTTP callbacks that intercept requests to the Kubernetes API server before objects are persisted. They enable custom validation, mutation, and policy enforcement-essential for security and standardization.
 
 ## How Admission Webhooks Work
 

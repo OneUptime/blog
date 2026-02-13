@@ -8,7 +8,7 @@ Description: Build event-driven architectures in NestJS for scalable, loosely co
 
 ---
 
-Event-driven architecture is a design pattern where the flow of the program is determined by events—significant changes in state that other parts of the system react to. NestJS provides excellent support for building event-driven systems through its built-in event emitter, CQRS module, and microservices capabilities.
+Event-driven architecture is a design pattern where the flow of the program is determined by events-significant changes in state that other parts of the system react to. NestJS provides excellent support for building event-driven systems through its built-in event emitter, CQRS module, and microservices capabilities.
 
 The `@nestjs/event-emitter` package provides a simple way to implement in-process event handling. Services can emit events using the EventEmitter2 instance, while listeners decorated with `@OnEvent()` react to those events. This pattern enables loose coupling between components, making code more maintainable and testable.
 

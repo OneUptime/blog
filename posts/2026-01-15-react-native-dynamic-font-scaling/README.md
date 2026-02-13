@@ -1343,7 +1343,7 @@ export default AccessibleCard;
 
 ## Conclusion
 
-Implementing dynamic font scaling in React Native is not just a technical requirement—it's a commitment to building inclusive applications. By following the practices outlined in this guide, you can create apps that:
+Implementing dynamic font scaling in React Native is not just a technical requirement-it's a commitment to building inclusive applications. By following the practices outlined in this guide, you can create apps that:
 
 - Respect user preferences for text size
 - Maintain visual polish at all scale levels
@@ -1351,7 +1351,7 @@ Implementing dynamic font scaling in React Native is not just a technical requir
 - Balance accessibility with design constraints
 - Work consistently across iOS and Android
 
-Remember that accessibility is not a feature to be added later—it should be part of your development process from the start. The investment you make in proper font scaling implementation will pay dividends in user satisfaction, broader reach, and compliance with accessibility standards.
+Remember that accessibility is not a feature to be added later-it should be part of your development process from the start. The investment you make in proper font scaling implementation will pay dividends in user satisfaction, broader reach, and compliance with accessibility standards.
 
 Start by auditing your existing Text components, implement a design system with appropriate scaling limits, and always test your app at various font scale settings. Your users will thank you for it.
 

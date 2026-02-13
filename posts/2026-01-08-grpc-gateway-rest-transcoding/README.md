@@ -10,7 +10,7 @@ Description: Learn how to expose your gRPC services as RESTful APIs using grpc-g
 
 ## Introduction
 
-gRPC offers excellent performance and type safety for microservices communication, but many clients—especially web browsers and legacy systems—still require REST APIs. grpc-gateway solves this problem by automatically generating a reverse proxy that translates RESTful HTTP API calls into gRPC.
+gRPC offers excellent performance and type safety for microservices communication, but many clients-especially web browsers and legacy systems-still require REST APIs. grpc-gateway solves this problem by automatically generating a reverse proxy that translates RESTful HTTP API calls into gRPC.
 
 This guide covers setting up grpc-gateway from scratch, adding HTTP annotations to your proto files, generating OpenAPI documentation, and handling errors gracefully.
 

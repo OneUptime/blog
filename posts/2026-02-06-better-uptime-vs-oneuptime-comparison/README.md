@@ -48,14 +48,14 @@ For teams that need straightforward uptime monitoring with status pages and basi
 
 ### 1. No Observability
 
-Better Uptime is a monitoring tool — it tells you if something is up or down. But modern applications need more:
+Better Uptime is a monitoring tool - it tells you if something is up or down. But modern applications need more:
 
 - **What caused the outage?** You need logs.
 - **Which request is slow?** You need traces.
 - **What's the trend?** You need metrics.
 - **Where's the bug?** You need error tracking.
 
-Better Uptime doesn't offer any of this. You'll need Datadog, New Relic, or another tool for observability — adding cost and complexity.
+Better Uptime doesn't offer any of this. You'll need Datadog, New Relic, or another tool for observability - adding cost and complexity.
 
 OneUptime includes logs, metrics, traces, and error tracking alongside monitoring.
 
@@ -76,7 +76,7 @@ Better Uptime alerts you when something breaks. You still need to:
 - Fix it manually
 - Go back to sleep (maybe)
 
-OneUptime's AI Agent can analyze incidents and create pull requests to fix issues automatically. The future of monitoring isn't better alerts — it's fewer pages because problems fix themselves.
+OneUptime's AI Agent can analyze incidents and create pull requests to fix issues automatically. The future of monitoring isn't better alerts - it's fewer pages because problems fix themselves.
 
 ### 4. Closed Source
 
@@ -149,7 +149,7 @@ For engineering teams building production software, OneUptime provides the compl
 
 **Better Uptime** is a modern monitoring tool that tells you when things are down.
 
-**OneUptime** is a complete reliability platform that helps you understand why things break and — increasingly — fixes them automatically.
+**OneUptime** is a complete reliability platform that helps you understand why things break and - increasingly - fixes them automatically.
 
 Both are good products. The choice depends on how much visibility and control you need.
 
@@ -161,7 +161,7 @@ If you decide to switch:
 2. **Create monitors in OneUptime** (similar configuration)
 3. **Set up status page** (easy to match your existing design)
 4. **Configure on-call schedules** (same concepts)
-5. **Add observability** (logs, metrics, traces — bonus!)
+5. **Add observability** (logs, metrics, traces - bonus!)
 6. **Parallel run** for a week
 7. **Migrate DNS** for status page
 8. **Done**
@@ -179,9 +179,9 @@ Better Uptime and OneUptime are both modern alternatives to legacy monitoring to
 | **Source** | Proprietary | Open source |
 | **AI** | Alerting | Auto-remediation |
 
-If you need simple, beautiful uptime monitoring — Better Uptime is great.
+If you need simple, beautiful uptime monitoring - Better Uptime is great.
 
-If you need a complete reliability platform with observability, self-hosting, and AI — OneUptime is the better choice.
+If you need a complete reliability platform with observability, self-hosting, and AI - OneUptime is the better choice.
 
 ---
 

@@ -457,5 +457,5 @@ done
 | `docker context rm name` | Remove context |
 | `docker context export/import` | Share contexts |
 
-Docker contexts simplify managing multiple Docker hosts from a single machine. SSH-based contexts are secure and easy to set up—just ensure SSH access is properly configured, and you can deploy to staging and production environments with the same commands you use locally.
+Docker contexts simplify managing multiple Docker hosts from a single machine. SSH-based contexts are secure and easy to set up-just ensure SSH access is properly configured, and you can deploy to staging and production environments with the same commands you use locally.
 

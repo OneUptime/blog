@@ -10,7 +10,7 @@ Description: A comprehensive guide to testing and validating IPv6 readiness in y
 
 ## Introduction
 
-The Internet is undergoing a fundamental transformation. With IPv4 addresses exhausted and the global adoption of IPv6 accelerating, ensuring your applications work seamlessly over IPv6 is no longer optional—it's essential. IPv6 adoption has crossed 45% globally, with major cloud providers, ISPs, and mobile networks prioritizing IPv6-native connectivity.
+The Internet is undergoing a fundamental transformation. With IPv4 addresses exhausted and the global adoption of IPv6 accelerating, ensuring your applications work seamlessly over IPv6 is no longer optional-it's essential. IPv6 adoption has crossed 45% globally, with major cloud providers, ISPs, and mobile networks prioritizing IPv6-native connectivity.
 
 Testing IPv6 readiness isn't just about checking if your server has an IPv6 address. It involves comprehensive validation of your entire application stack, from DNS resolution and network connectivity to application logic and third-party integrations. This guide will walk you through everything you need to know to test IPv6 readiness for your applications.
 
@@ -1600,7 +1600,7 @@ Key takeaways:
 4. **Monitor**: Set up IPv6-specific monitoring and alerting
 5. **Document**: Keep IPv6-specific runbooks and troubleshooting guides
 
-By following this comprehensive testing guide, you can ensure your applications are ready for the IPv6 future while maintaining backward compatibility with IPv4. Remember, IPv6 adoption is not just a nice-to-have—it's becoming essential for reaching users across the globe, especially on mobile networks.
+By following this comprehensive testing guide, you can ensure your applications are ready for the IPv6 future while maintaining backward compatibility with IPv4. Remember, IPv6 adoption is not just a nice-to-have-it's becoming essential for reaching users across the globe, especially on mobile networks.
 
 Start testing today, and future-proof your applications for the evolving Internet landscape.
 

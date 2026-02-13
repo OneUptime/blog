@@ -8,7 +8,7 @@ Description: Master cron job scheduling on Ubuntu with this comprehensive guide 
 
 ---
 
-Cron is the time-based job scheduler in Unix-like systems. It runs commands or scripts automatically at specified intervals—perfect for backups, log rotation, system maintenance, and automated tasks. This guide covers everything from basic syntax to advanced scheduling techniques.
+Cron is the time-based job scheduler in Unix-like systems. It runs commands or scripts automatically at specified intervals-perfect for backups, log rotation, system maintenance, and automated tasks. This guide covers everything from basic syntax to advanced scheduling techniques.
 
 ## Understanding Cron
 

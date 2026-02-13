@@ -10,9 +10,9 @@ Description: A complete guide to setting up structured logging in Go with OpenTe
 
 ## Introduction
 
-Structured logging is a cornerstone of modern observability. Unlike traditional plaintext logs, structured logs emit data in a consistent, machine-parseable format (typically JSON), making them easier to query, filter, and analyze. When combined with distributed tracing through OpenTelemetry, structured logs become even more powerful—allowing you to correlate log entries with specific traces and spans across your microservices architecture.
+Structured logging is a cornerstone of modern observability. Unlike traditional plaintext logs, structured logs emit data in a consistent, machine-parseable format (typically JSON), making them easier to query, filter, and analyze. When combined with distributed tracing through OpenTelemetry, structured logs become even more powerful-allowing you to correlate log entries with specific traces and spans across your microservices architecture.
 
-In this comprehensive guide, we will explore three popular Go logging libraries—slog (Go's standard library logger), zerolog, and zap—and demonstrate how to integrate each with OpenTelemetry for trace correlation. By the end, you will have production-ready logging configurations that automatically inject trace and span IDs into your log entries.
+In this comprehensive guide, we will explore three popular Go logging libraries-slog (Go's standard library logger), zerolog, and zap-and demonstrate how to integrate each with OpenTelemetry for trace correlation. By the end, you will have production-ready logging configurations that automatically inject trace and span IDs into your log entries.
 
 ## Prerequisites
 
@@ -1205,7 +1205,7 @@ func (h *BufferedHandler) Close() {
 
 Structured logging with trace correlation is essential for debugging and monitoring distributed systems. By integrating your Go logging library with OpenTelemetry, you gain the ability to correlate logs with traces, making it significantly easier to understand the behavior of your applications in production.
 
-All three libraries covered in this guide—slog, zerolog, and zap—are excellent choices for structured logging in Go. The best choice depends on your specific requirements:
+All three libraries covered in this guide-slog, zerolog, and zap-are excellent choices for structured logging in Go. The best choice depends on your specific requirements:
 
 - Use **slog** for simplicity and minimal dependencies
 - Use **zerolog** for maximum performance

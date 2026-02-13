@@ -8,7 +8,7 @@ Description: Cloudflare powers a troubling percentage of the internet. When they
 
 Cloudflare has become the internet's de facto infrastructure layer. They proxy roughly [20% of all websites](https://w3techs.com/technologies/details/cn-cloudflare), provide DNS for millions of domains, and sit between users and origin servers for countless applications. That's a lot of trust placed in a single company.
 
-When Cloudflare experiences an outage—and [they do](https://oneuptime.com/blog/post/2025-11-19-why-our-cloudflare-failover-failed/view)—the blast radius is enormous. Entire swaths of the internet become unreachable. Your "highly available" architecture suddenly has a single point of failure you didn't even control.
+When Cloudflare experiences an outage-and [they do](https://oneuptime.com/blog/post/2025-11-19-why-our-cloudflare-failover-failed/view)-the blast radius is enormous. Entire swaths of the internet become unreachable. Your "highly available" architecture suddenly has a single point of failure you didn't even control.
 
 The solution isn't to avoid CDNs or edge services altogether. The solution is to **decentralize**: use open source tools you can run yourself, diversify across multiple providers, and ensure no single vendor can take your entire stack offline.
 
@@ -18,7 +18,7 @@ Before diving into alternatives, let's be clear about why this matters:
 
 1. **Single point of failure**: When Cloudflare goes down, your "five nines" architecture becomes irrelevant.
 2. **Vendor lock-in**: Cloudflare's ecosystem (Workers, R2, D1, Queues) creates sticky dependencies.
-3. **Privacy concerns**: All your traffic flows through their infrastructure—they see everything.
+3. **Privacy concerns**: All your traffic flows through their infrastructure-they see everything.
 4. **Pricing unpredictability**: Free tiers can disappear or change; enterprise pricing is opaque.
 5. **Control**: You can't patch, configure, or debug what you don't own.
 
@@ -26,7 +26,7 @@ The good news? Every Cloudflare service has open source alternatives you can sel
 
 ## Breaking Down Cloudflare's Services
 
-Cloudflare isn't just one thing—it's a bundle of services. To replace it, you need to address each component:
+Cloudflare isn't just one thing-it's a bundle of services. To replace it, you need to address each component:
 
 ```mermaid
 graph TD
@@ -251,7 +251,7 @@ sudo cscli scenarios list
 sudo cscli decisions list
 ```
 
-Crowdsec's strength is its community blocklists—when one user detects an attack, everyone benefits.
+Crowdsec's strength is its community blocklists-when one user detects an attack, everyone benefits.
 
 ### fail2ban for SSH and Application Protection
 
@@ -427,7 +427,7 @@ This way, if one provider goes down, the others continue serving your zones.
 
 ## 4. TLS/SSL: Let's Encrypt + Caddy or Certbot
 
-Cloudflare provides automatic SSL, but so does **Let's Encrypt**—for free, and without proxying your traffic.
+Cloudflare provides automatic SSL, but so does **Let's Encrypt**-for free, and without proxying your traffic.
 
 ### Caddy: Automatic HTTPS by Default
 
@@ -841,7 +841,7 @@ We wrote about [our Cloudflare failover failure](https://oneuptime.com/blog/post
 
 2. **Pick your battles**: You don't need to replace everything at once. Start with DNS (easiest) or caching (biggest impact).
 
-3. **Build failover automation**: The goal isn't to never use Cloudflare—it's to not be stuck when they're down.
+3. **Build failover automation**: The goal isn't to never use Cloudflare-it's to not be stuck when they're down.
 
 4. **Test quarterly**: Run chaos engineering exercises where you simulate Cloudflare being unavailable. Can you still serve traffic?
 
@@ -853,7 +853,7 @@ We wrote about [our Cloudflare failover failure](https://oneuptime.com/blog/post
 
 Cloudflare is a remarkable piece of infrastructure, but remarkable single points of failure are still single points of failure. The internet was designed to be decentralized and resilient. Every year we centralize more of it into fewer hands.
 
-You don't have to go full sovereign-cloud to reduce your blast radius. Start with one service—maybe DNS or caching—and build from there. Every component you can self-host or diversify across providers is one less dependency on a single vendor's uptime.
+You don't have to go full sovereign-cloud to reduce your blast radius. Start with one service-maybe DNS or caching-and build from there. Every component you can self-host or diversify across providers is one less dependency on a single vendor's uptime.
 
 The tools exist. They're open source. They're battle-tested. The only question is whether you'll use them before the next outage forces your hand.
 

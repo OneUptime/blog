@@ -1757,4 +1757,4 @@ OneUptime offers:
 - **Log Management**: Centralize and analyze logs from all your services
 - **On-Call Scheduling**: Ensure the right team members are notified at the right time
 
-Start monitoring your infrastructure today with OneUptime and focus on what you do best—writing great code in Neovim.
+Start monitoring your infrastructure today with OneUptime and focus on what you do best-writing great code in Neovim.

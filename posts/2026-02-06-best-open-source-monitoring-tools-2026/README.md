@@ -42,7 +42,7 @@ The [Prometheus](https://prometheus.io/) + [Grafana](https://grafana.com/oss/gra
 
 **Why it stands out:** Cloud-native, battle-tested at scale, huge ecosystem of exporters.
 
-**Limitations:** Metrics only — you'll need additional tools for logs, traces, and incidents.
+**Limitations:** Metrics only - you'll need additional tools for logs, traces, and incidents.
 
 **License:** Apache 2.0
 
@@ -74,7 +74,7 @@ The [Prometheus](https://prometheus.io/) + [Grafana](https://grafana.com/oss/gra
 - Minimal resource footprint
 - Distributed architecture for scale
 
-**Why it stands out:** Fastest time-to-value — install and immediately see thousands of metrics.
+**Why it stands out:** Fastest time-to-value - install and immediately see thousands of metrics.
 
 **License:** GPL v3
 
@@ -282,14 +282,14 @@ The [Prometheus](https://prometheus.io/) + [Grafana](https://grafana.com/oss/gra
 
 Choosing open source monitoring gives you:
 
-1. **No vendor lock-in** — Switch or customize anytime
-2. **Cost control** — Pay for hosting, not licenses
-3. **Transparency** — Audit what's monitoring your systems
-4. **Community** — Benefit from shared knowledge and contributions
-5. **Self-hosting** — Keep data on your infrastructure
+1. **No vendor lock-in** - Switch or customize anytime
+2. **Cost control** - Pay for hosting, not licenses
+3. **Transparency** - Audit what's monitoring your systems
+4. **Community** - Benefit from shared knowledge and contributions
+5. **Self-hosting** - Keep data on your infrastructure
 
 The monitoring landscape has never been better for open source. Whether you need simple uptime checks or enterprise-grade observability, there's a free, open solution available.
 
 ---
 
-**Ready for all-in-one open source observability?** [Try OneUptime](https://oneuptime.com) — monitoring, status pages, incidents, on-call, logs, metrics, and traces in one platform.
+**Ready for all-in-one open source observability?** [Try OneUptime](https://oneuptime.com) - monitoring, status pages, incidents, on-call, logs, metrics, and traces in one platform.

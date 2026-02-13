@@ -8,7 +8,7 @@ Description: Set up Cockpit web-based interface for easy Ubuntu server managemen
 
 ---
 
-Cockpit is a web-based server management tool that provides a graphical interface for system administration tasks. It allows you to monitor performance, manage services, view logs, configure networking, and more—all from your web browser.
+Cockpit is a web-based server management tool that provides a graphical interface for system administration tasks. It allows you to monitor performance, manage services, view logs, configure networking, and more-all from your web browser.
 
 ## Prerequisites
 

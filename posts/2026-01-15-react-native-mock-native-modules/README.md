@@ -8,7 +8,7 @@ Description: Learn how to effectively mock native modules in React Native tests 
 
 ---
 
-Testing React Native applications presents unique challenges that web developers rarely encounter. One of the most significant hurdles is dealing with native modules—JavaScript interfaces that communicate with platform-specific code written in Swift, Objective-C, Kotlin, or Java. When running tests in a Node.js environment with Jest, these native modules simply don't exist, causing tests to fail with cryptic errors. This comprehensive guide will teach you everything you need to know about mocking native modules effectively.
+Testing React Native applications presents unique challenges that web developers rarely encounter. One of the most significant hurdles is dealing with native modules-JavaScript interfaces that communicate with platform-specific code written in Swift, Objective-C, Kotlin, or Java. When running tests in a Node.js environment with Jest, these native modules simply don't exist, causing tests to fail with cryptic errors. This comprehensive guide will teach you everything you need to know about mocking native modules effectively.
 
 ## Why Mock Native Modules?
 
@@ -18,7 +18,7 @@ Before diving into the technical details, let's understand why mocking native mo
 
 React Native applications run JavaScript code that communicates with native platform code through a "bridge." When you call a method like `CameraRoll.getPhotos()`, your JavaScript code sends a message across this bridge to native code that actually accesses the device's photo library.
 
-However, when running tests with Jest, your code executes in Node.js—not on a mobile device or simulator. The native code simply doesn't exist in this environment. Without proper mocking, you'll encounter errors like:
+However, when running tests with Jest, your code executes in Node.js-not on a mobile device or simulator. The native code simply doesn't exist in this environment. Without proper mocking, you'll encounter errors like:
 
 ```
 Invariant Violation: TurboModuleRegistry.getEnforcing(...):
@@ -1384,7 +1384,7 @@ beforeEach(() => {
 
 ## Conclusion
 
-Mocking native modules in React Native tests is essential for building a reliable, fast, and maintainable test suite. By understanding the various mocking strategies—from basic `jest.mock()` calls to comprehensive manual mocks—you can effectively test your application's JavaScript logic without depending on native implementations.
+Mocking native modules in React Native tests is essential for building a reliable, fast, and maintainable test suite. By understanding the various mocking strategies-from basic `jest.mock()` calls to comprehensive manual mocks-you can effectively test your application's JavaScript logic without depending on native implementations.
 
 Key takeaways:
 
@@ -1395,4 +1395,4 @@ Key takeaways:
 5. **Leverage TypeScript** for type-safe mocks and better IDE support
 6. **Reset mocks properly** between tests to avoid state pollution
 
-By following these practices, you'll be able to write comprehensive tests for your React Native applications, catching bugs early and shipping with confidence. Remember that mocks are a tool to isolate your code for testing—they should complement, not replace, integration and end-to-end tests that verify real device behavior.
+By following these practices, you'll be able to write comprehensive tests for your React Native applications, catching bugs early and shipping with confidence. Remember that mocks are a tool to isolate your code for testing-they should complement, not replace, integration and end-to-end tests that verify real device behavior.

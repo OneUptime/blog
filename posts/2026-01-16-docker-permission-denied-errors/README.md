@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix common Docker permission denied error
 
 ---
 
-Permission denied errors are among the most common Docker issues. They occur at different levels—Docker daemon access, volume mounts, and container file operations. Understanding where permissions fail helps you fix them correctly.
+Permission denied errors are among the most common Docker issues. They occur at different levels-Docker daemon access, volume mounts, and container file operations. Understanding where permissions fail helps you fix them correctly.
 
 ## Docker Socket Permission Denied
 

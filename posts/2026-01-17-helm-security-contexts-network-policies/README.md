@@ -6,7 +6,7 @@ Tags: Helm, Kubernetes, DevOps, Security, Network Policies, Pod Security
 
 Description: Learn how to implement security best practices in Helm charts using security contexts, network policies, and pod security standards.
 
-> Security isn't an afterthought—it's a requirement. This guide shows you how to build secure-by-default Helm charts with proper security contexts, network isolation, and pod security standards.
+> Security isn't an afterthought-it's a requirement. This guide shows you how to build secure-by-default Helm charts with proper security contexts, network isolation, and pod security standards.
 
 ## Security Layers in Kubernetes
 

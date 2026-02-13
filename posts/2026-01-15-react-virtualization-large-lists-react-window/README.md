@@ -23,7 +23,7 @@ This is where **virtualization** (also known as **windowing**) comes to the resc
 
 ## What is Virtualization?
 
-Virtualization is a technique that renders only the items currently visible in the viewport, plus a small buffer zone above and below. Instead of creating thousands of DOM elements, we only create enough to fill the visible area—typically between 10 to 50 elements, regardless of the total list size.
+Virtualization is a technique that renders only the items currently visible in the viewport, plus a small buffer zone above and below. Instead of creating thousands of DOM elements, we only create enough to fill the visible area-typically between 10 to 50 elements, regardless of the total list size.
 
 ### How Virtualization Works
 
@@ -504,7 +504,7 @@ const offset = listRef.current?.state.scrollOffset;
 
 ## Building a Complete Example: Virtualized Data Table
 
-Let's build a more complex example—a data table with sorting, filtering, and selection:
+Let's build a more complex example-a data table with sorting, filtering, and selection:
 
 ```tsx
 import React, { useState, useMemo, useCallback, useRef } from 'react';

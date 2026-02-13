@@ -16,7 +16,7 @@ Native modules represent the interface between your JavaScript code and platform
 
 ### Type Safety at the Bridge
 
-The JavaScript-native bridge is a common source of runtime errors. When you call a native method with incorrect parameters or expect the wrong return type, the error only manifests at runtime—often in production. Proper typing catches these issues during development.
+The JavaScript-native bridge is a common source of runtime errors. When you call a native method with incorrect parameters or expect the wrong return type, the error only manifests at runtime-often in production. Proper typing catches these issues during development.
 
 ```typescript
 // Without types - no compile-time safety

@@ -8,7 +8,7 @@ Description: Learn how to check certificate expiration dates, rotate Kubernetes 
 
 ---
 
-Kubernetes uses TLS certificates extensively for secure communication between components. These certificates expire—typically after one year—and failing to rotate them causes cluster outages. This guide covers certificate management for all major Kubernetes distributions.
+Kubernetes uses TLS certificates extensively for secure communication between components. These certificates expire-typically after one year-and failing to rotate them causes cluster outages. This guide covers certificate management for all major Kubernetes distributions.
 
 ## Kubernetes Certificate Architecture
 

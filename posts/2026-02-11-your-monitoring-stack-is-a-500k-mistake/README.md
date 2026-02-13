@@ -6,7 +6,7 @@ Tags: Observability, Monitoring, DevOps, Open Source
 
 Description: A real breakdown of what engineering teams spend across fragmented monitoring tools and why consolidation is no longer optional.
 
-Most engineering teams don't realize how much they actually spend on monitoring. Not because they're careless — because the costs are spread across so many vendors that nobody ever adds them up.
+Most engineering teams don't realize how much they actually spend on monitoring. Not because they're careless - because the costs are spread across so many vendors that nobody ever adds them up.
 
 Let's do the math.
 
@@ -16,7 +16,7 @@ A 50-engineer team running microservices in production. Nothing exotic. Here's w
 
 **Infrastructure monitoring:** Datadog. 100 hosts at ~$23/host/month for infrastructure plus APM. That's $27,600/year just for the base. Add custom metrics, log management (easily 100GB/day at $0.10/GB ingestion + $1.70/GB retention), and you're looking at **$80,000-$150,000/year** before anyone raises an eyebrow.
 
-**Incident management:** PagerDuty. 30 on-call engineers at $41/user/month for Professional. That's **$14,760/year**. Want AIOps? That's the Enterprise tier — $59/user/month, or **$21,240/year**.
+**Incident management:** PagerDuty. 30 on-call engineers at $41/user/month for Professional. That's **$14,760/year**. Want AIOps? That's the Enterprise tier - $59/user/month, or **$21,240/year**.
 
 **Status pages:** Atlassian Statuspage. Business plan at $399/month for the features you actually need (private pages, third-party components). **$4,788/year**.
 
@@ -34,7 +34,7 @@ And that's before the hidden costs.
 
 **Integration maintenance.** Someone on your team spends 2-3 hours a week maintaining the glue between these systems. Webhooks break. API versions change. Alert routing gets stale. At senior engineer rates, that's **$15,000-$25,000/year** in engineering time.
 
-**Context switching during incidents.** Your service goes down at 2 AM. The on-call engineer gets paged by PagerDuty, opens Datadog to check metrics, switches to their log tool for error details, checks Sentry for stack traces, updates the status page manually, and then — maybe — starts debugging. Four tabs, four logins, four mental models. Studies show context switching during incidents adds 20-40% to mean time to resolution.
+**Context switching during incidents.** Your service goes down at 2 AM. The on-call engineer gets paged by PagerDuty, opens Datadog to check metrics, switches to their log tool for error details, checks Sentry for stack traces, updates the status page manually, and then - maybe - starts debugging. Four tabs, four logins, four mental models. Studies show context switching during incidents adds 20-40% to mean time to resolution.
 
 **Vendor management.** Six contracts. Six renewal cycles. Six account managers sending "just checking in" emails. Six security reviews for SOC 2 compliance. Your VP of Engineering didn't sign up for procurement.
 
@@ -76,9 +76,9 @@ But there's a catch: most consolidated platforms are expensive, proprietary, and
 
 Here's where it gets interesting.
 
-Open source monitoring isn't new. Prometheus, Grafana, Jaeger — these are battle-tested. But assembling them into a cohesive platform is exactly the same fragmentation problem, just with different tools.
+Open source monitoring isn't new. Prometheus, Grafana, Jaeger - these are battle-tested. But assembling them into a cohesive platform is exactly the same fragmentation problem, just with different tools.
 
-What if there was a single open source platform that consolidated all eight capabilities — monitoring, status pages, incidents, on-call, logs, traces, metrics, error tracking — into one product?
+What if there was a single open source platform that consolidated all eight capabilities - monitoring, status pages, incidents, on-call, logs, traces, metrics, error tracking - into one product?
 
 You'd get the consolidation benefits (lower cost, less context switching, faster incident response) without the vendor lock-in. Self-host it or use a managed cloud. Your data, your infrastructure, your rules.
 
@@ -86,13 +86,13 @@ That's the bet we're making at [OneUptime](https://oneuptime.com). Full observab
 
 For that same 50-engineer team: **$20,000-$40,000/year** instead of $230,000-$480,000.
 
-## But Wait — What About the AI Part?
+## But Wait - What About the AI Part?
 
 Consolidation saves money. But the real unlock is what you can do when all your observability data lives in one system.
 
 When your monitoring, logs, traces, and incident history are unified, an AI agent can connect dots across all of them. It can see that this metric spike correlates with that error spike in traces, which started after that deployment, and here's the specific code change that likely caused it.
 
-We're building toward a world where you wake up to a pull request that fixes last night's incident — not a page that ruins your sleep. When your AI has the full picture (not fragments spread across six vendors), autonomous incident response becomes possible.
+We're building toward a world where you wake up to a pull request that fixes last night's incident - not a page that ruins your sleep. When your AI has the full picture (not fragments spread across six vendors), autonomous incident response becomes possible.
 
 That's not a pipe dream. It's what happens when you stop treating observability as six separate problems.
 
@@ -102,7 +102,7 @@ You don't have to rip and replace everything tomorrow. But you should know your 
 
 1. **Add up your actual spend.** All vendors. All tiers. Include the engineering time for integration maintenance.
 2. **Map your incident workflow.** How many tools does an engineer touch during a P1? Count the tabs.
-3. **Calculate your switching cost.** It's probably lower than you think. Most monitoring data is ephemeral — you're not migrating a database.
+3. **Calculate your switching cost.** It's probably lower than you think. Most monitoring data is ephemeral - you're not migrating a database.
 4. **Try consolidation on one team first.** Move a single service's observability to a unified platform. Measure the difference in incident response time.
 
 The monitoring industry has spent a decade convincing you that best-of-breed is worth the complexity tax. For some teams, at some scale, maybe it is.

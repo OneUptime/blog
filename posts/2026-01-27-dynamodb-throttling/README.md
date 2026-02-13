@@ -8,7 +8,7 @@ Description: A comprehensive guide to understanding, preventing, and handling Dy
 
 ---
 
-> "Throttling in DynamoDB is not a failure of the service—it's feedback. Your job is to listen to that feedback and design systems that respond gracefully."
+> "Throttling in DynamoDB is not a failure of the service-it's feedback. Your job is to listen to that feedback and design systems that respond gracefully."
 
 DynamoDB is one of the most powerful managed NoSQL databases available, but its pricing model and architecture mean that throttling is a reality you must plan for. When your application exceeds provisioned capacity or hits partition-level limits, DynamoDB responds with `ProvisionedThroughputExceededException`. How you handle this determines whether your users experience seamless performance or cascading failures.
 
@@ -41,7 +41,7 @@ flowchart TD
 
 ### Partition Capacity Distribution
 
-DynamoDB allocates capacity evenly across partitions. If you provision 10,000 RCU and have 10 partitions, each partition receives only 1,000 RCU—regardless of actual traffic distribution.
+DynamoDB allocates capacity evenly across partitions. If you provision 10,000 RCU and have 10 partitions, each partition receives only 1,000 RCU-regardless of actual traffic distribution.
 
 ```python
 # Understanding partition capacity allocation

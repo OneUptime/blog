@@ -6,7 +6,7 @@ Tags: Helm, Kubernetes, DevOps, ArgoCD, GitOps, Deployment
 
 Description: Learn how to implement GitOps deployments using Helm charts with ArgoCD for automated, declarative Kubernetes application delivery.
 
-> GitOps brings the benefits of Git workflows—pull requests, code review, and version history—to infrastructure and application deployment. ArgoCD plus Helm is the most popular combination for Kubernetes GitOps.
+> GitOps brings the benefits of Git workflows-pull requests, code review, and version history-to infrastructure and application deployment. ArgoCD plus Helm is the most popular combination for Kubernetes GitOps.
 
 ## What is GitOps?
 

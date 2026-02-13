@@ -39,7 +39,7 @@ Let's compare typical SaaS costs vs. self-hosted open-source alternatives for a 
 | CRM | $1,000-$5,000 | $100-$200 |
 | **Total** | **$6,000-$29,000** | **$500-$1,250** |
 
-That's a potential savings of **$70,000-$330,000 per year**—money that can be invested in product development, hiring, or extending your runway.
+That's a potential savings of **$70,000-$330,000 per year**-money that can be invested in product development, hiring, or extending your runway.
 
 ---
 
@@ -585,7 +585,7 @@ Enterprise-grade solutions:
 
 ## Conclusion
 
-Building a startup on open-source software isn't just about saving money—it's about maintaining control, flexibility, and independence. The tools listed in this guide are production-ready and power thousands of companies worldwide.
+Building a startup on open-source software isn't just about saving money-it's about maintaining control, flexibility, and independence. The tools listed in this guide are production-ready and power thousands of companies worldwide.
 
 **Key Takeaways:**
 
@@ -603,4 +603,4 @@ The open-source ecosystem has never been stronger. With the right combination of
 
 ---
 
-**Ready to start building your open-source stack?** [OneUptime](https://oneuptime.com) provides the observability foundation your startup needs—monitoring, status pages, incident management, and on-call scheduling in one open-source platform. Give it a try and see how much you can save while gaining full control of your observability data.
+**Ready to start building your open-source stack?** [OneUptime](https://oneuptime.com) provides the observability foundation your startup needs-monitoring, status pages, incident management, and on-call scheduling in one open-source platform. Give it a try and see how much you can save while gaining full control of your observability data.

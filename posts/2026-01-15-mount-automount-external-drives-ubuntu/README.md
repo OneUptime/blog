@@ -8,7 +8,7 @@ Description: Learn how to mount external drives manually and configure automatic
 
 ---
 
-Mounting external drives—whether USB, SATA, or network storage—is essential for expanding storage capacity. This guide covers manual mounting, automatic mounting via fstab, and troubleshooting common filesystem issues on Ubuntu.
+Mounting external drives-whether USB, SATA, or network storage-is essential for expanding storage capacity. This guide covers manual mounting, automatic mounting via fstab, and troubleshooting common filesystem issues on Ubuntu.
 
 ## Understanding Mount Points
 

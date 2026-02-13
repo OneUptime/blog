@@ -68,7 +68,7 @@ Once your subscribers are in StatusPage.io, migrating is painful. Most teams jus
 
 ### 1. Everything in One Platform
 
-OneUptime includes status pages, monitoring, incidents, on-call, logs, metrics, traces, and error tracking—all unified.
+OneUptime includes status pages, monitoring, incidents, on-call, logs, metrics, traces, and error tracking-all unified.
 
 ### 2. Transparent, Inclusive Pricing
 

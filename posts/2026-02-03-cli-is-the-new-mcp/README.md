@@ -8,7 +8,7 @@ Description: A deep dive into why Command Line Interfaces are emerging as the su
 
 ---
 
-> The best interface for AI agents isn't a new protocol—it's the one that's been on every Unix system since 1971. As we build increasingly capable AI systems, the humble command line is proving to be the most robust, universal, and battle-tested way for agents to interact with the world.
+> The best interface for AI agents isn't a new protocol-it's the one that's been on every Unix system since 1971. As we build increasingly capable AI systems, the humble command line is proving to be the most robust, universal, and battle-tested way for agents to interact with the world.
 
 The Model Context Protocol (MCP) promised to standardize how AI models interact with external tools and data sources. While MCP represents an important step forward, a simpler pattern is emerging as the de facto standard for AI agent integrations: the Command Line Interface. Here's why CLI is becoming the preferred interface for AI agents and what this means for developers building AI-powered tools.
 
@@ -99,7 +99,7 @@ These tools are maintained by the service providers themselves, ensuring they st
 
 ### 2. Zero Implementation Required
 
-When an AI agent needs to interact with GitHub, it doesn't need a custom MCP server—it uses `gh`:
+When an AI agent needs to interact with GitHub, it doesn't need a custom MCP server-it uses `gh`:
 
 ```bash
 # List open pull requests
@@ -566,7 +566,7 @@ Building MCP servers for each of these would require duplicating enormous amount
 
 ## When MCP Still Makes Sense
 
-MCP isn't obsolete—it serves different use cases:
+MCP isn't obsolete-it serves different use cases:
 
 ### 1. Non-CLI Services
 
@@ -625,7 +625,7 @@ This approach offers:
 - **Natural composability** through pipes and scripts
 - **Self-documenting interfaces** through help systems
 
-As AI agents become more capable, the CLI emerges not as a limitation but as an enabler—a universal interface that connects AI to the vast ecosystem of developer tools.
+As AI agents become more capable, the CLI emerges not as a limitation but as an enabler-a universal interface that connects AI to the vast ecosystem of developer tools.
 
 The future of AI agent integrations isn't a new protocol. It's the one we've had all along.
 

@@ -10,7 +10,7 @@ Description: Learn how to build accessible React Native components that work wel
 
 ## Introduction
 
-Accessibility is not just a feature—it's a fundamental aspect of building inclusive applications. With over 1 billion people worldwide living with some form of disability, creating accessible mobile applications ensures that everyone can use your product effectively. React Native provides robust accessibility support that maps to native accessibility APIs on both iOS and Android platforms.
+Accessibility is not just a feature-it's a fundamental aspect of building inclusive applications. With over 1 billion people worldwide living with some form of disability, creating accessible mobile applications ensures that everyone can use your product effectively. React Native provides robust accessibility support that maps to native accessibility APIs on both iOS and Android platforms.
 
 In this comprehensive guide, we'll explore how to implement accessible components in React Native, covering everything from basic accessibility props to advanced patterns for creating truly inclusive mobile experiences.
 
@@ -18,7 +18,7 @@ In this comprehensive guide, we'll explore how to implement accessible component
 
 ### The Business Case
 
-Building accessible applications isn't just the right thing to do—it makes business sense:
+Building accessible applications isn't just the right thing to do-it makes business sense:
 
 1. **Expanded User Base**: Accessible apps reach more users, including the estimated 15% of the global population with disabilities.
 2. **Legal Compliance**: Many countries have accessibility laws and regulations that require digital products to be accessible.
@@ -1939,7 +1939,7 @@ export { validateAccessibility, withAccessibilityValidation, AccessibleMyButton 
 
 ## Conclusion
 
-Building accessible React Native applications is not just about compliance—it's about creating inclusive experiences that everyone can enjoy. By implementing the patterns and practices covered in this guide, you can ensure that your mobile applications work well for all users, regardless of their abilities.
+Building accessible React Native applications is not just about compliance-it's about creating inclusive experiences that everyone can enjoy. By implementing the patterns and practices covered in this guide, you can ensure that your mobile applications work well for all users, regardless of their abilities.
 
 ### Key Takeaways
 

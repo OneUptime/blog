@@ -375,7 +375,7 @@ sudo chmod 600 /swapfile
 
 ### High Swap Usage with Free RAM
 
-This is normal—the kernel proactively swaps inactive pages:
+This is normal-the kernel proactively swaps inactive pages:
 
 ```bash
 # Lower swappiness to reduce this behavior

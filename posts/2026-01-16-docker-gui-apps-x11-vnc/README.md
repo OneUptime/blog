@@ -155,7 +155,7 @@ Connect with any VNC client to `localhost:5901`.
 
 ## noVNC (Browser-Based VNC)
 
-noVNC provides VNC access through a web browser—no client installation needed.
+noVNC provides VNC access through a web browser-no client installation needed.
 
 ### Dockerfile with noVNC
 
