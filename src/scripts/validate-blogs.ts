@@ -20,6 +20,7 @@
  * 14. AUTO-FIX: Automatically adds missing entries to Blogs.json from README.md
  * 15. AUTO-FIX: Automatically generates missing social-media.png images
  * 16. AUTO-FIX: Fixes header spacing (ensures blank lines between metadata lines)
+ * 17. Checks for HTML-conflicting generic type parameters (<S>, <B>, <I>, <U>) in code blocks
  *
  * Run with: npm run validate
  */
@@ -965,6 +966,95 @@ function checkBrokenLinks(postsDir: string[]): void {
 }
 
 /**
+ * Check for HTML-conflicting generic type parameters in blog posts.
+ * Single-letter uppercase generics like <S>, <B>, <I>, <U> get misinterpreted
+ * as HTML tags (<s> strikethrough, <b> bold, <i> italic, <u> underline) by
+ * the blog renderer, even inside code blocks.
+ */
+function checkHtmlConflictingGenerics(postsDir: string[]): void {
+  logHeader('Checking for HTML-conflicting generic type parameters');
+
+  // Match uppercase single-letter generics that conflict with HTML tags:
+  // <S>, <S, <S: <S  (and same for B, I, U)
+  const htmlGenericRegex = /<[SBIU][>,:\s]/g;
+
+  interface GenericIssue {
+    dir: string;
+    line: number;
+    content: string;
+    match: string;
+  }
+
+  const issues: GenericIssue[] = [];
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) {
+      continue;
+    }
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      htmlGenericRegex.lastIndex = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = htmlGenericRegex.exec(lines[i]!)) !== null) {
+        issues.push({
+          dir,
+          line: i + 1,
+          content: lines[i]!.trim(),
+          match: match[0],
+        });
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    hasErrors = true;
+
+    // Group by directory
+    const byDir = new Map<string, GenericIssue[]>();
+    for (const issue of issues) {
+      const existing = byDir.get(issue.dir) || [];
+      existing.push(issue);
+      byDir.set(issue.dir, existing);
+    }
+
+    logError(
+      `Found ${issues.length} HTML-conflicting generic type parameter${issues.length === 1 ? '' : 's'} in ${byDir.size} file${byDir.size === 1 ? '' : 's'}\n`
+    );
+
+    for (const [dir, dirIssues] of byDir) {
+      console.log(`  ${colors.bold}${dir}${colors.reset}`);
+      const shown = dirIssues.slice(0, 5);
+      for (const issue of shown) {
+        const truncated = issue.content.length > 80 ? issue.content.substring(0, 80) + '...' : issue.content;
+        console.log(`    Line ${issue.line}: ${colors.red}${issue.match}${colors.reset} in "${truncated}"`);
+      }
+      if (dirIssues.length > 5) {
+        console.log(`    ... and ${dirIssues.length - 5} more`);
+      }
+    }
+
+    console.log(`
+${colors.bold}How to fix:${colors.reset}
+  Rename single-letter generic type parameters that conflict with HTML tags:
+    <S> (strikethrough) -> <Svc>, <Ser>, <St>
+    <B> (bold)          -> <Bd>, <Body>
+    <I> (italic)        -> <It>, <In>, <Inp>
+    <U> (underline)     -> <R>, <Out>
+
+  The blog renderer interprets these as HTML tags even inside code blocks,
+  causing text to appear with strikethrough, bold, italic, or underline styling.
+`);
+  } else {
+    logSuccess('No HTML-conflicting generic type parameters found');
+  }
+}
+
+/**
  * Fix header spacing in a single README.md file
  * Ensures blank lines exist between title, Author:, Tags:, Description:, and ---
  * Only touches the 4 known metadata lines and the --- separator, nothing else.
@@ -1119,6 +1209,9 @@ function main(): void {
   
   // Check for broken internal cross-reference links
   checkBrokenLinks(postsDir);
+
+  // Check for HTML-conflicting generic type parameters
+  checkHtmlConflictingGenerics(postsDir);
 
   // Fix header spacing in README.md files
   fixAllHeaderSpacing(postsDir);

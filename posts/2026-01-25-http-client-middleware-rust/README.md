@@ -165,14 +165,14 @@ For APIs that require authentication, we can create middleware that automaticall
 use http::header::{HeaderName, HeaderValue};
 
 #[derive(Clone)]
-pub struct AuthMiddleware<S> {
-    inner: S,
+pub struct AuthMiddleware<Svc> {
+    inner: Svc,
     header_name: HeaderName,
     header_value: HeaderValue,
 }
 
-impl<S> AuthMiddleware<S> {
-    pub fn bearer(inner: S, token: &str) -> Self {
+impl<Svc> AuthMiddleware<Svc> {
+    pub fn bearer(inner: Svc, token: &str) -> Self {
         Self {
             inner,
             header_name: http::header::AUTHORIZATION,
@@ -181,7 +181,7 @@ impl<S> AuthMiddleware<S> {
         }
     }
 
-    pub fn api_key(inner: S, key_name: &str, key_value: &str) -> Self {
+    pub fn api_key(inner: Svc, key_name: &str, key_value: &str) -> Self {
         Self {
             inner,
             header_name: HeaderName::from_bytes(key_name.as_bytes())
@@ -277,18 +277,18 @@ Now we bring everything together. Tower's `ServiceBuilder` makes composing middl
 use tower::ServiceBuilder;
 use tower::timeout::TimeoutLayer;
 
-pub fn build_client_with_middleware<S>(
-    base_service: S,
+pub fn build_client_with_middleware<Svc>(
+    base_service: Svc,
     api_token: &str,
 ) -> impl Service<
     Request<reqwest::Body>,
     Response = Response<reqwest::Body>,
-    Error = S::Error,
+    Error = Svc::Error,
 >
 where
-    S: Service<Request<reqwest::Body>, Response = Response<reqwest::Body>> + Clone + Send + 'static,
-    S::Future: Send,
-    S::Error: Send + Sync,
+    Svc: Service<Request<reqwest::Body>, Response = Response<reqwest::Body>> + Clone + Send + 'static,
+    Svc::Future: Send,
+    Svc::Error: Send + Sync,
 {
     ServiceBuilder::new()
         // Outermost layer - timeout for the entire request including retries

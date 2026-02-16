@@ -102,7 +102,7 @@ fn main() {
     takes_str(owned.as_str());
 
     // Using Into/From
-    fn flexible<S: Into<String>>(s: S) {
+    fn flexible<Str: Into<String>>(s: Str) {
         let string: String = s.into();
         println!("{}", string);
     }

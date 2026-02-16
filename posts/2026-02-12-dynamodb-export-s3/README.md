@@ -334,12 +334,12 @@ Once your data is in S3, you can query it with Amazon Athena without loading it 
 ```sql
 -- Create an Athena table pointing to the DynamoDB export
 CREATE EXTERNAL TABLE orders_export (
-  Item struct<
-    orderId: struct<S: string>,
-    customerId: struct<S: string>,
-    amount: struct<N: string>,
-    status: struct<S: string>
-  >
+  Item struct&lt;
+    orderId: struct&lt;S: string&gt;,
+    customerId: struct&lt;S: string&gt;,
+    amount: struct&lt;N: string&gt;,
+    status: struct&lt;S: string&gt;
+  &gt;
 )
 ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
 LOCATION 's3://my-exports-bucket/dynamodb-exports/orders/AWSDynamoDB/data/';

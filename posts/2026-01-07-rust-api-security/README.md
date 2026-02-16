@@ -499,13 +499,13 @@ pub struct AuthenticatedUser {
 }
 
 #[async_trait]
-impl<S> FromRequestParts<S> for AuthenticatedUser
+impl<St> FromRequestParts<St> for AuthenticatedUser
 where
-    S: Send + Sync,
+    St: Send + Sync,
 {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &St) -> Result<Self, Self::Rejection> {
         // Extract token from Authorization header
         let auth_header = parts
             .headers

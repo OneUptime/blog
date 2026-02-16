@@ -46,32 +46,32 @@ use std::future::{ready, Ready};
 // The middleware factory that will create instances of our middleware
 pub struct TracingMiddleware;
 
-impl<S, Bd> Transform<S, ServiceRequest> for TracingMiddleware
+impl<Svc, Bd> Transform<Svc, ServiceRequest> for TracingMiddleware
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error>,
-    S::Future: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error>,
+    Svc::Future: 'static,
     Bd: 'static,
 {
     type Response = ServiceResponse<Bd>;
     type Error = Error;
     type InitError = ();
-    type Transform = TracingMiddlewareService<S>;
+    type Transform = TracingMiddlewareService<Svc>;
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
-    fn new_transform(&self, service: S) -> Self::Future {
+    fn new_transform(&self, service: Svc) -> Self::Future {
         ready(Ok(TracingMiddlewareService { service }))
     }
 }
 
 // The actual middleware service that processes requests
-pub struct TracingMiddlewareService<S> {
-    service: S,
+pub struct TracingMiddlewareService<Svc> {
+    service: Svc,
 }
 
-impl<S, Bd> Service<ServiceRequest> for TracingMiddlewareService<S>
+impl<Svc, Bd> Service<ServiceRequest> for TracingMiddlewareService<Svc>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error>,
-    S::Future: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error>,
+    Svc::Future: 'static,
     Bd: 'static,
 {
     type Response = ServiceResponse<Bd>;

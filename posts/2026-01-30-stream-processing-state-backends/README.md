@@ -638,9 +638,9 @@ public class CustomKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <N, S extends State, T> S getOrCreateKeyedState(
+    public <N, St extends State, T> St getOrCreateKeyedState(
             TypeSerializer<N> namespaceSerializer,
-            StateDescriptor<S, T> stateDescriptor) throws Exception {
+            StateDescriptor<St, T> stateDescriptor) throws Exception {
 
         // Create appropriate state implementation based on descriptor type
         // Each state type (Value, List, Map, etc.) needs its own implementation
