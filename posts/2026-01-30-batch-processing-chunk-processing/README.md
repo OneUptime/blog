@@ -544,8 +544,8 @@ export interface ItemReader<T> {
  * ItemProcessor transforms an input item to an output item.
  * Returns null to skip the item.
  */
-export interface ItemProcessor<I, O> {
-  process(item: I): Promise<O | null>;
+export interface ItemProcessor<In, O> {
+  process(item: In): Promise<O | null>;
 }
 
 /**
@@ -594,9 +594,9 @@ import {
  * It reads items until a chunk is full, processes all items in the chunk,
  * then writes the entire chunk in a single operation.
  */
-export class ChunkProcessor<I, O> {
-  private reader: ItemReader<I>;
-  private processor: ItemProcessor<I, O>;
+export class ChunkProcessor<In, O> {
+  private reader: ItemReader<In>;
+  private processor: ItemProcessor<In, O>;
   private writer: ItemWriter<O>;
   private config: ChunkProcessorConfig;
   private listeners: ChunkListener[] = [];
@@ -608,8 +608,8 @@ export class ChunkProcessor<I, O> {
   private totalChunks = 0;
 
   constructor(
-    reader: ItemReader<I>,
-    processor: ItemProcessor<I, O>,
+    reader: ItemReader<In>,
+    processor: ItemProcessor<In, O>,
     writer: ItemWriter<O>,
     config: ChunkProcessorConfig
   ) {
@@ -674,7 +674,7 @@ export class ChunkProcessor<I, O> {
 
     try {
       // Phase 1: Read items until chunk is full or no more items
-      const inputItems: I[] = [];
+      const inputItems: In[] = [];
       for (let i = 0; i < this.config.chunkSize; i++) {
         const item = await this.reader.read();
         if (item === null) {
@@ -723,7 +723,7 @@ export class ChunkProcessor<I, O> {
   /**
    * Process a single item with retry logic.
    */
-  private async processItemWithRetry(item: I): Promise<O | null> {
+  private async processItemWithRetry(item: In): Promise<O | null> {
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= this.config.retryLimit!; attempt++) {
@@ -1264,8 +1264,8 @@ export class TelemetryChunkListener implements ChunkListener {
 /**
  * Wrap batch execution with a trace span.
  */
-export async function executeWithTelemetry<I, O>(
-  processor: ChunkProcessor<I, O>,
+export async function executeWithTelemetry<In, O>(
+  processor: ChunkProcessor<In, O>,
   jobName: string
 ): Promise<ChunkProcessorResult> {
   return tracer.startActiveSpan(`batch.job.${jobName}`, async (span) => {

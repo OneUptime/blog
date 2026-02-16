@@ -45,14 +45,14 @@ In Spring Batch, the `ItemProcessor` interface defines a single method that tran
 
 ```java
 // Spring Batch ItemProcessor interface
-// I = Input type (what comes from the reader)
+// In = Input type (what comes from the reader)
 // O = Output type (what goes to the writer)
-public interface ItemProcessor<I, O> {
+public interface ItemProcessor<In, O> {
 
     // Process a single item
     // Returns null to indicate the item should be filtered out
     // Throws exception to trigger skip/retry policies
-    O process(I item) throws Exception;
+    O process(In item) throws Exception;
 }
 ```
 
@@ -433,7 +433,7 @@ import java.util.function.Function;
 
 // Fluent builder for processor chains with type safety
 // Handles type transitions between processors automatically
-public class ProcessorChainBuilder<I, O> {
+public class ProcessorChainBuilder<In, O> {
 
     private final List<ItemProcessor<?, ?>> processors = new ArrayList<>();
 
@@ -441,9 +441,9 @@ public class ProcessorChainBuilder<I, O> {
     private ProcessorChainBuilder() {}
 
     // Start a new chain with the first processor
-    public static <I, O> ProcessorChainBuilder<I, O> start(
-            ItemProcessor<I, O> firstProcessor) {
-        ProcessorChainBuilder<I, O> builder = new ProcessorChainBuilder<>();
+    public static <In, O> ProcessorChainBuilder<In, O> start(
+            ItemProcessor<In, O> firstProcessor) {
+        ProcessorChainBuilder<In, O> builder = new ProcessorChainBuilder<>();
         builder.processors.add(firstProcessor);
         return builder;
     }
@@ -451,19 +451,19 @@ public class ProcessorChainBuilder<I, O> {
     // Add another processor to the chain
     // Generic type N is the output of the new processor
     @SuppressWarnings("unchecked")
-    public <N> ProcessorChainBuilder<I, N> then(
+    public <N> ProcessorChainBuilder<In, N> then(
             ItemProcessor<O, N> nextProcessor) {
         processors.add(nextProcessor);
         // Cast is safe because we track types through generics
-        return (ProcessorChainBuilder<I, N>) this;
+        return (ProcessorChainBuilder<In, N>) this;
     }
 
     // Build the final composite processor
     @SuppressWarnings("unchecked")
-    public ItemProcessor<I, O> build() {
+    public ItemProcessor<In, O> build() {
         // Return single processor if only one in chain
         if (processors.size() == 1) {
-            return (ItemProcessor<I, O>) processors.get(0);
+            return (ItemProcessor<In, O>) processors.get(0);
         }
 
         // Create chain processor that executes in sequence
@@ -956,16 +956,16 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 // Adapter to use Function as ItemProcessor
-public class FunctionalItemProcessor<I, O> implements ItemProcessor<I, O> {
+public class FunctionalItemProcessor<In, O> implements ItemProcessor<In, O> {
 
-    private final Function<I, O> transformer;
+    private final Function<In, O> transformer;
 
-    public FunctionalItemProcessor(Function<I, O> transformer) {
+    public FunctionalItemProcessor(Function<In, O> transformer) {
         this.transformer = transformer;
     }
 
     @Override
-    public O process(I item) {
+    public O process(In item) {
         return transformer.apply(item);
     }
 
@@ -976,7 +976,7 @@ public class FunctionalItemProcessor<I, O> implements ItemProcessor<I, O> {
     }
 
     // Factory method for transformation
-    public static <I, O> ItemProcessor<I, O> transform(Function<I, O> fn) {
+    public static <In, O> ItemProcessor<In, O> transform(Function<In, O> fn) {
         return new FunctionalItemProcessor<>(fn);
     }
 }
@@ -1014,11 +1014,11 @@ from decimal import Decimal
 import logging
 
 # Generic type variables for input and output
-I = TypeVar('I')
+In = TypeVar('In')
 O = TypeVar('O')
 
 # Abstract base class for item processors
-class ItemProcessor(ABC, Generic[I, O]):
+class ItemProcessor(ABC, Generic[In, O]):
     """
     Base class for all item processors.
     Transforms input items to output items.
@@ -1026,7 +1026,7 @@ class ItemProcessor(ABC, Generic[I, O]):
     """
 
     @abstractmethod
-    def process(self, item: I) -> Optional[O]:
+    def process(self, item: In) -> Optional[O]:
         """Process a single item. Return None to filter."""
         pass
 
@@ -1126,7 +1126,7 @@ class OrderFilterProcessor(ItemProcessor[RawOrder, RawOrder]):
         return item
 
 
-class CompositeProcessor(ItemProcessor[I, O]):
+class CompositeProcessor(ItemProcessor[In, O]):
     """
     Chains multiple processors together.
     Stops processing if any processor returns None.
@@ -1135,7 +1135,7 @@ class CompositeProcessor(ItemProcessor[I, O]):
     def __init__(self, processors: List[ItemProcessor]):
         self.processors = processors
 
-    def process(self, item: I) -> Optional[O]:
+    def process(self, item: In) -> Optional[O]:
         current = item
 
         for processor in self.processors:
@@ -1148,7 +1148,7 @@ class CompositeProcessor(ItemProcessor[I, O]):
         return current
 
 
-class ValidationProcessor(ItemProcessor[I, I]):
+class ValidationProcessor(ItemProcessor[In, In]):
     """
     Validates items using a list of validation functions.
     Raises ValidationError for invalid items.
@@ -1156,12 +1156,12 @@ class ValidationProcessor(ItemProcessor[I, I]):
 
     def __init__(
         self,
-        validators: List[Callable[[I], Optional[str]]]
+        validators: List[Callable[[In], Optional[str]]]
     ):
         # Each validator returns error message or None if valid
         self.validators = validators
 
-    def process(self, item: I) -> I:
+    def process(self, item: In) -> In:
         errors = []
 
         for validator in self.validators:

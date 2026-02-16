@@ -701,9 +701,9 @@ use axum::{
 use tower_http::cors::{CorsLayer, Any};
 
 /// Add security headers to all responses
-pub async fn security_headers<B>(
-    request: Request<B>,
-    next: Next<B>,
+pub async fn security_headers<Bd>(
+    request: Request<Bd>,
+    next: Next<Bd>,
 ) -> Response<Body> {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();

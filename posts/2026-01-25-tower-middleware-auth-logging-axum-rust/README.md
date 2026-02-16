@@ -70,10 +70,10 @@ impl AuthLayer {
     }
 }
 
-impl<S> Layer<S> for AuthLayer {
-    type Service = AuthMiddleware<S>;
+impl<Svc> Layer<Svc> for AuthLayer {
+    type Service = AuthMiddleware<Svc>;
 
-    fn layer(&self, inner: S) -> Self::Service {
+    fn layer(&self, inner: Svc) -> Self::Service {
         AuthMiddleware {
             inner,
             expected_token: self.expected_token.clone(),
@@ -83,19 +83,19 @@ impl<S> Layer<S> for AuthLayer {
 
 // The actual middleware service
 #[derive(Clone)]
-pub struct AuthMiddleware<S> {
-    inner: S,
+pub struct AuthMiddleware<Svc> {
+    inner: Svc,
     expected_token: String,
 }
 
-impl<S> Service<Request<Body>> for AuthMiddleware<S>
+impl<Svc> Service<Request<Body>> for AuthMiddleware<Svc>
 where
-    S: Service<Request<Body>, Response = Response<Body>> + Clone + Send + 'static,
-    S::Future: Send,
+    Svc: Service<Request<Body>, Response = Response<Body>> + Clone + Send + 'static,
+    Svc::Future: Send,
 {
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = AuthFuture<S::Future>;
+    type Response = Svc::Response;
+    type Error = Svc::Error;
+    type Future = AuthFuture<Svc::Future>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -172,28 +172,28 @@ use tower::{Layer, Service};
 #[derive(Clone)]
 pub struct LoggingLayer;
 
-impl<S> Layer<S> for LoggingLayer {
-    type Service = LoggingMiddleware<S>;
+impl<Svc> Layer<Svc> for LoggingLayer {
+    type Service = LoggingMiddleware<Svc>;
 
-    fn layer(&self, inner: S) -> Self::Service {
+    fn layer(&self, inner: Svc) -> Self::Service {
         LoggingMiddleware { inner }
     }
 }
 
 #[derive(Clone)]
-pub struct LoggingMiddleware<S> {
-    inner: S,
+pub struct LoggingMiddleware<Svc> {
+    inner: Svc,
 }
 
-impl<S, ResBody> Service<Request<Body>> for LoggingMiddleware<S>
+impl<Svc, ResBody> Service<Request<Body>> for LoggingMiddleware<Svc>
 where
-    S: Service<Request<Body>, Response = axum::http::Response<ResBody>> + Clone + Send + 'static,
-    S::Future: Send,
+    Svc: Service<Request<Body>, Response = axum::http::Response<ResBody>> + Clone + Send + 'static,
+    Svc::Future: Send,
     ResBody: Send,
 {
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = LoggingFuture<S::Future>;
+    type Response = Svc::Response;
+    type Error = Svc::Error;
+    type Future = LoggingFuture<Svc::Future>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)

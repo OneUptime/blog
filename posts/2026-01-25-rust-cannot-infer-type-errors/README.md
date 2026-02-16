@@ -229,9 +229,9 @@ fn main() {
     let result: Result<i32, _> = Ok(42);      // Same effect, different style
 
     // When you have multiple type parameters
-    fn convert<T, U>(value: T) -> U
+    fn convert<T, R>(value: T) -> R
     where
-        T: Into<U>,
+        T: Into<R>,
     {
         value.into()
     }

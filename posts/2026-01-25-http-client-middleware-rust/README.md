@@ -81,13 +81,13 @@ use http::{Request, Response};
 
 // Our logging middleware wraps any inner service
 #[derive(Clone)]
-pub struct LoggingMiddleware<S> {
-    inner: S,
+pub struct LoggingMiddleware<Svc> {
+    inner: Svc,
     service_name: String,
 }
 
-impl<S> LoggingMiddleware<S> {
-    pub fn new(inner: S, service_name: impl Into<String>) -> Self {
+impl<Svc> LoggingMiddleware<Svc> {
+    pub fn new(inner: Svc, service_name: impl Into<String>) -> Self {
         Self {
             inner,
             service_name: service_name.into(),
@@ -95,14 +95,14 @@ impl<S> LoggingMiddleware<S> {
     }
 }
 
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for LoggingMiddleware<S>
+impl<Svc, ReqBody, ResBody> Service<Request<ReqBody>> for LoggingMiddleware<Svc>
 where
-    S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
-    S::Future: Send,
+    Svc: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
+    Svc::Future: Send,
     ReqBody: Send + 'static,
 {
-    type Response = S::Response;
-    type Error = S::Error;
+    type Response = Svc::Response;
+    type Error = Svc::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -192,14 +192,14 @@ impl<S> AuthMiddleware<S> {
     }
 }
 
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for AuthMiddleware<S>
+impl<Svc, ReqBody, ResBody> Service<Request<ReqBody>> for AuthMiddleware<Svc>
 where
-    S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
-    S::Future: Send,
+    Svc: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
+    Svc::Future: Send,
     ReqBody: Send + 'static,
 {
-    type Response = S::Response;
-    type Error = S::Error;
+    type Response = Svc::Response;
+    type Error = Svc::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {

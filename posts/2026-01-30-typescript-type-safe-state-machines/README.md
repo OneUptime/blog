@@ -666,7 +666,7 @@ function authTransition(state: AuthState, event: AuthEvent): AuthState {
 Wrapping the transition logic in a class provides a cleaner API and enables features like event subscriptions.
 
 ```typescript
-type Listener<S> = (state: S) => void;
+type Listener<St> = (state: St) => void;
 
 class StateMachine<State, Event> {
   private state: State;

@@ -302,18 +302,18 @@ impl RateLimitMiddleware {
     }
 }
 
-impl<S, B> Transform<S, ServiceRequest> for RateLimitMiddleware
+impl<Svc, Bd> Transform<Svc, ServiceRequest> for RateLimitMiddleware
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
-    type Transform = RateLimitMiddlewareService<S>;
+    type Transform = RateLimitMiddlewareService<Svc>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
-    fn new_transform(&self, service: S) -> Self::Future {
+    fn new_transform(&self, service: Svc) -> Self::Future {
         ok(RateLimitMiddlewareService {
             service,
             limiter: self.limiter.clone(),
@@ -321,17 +321,17 @@ where
     }
 }
 
-pub struct RateLimitMiddlewareService<S> {
-    service: S,
+pub struct RateLimitMiddlewareService<Svc> {
+    service: Svc,
     limiter: ConcurrentRateLimiter,
 }
 
-impl<S, B> Service<ServiceRequest> for RateLimitMiddlewareService<S>
+impl<Svc, Bd> Service<ServiceRequest> for RateLimitMiddlewareService<Svc>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -438,10 +438,10 @@ impl RateLimitLayer {
     }
 }
 
-impl<S> Layer<S> for RateLimitLayer {
-    type Service = RateLimitService<S>;
+impl<Svc> Layer<Svc> for RateLimitLayer {
+    type Service = RateLimitService<Svc>;
 
-    fn layer(&self, inner: S) -> Self::Service {
+    fn layer(&self, inner: Svc) -> Self::Service {
         RateLimitService {
             inner,
             limiter: self.limiter.clone(),
@@ -450,18 +450,18 @@ impl<S> Layer<S> for RateLimitLayer {
 }
 
 #[derive(Clone)]
-pub struct RateLimitService<S> {
-    inner: S,
+pub struct RateLimitService<Svc> {
+    inner: Svc,
     limiter: ConcurrentRateLimiter,
 }
 
-impl<S> Service<Request<Body>> for RateLimitService<S>
+impl<Svc> Service<Request<Body>> for RateLimitService<Svc>
 where
-    S: Service<Request<Body>, Response = Response<Body>> + Clone + Send + 'static,
-    S::Future: Send,
+    Svc: Service<Request<Body>, Response = Response<Body>> + Clone + Send + 'static,
+    Svc::Future: Send,
 {
     type Response = Response<Body>;
-    type Error = S::Error;
+    type Error = Svc::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {

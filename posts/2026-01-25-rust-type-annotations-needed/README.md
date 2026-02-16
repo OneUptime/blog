@@ -355,9 +355,9 @@ fn main() {
 ### Pattern 3: Multiple Type Parameters
 
 ```rust
-fn convert<T, U>(value: T) -> U
+fn convert<T, R>(value: T) -> R
 where
-    T: Into<U>,
+    T: Into<R>,
 {
     value.into()
 }

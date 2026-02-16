@@ -181,7 +181,7 @@ Use template literal types with `infer` to extract parts of strings.
 
 ```typescript
 // Extract the ID part from a prefixed string
-type ExtractId<S extends string> = S extends `user-${infer Id}` ? Id : never;
+type ExtractId<St extends string> = St extends `user-${infer Id}` ? Id : never;
 
 type UserId = ExtractId<"user-12345">; // "12345"
 type Invalid = ExtractId<"order-999">; // never

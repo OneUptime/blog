@@ -18,13 +18,13 @@ The ItemProcessor interface is deceptively simple. It takes an input item and re
 
 ```java
 // The core ItemProcessor interface
-// I = Input type, O = Output type
-public interface ItemProcessor<I, O> {
+// In = Input type, O = Output type
+public interface ItemProcessor<In, O> {
 
     // Process a single item
     // Return null to filter out the item
     // Throw an exception to trigger skip/retry logic
-    O process(I item) throws Exception;
+    O process(In item) throws Exception;
 }
 ```
 

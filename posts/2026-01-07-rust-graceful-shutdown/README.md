@@ -307,10 +307,10 @@ use std::sync::Arc;
 
 use crate::connection_tracker::{ConnectionGuard, ConnectionTracker};
 
-pub async fn track_connections<B>(
+pub async fn track_connections<Bd>(
     State(tracker): State<Arc<ConnectionTracker>>,
-    request: Request<B>,
-    next: Next<B>,
+    request: Request<Bd>,
+    next: Next<Bd>,
 ) -> Response {
     // Create guard - increments count on creation, decrements on drop
     let _guard = ConnectionGuard::new(tracker);
@@ -448,10 +448,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Middleware to reject requests during shutdown
-async fn reject_during_shutdown<B>(
+async fn reject_during_shutdown<Bd>(
     State(state): State<AppState>,
-    request: axum::http::Request<B>,
-    next: middleware::Next<B>,
+    request: axum::http::Request<Bd>,
+    next: middleware::Next<Bd>,
 ) -> Result<axum::response::Response, StatusCode> {
     if state.is_shutting_down() {
         // Return 503 during shutdown

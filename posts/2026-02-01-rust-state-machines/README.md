@@ -200,11 +200,11 @@ struct Delivered { delivered_at: String }
 struct Cancelled { reason: String }
 
 // Generic order that carries state as a type parameter.
-struct Order<S> {
+struct Order<St> {
     id: String,
     items: Vec<String>,
     total: f64,
-    state_data: S,
+    state_data: St,
 }
 
 // Implementation only available when Order is in Created state.
@@ -322,7 +322,7 @@ trait OrderInfo {
 }
 
 // Implement for our generic Order type.
-impl<S> OrderInfo for Order<S> {
+impl<St> OrderInfo for Order<St> {
     fn id(&self) -> &str {
         &self.id
     }

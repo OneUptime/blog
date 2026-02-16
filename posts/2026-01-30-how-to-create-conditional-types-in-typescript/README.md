@@ -123,7 +123,7 @@ Let us build some useful conditional types for real-world scenarios.
 ### Flatten Nested Types
 
 ```typescript
-type Flatten<T> = T extends Array<infer U> ? Flatten<U> : T;
+type Flatten<T> = T extends Array<infer R> ? Flatten<R> : T;
 
 type Nested = number[][][];
 type Flat = Flatten<Nested>; // number
