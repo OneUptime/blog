@@ -1,4 +1,4 @@
-# How to Fix "Temporary Table" Space Errors
+# How to Fix 'Temporary Table' Space Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Insecure Cryptographic Storage"
+# How to Fix 'Insecure Cryptographic Storage'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

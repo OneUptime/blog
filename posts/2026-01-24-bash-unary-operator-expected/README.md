@@ -1,10 +1,10 @@
-# How to Fix "Unary Operator Expected" Errors in Bash
+# How to Fix 'Unary Operator Expected' Errors in Bash
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bash, Shell Scripting, Debugging, Error Handling, Linux, DevOps
 
-Description: Learn how to diagnose and fix the common "unary operator expected" error in Bash scripts caused by unquoted variables and empty strings.
+Description: Learn how to diagnose and fix the common 'unary operator expected' error in Bash scripts caused by unquoted variables and empty strings.
 
 ---
 

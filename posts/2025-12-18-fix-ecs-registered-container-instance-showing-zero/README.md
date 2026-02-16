@@ -1,4 +1,4 @@
-# How to Fix "Registered Container Instance is Showing 0" in ECS
+# How to Fix 'Registered Container Instance is Showing 0' in ECS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

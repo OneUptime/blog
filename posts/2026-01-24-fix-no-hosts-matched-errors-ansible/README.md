@@ -1,10 +1,10 @@
-# How to Fix "No Hosts Matched" Errors in Ansible
+# How to Fix 'No Hosts Matched' Errors in Ansible
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Inventory, Troubleshooting, DevOps, Automation, Configuration Management
 
-Description: Learn how to diagnose and fix the common "no hosts matched" error in Ansible by understanding inventory configuration and host patterns.
+Description: Learn how to diagnose and fix the common 'no hosts matched' error in Ansible by understanding inventory configuration and host patterns.
 
 ---
 

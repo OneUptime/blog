@@ -1,4 +1,4 @@
-# How to Fix "Service Registration Failed" Errors
+# How to Fix 'Service Registration Failed' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

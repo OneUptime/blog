@@ -1,10 +1,10 @@
-# How to Fix "declared and not used" Errors in Go
+# How to Fix 'declared and not used' Errors in Go
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Golang, Errors, Variables, Unused, Compiler
 
-Description: Learn how to fix the "declared and not used" error in Go by understanding why Go requires all variables to be used and various solutions.
+Description: Learn how to fix the 'declared and not used' error in Go by understanding why Go requires all variables to be used and various solutions.
 
 ---
 

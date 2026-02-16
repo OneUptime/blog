@@ -1,4 +1,4 @@
-# How to Fix "UnicodeDecodeError" in Python
+# How to Fix 'UnicodeDecodeError' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

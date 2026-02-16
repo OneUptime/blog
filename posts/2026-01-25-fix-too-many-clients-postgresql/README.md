@@ -1,10 +1,10 @@
-# How to Fix "too many clients already" Connection Errors in PostgreSQL
+# How to Fix 'too many clients already' Connection Errors in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Troubleshooting, Connections, Performance, Connection Pooling
 
-Description: Learn how to diagnose and fix "too many clients already" errors in PostgreSQL. This guide covers connection management, pool configuration, and strategies to handle connection limits.
+Description: Learn how to diagnose and fix 'too many clients already' errors in PostgreSQL. This guide covers connection management, pool configuration, and strategies to handle connection limits.
 
 ---
 

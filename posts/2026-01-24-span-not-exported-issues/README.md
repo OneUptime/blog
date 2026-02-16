@@ -1,10 +1,10 @@
-# How to Fix "Span Not Exported" Issues
+# How to Fix 'Span Not Exported' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Tracing, Debugging, Observability, Spans
 
-Description: Learn how to diagnose and fix common "span not exported" issues in OpenTelemetry, including configuration problems, sampling issues, and exporter errors.
+Description: Learn how to diagnose and fix common 'span not exported' issues in OpenTelemetry, including configuration problems, sampling issues, and exporter errors.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Debug "FailedScheduling" Errors
+# How to Debug 'FailedScheduling' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

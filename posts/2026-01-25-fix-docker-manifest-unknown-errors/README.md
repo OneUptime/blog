@@ -1,4 +1,4 @@
-# How to Fix Docker "Manifest Unknown" Errors
+# How to Fix Docker 'Manifest Unknown' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Mass Assignment" Vulnerabilities
+# How to Fix 'Mass Assignment' Vulnerabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

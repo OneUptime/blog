@@ -1,4 +1,4 @@
-# How to Fix "Message Ordering" Issues in Event-Driven Systems
+# How to Fix 'Message Ordering' Issues in Event-Driven Systems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Fix "Cannot Find Namespace" Errors
+# How to Fix 'Cannot Find Namespace' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Namespaces, Modules, Error Handling, Configuration, Type Definitions
 
-Description: A practical guide to diagnosing and fixing "Cannot find namespace" errors in TypeScript projects, covering common causes and solutions.
+Description: A practical guide to diagnosing and fixing 'Cannot find namespace' errors in TypeScript projects, covering common causes and solutions.
 
 ---
 

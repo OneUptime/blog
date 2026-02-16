@@ -1,4 +1,4 @@
-# How to Fix "READONLY You can't write against a read only replica"
+# How to Fix 'READONLY You can't write against a read only replica'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

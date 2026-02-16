@@ -1,4 +1,4 @@
-# How to Fix "Failed to connect to localhost:9200" Errors
+# How to Fix 'Failed to connect to localhost:9200' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

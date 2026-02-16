@@ -1,10 +1,10 @@
-# How to Fix "Undefined Is Not an Object" in React
+# How to Fix 'Undefined Is Not an Object' in React
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: React, JavaScript, Debugging, Error Handling, TypeError, Frontend
 
-Description: A practical guide to diagnosing and fixing the "undefined is not an object" TypeError in React applications, with common causes and solutions.
+Description: A practical guide to diagnosing and fixing the 'undefined is not an object' TypeError in React applications, with common causes and solutions.
 
 ---
 

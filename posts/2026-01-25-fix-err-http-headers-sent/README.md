@@ -1,4 +1,4 @@
-# How to Fix "Error: ERR_HTTP_HEADERS_SENT"
+# How to Fix 'Error: ERR_HTTP_HEADERS_SENT'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

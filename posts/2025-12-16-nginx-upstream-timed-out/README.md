@@ -1,4 +1,4 @@
-# How to Fix "upstream timed out" Errors in Nginx
+# How to Fix 'upstream timed out' Errors in Nginx
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

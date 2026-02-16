@@ -1,4 +1,4 @@
-# How to Fix "504 Gateway Timeout" in Nginx Reverse Proxy
+# How to Fix '504 Gateway Timeout' in Nginx Reverse Proxy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

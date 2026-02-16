@@ -1,4 +1,4 @@
-# How to Fix "Font Loading" Issues in Next.js
+# How to Fix 'Font Loading' Issues in Next.js
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

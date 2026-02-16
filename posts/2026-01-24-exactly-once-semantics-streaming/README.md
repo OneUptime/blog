@@ -1,4 +1,4 @@
-# How to Fix "Exactly-Once" Semantics in Streaming
+# How to Fix 'Exactly-Once' Semantics in Streaming
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

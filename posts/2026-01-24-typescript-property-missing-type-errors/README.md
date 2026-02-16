@@ -1,10 +1,10 @@
-# How to Fix "Property Is Missing in Type" Errors
+# How to Fix 'Property Is Missing in Type' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Type Errors, Debugging, Type Safety, Interfaces, Object Types
 
-Description: Learn how to diagnose and fix common "Property is missing in type" errors in TypeScript with practical solutions and best practices.
+Description: Learn how to diagnose and fix common 'Property is missing in type' errors in TypeScript with practical solutions and best practices.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "sharding configuration" Errors
+# How to Fix 'sharding configuration' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

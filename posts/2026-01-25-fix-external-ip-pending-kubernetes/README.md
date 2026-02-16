@@ -1,4 +1,4 @@
-# How to Resolve "Service External IP Pending" Issues in Kubernetes
+# How to Resolve 'Service External IP Pending' Issues in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

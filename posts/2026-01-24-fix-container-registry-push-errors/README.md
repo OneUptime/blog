@@ -1,4 +1,4 @@
-# How to Fix "Container Registry" Push Errors
+# How to Fix 'Container Registry' Push Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

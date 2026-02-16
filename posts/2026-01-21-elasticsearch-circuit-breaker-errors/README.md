@@ -1,4 +1,4 @@
-# How to Fix Elasticsearch "Circuit Breaker" Errors
+# How to Fix Elasticsearch 'Circuit Breaker' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Fix "Invalid Metric Type" Errors
+# How to Fix 'Invalid Metric Type' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Metrics, Debugging, Observability, Error Handling, Prometheus, OTLP
 
-Description: Learn how to diagnose and fix "Invalid Metric Type" errors in OpenTelemetry, including common causes like type mismatches, aggregation conflicts, and backend compatibility issues.
+Description: Learn how to diagnose and fix 'Invalid Metric Type' errors in OpenTelemetry, including common causes like type mismatches, aggregation conflicts, and backend compatibility issues.
 
 ---
 

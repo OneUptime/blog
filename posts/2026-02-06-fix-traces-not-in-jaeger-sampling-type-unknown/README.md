@@ -1,4 +1,4 @@
-# How to Fix Traces Not Appearing in Jaeger When Spans Are Marked with sampling_type "unknown"
+# How to Fix Traces Not Appearing in Jaeger When Spans Are Marked with sampling_type 'unknown'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

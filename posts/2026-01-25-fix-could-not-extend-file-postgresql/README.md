@@ -1,10 +1,10 @@
-# How to Fix "could not extend file" Errors in PostgreSQL
+# How to Fix 'could not extend file' Errors in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Troubleshooting, Disk Space, Storage, File System
 
-Description: Learn how to diagnose and fix "could not extend file" errors in PostgreSQL. This guide covers disk space issues, file system limits, and storage management strategies.
+Description: Learn how to diagnose and fix 'could not extend file' errors in PostgreSQL. This guide covers disk space issues, file system limits, and storage management strategies.
 
 ---
 

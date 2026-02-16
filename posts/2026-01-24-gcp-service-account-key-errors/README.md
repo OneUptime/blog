@@ -1,4 +1,4 @@
-# How to Fix "Service Account" Key Errors
+# How to Fix 'Service Account' Key Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

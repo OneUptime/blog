@@ -1,4 +1,4 @@
-# How to Fix "Open Redirect" Vulnerabilities
+# How to Fix 'Open Redirect' Vulnerabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Batch Queue Full" Collector Errors
+# How to Fix 'Batch Queue Full' Collector Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

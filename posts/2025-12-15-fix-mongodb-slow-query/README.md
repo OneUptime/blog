@@ -1,4 +1,4 @@
-# How to Fix "slow query" Issues in MongoDB
+# How to Fix 'slow query' Issues in MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

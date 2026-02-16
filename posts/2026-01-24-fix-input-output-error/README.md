@@ -1,4 +1,4 @@
-# How to Fix "Input/Output Error" Disk Errors
+# How to Fix 'Input/Output Error' Disk Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Conflicting implementations" Errors in Rust
+# How to Fix 'Conflicting implementations' Errors in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

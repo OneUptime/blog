@@ -1,10 +1,10 @@
-# How to Fix "Server Has Gone Away" Errors in MySQL
+# How to Fix 'Server Has Gone Away' Errors in MySQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Database, Troubleshooting, Connection, Timeout, DevOps
 
-Description: Learn how to diagnose and fix MySQL "Server has gone away" errors caused by timeouts, packet size limits, and connection issues.
+Description: Learn how to diagnose and fix MySQL 'Server has gone away' errors caused by timeouts, packet size limits, and connection issues.
 
 ---
 

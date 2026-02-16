@@ -1,10 +1,10 @@
-# How to Fix "Permission Denied (publickey)" Errors
+# How to Fix 'Permission Denied (publickey)' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Git, SSH, Authentication, Security, DevOps, GitHub, GitLab, Troubleshooting
 
-Description: A comprehensive guide to diagnosing and fixing SSH "Permission denied (publickey)" errors when connecting to Git hosting services like GitHub, GitLab, and Bitbucket.
+Description: A comprehensive guide to diagnosing and fixing SSH 'Permission denied (publickey)' errors when connecting to Git hosting services like GitHub, GitLab, and Bitbucket.
 
 ---
 

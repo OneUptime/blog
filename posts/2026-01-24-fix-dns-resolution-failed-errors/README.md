@@ -1,4 +1,4 @@
-# How to Fix "DNS Resolution Failed" Errors
+# How to Fix 'DNS Resolution Failed' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

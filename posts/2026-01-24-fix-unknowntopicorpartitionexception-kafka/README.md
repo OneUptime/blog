@@ -1,4 +1,4 @@
-# How to Fix "UnknownTopicOrPartitionException" in Kafka
+# How to Fix 'UnknownTopicOrPartitionException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

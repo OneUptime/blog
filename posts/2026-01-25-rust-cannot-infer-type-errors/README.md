@@ -1,10 +1,10 @@
-# How to Fix "Cannot infer type" Errors in Rust
+# How to Fix 'Cannot infer type' Errors in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Type Inference, Generics, Error Handling, Type System
 
-Description: Learn how to resolve "cannot infer type" errors in Rust. This guide explains type inference, when annotations are needed, and provides practical solutions for common scenarios.
+Description: Learn how to resolve 'cannot infer type' errors in Rust. This guide explains type inference, when annotations are needed, and provides practical solutions for common scenarios.
 
 ---
 

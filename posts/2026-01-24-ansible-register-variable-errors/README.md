@@ -1,4 +1,4 @@
-# How to Fix "Register Variable" Capture Errors
+# How to Fix 'Register Variable' Capture Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

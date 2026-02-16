@@ -1,4 +1,4 @@
-# How to Fix "Invalid Configuration" Errors in the OpenTelemetry Collector
+# How to Fix 'Invalid Configuration' Errors in the OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

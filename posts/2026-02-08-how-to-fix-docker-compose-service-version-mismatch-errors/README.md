@@ -1,4 +1,4 @@
-# How to Fix Docker Compose "Service Version Mismatch" Errors
+# How to Fix Docker Compose 'Service Version Mismatch' Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

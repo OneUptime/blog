@@ -1,10 +1,10 @@
-# How to Fix "Cannot invoke toString() on null" Errors
+# How to Fix 'Cannot invoke toString() on null' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, NullPointerException, Debugging, Error Handling, Best Practices
 
-Description: Learn how to diagnose and fix the common "Cannot invoke toString() on null" NullPointerException in Java and Spring Boot applications. This guide covers root causes, prevention strategies, and modern Java approaches to null safety.
+Description: Learn how to diagnose and fix the common 'Cannot invoke toString() on null' NullPointerException in Java and Spring Boot applications. This guide covers root causes, prevention strategies, and modern Java approaches to null safety.
 
 ---
 

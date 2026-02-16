@@ -1,4 +1,4 @@
-# How to Fix "Flaky Tests" in CI/CD
+# How to Fix 'Flaky Tests' in CI/CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

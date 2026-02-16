@@ -1,4 +1,4 @@
-# How to Fix "Span Link Missing" Issues
+# How to Fix 'Span Link Missing' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

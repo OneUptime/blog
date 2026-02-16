@@ -1,4 +1,4 @@
-# How to Fix "Artifact Versioning" Issues
+# How to Fix 'Artifact Versioning' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

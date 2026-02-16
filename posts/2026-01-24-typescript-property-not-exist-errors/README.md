@@ -1,10 +1,10 @@
-# How to Fix "Property Does Not Exist on Type" Errors
+# How to Fix 'Property Does Not Exist on Type' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Error Handling, Type Errors, Debugging, Programming, Troubleshooting
 
-Description: Learn how to diagnose and fix the common TypeScript error "Property does not exist on type" with practical solutions and examples.
+Description: Learn how to diagnose and fix the common TypeScript error 'Property does not exist on type' with practical solutions and examples.
 
 ---
 

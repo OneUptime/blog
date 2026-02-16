@@ -1,4 +1,4 @@
-# How to Fix "Network Security Group" Rule Errors
+# How to Fix 'Network Security Group' Rule Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

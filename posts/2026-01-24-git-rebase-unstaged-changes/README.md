@@ -1,4 +1,4 @@
-# How to Fix "Cannot Rebase: Unstaged Changes" Errors
+# How to Fix 'Cannot Rebase: Unstaged Changes' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

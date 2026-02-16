@@ -1,4 +1,4 @@
-# How to Fix "Unable to Access" Remote Repository Errors
+# How to Fix 'Unable to Access' Remote Repository Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

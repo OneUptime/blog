@@ -1,4 +1,4 @@
-# How to Fix "403 Forbidden for All Files" in Nginx
+# How to Fix '403 Forbidden for All Files' in Nginx
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

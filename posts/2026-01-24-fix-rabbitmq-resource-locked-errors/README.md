@@ -1,4 +1,4 @@
-# How to Fix "Resource Locked" Errors in RabbitMQ
+# How to Fix 'Resource Locked' Errors in RabbitMQ
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

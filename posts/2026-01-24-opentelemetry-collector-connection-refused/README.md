@@ -1,10 +1,10 @@
-# How to Fix "Collector Connection Refused" Errors
+# How to Fix 'Collector Connection Refused' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Troubleshooting, Networking, Docker, Kubernetes
 
-Description: Learn how to diagnose and fix "connection refused" errors when connecting applications to the OpenTelemetry Collector.
+Description: Learn how to diagnose and fix 'connection refused' errors when connecting applications to the OpenTelemetry Collector.
 
 ---
 

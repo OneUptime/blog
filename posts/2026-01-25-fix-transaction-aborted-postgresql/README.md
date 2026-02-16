@@ -1,10 +1,10 @@
-# How to Fix "transaction aborted" Errors in PostgreSQL
+# How to Fix 'transaction aborted' Errors in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Troubleshooting, Transactions, Error Handling, SQL
 
-Description: Learn how to diagnose and fix "current transaction is aborted" errors in PostgreSQL. This guide covers the causes, proper error handling patterns, and transaction management best practices.
+Description: Learn how to diagnose and fix 'current transaction is aborted' errors in PostgreSQL. This guide covers the causes, proper error handling patterns, and transaction management best practices.
 
 ---
 

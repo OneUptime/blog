@@ -1,4 +1,4 @@
-# How to Fix "Disconnect" Event Not Firing Issues
+# How to Fix 'Disconnect' Event Not Firing Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

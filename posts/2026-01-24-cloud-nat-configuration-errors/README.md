@@ -1,4 +1,4 @@
-# How to Fix "Cloud NAT" Configuration Errors
+# How to Fix 'Cloud NAT' Configuration Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

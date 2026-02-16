@@ -1,4 +1,4 @@
-# How to Fix Docker Build Failing with "Return Code Non-Zero"
+# How to Fix Docker Build Failing with 'Return Code Non-Zero'
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

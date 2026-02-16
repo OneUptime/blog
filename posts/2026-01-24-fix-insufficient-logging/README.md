@@ -1,4 +1,4 @@
-# How to Fix "Insufficient Logging" Issues
+# How to Fix 'Insufficient Logging' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

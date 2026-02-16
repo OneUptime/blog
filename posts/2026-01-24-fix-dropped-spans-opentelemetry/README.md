@@ -1,4 +1,4 @@
-# How to Fix "Dropped Spans" in OpenTelemetry
+# How to Fix 'Dropped Spans' in OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

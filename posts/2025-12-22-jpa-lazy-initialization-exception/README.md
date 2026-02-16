@@ -1,4 +1,4 @@
-# How to Handle "LazyInitializationException" in JPA
+# How to Handle 'LazyInitializationException' in JPA
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

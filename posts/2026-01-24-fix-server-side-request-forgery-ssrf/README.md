@@ -1,4 +1,4 @@
-# How to Fix "Server-Side Request Forgery (SSRF)"
+# How to Fix 'Server-Side Request Forgery (SSRF)'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

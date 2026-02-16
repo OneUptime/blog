@@ -1,4 +1,4 @@
-# How to Fix "Event Loop Blocking" Issues
+# How to Fix 'Event Loop Blocking' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

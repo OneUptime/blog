@@ -1,4 +1,4 @@
-# How to Fix "Dependency Management" Issues
+# How to Fix 'Dependency Management' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

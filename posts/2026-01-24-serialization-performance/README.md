@@ -1,4 +1,4 @@
-# How to Fix "Serialization" Performance Issues
+# How to Fix 'Serialization' Performance Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

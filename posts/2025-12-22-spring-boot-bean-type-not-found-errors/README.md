@@ -1,10 +1,10 @@
-# How to Fix "Bean of type not found" Errors
+# How to Fix 'Bean of type not found' Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Dependency Injection, Debugging, Configuration, Backend
 
-Description: Learn how to diagnose and resolve "Bean of type not found" errors in Spring Boot with systematic debugging approaches and common solutions.
+Description: Learn how to diagnose and resolve 'Bean of type not found' errors in Spring Boot with systematic debugging approaches and common solutions.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Capacity Planning" Issues
+# How to Fix 'Capacity Planning' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

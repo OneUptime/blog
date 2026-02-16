@@ -1,4 +1,4 @@
-# How to Fix "KeyError" in Python Dictionaries
+# How to Fix 'KeyError' in Python Dictionaries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

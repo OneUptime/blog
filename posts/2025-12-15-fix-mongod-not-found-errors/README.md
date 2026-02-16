@@ -1,10 +1,10 @@
-# How to Fix "mongod not found" Errors
+# How to Fix 'mongod not found' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Installation, Troubleshooting, DevOps, Database, Configuration
 
-Description: Learn how to diagnose and fix "mongod not found" errors across different operating systems. This guide covers installation verification, PATH configuration, and common setup issues.
+Description: Learn how to diagnose and fix 'mongod not found' errors across different operating systems. This guide covers installation verification, PATH configuration, and common setup issues.
 
 ---
 

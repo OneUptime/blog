@@ -1,10 +1,10 @@
-# How to Fix "Changed Status" Idempotency Issues
+# How to Fix 'Changed Status' Idempotency Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Idempotency, DevOps, Best Practices, Configuration Management, Automation, Troubleshooting
 
-Description: Learn how to fix Ansible playbooks that report "changed" status on every run by implementing proper idempotency patterns and best practices.
+Description: Learn how to fix Ansible playbooks that report 'changed' status on every run by implementing proper idempotency patterns and best practices.
 
 ---
 

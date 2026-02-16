@@ -1,10 +1,10 @@
-# How to Fix "Connection Closed Abnormally" WebSocket Errors
+# How to Fix 'Connection Closed Abnormally' WebSocket Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: WebSocket, Debugging, Networking, JavaScript, DevOps
 
-Description: Learn how to diagnose and fix WebSocket "Connection Closed Abnormally" errors caused by network issues, server timeouts, and proxy misconfigurations.
+Description: Learn how to diagnose and fix WebSocket 'Connection Closed Abnormally' errors caused by network issues, server timeouts, and proxy misconfigurations.
 
 ---
 

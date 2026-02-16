@@ -1,4 +1,4 @@
-# How to Fix "Trace Correlation" Issues
+# How to Fix 'Trace Correlation' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

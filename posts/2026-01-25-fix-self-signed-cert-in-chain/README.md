@@ -1,4 +1,4 @@
-# How to Fix "Error: SELF_SIGNED_CERT_IN_CHAIN"
+# How to Fix 'Error: SELF_SIGNED_CERT_IN_CHAIN'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

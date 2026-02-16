@@ -1,4 +1,4 @@
-# How to Fix "Lifetime elision" Confusion in Rust
+# How to Fix 'Lifetime elision' Confusion in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

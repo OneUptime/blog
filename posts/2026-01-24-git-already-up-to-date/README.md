@@ -1,4 +1,4 @@
-# How to Fix "Already Up to Date" but Changes Missing
+# How to Fix 'Already Up to Date' but Changes Missing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

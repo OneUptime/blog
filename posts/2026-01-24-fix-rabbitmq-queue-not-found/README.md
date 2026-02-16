@@ -1,4 +1,4 @@
-# How to Fix "Queue Not Found" Errors in RabbitMQ
+# How to Fix 'Queue Not Found' Errors in RabbitMQ
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

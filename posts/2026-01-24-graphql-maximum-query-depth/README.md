@@ -1,4 +1,4 @@
-# How to Fix "Maximum Query Depth" Errors in GraphQL
+# How to Fix 'Maximum Query Depth' Errors in GraphQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

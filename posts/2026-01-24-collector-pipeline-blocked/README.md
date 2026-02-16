@@ -1,4 +1,4 @@
-# How to Fix "Collector Pipeline Blocked" Errors
+# How to Fix 'Collector Pipeline Blocked' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

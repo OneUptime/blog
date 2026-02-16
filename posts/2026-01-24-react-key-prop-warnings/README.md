@@ -1,10 +1,10 @@
-# How to Fix "Key Prop" Warnings in React Lists
+# How to Fix 'Key Prop' Warnings in React Lists
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: React, JavaScript, TypeScript, Performance, Lists, Frontend, Best Practices
 
-Description: A practical guide to understanding and fixing the "key prop" warning in React, including proper key selection strategies and performance implications.
+Description: A practical guide to understanding and fixing the 'key prop' warning in React, including proper key selection strategies and performance implications.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Fix "Argument List Too Long" Errors
+# How to Fix 'Argument List Too Long' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bash, Shell Scripting, Linux, Troubleshooting, ARG_MAX, xargs, File Operations
 
-Description: Learn how to diagnose and fix "Argument list too long" errors when dealing with large numbers of files or long command arguments in Bash.
+Description: Learn how to diagnose and fix 'Argument list too long' errors when dealing with large numbers of files or long command arguments in Bash.
 
 ---
 

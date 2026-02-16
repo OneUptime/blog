@@ -1,4 +1,4 @@
-# How to Fix "GRUB Boot Loader" Errors
+# How to Fix 'GRUB Boot Loader' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Layout" Rendering Issues in Next.js
+# How to Fix 'Layout' Rendering Issues in Next.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

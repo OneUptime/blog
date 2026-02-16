@@ -1,4 +1,4 @@
-# How to Fix "Slow Kubernetes Pod Startup"
+# How to Fix 'Slow Kubernetes Pod Startup'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

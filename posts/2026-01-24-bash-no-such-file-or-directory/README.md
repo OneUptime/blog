@@ -1,10 +1,10 @@
-# How to Fix "No Such File or Directory" Script Errors
+# How to Fix 'No Such File or Directory' Script Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bash, Shell Scripting, Linux, Debugging, Error Handling, DevOps
 
-Description: Learn how to diagnose and fix the common "No such file or directory" errors in Bash scripts, including path issues, line endings, and permission problems.
+Description: Learn how to diagnose and fix the common 'No such file or directory' errors in Bash scripts, including path issues, line endings, and permission problems.
 
 ---
 

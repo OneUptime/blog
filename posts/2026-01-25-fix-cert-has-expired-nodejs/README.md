@@ -1,4 +1,4 @@
-# How to Fix "Error: CERT_HAS_EXPIRED" in Node.js
+# How to Fix 'Error: CERT_HAS_EXPIRED' in Node.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

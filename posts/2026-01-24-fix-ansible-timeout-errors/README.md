@@ -1,4 +1,4 @@
-# How to Fix "Timeout" Connection Errors in Ansible
+# How to Fix 'Timeout' Connection Errors in Ansible
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

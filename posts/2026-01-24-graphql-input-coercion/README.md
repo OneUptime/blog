@@ -1,4 +1,4 @@
-# How to Fix "Input Coercion" Errors in GraphQL
+# How to Fix 'Input Coercion' Errors in GraphQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

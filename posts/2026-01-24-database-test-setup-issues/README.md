@@ -1,4 +1,4 @@
-# How to Fix "Database Test" Setup Issues
+# How to Fix 'Database Test' Setup Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

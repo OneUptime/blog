@@ -1,4 +1,4 @@
-# How to Fix "Span Batch Export Error" in OpenTelemetry SDKs
+# How to Fix 'Span Batch Export Error' in OpenTelemetry SDKs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

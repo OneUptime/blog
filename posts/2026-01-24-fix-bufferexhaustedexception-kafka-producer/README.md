@@ -1,4 +1,4 @@
-# How to Fix "BufferExhaustedException" in Kafka Producer
+# How to Fix 'BufferExhaustedException' in Kafka Producer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

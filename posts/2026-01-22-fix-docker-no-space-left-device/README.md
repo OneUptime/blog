@@ -1,10 +1,10 @@
-# How to Fix Docker "No Space Left on Device" Errors
+# How to Fix Docker 'No Space Left on Device' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Disk Space, Troubleshooting, DevOps, Maintenance
 
-Description: Resolve Docker disk space exhaustion by identifying space consumers, cleaning unused resources, and implementing preventive measures to avoid future "no space left on device" errors.
+Description: Resolve Docker disk space exhaustion by identifying space consumers, cleaning unused resources, and implementing preventive measures to avoid future 'no space left on device' errors.
 
 ---
 

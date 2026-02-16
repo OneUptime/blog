@@ -1,10 +1,10 @@
-# How to Fix "Too Many Re-Renders" Errors in React
+# How to Fix 'Too Many Re-Renders' Errors in React
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: React, JavaScript, Debugging, Frontend, Performance
 
-Description: Learn how to diagnose and fix the "Too many re-renders" error in React by understanding render cycles and avoiding infinite loops.
+Description: Learn how to diagnose and fix the 'Too many re-renders' error in React by understanding render cycles and avoiding infinite loops.
 
 ---
 

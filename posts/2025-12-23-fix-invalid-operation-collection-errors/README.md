@@ -1,10 +1,10 @@
-# How to Fix "Invalid operation" Collection Errors
+# How to Fix 'Invalid operation' Collection Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, Collections, Troubleshooting, Common Issues, Threading
 
-Description: Learn how to diagnose and fix "Invalid operation" collection errors in C# applications. This guide covers collection modification during enumeration, thread-safety issues, and best practices for working with collections safely.
+Description: Learn how to diagnose and fix 'Invalid operation' collection errors in C# applications. This guide covers collection modification during enumeration, thread-safety issues, and best practices for working with collections safely.
 
 The "InvalidOperationException: Collection was modified" error is one of the most common issues developers encounter when working with collections in C#. This guide explains why this error occurs and provides practical solutions for various scenarios.
 

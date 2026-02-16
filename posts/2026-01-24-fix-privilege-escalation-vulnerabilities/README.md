@@ -1,4 +1,4 @@
-# How to Fix "Privilege Escalation" Vulnerabilities
+# How to Fix 'Privilege Escalation' Vulnerabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

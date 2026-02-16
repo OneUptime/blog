@@ -1,10 +1,10 @@
-# How to Fix "AttributeError: NoneType" in Python
+# How to Fix 'AttributeError: NoneType' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Debugging, Error Handling, Common Errors, NoneType
 
-Description: Learn how to diagnose and fix the common "AttributeError: 'NoneType' object has no attribute" error in Python, understand why it happens, and implement defensive coding practices.
+Description: Learn how to diagnose and fix the common 'AttributeError: 'NoneType' object has no attribute' error in Python, understand why it happens, and implement defensive coding practices.
 
 ---
 

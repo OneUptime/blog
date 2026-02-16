@@ -1,4 +1,4 @@
-# How to Fix "VPC Network" Configuration Errors in GCP
+# How to Fix 'VPC Network' Configuration Errors in GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

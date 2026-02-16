@@ -1,10 +1,10 @@
-# How to Fix "Bad Substitution" Errors in Bash
+# How to Fix 'Bad Substitution' Errors in Bash
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bash, Shell Scripting, Debugging, Error Handling, Linux, DevOps
 
-Description: Learn how to diagnose and fix "bad substitution" errors in Bash caused by incorrect variable expansion syntax, wrong shell interpreters, and unsupported features.
+Description: Learn how to diagnose and fix 'bad substitution' errors in Bash caused by incorrect variable expansion syntax, wrong shell interpreters, and unsupported features.
 
 ---
 

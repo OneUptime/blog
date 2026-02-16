@@ -1,10 +1,10 @@
-# How to Fix "Mismatched types" Errors in Rust
+# How to Fix 'Mismatched types' Errors in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Type System, Errors, Debugging, Type Conversion
 
-Description: Learn how to diagnose and fix "mismatched types" errors in Rust. Understand type conversion, coercion, and common type system pitfalls.
+Description: Learn how to diagnose and fix 'mismatched types' errors in Rust. Understand type conversion, coercion, and common type system pitfalls.
 
 ---
 

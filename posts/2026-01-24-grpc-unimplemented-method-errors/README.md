@@ -1,4 +1,4 @@
-# How to Fix "Unimplemented" Method Errors in gRPC
+# How to Fix 'Unimplemented' Method Errors in gRPC
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

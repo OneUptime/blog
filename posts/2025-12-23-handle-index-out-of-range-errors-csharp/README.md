@@ -1,4 +1,4 @@
-# How to Handle "Index out of range" Errors in C#
+# How to Handle 'Index out of range' Errors in C#
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

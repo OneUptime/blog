@@ -1,4 +1,4 @@
-# How to Fix Docker "Unable to Locate Package" Errors
+# How to Fix Docker 'Unable to Locate Package' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

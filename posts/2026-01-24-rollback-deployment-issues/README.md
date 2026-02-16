@@ -1,4 +1,4 @@
-# How to Fix "Rollback" Deployment Issues
+# How to Fix 'Rollback' Deployment Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Environment Parity" Issues
+# How to Fix 'Environment Parity' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

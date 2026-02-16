@@ -1,4 +1,4 @@
-# How to Fix "Unauthenticated" Errors in gRPC
+# How to Fix 'Unauthenticated' Errors in gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

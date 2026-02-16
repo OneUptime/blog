@@ -1,10 +1,10 @@
-# How to Fix "Type 'X' Is Not Assignable to Type 'Y'" Errors
+# How to Fix 'Type 'X' Is Not Assignable to Type 'Y'' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Type Errors, Debugging, JavaScript, Type Safety
 
-Description: A practical guide to understanding and fixing TypeScript's "Type 'X' is not assignable to type 'Y'" errors with real-world examples and solutions.
+Description: A practical guide to understanding and fixing TypeScript's 'Type 'X' is not assignable to type 'Y'' errors with real-world examples and solutions.
 
 ---
 

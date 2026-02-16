@@ -1,4 +1,4 @@
-# How to Fix "Protocol Error" in WebSocket Connections
+# How to Fix 'Protocol Error' in WebSocket Connections
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

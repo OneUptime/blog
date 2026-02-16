@@ -1,4 +1,4 @@
-# How to Fix "Cannot access a disposed object" Errors in C#
+# How to Fix 'Cannot access a disposed object' Errors in C#
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

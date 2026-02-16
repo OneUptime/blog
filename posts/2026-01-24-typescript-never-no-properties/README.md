@@ -1,4 +1,4 @@
-# How to Fix "Type 'never' Has No Properties" Errors
+# How to Fix 'Type 'never' Has No Properties' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Assertion" Failures in Tests
+# How to Fix 'Assertion' Failures in Tests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

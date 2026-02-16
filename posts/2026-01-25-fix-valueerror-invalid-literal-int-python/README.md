@@ -1,4 +1,4 @@
-# How to Fix "ValueError: invalid literal for int()" in Python
+# How to Fix 'ValueError: invalid literal for int()' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

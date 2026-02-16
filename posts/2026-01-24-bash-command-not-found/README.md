@@ -1,10 +1,10 @@
-# How to Fix "Command Not Found" Errors in Bash Scripts
+# How to Fix 'Command Not Found' Errors in Bash Scripts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bash, Shell Scripting, Debugging, Linux, DevOps, PATH, Troubleshooting
 
-Description: Learn how to diagnose and fix "command not found" errors in Bash scripts, including PATH issues, missing dependencies, and environment configuration problems.
+Description: Learn how to diagnose and fix 'command not found' errors in Bash scripts, including PATH issues, missing dependencies, and environment configuration problems.
 
 ---
 

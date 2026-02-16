@@ -1,10 +1,10 @@
-# How to Fix "Cannot use X as type" Pointer Receiver Errors in Go
+# How to Fix 'Cannot use X as type' Pointer Receiver Errors in Go
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Golang, Pointer Receiver, Value Receiver, Methods, Interfaces, Common Errors
 
-Description: Understand why Go complains about pointer receivers with interface types and learn the fix for "cannot use X as type Y" errors when working with methods and interfaces.
+Description: Understand why Go complains about pointer receivers with interface types and learn the fix for 'cannot use X as type Y' errors when working with methods and interfaces.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Streaming" SSR Issues in Next.js
+# How to Fix 'Streaming' SSR Issues in Next.js
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Schema Merge" Conflicts in GraphQL
+# How to Fix 'Schema Merge' Conflicts in GraphQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

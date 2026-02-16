@@ -1,4 +1,4 @@
-# How to Fix "Quota Exceeded" Errors in GCP
+# How to Fix 'Quota Exceeded' Errors in GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

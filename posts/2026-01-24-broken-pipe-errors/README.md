@@ -1,4 +1,4 @@
-# How to Fix "Broken Pipe" Errors in Linux
+# How to Fix 'Broken Pipe' Errors in Linux
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

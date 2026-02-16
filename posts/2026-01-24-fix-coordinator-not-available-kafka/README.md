@@ -1,4 +1,4 @@
-# How to Fix "Coordinator Not Available" Errors in Kafka
+# How to Fix 'Coordinator Not Available' Errors in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

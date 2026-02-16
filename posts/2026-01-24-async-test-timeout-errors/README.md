@@ -1,4 +1,4 @@
-# How to Fix "Async Test" Timeout Errors
+# How to Fix 'Async Test' Timeout Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

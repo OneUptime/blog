@@ -1,4 +1,4 @@
-# How to Fix "SSL Certificate" Errors in Azure
+# How to Fix 'SSL Certificate' Errors in Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

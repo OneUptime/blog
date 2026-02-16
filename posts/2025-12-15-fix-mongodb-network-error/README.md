@@ -1,4 +1,4 @@
-# How to Fix "network error" Errors in MongoDB
+# How to Fix 'network error' Errors in MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

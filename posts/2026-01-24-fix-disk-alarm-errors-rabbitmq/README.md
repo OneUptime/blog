@@ -1,4 +1,4 @@
-# How to Fix "Disk Alarm" Errors in RabbitMQ
+# How to Fix 'Disk Alarm' Errors in RabbitMQ
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

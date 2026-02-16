@@ -1,4 +1,4 @@
-# How to Fix "InvalidConfigurationException" in Kafka
+# How to Fix 'InvalidConfigurationException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

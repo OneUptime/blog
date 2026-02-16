@@ -1,4 +1,4 @@
-# How to Fix "Watch" Not Triggering in Vue 3
+# How to Fix 'Watch' Not Triggering in Vue 3
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "UnknownMemberIdException" in Kafka
+# How to Fix 'UnknownMemberIdException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Monitoring Alert Fatigue" Issues
+# How to Fix 'Monitoring Alert Fatigue' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

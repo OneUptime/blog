@@ -1,4 +1,4 @@
-# How to Fix "Deployment" Pipeline Failures
+# How to Fix 'Deployment' Pipeline Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

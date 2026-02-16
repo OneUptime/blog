@@ -1,4 +1,4 @@
-# How to Fix "Channel Closed" Errors in RabbitMQ
+# How to Fix 'Channel Closed' Errors in RabbitMQ
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

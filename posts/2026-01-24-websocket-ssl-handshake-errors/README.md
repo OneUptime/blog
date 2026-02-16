@@ -1,4 +1,4 @@
-# How to Fix "SSL Handshake" WebSocket Errors
+# How to Fix 'SSL Handshake' WebSocket Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "405 Not Allowed" for POST Requests in Nginx
+# How to Fix '405 Not Allowed' for POST Requests in Nginx
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

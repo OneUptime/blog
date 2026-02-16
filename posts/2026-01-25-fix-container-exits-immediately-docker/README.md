@@ -1,4 +1,4 @@
-# How to Fix "Container Exits Immediately" Issues in Docker
+# How to Fix 'Container Exits Immediately' Issues in Docker
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

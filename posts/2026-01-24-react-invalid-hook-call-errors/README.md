@@ -1,10 +1,10 @@
-# How to Fix "Invalid Hook Call" Errors in React
+# How to Fix 'Invalid Hook Call' Errors in React
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: React, Hooks, JavaScript, TypeScript, Debugging, Error Handling, Frontend
 
-Description: A comprehensive troubleshooting guide for fixing the "Invalid Hook Call" error in React, covering common causes and solutions with practical examples.
+Description: A comprehensive troubleshooting guide for fixing the 'Invalid Hook Call' error in React, covering common causes and solutions with practical examples.
 
 ---
 

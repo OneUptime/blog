@@ -1,4 +1,4 @@
-# How to Fix "Cloud Build" Pipeline Errors
+# How to Fix 'Cloud Build' Pipeline Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

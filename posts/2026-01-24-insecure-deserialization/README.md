@@ -1,4 +1,4 @@
-# How to Fix "Insecure Deserialization" Vulnerabilities
+# How to Fix 'Insecure Deserialization' Vulnerabilities
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Schema Stitching" Errors in GraphQL
+# How to Fix 'Schema Stitching' Errors in GraphQL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

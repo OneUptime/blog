@@ -1,4 +1,4 @@
-# How to Fix "Test Dependency" Issues
+# How to Fix 'Test Dependency' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

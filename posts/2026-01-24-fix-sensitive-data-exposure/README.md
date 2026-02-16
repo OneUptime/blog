@@ -1,4 +1,4 @@
-# How to Fix "Sensitive Data Exposure" Issues
+# How to Fix 'Sensitive Data Exposure' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

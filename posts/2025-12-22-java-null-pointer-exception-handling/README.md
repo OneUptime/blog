@@ -1,4 +1,4 @@
-# How to Handle "Cannot invoke method on null" Errors
+# How to Handle 'Cannot invoke method on null' Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

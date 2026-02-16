@@ -1,4 +1,4 @@
-# How to Fix "Data Pipeline" Failures
+# How to Fix 'Data Pipeline' Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

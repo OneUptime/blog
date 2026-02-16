@@ -1,4 +1,4 @@
-# How to Fix "Merge Conflict" Errors in Git
+# How to Fix 'Merge Conflict' Errors in Git
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

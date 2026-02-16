@@ -1,4 +1,4 @@
-# How to Fix "State Store" Failures in Spark Streaming
+# How to Fix 'State Store' Failures in Spark Streaming
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

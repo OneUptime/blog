@@ -1,10 +1,10 @@
-# How to Fix "Max Queue Size Reached" Warnings in OpenTelemetry
+# How to Fix 'Max Queue Size Reached' Warnings in OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Queue, Exporter, Performance, Troubleshooting, Backpressure, Batch Processor
 
-Description: Learn how to diagnose and resolve "max queue size reached" warnings in OpenTelemetry SDKs and Collector by tuning queue sizes, batch processors, and export pipelines.
+Description: Learn how to diagnose and resolve 'max queue size reached' warnings in OpenTelemetry SDKs and Collector by tuning queue sizes, batch processors, and export pipelines.
 
 ---
 

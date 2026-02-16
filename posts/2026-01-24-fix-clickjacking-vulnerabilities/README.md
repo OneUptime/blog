@@ -1,4 +1,4 @@
-# How to Fix "Clickjacking" Vulnerabilities
+# How to Fix 'Clickjacking' Vulnerabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

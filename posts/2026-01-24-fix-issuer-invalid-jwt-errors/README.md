@@ -1,4 +1,4 @@
-# How to Fix "Issuer Invalid" JWT Errors
+# How to Fix 'Issuer Invalid' JWT Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

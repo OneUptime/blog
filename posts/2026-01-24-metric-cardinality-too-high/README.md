@@ -1,4 +1,4 @@
-# How to Fix "Metric Cardinality Too High" Issues
+# How to Fix 'Metric Cardinality Too High' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Timeout" Errors in OpenTelemetry Export
+# How to Fix 'Timeout' Errors in OpenTelemetry Export
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

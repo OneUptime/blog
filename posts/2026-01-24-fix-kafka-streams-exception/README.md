@@ -1,4 +1,4 @@
-# How to Fix "StreamsException" in Kafka Streams
+# How to Fix 'StreamsException' in Kafka Streams
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

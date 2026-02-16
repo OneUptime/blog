@@ -1,10 +1,10 @@
-# How to Fix "Invalid Arithmetic Operator" Errors
+# How to Fix 'Invalid Arithmetic Operator' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bash, Shell Scripting, Troubleshooting, Debugging, Linux, Arithmetic
 
-Description: Learn how to diagnose and fix the "invalid arithmetic operator" error in Bash scripts, including common causes like floating-point numbers, empty variables, and special characters.
+Description: Learn how to diagnose and fix the 'invalid arithmetic operator' error in Bash scripts, including common causes like floating-point numbers, empty variables, and special characters.
 
 ---
 

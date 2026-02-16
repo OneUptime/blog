@@ -1,10 +1,10 @@
-# How to Fix "UTF8 encoding is longer than max length" Errors in Elasticsearch
+# How to Fix 'UTF8 encoding is longer than max length' Errors in Elasticsearch
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, UTF-8, Encoding, Troubleshooting, Keyword Fields, Mapping
 
-Description: Learn how to fix the "UTF8 encoding is longer than the max length" error in Elasticsearch. This guide covers causes, solutions including ignore_above, text fields, and data preprocessing strategies.
+Description: Learn how to fix the 'UTF8 encoding is longer than the max length' error in Elasticsearch. This guide covers causes, solutions including ignore_above, text fields, and data preprocessing strategies.
 
 The "UTF8 encoding is longer than the max length" error occurs when trying to index a keyword field value that exceeds Elasticsearch's limit. This guide explains why it happens and provides multiple solutions.
 

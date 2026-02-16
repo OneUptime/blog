@@ -1,4 +1,4 @@
-# How to Fix "Security Compliance" Pipeline Issues
+# How to Fix 'Security Compliance' Pipeline Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

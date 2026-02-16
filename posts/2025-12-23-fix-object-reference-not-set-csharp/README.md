@@ -1,4 +1,4 @@
-# How to Fix "Object reference not set to an instance" in C#
+# How to Fix 'Object reference not set to an instance' in C#
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

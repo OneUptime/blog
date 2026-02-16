@@ -1,4 +1,4 @@
-# How to Fix "Hydration Mismatch" Errors in SSR
+# How to Fix 'Hydration Mismatch' Errors in SSR
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

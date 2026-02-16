@@ -1,4 +1,4 @@
-# How to Fix Docker "COPY Failed: No Source Files Were Specified" Errors
+# How to Fix Docker 'COPY Failed: No Source Files Were Specified' Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

@@ -21,6 +21,7 @@
  * 15. AUTO-FIX: Automatically generates missing social-media.png images
  * 16. AUTO-FIX: Fixes header spacing (ensures blank lines between metadata lines)
  * 17. Checks for HTML-conflicting generic type parameters (<S>, <B>, <I>, <U>) in code blocks
+ * 18. AUTO-FIX: Replaces double quotes with single quotes in titles and descriptions
  *
  * Run with: npm run validate
  */
@@ -635,6 +636,24 @@ function validateReadme(dir: string, blogEntry: BlogEntry | undefined): FormatIs
     }
   }
 
+  // Check for double quotes in title and description
+  if (lines[0] && lines[0].startsWith('# ') && lines[0].includes('"')) {
+    issues.push({
+      type: 'error',
+      message: 'Title contains double quotes',
+      fix: 'Replace double quotes (") with single quotes (\') in the title',
+    });
+  }
+
+  const descLineForQuotes = lines.find((l) => l.startsWith('Description:'));
+  if (descLineForQuotes && descLineForQuotes.includes('"')) {
+    issues.push({
+      type: 'error',
+      message: 'Description contains double quotes',
+      fix: 'Replace double quotes (") with single quotes (\') in the description',
+    });
+  }
+
   return issues;
 }
 
@@ -966,6 +985,76 @@ function checkBrokenLinks(postsDir: string[]): void {
 }
 
 /**
+ * AUTO-FIX: Replace double quotes with single quotes in title and description lines.
+ * Double quotes in titles/descriptions cause rendering issues in the blog platform.
+ */
+function fixDoubleQuotes(postsDir: string[], blogsJson: BlogEntry[]): void {
+  logHeader('Checking for double quotes in titles and descriptions');
+
+  const blogMap = new Map<string, BlogEntry>();
+  for (const blog of blogsJson) {
+    blogMap.set(blog.post, blog);
+  }
+
+  let fixedReadmeCount = 0;
+  let fixedJsonCount = 0;
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) {
+      continue;
+    }
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+    let changed = false;
+
+    // Fix title (first line starting with # )
+    if (lines[0] && lines[0].startsWith('# ') && lines[0].includes('"')) {
+      lines[0] = lines[0].replace(/"/g, "'");
+      changed = true;
+    }
+
+    // Fix description line
+    for (let i = 0; i < Math.min(lines.length, 15); i++) {
+      if (lines[i]?.startsWith('Description:') && lines[i]!.includes('"')) {
+        lines[i] = lines[i]!.replace(/"/g, "'");
+        changed = true;
+        break;
+      }
+    }
+
+    if (changed) {
+      fs.writeFileSync(readmePath, lines.join('\n'), 'utf8');
+      fixedReadmeCount++;
+
+      // Also update the corresponding Blogs.json entry
+      const blogEntry = blogMap.get(dir);
+      if (blogEntry) {
+        // Re-parse the fixed README to get updated values
+        const fixedTitle = lines[0]?.startsWith('# ') ? lines[0].substring(2).trim() : blogEntry.title;
+        const descLine = lines.find((l) => l.startsWith('Description:'));
+        const fixedDesc = descLine ? descLine.substring(12).trim() : blogEntry.description;
+
+        if (blogEntry.title !== fixedTitle || blogEntry.description !== fixedDesc) {
+          blogEntry.title = fixedTitle;
+          blogEntry.description = fixedDesc;
+          fixedJsonCount++;
+        }
+      }
+    }
+  }
+
+  if (fixedReadmeCount > 0) {
+    // Save updated Blogs.json
+    fs.writeFileSync(BLOGS_JSON, JSON.stringify(blogsJson, null, 2) + '\n', 'utf8');
+    logSuccess(`Fixed double quotes in ${fixedReadmeCount} README.md file${fixedReadmeCount === 1 ? '' : 's'} and ${fixedJsonCount} Blogs.json entr${fixedJsonCount === 1 ? 'y' : 'ies'}`);
+  } else {
+    logSuccess('No double quotes found in titles or descriptions');
+  }
+}
+
+/**
  * Check for HTML-conflicting generic type parameters in blog posts.
  * Single-letter uppercase generics like <S>, <B>, <I>, <U> get misinterpreted
  * as HTML tags (<s> strikethrough, <b> bold, <i> italic, <u> underline) by
@@ -1209,6 +1298,9 @@ function main(): void {
   
   // Check for broken internal cross-reference links
   checkBrokenLinks(postsDir);
+
+  // Auto-fix double quotes in titles and descriptions
+  fixDoubleQuotes(postsDir, blogsJson);
 
   // Check for HTML-conflicting generic type parameters
   checkHtmlConflictingGenerics(postsDir);

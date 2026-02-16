@@ -1,4 +1,4 @@
-# How to Debug "Action timed out" Issues in GitHub Actions
+# How to Debug 'Action timed out' Issues in GitHub Actions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "VM Extension" Installation Errors
+# How to Fix 'VM Extension' Installation Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

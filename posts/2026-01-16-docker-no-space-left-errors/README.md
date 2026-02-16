@@ -1,4 +1,4 @@
-# How to Fix Docker "No Space Left on Device" Errors
+# How to Fix Docker 'No Space Left on Device' Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

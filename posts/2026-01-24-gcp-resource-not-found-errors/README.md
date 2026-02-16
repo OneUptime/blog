@@ -1,10 +1,10 @@
-# How to Fix "Resource Not Found" Errors in GCP
+# How to Fix 'Resource Not Found' Errors in GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Google Cloud, Errors, Troubleshooting, DevOps, Cloud Infrastructure
 
-Description: Learn how to diagnose and fix common "Resource Not Found" errors in Google Cloud Platform across various services like Compute Engine, Cloud Storage, and IAM.
+Description: Learn how to diagnose and fix common 'Resource Not Found' errors in Google Cloud Platform across various services like Compute Engine, Cloud Storage, and IAM.
 
 ---
 

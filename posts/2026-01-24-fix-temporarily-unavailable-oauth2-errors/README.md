@@ -1,10 +1,10 @@
-# How to Fix "Temporarily Unavailable" OAuth2 Errors
+# How to Fix 'Temporarily Unavailable' OAuth2 Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OAuth2, Authentication, Troubleshooting, Error Handling, Availability, Retry Logic, Resilience
 
-Description: A practical guide to handling the "temporarily_unavailable" OAuth2 error, including retry strategies, fallback mechanisms, and building resilient authentication flows.
+Description: A practical guide to handling the 'temporarily_unavailable' OAuth2 error, including retry strategies, fallback mechanisms, and building resilient authentication flows.
 
 ---
 

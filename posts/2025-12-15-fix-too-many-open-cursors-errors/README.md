@@ -1,10 +1,10 @@
-# How to Fix "too many open cursors" Errors in MongoDB
+# How to Fix 'too many open cursors' Errors in MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Cursors, Database, Troubleshooting, Performance, Memory Management
 
-Description: Learn how to diagnose and fix MongoDB "too many open cursors" errors, understand cursor management, and implement best practices to prevent cursor leaks in your applications.
+Description: Learn how to diagnose and fix MongoDB 'too many open cursors' errors, understand cursor management, and implement best practices to prevent cursor leaks in your applications.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Handle "Method not allowed" Errors in Spring MVC
+# How to Handle 'Method not allowed' Errors in Spring MVC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Spring MVC, HTTP Methods, REST API, Error Handling
 
-Description: Learn how to diagnose and fix "405 Method Not Allowed" errors in Spring MVC applications. This guide covers common causes, proper request mapping, and implementing custom error handling.
+Description: Learn how to diagnose and fix '405 Method Not Allowed' errors in Spring MVC applications. This guide covers common causes, proper request mapping, and implementing custom error handling.
 
 ---
 

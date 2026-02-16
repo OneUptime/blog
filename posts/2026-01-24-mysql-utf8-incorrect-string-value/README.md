@@ -1,10 +1,10 @@
-# How to Fix "Incorrect String Value" UTF-8 Errors
+# How to Fix 'Incorrect String Value' UTF-8 Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, UTF-8, Character Encoding, Database, Troubleshooting
 
-Description: Learn how to diagnose and fix MySQL "Incorrect string value" errors caused by character encoding mismatches and UTF-8 configuration issues.
+Description: Learn how to diagnose and fix MySQL 'Incorrect string value' errors caused by character encoding mismatches and UTF-8 configuration issues.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "MOVED" Errors in Redis Cluster
+# How to Fix 'MOVED' Errors in Redis Cluster
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

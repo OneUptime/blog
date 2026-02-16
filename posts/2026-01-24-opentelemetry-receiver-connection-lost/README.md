@@ -1,4 +1,4 @@
-# How to Fix "Receiver Connection Lost" Errors
+# How to Fix 'Receiver Connection Lost' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

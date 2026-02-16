@@ -1,4 +1,4 @@
-# How to Fix "Gateway Timeout" App Service Errors
+# How to Fix 'Gateway Timeout' App Service Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

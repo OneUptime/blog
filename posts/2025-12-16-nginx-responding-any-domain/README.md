@@ -1,4 +1,4 @@
-# How to Fix "Why is Nginx Responding to Any Domain Name"
+# How to Fix 'Why is Nginx Responding to Any Domain Name'
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

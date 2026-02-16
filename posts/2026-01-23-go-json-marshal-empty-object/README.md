@@ -1,4 +1,4 @@
-# How to Fix json.Marshal Returning "{}" for Structs in Go
+# How to Fix json.Marshal Returning '{}' for Structs in Go
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "RecordTooLargeException" in Kafka
+# How to Fix 'RecordTooLargeException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

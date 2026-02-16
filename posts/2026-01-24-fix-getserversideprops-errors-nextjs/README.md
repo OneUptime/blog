@@ -1,4 +1,4 @@
-# How to Fix "getServerSideProps" Errors in Next.js
+# How to Fix 'getServerSideProps' Errors in Next.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

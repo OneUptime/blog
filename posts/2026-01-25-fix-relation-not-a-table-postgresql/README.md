@@ -1,10 +1,10 @@
-# How to Fix "relation is not a table" Errors in PostgreSQL
+# How to Fix 'relation is not a table' Errors in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Troubleshooting, Views, Materialized Views, SQL, Error Handling
 
-Description: Learn how to diagnose and fix "relation is not a table" errors in PostgreSQL. This guide covers the differences between tables, views, and other relation types with practical solutions.
+Description: Learn how to diagnose and fix 'relation is not a table' errors in PostgreSQL. This guide covers the differences between tables, views, and other relation types with practical solutions.
 
 ---
 

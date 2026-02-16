@@ -1,10 +1,10 @@
-# How to Fix "Type Instantiation Is Excessively Deep" Errors
+# How to Fix 'Type Instantiation Is Excessively Deep' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Types, Debugging, Recursion, Performance
 
-Description: Learn to diagnose and fix TypeScript "Type instantiation is excessively deep and possibly infinite" errors caused by recursive types.
+Description: Learn to diagnose and fix TypeScript 'Type instantiation is excessively deep and possibly infinite' errors caused by recursive types.
 
 ---
 

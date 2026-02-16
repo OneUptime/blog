@@ -1,4 +1,4 @@
-# How to Fix "Insufficient Scope" OAuth2 Errors
+# How to Fix 'Insufficient Scope' OAuth2 Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

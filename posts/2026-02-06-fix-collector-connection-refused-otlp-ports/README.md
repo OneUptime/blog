@@ -1,4 +1,4 @@
-# How to Fix Collector "Connection Refused" on OTLP Ports
+# How to Fix Collector 'Connection Refused' on OTLP Ports
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

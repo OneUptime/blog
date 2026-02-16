@@ -1,10 +1,10 @@
-# How to Fix "Maximum Update Depth" Errors in React
+# How to Fix 'Maximum Update Depth' Errors in React
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: React, JavaScript, Debugging, Frontend, Performance
 
-Description: Learn how to identify, debug, and fix the "Maximum update depth exceeded" error in React applications caused by infinite re-render loops.
+Description: Learn how to identify, debug, and fix the 'Maximum update depth exceeded' error in React applications caused by infinite re-render loops.
 
 ---
 

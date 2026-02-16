@@ -1,4 +1,4 @@
-# How to Fix "Redis connection timeout" Errors
+# How to Fix 'Redis connection timeout' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

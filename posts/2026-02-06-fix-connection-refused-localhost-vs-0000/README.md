@@ -1,4 +1,4 @@
-# How to Fix "Connection Refused" Errors When the Collector Listens on localhost Instead of 0.0.0.0
+# How to Fix 'Connection Refused' Errors When the Collector Listens on localhost Instead of 0.0.0.0
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

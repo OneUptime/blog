@@ -1,10 +1,10 @@
-# How to Fix "Pathspec Did Not Match" Errors
+# How to Fix 'Pathspec Did Not Match' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Git, Troubleshooting, Errors, Version Control, DevOps, Development
 
-Description: Learn how to diagnose and fix the common "pathspec did not match any file(s) known to git" error with practical solutions for various scenarios.
+Description: Learn how to diagnose and fix the common 'pathspec did not match any file(s) known to git' error with practical solutions for various scenarios.
 
 ---
 

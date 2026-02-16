@@ -1,4 +1,4 @@
-# How to Fix "RecursionError: maximum recursion depth exceeded"
+# How to Fix 'RecursionError: maximum recursion depth exceeded'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

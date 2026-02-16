@@ -1,4 +1,4 @@
-# How to Fix "PersistentVolumeClaim is not bound" Errors in Kubernetes
+# How to Fix 'PersistentVolumeClaim is not bound' Errors in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

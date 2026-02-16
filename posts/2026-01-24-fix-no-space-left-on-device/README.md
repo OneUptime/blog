@@ -1,10 +1,10 @@
-# How to Fix "No Space Left on Device" Errors
+# How to Fix 'No Space Left on Device' Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Linux, System Administration, Troubleshooting, Disk Management, DevOps
 
-Description: Learn how to diagnose and fix "No space left on device" errors in Linux, including identifying space hogs, cleaning up disk space, and preventing future issues.
+Description: Learn how to diagnose and fix 'No space left on device' errors in Linux, including identifying space hogs, cleaning up disk space, and preventing future issues.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Fix "Error building ARM Config" Azure CLI Issues
+# How to Fix 'Error building ARM Config' Azure CLI Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Azure, ARM, Azure CLI, DevOps
 
-Description: Troubleshoot and fix the "Error building ARM Config" in Terraform when working with Azure, including authentication issues, subscription problems, and CLI configuration.
+Description: Troubleshoot and fix the 'Error building ARM Config' in Terraform when working with Azure, including authentication issues, subscription problems, and CLI configuration.
 
 ---
 

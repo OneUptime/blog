@@ -1,10 +1,10 @@
-# How to Handle "Invalid CSRF token" Errors
+# How to Handle 'Invalid CSRF token' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, CSRF, Security, Spring Security, Web Security
 
-Description: Learn how to diagnose and fix "Invalid CSRF token" errors in Spring Boot applications. This guide covers CSRF protection concepts, proper token handling, and when to disable CSRF for REST APIs.
+Description: Learn how to diagnose and fix 'Invalid CSRF token' errors in Spring Boot applications. This guide covers CSRF protection concepts, proper token handling, and when to disable CSRF for REST APIs.
 
 ---
 

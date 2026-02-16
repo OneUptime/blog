@@ -1,10 +1,10 @@
-# How to Fix "Data Too Long for Column" Errors in MySQL
+# How to Fix 'Data Too Long for Column' Errors in MySQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Database, Troubleshooting, Data Types, Schema, SQL
 
-Description: Learn how to diagnose and fix MySQL "Data too long for column" errors by understanding column limits, SQL modes, and proper schema design.
+Description: Learn how to diagnose and fix MySQL 'Data too long for column' errors by understanding column limits, SQL modes, and proper schema design.
 
 ---
 

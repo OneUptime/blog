@@ -1,4 +1,4 @@
-# How to Fix "Max Connections" WebSocket Limits
+# How to Fix 'Max Connections' WebSocket Limits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "White Screen of Death" in React
+# How to Fix 'White Screen of Death' in React
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

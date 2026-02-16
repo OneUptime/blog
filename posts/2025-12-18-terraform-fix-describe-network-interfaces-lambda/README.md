@@ -1,10 +1,10 @@
-# How to Fix "DescribeNetworkInterfaces" Permission Errors in Lambda
+# How to Fix 'DescribeNetworkInterfaces' Permission Errors in Lambda
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, AWS, Lambda, IAM, VPC, Troubleshooting
 
-Description: Learn how to resolve the common "DescribeNetworkInterfaces" permission error when deploying Lambda functions in VPCs with Terraform. This guide covers IAM policies, ENI management, and best practices.
+Description: Learn how to resolve the common 'DescribeNetworkInterfaces' permission error when deploying Lambda functions in VPCs with Terraform. This guide covers IAM policies, ENI management, and best practices.
 
 When deploying AWS Lambda functions inside a VPC using Terraform, you might encounter the dreaded "DescribeNetworkInterfaces" permission error. This occurs because Lambda needs specific EC2 permissions to manage Elastic Network Interfaces (ENIs) that connect your function to the VPC. Let's understand why this happens and how to fix it properly.
 

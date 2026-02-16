@@ -1,10 +1,10 @@
-# How to Fix "Recursion limit reached" Errors in Rust
+# How to Fix 'Recursion limit reached' Errors in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Recursion, Macros, Type System, Compiler Errors
 
-Description: Learn how to fix "recursion limit reached" errors in Rust. This guide covers macro recursion, type expansion, and strategies for staying within compiler limits.
+Description: Learn how to fix 'recursion limit reached' errors in Rust. This guide covers macro recursion, type expansion, and strategies for staying within compiler limits.
 
 ---
 

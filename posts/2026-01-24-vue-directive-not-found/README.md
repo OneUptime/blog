@@ -1,4 +1,4 @@
-# How to Fix "Directive Not Found" Errors in Vue
+# How to Fix 'Directive Not Found' Errors in Vue
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

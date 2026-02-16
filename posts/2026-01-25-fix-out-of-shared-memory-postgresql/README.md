@@ -1,10 +1,10 @@
-# How to Fix "out of shared memory" Errors in PostgreSQL
+# How to Fix 'out of shared memory' Errors in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Troubleshooting, Shared Memory, Performance, Configuration
 
-Description: Learn how to diagnose and fix "out of shared memory" errors in PostgreSQL. This guide covers the root causes, configuration tuning, and monitoring strategies to prevent memory issues.
+Description: Learn how to diagnose and fix 'out of shared memory' errors in PostgreSQL. This guide covers the root causes, configuration tuning, and monitoring strategies to prevent memory issues.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Lock Wait Timeout" Errors in MySQL
+# How to Fix 'Lock Wait Timeout' Errors in MySQL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

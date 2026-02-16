@@ -1,4 +1,4 @@
-# How to Fix "Data Loss" Errors in gRPC
+# How to Fix 'Data Loss' Errors in gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

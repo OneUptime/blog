@@ -1,4 +1,4 @@
-# How to Fix "Redirection" Errors in Bash
+# How to Fix 'Redirection' Errors in Bash
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

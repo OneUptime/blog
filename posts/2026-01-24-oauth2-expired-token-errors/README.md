@@ -1,4 +1,4 @@
-# How to Fix "Expired Token" Errors in OAuth2
+# How to Fix 'Expired Token' Errors in OAuth2
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

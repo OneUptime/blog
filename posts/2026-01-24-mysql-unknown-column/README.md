@@ -1,10 +1,10 @@
-# How to Fix "Unknown Column" Errors in MySQL
+# How to Fix 'Unknown Column' Errors in MySQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Database, Troubleshooting, SQL, Schema, Debugging
 
-Description: Learn how to diagnose and fix MySQL "Unknown column" errors caused by typos, missing columns, scope issues, and schema mismatches.
+Description: Learn how to diagnose and fix MySQL 'Unknown column' errors caused by typos, missing columns, scope issues, and schema mismatches.
 
 ---
 

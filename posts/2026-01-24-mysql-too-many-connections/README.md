@@ -1,4 +1,4 @@
-# How to Fix "Too Many Connections" Errors in MySQL
+# How to Fix 'Too Many Connections' Errors in MySQL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Frame Too Large" Errors in RabbitMQ
+# How to Fix 'Frame Too Large' Errors in RabbitMQ
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

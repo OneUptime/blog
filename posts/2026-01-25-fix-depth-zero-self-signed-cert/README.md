@@ -1,4 +1,4 @@
-# How to Fix "Error: DEPTH_ZERO_SELF_SIGNED_CERT"
+# How to Fix 'Error: DEPTH_ZERO_SELF_SIGNED_CERT'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

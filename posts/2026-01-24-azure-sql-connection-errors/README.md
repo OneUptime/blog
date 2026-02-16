@@ -1,4 +1,4 @@
-# How to Fix "Azure SQL" Connection Errors
+# How to Fix 'Azure SQL' Connection Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

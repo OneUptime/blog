@@ -1,4 +1,4 @@
-# How to Fix the Collector Refusing Data with "Memory Usage Above Soft Limit" by Tuning check_interval
+# How to Fix the Collector Refusing Data with 'Memory Usage Above Soft Limit' by Tuning check_interval
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

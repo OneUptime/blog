@@ -1,10 +1,10 @@
-# How to Fix "Offset Out of Range" Errors in Kafka
+# How to Fix 'Offset Out of Range' Errors in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, Troubleshooting, Consumer, Offset Management, Distributed Systems, Message Queue
 
-Description: A comprehensive guide to diagnosing and resolving "Offset Out of Range" errors in Apache Kafka, including causes, recovery strategies, and prevention techniques.
+Description: A comprehensive guide to diagnosing and resolving 'Offset Out of Range' errors in Apache Kafka, including causes, recovery strategies, and prevention techniques.
 
 ---
 

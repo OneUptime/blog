@@ -1,4 +1,4 @@
-# How to Fix "Subscription Connection" Errors
+# How to Fix 'Subscription Connection' Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
