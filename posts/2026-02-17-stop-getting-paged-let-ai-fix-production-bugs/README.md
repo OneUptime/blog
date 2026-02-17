@@ -4,7 +4,7 @@ Author: [mallersjamie](https://www.github.com/mallersjamie)
 
 Tags: Observability, DevOps, SRE, Open Source
 
-Description: What if your monitoring tool didn't just wake you up — it fixed the problem before you even saw the alert?
+Description: What if your monitoring tool didn't just wake you up - it fixed the problem before you even saw the alert?
 
 Every on-call engineer knows the drill. Your phone buzzes at 3am. You stumble out of bed, open your laptop, squint at dashboards, find the error, write a fix, test it, deploy it, and crawl back to bed two hours later. The alert took 30 seconds to fire. The fix took the rest of your night.
 
