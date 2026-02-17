@@ -1,4 +1,4 @@
-# How to Fix "Ref Forwarding" Issues in React
+# How to Fix 'Ref Forwarding' Issues in React
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

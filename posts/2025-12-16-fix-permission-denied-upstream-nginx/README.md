@@ -1,10 +1,10 @@
-# How to Fix "(13: Permission denied)" Upstream Connection Errors in Nginx
+# How to Fix '(13: Permission denied)' Upstream Connection Errors in Nginx
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Nginx, SELinux, Linux, Troubleshooting, DevOps
 
-Description: Learn how to diagnose and fix the "(13: Permission denied) while connecting to upstream" error in Nginx, including SELinux policies, socket permissions, and file system configuration.
+Description: Learn how to diagnose and fix the '(13: Permission denied) while connecting to upstream' error in Nginx, including SELinux policies, socket permissions, and file system configuration.
 
 ---
 

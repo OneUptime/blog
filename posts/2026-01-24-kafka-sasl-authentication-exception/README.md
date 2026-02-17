@@ -1,4 +1,4 @@
-# How to Fix "SaslAuthenticationException" in Kafka
+# How to Fix 'SaslAuthenticationException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

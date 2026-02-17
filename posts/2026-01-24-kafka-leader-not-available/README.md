@@ -1,10 +1,10 @@
-# How to Fix "Leader Not Available" Errors in Kafka
+# How to Fix 'Leader Not Available' Errors in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, Troubleshooting, Distributed Systems, Message Queue, DevOps, Streaming
 
-Description: A practical guide to diagnosing and resolving the "Leader Not Available" error in Apache Kafka, including common causes, debugging steps, and preventive measures.
+Description: A practical guide to diagnosing and resolving the 'Leader Not Available' error in Apache Kafka, including common causes, debugging steps, and preventive measures.
 
 ---
 

@@ -658,10 +658,10 @@ use crate::error::AppError;
 pub struct ValidatedJson<T>(pub T);
 
 #[async_trait]
-impl<S, T> FromRequest<S> for ValidatedJson<T>
+impl<St, T> FromRequest<St> for ValidatedJson<T>
 where
     T: DeserializeOwned + Validate,
-    S: Send + Sync,
+    St: Send + Sync,
 {
     type Rejection = AppError;
 
@@ -823,10 +823,10 @@ impl RateLimiter {
 }
 
 /// Rate limiting middleware
-pub async fn rate_limit_middleware<B>(
+pub async fn rate_limit_middleware<Bd>(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    request: Request<B>,
-    next: Next<B>,
+    request: Request<Bd>,
+    next: Next<Bd>,
 ) -> Result<Response, StatusCode> {
     // In production, use a proper rate limiter like governor or Redis
     // This is a simplified example

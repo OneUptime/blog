@@ -1,4 +1,4 @@
-# How to Fix "Istio Ingress" Not Working
+# How to Fix 'Istio Ingress' Not Working
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

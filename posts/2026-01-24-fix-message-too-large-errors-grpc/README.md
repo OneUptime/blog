@@ -1,4 +1,4 @@
-# How to Fix "Message Too Large" Errors in gRPC
+# How to Fix 'Message Too Large' Errors in gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

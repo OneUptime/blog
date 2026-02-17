@@ -1,4 +1,4 @@
-# How to Fix "Unavailable" Status Errors in gRPC
+# How to Fix 'Unavailable' Status Errors in gRPC
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Fix "Unexpected Server Response" WebSocket Errors
+# How to Fix 'Unexpected Server Response' WebSocket Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: WebSocket, Debugging, HTTP, Handshake, Node.js, Python, Error Handling, Troubleshooting
 
-Description: A practical guide to diagnosing and fixing "Unexpected Server Response" WebSocket errors caused by failed handshakes, incorrect status codes, and server misconfigurations.
+Description: A practical guide to diagnosing and fixing 'Unexpected Server Response' WebSocket errors caused by failed handshakes, incorrect status codes, and server misconfigurations.
 
 ---
 

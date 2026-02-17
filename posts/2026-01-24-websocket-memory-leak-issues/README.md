@@ -1,4 +1,4 @@
-# How to Fix "Memory Leak" Issues in WebSocket Servers
+# How to Fix 'Memory Leak' Issues in WebSocket Servers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

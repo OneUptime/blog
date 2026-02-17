@@ -1,4 +1,4 @@
-# How to Fix "Build Optimization" Errors in Next.js
+# How to Fix 'Build Optimization' Errors in Next.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

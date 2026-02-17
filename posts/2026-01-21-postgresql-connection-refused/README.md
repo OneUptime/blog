@@ -1,4 +1,4 @@
-# How to Debug PostgreSQL "Connection Refused" Errors
+# How to Debug PostgreSQL 'Connection Refused' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

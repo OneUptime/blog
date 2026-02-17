@@ -1,10 +1,10 @@
-# How to Fix "Permission Denied" IAM Errors in GCP
+# How to Fix 'Permission Denied' IAM Errors in GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Google Cloud Platform, IAM, Permissions, Security, Cloud Infrastructure, Troubleshooting
 
-Description: Learn how to diagnose and fix "Permission Denied" IAM errors in Google Cloud Platform by understanding roles, policies, and access management.
+Description: Learn how to diagnose and fix 'Permission Denied' IAM errors in Google Cloud Platform by understanding roles, policies, and access management.
 
 ---
 

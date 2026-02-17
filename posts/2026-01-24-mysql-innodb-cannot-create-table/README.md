@@ -1,10 +1,10 @@
-# How to Fix "Cannot Create Table" InnoDB Errors
+# How to Fix 'Cannot Create Table' InnoDB Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, InnoDB, Errors, Troubleshooting, Foreign Keys, Database Administration
 
-Description: A practical guide to diagnosing and fixing InnoDB "Cannot create table" errors including foreign key issues, tablespace problems, and data type mismatches.
+Description: A practical guide to diagnosing and fixing InnoDB 'Cannot create table' errors including foreign key issues, tablespace problems, and data type mismatches.
 
 ---
 

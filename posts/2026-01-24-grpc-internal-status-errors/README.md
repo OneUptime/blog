@@ -1,10 +1,10 @@
-# How to Fix "Internal" Status Errors in gRPC
+# How to Fix 'Internal' Status Errors in gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, Internal Error, Debugging, Error Handling, Status Codes, Troubleshooting, Observability
 
-Description: A practical guide to diagnosing and fixing "Internal" status errors in gRPC services, covering common causes, debugging techniques, and best practices for error handling.
+Description: A practical guide to diagnosing and fixing 'Internal' status errors in gRPC services, covering common causes, debugging techniques, and best practices for error handling.
 
 ---
 

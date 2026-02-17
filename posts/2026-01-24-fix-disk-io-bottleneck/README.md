@@ -1,4 +1,4 @@
-# How to Fix "Disk I/O Bottleneck" Issues
+# How to Fix 'Disk I/O Bottleneck' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

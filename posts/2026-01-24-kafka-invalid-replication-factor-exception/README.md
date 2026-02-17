@@ -1,4 +1,4 @@
-# How to Fix "InvalidReplicationFactorException" in Kafka
+# How to Fix 'InvalidReplicationFactorException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

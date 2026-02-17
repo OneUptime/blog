@@ -1,10 +1,10 @@
-# How to Fix "index out of range" Panics in Go
+# How to Fix 'index out of range' Panics in Go
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Golang, Errors, Panic, Arrays, Slices, Bounds Checking
 
-Description: Learn how to prevent and fix "index out of range" panics in Go when accessing arrays, slices, and strings with invalid indices.
+Description: Learn how to prevent and fix 'index out of range' panics in Go when accessing arrays, slices, and strings with invalid indices.
 
 ---
 

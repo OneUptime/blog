@@ -1,10 +1,10 @@
-# How to Fix "Cannot Create Temp File" Errors
+# How to Fix 'Cannot Create Temp File' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bash, Shell Scripting, Linux, Troubleshooting, Disk Space, Temp Files, System Administration
 
-Description: Learn how to diagnose and fix "cannot create temp file" errors in Bash caused by disk space, permissions, and quota issues.
+Description: Learn how to diagnose and fix 'cannot create temp file' errors in Bash caused by disk space, permissions, and quota issues.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "CommitFailedException" in Kafka Consumer
+# How to Fix 'CommitFailedException' in Kafka Consumer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

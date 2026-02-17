@@ -1,4 +1,4 @@
-# How to Fix "NotLeaderForPartitionException" in Kafka
+# How to Fix 'NotLeaderForPartitionException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

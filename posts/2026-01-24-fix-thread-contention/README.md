@@ -1,4 +1,4 @@
-# How to Fix "Thread Contention" Issues
+# How to Fix 'Thread Contention' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

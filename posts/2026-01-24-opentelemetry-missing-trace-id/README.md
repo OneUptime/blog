@@ -1,4 +1,4 @@
-# How to Fix "Missing Trace ID" Issues in OpenTelemetry
+# How to Fix 'Missing Trace ID' Issues in OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Compute Engine" SSH Errors
+# How to Fix 'Compute Engine' SSH Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

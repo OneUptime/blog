@@ -1,4 +1,4 @@
-# How to Fix "Permission Denied" Errors in Docker Volumes
+# How to Fix 'Permission Denied' Errors in Docker Volumes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

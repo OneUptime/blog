@@ -1,10 +1,10 @@
-# How to Fix "No qualifying bean" Errors in Spring Boot
+# How to Fix 'No qualifying bean' Errors in Spring Boot
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Dependency Injection, Debugging, Backend
 
-Description: Learn how to diagnose and fix "No qualifying bean of type" errors in Spring Boot applications with practical examples and solutions for common scenarios.
+Description: Learn how to diagnose and fix 'No qualifying bean of type' errors in Spring Boot applications with practical examples and solutions for common scenarios.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Async" Long Running Task Errors
+# How to Fix 'Async' Long Running Task Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

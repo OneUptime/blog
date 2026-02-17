@@ -1,4 +1,4 @@
-# How to Handle "Task was canceled" Exceptions in C#
+# How to Handle 'Task was canceled' Exceptions in C#
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

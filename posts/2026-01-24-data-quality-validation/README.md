@@ -1,4 +1,4 @@
-# How to Fix "Data Quality" Validation Issues
+# How to Fix 'Data Quality' Validation Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

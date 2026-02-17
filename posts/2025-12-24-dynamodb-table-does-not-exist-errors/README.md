@@ -1,10 +1,10 @@
-# How to Handle "Table does not exist" DynamoDB Errors
+# How to Handle 'Table does not exist' DynamoDB Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, Troubleshooting, NoSQL, Database, Error Handling
 
-Description: A practical guide to diagnosing and resolving "Table does not exist" errors in DynamoDB, covering common causes, debugging techniques, and prevention strategies.
+Description: A practical guide to diagnosing and resolving 'Table does not exist' errors in DynamoDB, covering common causes, debugging techniques, and prevention strategies.
 
 ---
 

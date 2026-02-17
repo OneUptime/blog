@@ -1,10 +1,10 @@
-# How to Fix "The name does not exist in current context" in C#
+# How to Fix 'The name does not exist in current context' in C#
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: C#, .NET, Debugging, Compiler Errors, Scope, Namespaces
 
-Description: Learn how to diagnose and fix the CS0103 "The name does not exist in the current context" error in C#. This guide covers common causes including scope issues, missing usings, and typos.
+Description: Learn how to diagnose and fix the CS0103 'The name does not exist in the current context' error in C#. This guide covers common causes including scope issues, missing usings, and typos.
 
 ---
 

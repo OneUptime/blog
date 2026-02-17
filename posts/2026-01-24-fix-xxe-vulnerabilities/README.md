@@ -1,4 +1,4 @@
-# How to Fix "XML External Entity (XXE)" Vulnerabilities
+# How to Fix 'XML External Entity (XXE)' Vulnerabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

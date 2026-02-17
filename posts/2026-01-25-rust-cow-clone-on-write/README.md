@@ -207,7 +207,7 @@ struct AppError {
 }
 
 impl AppError {
-    fn new<S: Into<Cow<'static, str>>>(message: S) -> Self {
+    fn new<Str: Into<Cow<'static, str>>>(message: Str) -> Self {
         AppError { message: message.into() }
     }
 }

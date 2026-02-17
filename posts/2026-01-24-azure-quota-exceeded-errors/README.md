@@ -1,4 +1,4 @@
-# How to Fix "Quota Exceeded" Errors in Azure
+# How to Fix 'Quota Exceeded' Errors in Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Schema Registry" Errors
+# How to Fix 'Schema Registry' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

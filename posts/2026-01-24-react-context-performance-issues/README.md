@@ -347,12 +347,12 @@ Create a selector pattern to prevent unnecessary re-renders:
 // hooks/useContextSelector.ts
 import { useContext, useRef, useEffect, useState } from 'react';
 
-export function useContextSelector<T, S>(
+export function useContextSelector<T, St>(
   Context: React.Context<T>,
-  selector: (value: T) => S
-): S {
+  selector: (value: T) => St
+): St {
   const contextValue = useContext(Context);
-  const selectedValueRef = useRef<S>(selector(contextValue));
+  const selectedValueRef = useRef<St>(selector(contextValue));
   const [, forceRender] = useState({});
 
   const selectedValue = selector(contextValue);

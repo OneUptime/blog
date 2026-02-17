@@ -1,4 +1,4 @@
-# How to Fix Docker "Cannot Kill Container" Errors
+# How to Fix Docker 'Cannot Kill Container' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

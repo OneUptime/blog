@@ -1,4 +1,4 @@
-# How to Troubleshoot the "Module Has Been Loaded Before Instrumentation" Error in Node.js OpenTelemetry
+# How to Troubleshoot the 'Module Has Been Loaded Before Instrumentation' Error in Node.js OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Borrow checker" Issues in Rust
+# How to Fix 'Borrow checker' Issues in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

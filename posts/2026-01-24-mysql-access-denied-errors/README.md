@@ -1,4 +1,4 @@
-# How to Fix "Access Denied for User" Errors in MySQL
+# How to Fix 'Access Denied for User' Errors in MySQL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

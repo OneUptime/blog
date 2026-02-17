@@ -1,10 +1,10 @@
-# How to Fix "Cannot Query Field" Errors in GraphQL
+# How to Fix 'Cannot Query Field' Errors in GraphQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GraphQL, Debugging, API Development, Schema, Troubleshooting
 
-Description: Learn how to diagnose and fix "Cannot query field" errors in GraphQL by understanding schema definitions, type relationships, and common mistakes.
+Description: Learn how to diagnose and fix 'Cannot query field' errors in GraphQL by understanding schema definitions, type relationships, and common mistakes.
 
 ---
 

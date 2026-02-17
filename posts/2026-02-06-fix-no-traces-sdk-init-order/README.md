@@ -1,4 +1,4 @@
-# How to Fix "No Traces Appearing" When Your OpenTelemetry SDK Initialization Order Is Wrong
+# How to Fix 'No Traces Appearing' When Your OpenTelemetry SDK Initialization Order Is Wrong
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

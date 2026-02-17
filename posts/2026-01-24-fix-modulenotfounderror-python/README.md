@@ -1,4 +1,4 @@
-# How to Fix "ModuleNotFoundError" in Python
+# How to Fix 'ModuleNotFoundError' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

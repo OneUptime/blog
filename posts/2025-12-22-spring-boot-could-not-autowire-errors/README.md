@@ -1,10 +1,10 @@
-# How to Fix "Could not autowire" Errors in Spring Boot
+# How to Fix 'Could not autowire' Errors in Spring Boot
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Dependency Injection, Debugging, IDE, Backend
 
-Description: Learn how to diagnose and resolve "Could not autowire" errors in Spring Boot, covering both runtime and IDE-related issues with practical solutions.
+Description: Learn how to diagnose and resolve 'Could not autowire' errors in Spring Boot, covering both runtime and IDE-related issues with practical solutions.
 
 ---
 

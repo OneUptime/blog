@@ -1,4 +1,4 @@
-# How to Fix "Storage Account" Access Errors
+# How to Fix 'Storage Account' Access Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

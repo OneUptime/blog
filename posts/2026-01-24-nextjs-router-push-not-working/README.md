@@ -1,4 +1,4 @@
-# How to Fix "Router.push" Not Working in Next.js
+# How to Fix 'Router.push' Not Working in Next.js
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

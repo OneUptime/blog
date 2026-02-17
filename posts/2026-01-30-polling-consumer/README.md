@@ -273,8 +273,8 @@ export class BatchPollingConsumer<T> {
     }
   }
 
-  private chunk<U>(array: U[], size: number): U[][] {
-    const result: U[][] = [];
+  private chunk<R>(array: R[], size: number): R[][] {
+    const result: R[][] = [];
     for (let i = 0; i < array.length; i += size) {
       result.push(array.slice(i, i + size));
     }

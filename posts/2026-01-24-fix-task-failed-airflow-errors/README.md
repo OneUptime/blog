@@ -1,4 +1,4 @@
-# How to Fix "Task Failed" Airflow Errors
+# How to Fix 'Task Failed' Airflow Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

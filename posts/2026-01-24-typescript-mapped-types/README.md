@@ -269,8 +269,8 @@ type Mutable<T> = {
 
 // Extract only mutable properties
 type WritableKeys<T> = {
-  [K in keyof T]-?: (<U>() => U extends { [P in K]: T[K] } ? 1 : 2) extends
-    (<U>() => U extends { readonly [P in K]: T[K] } ? 1 : 2) ? never : K;
+  [K in keyof T]-?: (<R>() => R extends { [P in K]: T[K] } ? 1 : 2) extends
+    (<R>() => R extends { readonly [P in K]: T[K] } ? 1 : 2) ? never : K;
 }[keyof T];
 
 type WritableProperties<T> = Pick<T, WritableKeys<T>>;
@@ -335,8 +335,8 @@ Create deeply nested transformations with recursive mapped types.
 // Deep Partial - makes all nested properties optional
 type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends object
-    ? T[K] extends Array<infer U>
-      ? Array<DeepPartial<U>>
+    ? T[K] extends Array<infer R>
+      ? Array<DeepPartial<R>>
       : DeepPartial<T[K]>
     : T[K];
 };

@@ -123,7 +123,7 @@ Promises are naturally covariant because you only read from them (via `then` or 
 ```typescript
 // Promise-like covariant type
 interface AsyncResult<out T> {
-    then<U>(callback: (value: T) => U): AsyncResult<U>;
+    then<R>(callback: (value: T) => R): AsyncResult<R>;
 }
 
 async function fetchDog(): Promise<Dog> {
@@ -462,7 +462,7 @@ In large codebases with complex generic hierarchies, explicit variance can reduc
 // Without annotation - TypeScript must infer variance
 interface SlowIterator<T> {
     next(): T | null;
-    map<U>(fn: (item: T) => U): SlowIterator<U>;
+    map<R>(fn: (item: T) => R): SlowIterator<R>;
     filter(predicate: (item: T) => boolean): SlowIterator<T>;
     // Many more methods...
 }
@@ -470,7 +470,7 @@ interface SlowIterator<T> {
 // With annotation - variance is known immediately
 interface FastIterator<out T> {
     next(): T | null;
-    map<U>(fn: (item: T) => U): FastIterator<U>;
+    map<R>(fn: (item: T) => R): FastIterator<R>;
     filter(predicate: (item: T) => boolean): FastIterator<T>;
     // Many more methods...
 }
@@ -484,7 +484,7 @@ If you maintain a TypeScript library used by others, adding variance annotations
 // Good practice for library types
 export interface Observable<out T> {
     subscribe(observer: Observer<T>): Subscription;
-    pipe<U>(...operators: Operator<T, U>[]): Observable<U>;
+    pipe<R>(...operators: Operator<T, R>[]): Observable<R>;
 }
 
 export interface Observer<in T> {
@@ -660,10 +660,10 @@ interface Selector<out S> {
 }
 
 // Store slice with both
-interface StoreSlice<S, in A> {
-    getState(): S;
+interface StoreSlice<St, in A> {
+    getState(): St;
     dispatch(action: A): void;
-    subscribe(listener: (state: S) => void): () => void;
+    subscribe(listener: (state: St) => void): () => void;
 }
 
 // Concrete actions
@@ -850,12 +850,12 @@ Callbacks flip the variance of type parameters.
 interface Mappable<out T> {
     // T appears in input position of callback
     // But callback itself is in input position - double flip = covariant
-    map<U>(fn: (item: T) => U): Mappable<U>;
+    map<R>(fn: (item: T) => R): Mappable<R>;
 }
 
 // This works correctly:
 const dogs: Mappable<Dog> = {
-    map<U>(fn: (item: Dog) => U): Mappable<U> {
+    map<R>(fn: (item: Dog) => R): Mappable<R> {
         // Implementation
         return { map: (f) => this.map((d) => f(fn(d))) };
     }

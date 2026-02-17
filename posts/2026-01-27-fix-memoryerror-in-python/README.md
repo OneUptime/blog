@@ -1,4 +1,4 @@
-# How to Fix "MemoryError" in Python
+# How to Fix 'MemoryError' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

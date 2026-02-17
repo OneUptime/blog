@@ -1,4 +1,4 @@
-# How to Fix "turbopack" Compatibility Issues
+# How to Fix 'turbopack' Compatibility Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

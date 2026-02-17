@@ -1,10 +1,10 @@
-# How to Fix "out of memory" Errors in PostgreSQL
+# How to Fix 'out of memory' Errors in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Troubleshooting, Memory, Performance, Configuration, OOM
 
-Description: Learn how to diagnose and fix "out of memory" errors in PostgreSQL. This guide covers memory configuration, query optimization, and system-level settings to prevent OOM issues.
+Description: Learn how to diagnose and fix 'out of memory' errors in PostgreSQL. This guide covers memory configuration, query optimization, and system-level settings to prevent OOM issues.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Insecure Direct Object References"
+# How to Fix 'Insecure Direct Object References'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

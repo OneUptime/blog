@@ -1,4 +1,4 @@
-# How to Fix "Log Aggregation" Issues
+# How to Fix 'Log Aggregation' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

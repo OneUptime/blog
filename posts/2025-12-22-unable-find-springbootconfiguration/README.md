@@ -1,10 +1,10 @@
-# How to Fix "Unable to find a @SpringBootConfiguration" Errors
+# How to Fix 'Unable to find a @SpringBootConfiguration' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Testing, Configuration, Troubleshooting, JUnit
 
-Description: Learn how to diagnose and fix "Unable to find a @SpringBootConfiguration" errors in Spring Boot tests. This guide covers package structure issues, test configuration, and proper test setup patterns.
+Description: Learn how to diagnose and fix 'Unable to find a @SpringBootConfiguration' errors in Spring Boot tests. This guide covers package structure issues, test configuration, and proper test setup patterns.
 
 ---
 

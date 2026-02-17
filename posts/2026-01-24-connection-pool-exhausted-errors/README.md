@@ -1,4 +1,4 @@
-# How to Fix "Connection Pool Exhausted" Errors
+# How to Fix 'Connection Pool Exhausted' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

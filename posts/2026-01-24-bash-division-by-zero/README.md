@@ -1,4 +1,4 @@
-# How to Fix "Division by Zero" Errors in Bash
+# How to Fix 'Division by Zero' Errors in Bash
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

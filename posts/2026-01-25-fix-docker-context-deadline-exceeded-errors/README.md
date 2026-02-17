@@ -1,4 +1,4 @@
-# How to Fix Docker "Context Deadline Exceeded" Errors
+# How to Fix Docker 'Context Deadline Exceeded' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

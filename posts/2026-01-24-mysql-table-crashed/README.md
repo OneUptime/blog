@@ -1,4 +1,4 @@
-# How to Fix "Table Is Marked as Crashed" Errors
+# How to Fix 'Table Is Marked as Crashed' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

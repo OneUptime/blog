@@ -1,4 +1,4 @@
-# How to Fix "Redis AOF rewrite failed" Errors
+# How to Fix 'Redis AOF rewrite failed' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

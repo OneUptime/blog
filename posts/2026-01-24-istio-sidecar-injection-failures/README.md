@@ -1,4 +1,4 @@
-# How to Fix "Sidecar Injection" Failures in Istio
+# How to Fix 'Sidecar Injection' Failures in Istio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

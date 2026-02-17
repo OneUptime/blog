@@ -1,4 +1,4 @@
-# How to Fix "Memory Limit Exceeded" Collector Errors
+# How to Fix 'Memory Limit Exceeded' Collector Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

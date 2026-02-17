@@ -1,4 +1,4 @@
-# How to Fix "Destination Rule" Issues in Istio
+# How to Fix 'Destination Rule' Issues in Istio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

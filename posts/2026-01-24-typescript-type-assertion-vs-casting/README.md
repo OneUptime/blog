@@ -1,4 +1,4 @@
-# How to Fix "Type Assertion" vs Type Casting Confusion
+# How to Fix 'Type Assertion' vs Type Casting Confusion
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

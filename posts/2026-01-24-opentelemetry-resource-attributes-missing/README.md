@@ -1,4 +1,4 @@
-# How to Fix "Resource Attributes Missing" in OpenTelemetry
+# How to Fix 'Resource Attributes Missing' in OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

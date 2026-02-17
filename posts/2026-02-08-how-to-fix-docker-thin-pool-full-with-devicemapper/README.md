@@ -1,4 +1,4 @@
-# How to Fix Docker "Thin Pool Full" with devicemapper
+# How to Fix Docker 'Thin Pool Full' with devicemapper
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

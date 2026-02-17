@@ -1,4 +1,4 @@
-# How to Fix "Bus Error" Errors in Linux
+# How to Fix 'Bus Error' Errors in Linux
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

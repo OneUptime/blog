@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Developer Experience, Dev Containers, Docker, VSCode, Team Development
 
-Description: Learn how to configure Dev Containers for consistent development environments across your team, eliminating the "works on my machine" problem with reproducible, containerized workspaces.
+Description: Learn how to configure Dev Containers for consistent development environments across your team, eliminating the 'works on my machine' problem with reproducible, containerized workspaces.
 
 ---
 

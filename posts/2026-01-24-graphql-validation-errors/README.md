@@ -1,4 +1,4 @@
-# How to Fix "Validation Error" in GraphQL Queries
+# How to Fix 'Validation Error' in GraphQL Queries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

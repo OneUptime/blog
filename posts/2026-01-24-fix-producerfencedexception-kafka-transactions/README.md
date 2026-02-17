@@ -1,4 +1,4 @@
-# How to Fix "ProducerFencedException" in Kafka Transactions
+# How to Fix 'ProducerFencedException' in Kafka Transactions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix the Mistake of Not Setting service.name and Getting "unknown_service" in Your Backend
+# How to Fix the Mistake of Not Setting service.name and Getting 'unknown_service' in Your Backend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

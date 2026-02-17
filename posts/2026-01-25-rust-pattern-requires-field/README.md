@@ -1,10 +1,10 @@
-# How to Fix "Pattern requires field" Errors in Rust
+# How to Fix 'Pattern requires field' Errors in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Pattern Matching, Structs, Error Handling, Destructuring
 
-Description: Learn how to fix "pattern requires field" errors in Rust when destructuring structs. This guide covers struct patterns, field shorthand, and common mistakes with solutions.
+Description: Learn how to fix 'pattern requires field' errors in Rust when destructuring structs. This guide covers struct patterns, field shorthand, and common mistakes with solutions.
 
 ---
 

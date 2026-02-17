@@ -1,4 +1,4 @@
-# How to Fix "Data Skew" Issues in Spark
+# How to Fix 'Data Skew' Issues in Spark
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

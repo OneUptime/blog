@@ -1,10 +1,10 @@
-# How to Fix "Port already in use" Errors in Spring Boot
+# How to Fix 'Port already in use' Errors in Spring Boot
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Port Conflict, Troubleshooting, DevOps, Configuration
 
-Description: Learn how to diagnose and fix "Port already in use" errors in Spring Boot applications. This guide covers finding processes using ports, changing ports, and setting up dynamic port allocation.
+Description: Learn how to diagnose and fix 'Port already in use' errors in Spring Boot applications. This guide covers finding processes using ports, changing ports, and setting up dynamic port allocation.
 
 ---
 

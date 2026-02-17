@@ -20,6 +20,8 @@
  * 14. AUTO-FIX: Automatically adds missing entries to Blogs.json from README.md
  * 15. AUTO-FIX: Automatically generates missing social-media.png images
  * 16. AUTO-FIX: Fixes header spacing (ensures blank lines between metadata lines)
+ * 17. Checks for HTML-conflicting generic type parameters (<S>, <B>, <I>, <U>) in code blocks
+ * 18. AUTO-FIX: Replaces double quotes with single quotes in titles and descriptions
  *
  * Run with: npm run validate
  */
@@ -634,6 +636,24 @@ function validateReadme(dir: string, blogEntry: BlogEntry | undefined): FormatIs
     }
   }
 
+  // Check for double quotes in title and description
+  if (lines[0] && lines[0].startsWith('# ') && lines[0].includes('"')) {
+    issues.push({
+      type: 'error',
+      message: 'Title contains double quotes',
+      fix: 'Replace double quotes (") with single quotes (\') in the title',
+    });
+  }
+
+  const descLineForQuotes = lines.find((l) => l.startsWith('Description:'));
+  if (descLineForQuotes && descLineForQuotes.includes('"')) {
+    issues.push({
+      type: 'error',
+      message: 'Description contains double quotes',
+      fix: 'Replace double quotes (") with single quotes (\') in the description',
+    });
+  }
+
   return issues;
 }
 
@@ -965,6 +985,165 @@ function checkBrokenLinks(postsDir: string[]): void {
 }
 
 /**
+ * AUTO-FIX: Replace double quotes with single quotes in title and description lines.
+ * Double quotes in titles/descriptions cause rendering issues in the blog platform.
+ */
+function fixDoubleQuotes(postsDir: string[], blogsJson: BlogEntry[]): void {
+  logHeader('Checking for double quotes in titles and descriptions');
+
+  const blogMap = new Map<string, BlogEntry>();
+  for (const blog of blogsJson) {
+    blogMap.set(blog.post, blog);
+  }
+
+  let fixedReadmeCount = 0;
+  let fixedJsonCount = 0;
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) {
+      continue;
+    }
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+    let changed = false;
+
+    // Fix title (first line starting with # )
+    if (lines[0] && lines[0].startsWith('# ') && lines[0].includes('"')) {
+      lines[0] = lines[0].replace(/"/g, "'");
+      changed = true;
+    }
+
+    // Fix description line
+    for (let i = 0; i < Math.min(lines.length, 15); i++) {
+      if (lines[i]?.startsWith('Description:') && lines[i]!.includes('"')) {
+        lines[i] = lines[i]!.replace(/"/g, "'");
+        changed = true;
+        break;
+      }
+    }
+
+    if (changed) {
+      fs.writeFileSync(readmePath, lines.join('\n'), 'utf8');
+      fixedReadmeCount++;
+
+      // Also update the corresponding Blogs.json entry
+      const blogEntry = blogMap.get(dir);
+      if (blogEntry) {
+        // Re-parse the fixed README to get updated values
+        const fixedTitle = lines[0]?.startsWith('# ') ? lines[0].substring(2).trim() : blogEntry.title;
+        const descLine = lines.find((l) => l.startsWith('Description:'));
+        const fixedDesc = descLine ? descLine.substring(12).trim() : blogEntry.description;
+
+        if (blogEntry.title !== fixedTitle || blogEntry.description !== fixedDesc) {
+          blogEntry.title = fixedTitle;
+          blogEntry.description = fixedDesc;
+          fixedJsonCount++;
+        }
+      }
+    }
+  }
+
+  if (fixedReadmeCount > 0) {
+    // Save updated Blogs.json
+    fs.writeFileSync(BLOGS_JSON, JSON.stringify(blogsJson, null, 2) + '\n', 'utf8');
+    logSuccess(`Fixed double quotes in ${fixedReadmeCount} README.md file${fixedReadmeCount === 1 ? '' : 's'} and ${fixedJsonCount} Blogs.json entr${fixedJsonCount === 1 ? 'y' : 'ies'}`);
+  } else {
+    logSuccess('No double quotes found in titles or descriptions');
+  }
+}
+
+/**
+ * Check for HTML-conflicting generic type parameters in blog posts.
+ * Single-letter uppercase generics like <S>, <B>, <I>, <U> get misinterpreted
+ * as HTML tags (<s> strikethrough, <b> bold, <i> italic, <u> underline) by
+ * the blog renderer, even inside code blocks.
+ */
+function checkHtmlConflictingGenerics(postsDir: string[]): void {
+  logHeader('Checking for HTML-conflicting generic type parameters');
+
+  // Match uppercase single-letter generics that conflict with HTML tags:
+  // <S>, <S, <S: <S  (and same for B, I, U)
+  const htmlGenericRegex = /<[SBIU][>,:\s]/g;
+
+  interface GenericIssue {
+    dir: string;
+    line: number;
+    content: string;
+    match: string;
+  }
+
+  const issues: GenericIssue[] = [];
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) {
+      continue;
+    }
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      htmlGenericRegex.lastIndex = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = htmlGenericRegex.exec(lines[i]!)) !== null) {
+        issues.push({
+          dir,
+          line: i + 1,
+          content: lines[i]!.trim(),
+          match: match[0],
+        });
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    hasErrors = true;
+
+    // Group by directory
+    const byDir = new Map<string, GenericIssue[]>();
+    for (const issue of issues) {
+      const existing = byDir.get(issue.dir) || [];
+      existing.push(issue);
+      byDir.set(issue.dir, existing);
+    }
+
+    logError(
+      `Found ${issues.length} HTML-conflicting generic type parameter${issues.length === 1 ? '' : 's'} in ${byDir.size} file${byDir.size === 1 ? '' : 's'}\n`
+    );
+
+    for (const [dir, dirIssues] of byDir) {
+      console.log(`  ${colors.bold}${dir}${colors.reset}`);
+      const shown = dirIssues.slice(0, 5);
+      for (const issue of shown) {
+        const truncated = issue.content.length > 80 ? issue.content.substring(0, 80) + '...' : issue.content;
+        console.log(`    Line ${issue.line}: ${colors.red}${issue.match}${colors.reset} in "${truncated}"`);
+      }
+      if (dirIssues.length > 5) {
+        console.log(`    ... and ${dirIssues.length - 5} more`);
+      }
+    }
+
+    console.log(`
+${colors.bold}How to fix:${colors.reset}
+  Rename single-letter generic type parameters that conflict with HTML tags:
+    <S> (strikethrough) -> <Svc>, <Ser>, <St>
+    <B> (bold)          -> <Bd>, <Body>
+    <I> (italic)        -> <It>, <In>, <Inp>
+    <U> (underline)     -> <R>, <Out>
+
+  The blog renderer interprets these as HTML tags even inside code blocks,
+  causing text to appear with strikethrough, bold, italic, or underline styling.
+`);
+  } else {
+    logSuccess('No HTML-conflicting generic type parameters found');
+  }
+}
+
+/**
  * Fix header spacing in a single README.md file
  * Ensures blank lines exist between title, Author:, Tags:, Description:, and ---
  * Only touches the 4 known metadata lines and the --- separator, nothing else.
@@ -1119,6 +1298,12 @@ function main(): void {
   
   // Check for broken internal cross-reference links
   checkBrokenLinks(postsDir);
+
+  // Auto-fix double quotes in titles and descriptions
+  fixDoubleQuotes(postsDir, blogsJson);
+
+  // Check for HTML-conflicting generic type parameters
+  checkHtmlConflictingGenerics(postsDir);
 
   // Fix header spacing in README.md files
   fixAllHeaderSpacing(postsDir);

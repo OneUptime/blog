@@ -1,4 +1,4 @@
-# How to Fix "Connection Reset" Errors in RabbitMQ
+# How to Fix 'Connection Reset' Errors in RabbitMQ
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

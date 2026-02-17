@@ -1,4 +1,4 @@
-# How to Fix "TopicExistsException" in Kafka
+# How to Fix 'TopicExistsException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

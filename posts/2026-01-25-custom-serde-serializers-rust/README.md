@@ -28,9 +28,9 @@ This separation is what makes serde so flexible. Your custom serializer bridges 
 ```rust
 // The Serialize trait - what your types implement
 pub trait Serialize {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: Serializer;
+        Ser: Serializer;
 }
 ```
 
@@ -49,9 +49,9 @@ pub mod unix_timestamp {
     use super::*;
 
     // Custom serialize function for DateTime<Utc>
-    pub fn serialize<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<Ser>(date: &DateTime<Utc>, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: Serializer,
+        Ser: Serializer,
     {
         // Convert DateTime to Unix timestamp (seconds since epoch)
         let timestamp = date.timestamp();
@@ -88,9 +88,9 @@ use chrono::{DateTime, TimeZone, Utc};
 pub mod unix_timestamp {
     use super::*;
 
-    pub fn serialize<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<Ser>(date: &DateTime<Utc>, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: Serializer,
+        Ser: Serializer,
     {
         serializer.serialize_i64(date.timestamp())
     }
@@ -132,9 +132,9 @@ Things get trickier with `Option<T>`. You need to handle the `None` case:
 pub mod optional_unix_timestamp {
     use super::*;
 
-    pub fn serialize<S>(date: &Option<DateTime<Utc>>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<Ser>(date: &Option<DateTime<Utc>>, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: Serializer,
+        Ser: Serializer,
     {
         match date {
             Some(d) => serializer.serialize_some(&d.timestamp()),
@@ -233,9 +233,9 @@ impl<F: TimestampFormat> Timestamp<F> {
 }
 
 impl<F: TimestampFormat> Serialize for Timestamp<F> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: Serializer,
+        Ser: Serializer,
     {
         serializer.serialize_i64(self.value.timestamp())
     }
@@ -258,9 +258,9 @@ pub struct Money {
 }
 
 impl Serialize for Money {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: Serializer,
+        Ser: Serializer,
     {
         // Serialize as a struct with custom field handling
         let mut state = serializer.serialize_struct("Money", 3)?;
@@ -305,9 +305,9 @@ pub enum Status {
 }
 
 impl Serialize for Status {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: Serializer,
+        Ser: Serializer,
     {
         use serde::ser::SerializeMap;
 
@@ -395,9 +395,9 @@ impl<'a> PublicUser<'a> {
 }
 
 impl<'a> Serialize for PublicUser<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: Serializer,
+        Ser: Serializer,
     {
         use serde::ser::SerializeStruct;
 
@@ -434,13 +434,13 @@ use serde::ser::Error;
 pub struct PositiveNumber(i64);
 
 impl Serialize for PositiveNumber {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: Serializer,
+        Ser: Serializer,
     {
         if self.0 < 0 {
             // Return a custom error with a clear message
-            return Err(S::Error::custom(format!(
+            return Err(Ser::Error::custom(format!(
                 "cannot serialize negative number: {}",
                 self.0
             )));

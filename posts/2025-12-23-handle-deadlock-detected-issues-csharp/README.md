@@ -1,4 +1,4 @@
-# How to Handle "Deadlock detected" Issues in C#
+# How to Handle 'Deadlock detected' Issues in C#
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

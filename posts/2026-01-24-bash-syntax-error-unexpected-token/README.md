@@ -1,10 +1,10 @@
-# How to Fix "Syntax Error Near Unexpected Token" in Bash
+# How to Fix 'Syntax Error Near Unexpected Token' in Bash
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bash, Shell Scripting, Debugging, Linux, DevOps, Error Handling, Troubleshooting
 
-Description: Learn how to diagnose and fix the common "syntax error near unexpected token" error in Bash scripts with practical examples and debugging techniques.
+Description: Learn how to diagnose and fix the common 'syntax error near unexpected token' error in Bash scripts with practical examples and debugging techniques.
 
 ---
 

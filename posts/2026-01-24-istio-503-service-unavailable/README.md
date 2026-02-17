@@ -1,4 +1,4 @@
-# How to Fix "503 Service Unavailable" Istio Errors
+# How to Fix '503 Service Unavailable' Istio Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

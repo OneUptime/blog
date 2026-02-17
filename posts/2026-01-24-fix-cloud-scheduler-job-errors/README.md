@@ -1,4 +1,4 @@
-# How to Fix "Cloud Scheduler" Job Errors
+# How to Fix 'Cloud Scheduler' Job Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

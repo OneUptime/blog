@@ -1,4 +1,4 @@
-# How to Fix "Redis RDB snapshot failed" Errors
+# How to Fix 'Redis RDB snapshot failed' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

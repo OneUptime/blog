@@ -1,4 +1,4 @@
-# How to Fix "Fragment Spread" Errors in GraphQL
+# How to Fix 'Fragment Spread' Errors in GraphQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

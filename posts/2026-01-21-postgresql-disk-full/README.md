@@ -1,4 +1,4 @@
-# How to Fix PostgreSQL "Disk Full" Errors
+# How to Fix PostgreSQL 'Disk Full' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

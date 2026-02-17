@@ -1,4 +1,4 @@
-# How to Fix "Not Found" Status Errors in gRPC
+# How to Fix 'Not Found' Status Errors in gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

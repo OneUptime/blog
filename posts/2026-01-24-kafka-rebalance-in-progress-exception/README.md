@@ -1,4 +1,4 @@
-# How to Fix "RebalanceInProgressException" in Kafka
+# How to Fix 'RebalanceInProgressException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

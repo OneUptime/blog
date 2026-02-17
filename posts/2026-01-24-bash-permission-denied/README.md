@@ -1,10 +1,10 @@
-# How to Fix "Permission Denied" Script Execution Errors
+# How to Fix 'Permission Denied' Script Execution Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bash, Shell Scripting, Permissions, Linux, DevOps, Troubleshooting
 
-Description: Learn how to diagnose and fix "Permission denied" errors when running Bash scripts, including file permissions, execute bits, and filesystem restrictions.
+Description: Learn how to diagnose and fix 'Permission denied' errors when running Bash scripts, including file permissions, execute bits, and filesystem restrictions.
 
 ---
 

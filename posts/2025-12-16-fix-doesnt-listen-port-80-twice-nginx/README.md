@@ -1,4 +1,4 @@
-# How to Fix "doesn't listen on port 80 twice" Errors in Nginx
+# How to Fix 'doesn't listen on port 80 twice' Errors in Nginx
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

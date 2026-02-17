@@ -607,15 +607,15 @@ type UserPostParams = RouteParamsObject<'/users/:userId/posts/:postId'>;
 
 ```typescript
 // Parse event strings like 'click.button.primary'
-type ParseEventString<S extends string> =
-    S extends `${infer Event}.${infer Rest}`
+type ParseEventString<St extends string> =
+    St extends `${infer Event}.${infer Rest}`
         ? { event: Event; modifiers: ParseModifiers<Rest> }
-        : { event: S; modifiers: [] };
+        : { event: St; modifiers: [] };
 
-type ParseModifiers<S extends string> =
-    S extends `${infer Mod}.${infer Rest}`
+type ParseModifiers<St extends string> =
+    St extends `${infer Mod}.${infer Rest}`
         ? [Mod, ...ParseModifiers<Rest>]
-        : [S];
+        : [St];
 
 type ClickEvent = ParseEventString<'click.button.primary'>;
 // Result: { event: 'click'; modifiers: ['button', 'primary'] }

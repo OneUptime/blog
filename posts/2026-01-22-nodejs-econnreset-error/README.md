@@ -1,4 +1,4 @@
-# How to Fix "Error: ECONNRESET" in Node.js
+# How to Fix 'Error: ECONNRESET' in Node.js
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

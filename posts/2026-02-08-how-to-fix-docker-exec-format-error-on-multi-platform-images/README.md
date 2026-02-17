@@ -1,4 +1,4 @@
-# How to Fix Docker "Exec Format Error" on Multi-Platform Images
+# How to Fix Docker 'Exec Format Error' on Multi-Platform Images
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

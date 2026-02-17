@@ -1,4 +1,4 @@
-# How to Fix "Interface Implementation" Errors in GraphQL
+# How to Fix 'Interface Implementation' Errors in GraphQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

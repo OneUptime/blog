@@ -1,10 +1,10 @@
-# How to Fix Docker "Layer Already Exists" Push Errors
+# How to Fix Docker 'Layer Already Exists' Push Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Docker Push, Layer Already Exists, Docker Registry, Troubleshooting, Container Images
 
-Description: Understand why Docker shows "layer already exists" during push and when it actually indicates a problem that needs fixing.
+Description: Understand why Docker shows 'layer already exists' during push and when it actually indicates a problem that needs fixing.
 
 ---
 

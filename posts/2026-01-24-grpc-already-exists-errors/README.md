@@ -1,4 +1,4 @@
-# How to Fix "Already Exists" Errors in gRPC
+# How to Fix 'Already Exists' Errors in gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

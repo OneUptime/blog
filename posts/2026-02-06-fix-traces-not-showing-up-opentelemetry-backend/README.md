@@ -1,4 +1,4 @@
-# How to Fix "Traces Not Showing Up" in Your OpenTelemetry Backend
+# How to Fix 'Traces Not Showing Up' in Your OpenTelemetry Backend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -499,13 +499,13 @@ pub struct AuthenticatedUser {
 }
 
 #[async_trait]
-impl<S> FromRequestParts<S> for AuthenticatedUser
+impl<St> FromRequestParts<St> for AuthenticatedUser
 where
-    S: Send + Sync,
+    St: Send + Sync,
 {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &St) -> Result<Self, Self::Rejection> {
         // Extract token from Authorization header
         let auth_header = parts
             .headers
@@ -701,9 +701,9 @@ use axum::{
 use tower_http::cors::{CorsLayer, Any};
 
 /// Add security headers to all responses
-pub async fn security_headers<B>(
-    request: Request<B>,
-    next: Next<B>,
+pub async fn security_headers<Bd>(
+    request: Request<Bd>,
+    next: Next<Bd>,
 ) -> Response<Body> {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();

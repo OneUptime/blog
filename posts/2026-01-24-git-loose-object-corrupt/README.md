@@ -1,4 +1,4 @@
-# How to Fix "Loose Object Is Corrupt" Errors
+# How to Fix 'Loose Object Is Corrupt' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

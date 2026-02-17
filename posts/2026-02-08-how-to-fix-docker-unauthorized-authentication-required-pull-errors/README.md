@@ -1,4 +1,4 @@
-# How to Fix Docker "Unauthorized: Authentication Required" Pull Errors
+# How to Fix Docker 'Unauthorized: Authentication Required' Pull Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

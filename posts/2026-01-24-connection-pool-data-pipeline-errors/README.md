@@ -1,4 +1,4 @@
-# How to Fix "Connection Pool" Data Pipeline Errors
+# How to Fix 'Connection Pool' Data Pipeline Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

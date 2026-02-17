@@ -1,4 +1,4 @@
-# How to Fix "Build Reproducibility" Issues
+# How to Fix 'Build Reproducibility' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

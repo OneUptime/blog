@@ -1,10 +1,10 @@
-# How to Fix "Too Many Arguments" Errors in Bash
+# How to Fix 'Too Many Arguments' Errors in Bash
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Bash, Shell Scripting, Linux, Error Handling, Debugging, Command Line
 
-Description: Learn how to diagnose and fix the common "too many arguments" error in Bash scripts caused by unquoted variables, glob expansion, and word splitting.
+Description: Learn how to diagnose and fix the common 'too many arguments' error in Bash scripts caused by unquoted variables, glob expansion, and word splitting.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "TaskAssignmentException" in Kafka Streams
+# How to Fix 'TaskAssignmentException' in Kafka Streams
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

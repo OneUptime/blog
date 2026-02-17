@@ -1,4 +1,4 @@
-# How to Fix "CorruptRecordException" in Kafka
+# How to Fix 'CorruptRecordException' in Kafka
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

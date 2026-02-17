@@ -1,10 +1,10 @@
-# How to Fix "Error configuring Terraform S3 Backend"
+# How to Fix 'Error configuring Terraform S3 Backend'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, AWS, S3, Backend, State Management
 
-Description: Troubleshoot and fix the common "Error configuring Terraform S3 Backend" issues including credential problems, bucket access, and region mismatches.
+Description: Troubleshoot and fix the common 'Error configuring Terraform S3 Backend' issues including credential problems, bucket access, and region mismatches.
 
 ---
 

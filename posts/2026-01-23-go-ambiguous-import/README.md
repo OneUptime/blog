@@ -1,10 +1,10 @@
-# How to Fix "ambiguous import" Errors in Go
+# How to Fix 'ambiguous import' Errors in Go
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Golang, Errors, Import, Modules, Dependencies
 
-Description: Learn how to fix "ambiguous import" errors in Go when multiple modules provide the same package path.
+Description: Learn how to fix 'ambiguous import' errors in Go when multiple modules provide the same package path.
 
 ---
 

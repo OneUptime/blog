@@ -237,20 +237,20 @@ impl MetricsLayer {
     }
 }
 
-impl<S> Layer<S> for MetricsLayer
+impl<Svc> Layer<Svc> for MetricsLayer
 where
-    S: Subscriber,
+    Svc: Subscriber,
 {
     fn on_new_span(
         &self,
         _attrs: &span::Attributes<'_>,
         _id: &span::Id,
-        _ctx: Context<'_, S>,
+        _ctx: Context<'_, Svc>,
     ) {
         self.span_count.fetch_add(1, Ordering::Relaxed);
     }
 
-    fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+    fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, Svc>) {
         self.event_count.fetch_add(1, Ordering::Relaxed);
 
         // Count errors specifically

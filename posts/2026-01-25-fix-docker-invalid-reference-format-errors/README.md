@@ -1,4 +1,4 @@
-# How to Fix Docker "Invalid Reference Format" Errors
+# How to Fix Docker 'Invalid Reference Format' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

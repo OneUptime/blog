@@ -1,4 +1,4 @@
-# How to Fix "NOAUTH Authentication required" Errors
+# How to Fix 'NOAUTH Authentication required' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

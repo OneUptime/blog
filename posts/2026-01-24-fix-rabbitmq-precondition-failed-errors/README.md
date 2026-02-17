@@ -1,4 +1,4 @@
-# How to Fix "Precondition Failed" Errors in RabbitMQ
+# How to Fix 'Precondition Failed' Errors in RabbitMQ
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

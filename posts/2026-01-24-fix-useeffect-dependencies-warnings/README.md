@@ -1,4 +1,4 @@
-# How to Fix "useEffect Dependencies" Warnings
+# How to Fix 'useEffect Dependencies' Warnings
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Fix "cannot open tablespace" Errors in PostgreSQL
+# How to Fix 'cannot open tablespace' Errors in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Troubleshooting, Tablespace, Storage, File System
 
-Description: Learn how to diagnose and fix "cannot open tablespace" errors in PostgreSQL. This guide covers tablespace configuration, permission issues, and recovery procedures.
+Description: Learn how to diagnose and fix 'cannot open tablespace' errors in PostgreSQL. This guide covers tablespace configuration, permission issues, and recovery procedures.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Fix "BSONObj size is invalid" Errors in MongoDB
+# How to Fix 'BSONObj size is invalid' Errors in MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, BSON, Database, Troubleshooting, Error Handling, Performance
 
-Description: Learn how to diagnose and fix MongoDB "BSONObj size is invalid" errors, understand BSON document size limits, and implement strategies to prevent document size issues in your applications.
+Description: Learn how to diagnose and fix MongoDB 'BSONObj size is invalid' errors, understand BSON document size limits, and implement strategies to prevent document size issues in your applications.
 
 ---
 

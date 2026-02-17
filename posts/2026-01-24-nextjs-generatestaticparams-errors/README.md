@@ -1,4 +1,4 @@
-# How to Fix "generateStaticParams" Errors in Next.js
+# How to Fix 'generateStaticParams' Errors in Next.js
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

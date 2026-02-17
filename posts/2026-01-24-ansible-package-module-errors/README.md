@@ -1,4 +1,4 @@
-# How to Fix "Package Module" Installation Errors
+# How to Fix 'Package Module' Installation Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

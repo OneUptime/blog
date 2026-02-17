@@ -1,4 +1,4 @@
-# How to Fix "Reactivity Not Working" Issues in Vue 3
+# How to Fix 'Reactivity Not Working' Issues in Vue 3
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

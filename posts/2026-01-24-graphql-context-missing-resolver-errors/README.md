@@ -1,4 +1,4 @@
-# How to Fix "Context Missing" Resolver Errors
+# How to Fix 'Context Missing' Resolver Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

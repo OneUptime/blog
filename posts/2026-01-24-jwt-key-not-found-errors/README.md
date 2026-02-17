@@ -1,4 +1,4 @@
-# How to Fix "Key Not Found" JWT Verification Errors
+# How to Fix 'Key Not Found' JWT Verification Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

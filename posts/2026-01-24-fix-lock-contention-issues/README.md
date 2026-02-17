@@ -1,4 +1,4 @@
-# How to Fix "Lock Contention" Issues
+# How to Fix 'Lock Contention' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

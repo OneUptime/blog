@@ -1,10 +1,10 @@
-# How to Fix "Invalid Frame Header" WebSocket Errors
+# How to Fix 'Invalid Frame Header' WebSocket Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: WebSocket, Debugging, Node.js, Python, Frame Protocol, Error Handling, Real-time
 
-Description: A practical guide to diagnosing and fixing "Invalid Frame Header" WebSocket errors caused by protocol violations, proxy misconfiguration, and data corruption.
+Description: A practical guide to diagnosing and fixing 'Invalid Frame Header' WebSocket errors caused by protocol violations, proxy misconfiguration, and data corruption.
 
 ---
 

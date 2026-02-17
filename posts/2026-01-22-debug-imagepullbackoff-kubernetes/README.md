@@ -1,4 +1,4 @@
-# How to Debug "ImagePullBackOff" Errors in Kubernetes
+# How to Debug 'ImagePullBackOff' Errors in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

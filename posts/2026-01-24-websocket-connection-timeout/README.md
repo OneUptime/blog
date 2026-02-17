@@ -1,4 +1,4 @@
-# How to Fix "Connection Timeout" WebSocket Errors
+# How to Fix 'Connection Timeout' WebSocket Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

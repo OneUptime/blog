@@ -1,4 +1,4 @@
-# How to Fix the "No Module Named opentelemetry.instrumentation" Error After Package Installation
+# How to Fix the 'No Module Named opentelemetry.instrumentation' Error After Package Installation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

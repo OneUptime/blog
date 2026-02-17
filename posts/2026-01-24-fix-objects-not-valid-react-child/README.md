@@ -1,10 +1,10 @@
-# How to Fix "Objects Are Not Valid as React Child"
+# How to Fix 'Objects Are Not Valid as React Child'
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: React, JavaScript, Debugging, Frontend, Troubleshooting
 
-Description: A practical guide to understanding and fixing the "Objects are not valid as a React child" error in React applications.
+Description: A practical guide to understanding and fixing the 'Objects are not valid as a React child' error in React applications.
 
 ---
 

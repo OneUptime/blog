@@ -1,4 +1,4 @@
-# How to Fix "Serialization Failed" Export Errors
+# How to Fix 'Serialization Failed' Export Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

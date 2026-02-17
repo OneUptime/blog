@@ -1,4 +1,4 @@
-# How to Fix "TimeoutError" in Python
+# How to Fix 'TimeoutError' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

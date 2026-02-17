@@ -1,4 +1,4 @@
-# How to Fix "Invalid Histogram Bucket" Errors
+# How to Fix 'Invalid Histogram Bucket' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

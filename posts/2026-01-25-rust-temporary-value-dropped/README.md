@@ -1,10 +1,10 @@
-# How to Fix "Temporary value dropped while borrowed" Errors in Rust
+# How to Fix 'Temporary value dropped while borrowed' Errors in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Lifetimes, Borrow Checker, Memory Safety, Error Handling
 
-Description: Learn how to fix the "temporary value dropped while borrowed" error in Rust. This guide explains why it happens and shows practical solutions for common scenarios.
+Description: Learn how to fix the 'temporary value dropped while borrowed' error in Rust. This guide explains why it happens and shows practical solutions for common scenarios.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Fix "Cannot Read Property of Undefined" in React
+# How to Fix 'Cannot Read Property of Undefined' in React
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: React, JavaScript, Debugging, Frontend, Error Handling
 
-Description: Learn how to diagnose and fix the common "Cannot read property of undefined" error in React applications with defensive coding patterns.
+Description: Learn how to diagnose and fix the common 'Cannot read property of undefined' error in React applications with defensive coding patterns.
 
 ---
 

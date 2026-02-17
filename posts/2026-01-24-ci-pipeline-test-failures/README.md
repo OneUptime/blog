@@ -1,4 +1,4 @@
-# How to Fix "CI Pipeline" Test Failures
+# How to Fix 'CI Pipeline' Test Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Zombie Process" Issues in Linux
+# How to Fix 'Zombie Process' Issues in Linux
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

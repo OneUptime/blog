@@ -1,4 +1,4 @@
-# How to Fix "Unroutable Message" Errors in RabbitMQ
+# How to Fix 'Unroutable Message' Errors in RabbitMQ
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

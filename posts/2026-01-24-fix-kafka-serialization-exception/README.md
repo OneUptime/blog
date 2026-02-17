@@ -1,4 +1,4 @@
-# How to Fix "SerializationException" in Kafka
+# How to Fix 'SerializationException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "SyntaxError: Cannot use import statement"
+# How to Fix 'SyntaxError: Cannot use import statement'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

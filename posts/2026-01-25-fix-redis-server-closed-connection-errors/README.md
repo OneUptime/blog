@@ -1,4 +1,4 @@
-# How to Fix "Redis server closed connection" Errors
+# How to Fix 'Redis server closed connection' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

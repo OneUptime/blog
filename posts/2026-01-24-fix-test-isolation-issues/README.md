@@ -1,4 +1,4 @@
-# How to Fix "Test Isolation" Issues
+# How to Fix 'Test Isolation' Issues
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

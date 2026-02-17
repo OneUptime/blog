@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry gRPC Instrumentation Warning "Module @grpc/grpc-js Loaded Before Instrumentation"
+# How to Fix OpenTelemetry gRPC Instrumentation Warning 'Module @grpc/grpc-js Loaded Before Instrumentation'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

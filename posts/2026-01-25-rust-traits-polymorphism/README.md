@@ -405,16 +405,16 @@ trait IteratorExt: Iterator {
     }
 }
 
-impl<I: Iterator> IteratorExt for I {}
+impl<It: Iterator> IteratorExt for It {}
 
-struct TakeUntil<I, P> {
-    iter: I,
+struct TakeUntil<It, P> {
+    iter: It,
     predicate: P,
     done: bool,
 }
 
-impl<I: Iterator, P: FnMut(&I::Item) -> bool> Iterator for TakeUntil<I, P> {
-    type Item = I::Item;
+impl<It: Iterator, P: FnMut(&It::Item) -> bool> Iterator for TakeUntil<It, P> {
+    type Item = It::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -476,12 +476,12 @@ impl SortStrategy for QuickSort {
     }
 }
 
-struct Sorter<S: SortStrategy> {
-    strategy: S,
+struct Sorter<St: SortStrategy> {
+    strategy: St,
 }
 
-impl<S: SortStrategy> Sorter<S> {
-    fn new(strategy: S) -> Self {
+impl<St: SortStrategy> Sorter<St> {
+    fn new(strategy: St) -> Self {
         Sorter { strategy }
     }
 

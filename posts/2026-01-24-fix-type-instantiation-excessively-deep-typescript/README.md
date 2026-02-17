@@ -1,10 +1,10 @@
-# How to Fix "Type Instantiation Is Excessively Deep" Errors
+# How to Fix 'Type Instantiation Is Excessively Deep' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Types, Debugging, Recursion, Performance
 
-Description: Learn to diagnose and fix TypeScript "Type instantiation is excessively deep and possibly infinite" errors caused by recursive types.
+Description: Learn to diagnose and fix TypeScript 'Type instantiation is excessively deep and possibly infinite' errors caused by recursive types.
 
 ---
 
@@ -75,8 +75,8 @@ Long chains of conditional types can exhaust the instantiation depth:
 ```typescript
 // BAD: Each condition adds instantiation depth
 // The compiler must evaluate each branch
-type ExtractDeep<T> = T extends Promise<infer U>
-  ? ExtractDeep<U>
+type ExtractDeep<T> = T extends Promise<infer R>
+  ? ExtractDeep<R>
   : T extends Array<infer V>
     ? ExtractDeep<V>
     : T extends object
@@ -141,20 +141,20 @@ Flatten nested conditionals using union types:
 
 ```typescript
 // BAD: Deeply nested conditionals
-type BadUnwrap<T> = T extends Promise<infer U>
-  ? U extends Promise<infer V>
+type BadUnwrap<T> = T extends Promise<infer R>
+  ? R extends Promise<infer V>
     ? V extends Promise<infer W>
       ? W
       : V
-    : U
+    : R
   : T;
 
 // GOOD: Flattened recursive approach with explicit limit
 // Uses a simpler structure that TypeScript handles better
 type UnwrapPromise<T, Depth extends number = 5> = Depth extends 0
   ? T
-  : T extends Promise<infer U>
-    ? UnwrapPromise<U, Prev[Depth]>
+  : T extends Promise<infer R>
+    ? UnwrapPromise<R, Prev[Depth]>
     : T;
 
 type Prev = [never, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -170,8 +170,8 @@ Split large recursive types into smaller, manageable pieces:
 ```typescript
 // BAD: One giant recursive type doing everything
 type DoEverything<T> = T extends object
-  ? T extends Array<infer U>
-    ? DoEverything<U>[]
+  ? T extends Array<infer R>
+    ? DoEverything<R>[]
     : T extends Map<infer K, infer V>
       ? Map<DoEverything<K>, DoEverything<V>>
       : { [P in keyof T]: DoEverything<T[P]> }
@@ -179,7 +179,7 @@ type DoEverything<T> = T extends object
 
 // GOOD: Separate types for each concern
 // Each type has a single responsibility and limited depth
-type HandleArray<T> = T extends Array<infer U> ? U[] : never;
+type HandleArray<T> = T extends Array<infer R> ? R[] : never;
 type HandleMap<T> = T extends Map<infer K, infer V> ? Map<K, V> : never;
 type HandleObject<T> = T extends object ? { [P in keyof T]: T[P] } : T;
 

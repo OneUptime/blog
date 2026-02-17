@@ -1,4 +1,4 @@
-# How to Handle "Dead letter queue" SQS Messages
+# How to Handle 'Dead letter queue' SQS Messages
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Jinja2 Template" Errors in Ansible
+# How to Fix 'Jinja2 Template' Errors in Ansible
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "AI Platform" Training Errors
+# How to Fix 'AI Platform' Training Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

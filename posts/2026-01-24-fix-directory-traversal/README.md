@@ -1,4 +1,4 @@
-# How to Fix "Directory Traversal" Vulnerabilities
+# How to Fix 'Directory Traversal' Vulnerabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

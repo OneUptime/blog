@@ -1,4 +1,4 @@
-# How to Fix "Access Refused" Authentication Errors
+# How to Fix 'Access Refused' Authentication Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

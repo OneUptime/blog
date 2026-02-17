@@ -1,4 +1,4 @@
-# How to Fix "SSR Hydration" Mismatch in Nuxt
+# How to Fix 'SSR Hydration' Mismatch in Nuxt
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

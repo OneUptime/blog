@@ -1,4 +1,4 @@
-# How to Fix "Network Partition" in RabbitMQ Cluster
+# How to Fix 'Network Partition' in RabbitMQ Cluster
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

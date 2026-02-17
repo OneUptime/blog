@@ -1,4 +1,4 @@
-# How to Fix "SyntaxError: invalid syntax" in Python
+# How to Fix 'SyntaxError: invalid syntax' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

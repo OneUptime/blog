@@ -1,4 +1,4 @@
-# How to Fix "upstream sent too big header" Errors
+# How to Fix 'upstream sent too big header' Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

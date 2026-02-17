@@ -1,4 +1,4 @@
-# How to Fix "Identity" Assignment Errors in Azure
+# How to Fix 'Identity' Assignment Errors in Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

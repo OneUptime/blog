@@ -1,4 +1,4 @@
-# How to Fix "v-model" Issues with Custom Components
+# How to Fix 'v-model' Issues with Custom Components
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

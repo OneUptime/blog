@@ -1,4 +1,4 @@
-# How to Fix "Unknown" Status Errors in gRPC
+# How to Fix 'Unknown' Status Errors in gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

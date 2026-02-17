@@ -1,4 +1,4 @@
-# How to Fix "assertion failed" Errors in MongoDB
+# How to Fix 'assertion failed' Errors in MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "OOM command not allowed" Errors
+# How to Fix 'OOM command not allowed' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

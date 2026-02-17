@@ -1,4 +1,4 @@
-# How to Fix "Security Misconfiguration" Issues
+# How to Fix 'Security Misconfiguration' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Could Not Read from Remote" Errors
+# How to Fix 'Could Not Read from Remote' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

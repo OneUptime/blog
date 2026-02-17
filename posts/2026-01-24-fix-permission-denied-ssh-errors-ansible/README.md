@@ -1,4 +1,4 @@
-# How to Fix "Permission Denied" SSH Errors in Ansible
+# How to Fix 'Permission Denied' SSH Errors in Ansible
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "CSRF Token Mismatch" Errors
+# How to Fix 'CSRF Token Mismatch' Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

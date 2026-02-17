@@ -1,4 +1,4 @@
-# How to Fix "Infinite Loop" in Vue Watchers
+# How to Fix 'Infinite Loop' in Vue Watchers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

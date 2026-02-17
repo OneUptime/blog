@@ -1,4 +1,4 @@
-# How to Fix "Workload Identity" Errors
+# How to Fix 'Workload Identity' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

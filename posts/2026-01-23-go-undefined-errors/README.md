@@ -1,10 +1,10 @@
-# How to Fix "undefined" Errors in Go Due to Package or Import Issues
+# How to Fix 'undefined' Errors in Go Due to Package or Import Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Golang, Undefined Errors, Imports, Packages, Common Errors
 
-Description: Learn to diagnose and fix Go's "undefined" errors caused by missing imports, wrong package names, unexported identifiers, and build configuration issues.
+Description: Learn to diagnose and fix Go's 'undefined' errors caused by missing imports, wrong package names, unexported identifiers, and build configuration issues.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Avoid Mutating Prop" Warnings in Vue
+# How to Fix 'Avoid Mutating Prop' Warnings in Vue
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

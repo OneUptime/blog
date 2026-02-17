@@ -1,4 +1,4 @@
-# How to Fix "Cannot Use 'new' with Expression" Errors
+# How to Fix 'Cannot Use 'new' with Expression' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

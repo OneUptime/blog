@@ -1,4 +1,4 @@
-# How to Fix "Not Found" Virtual Host Errors
+# How to Fix 'Not Found' Virtual Host Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

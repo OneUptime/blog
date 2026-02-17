@@ -1,4 +1,4 @@
-# How to Fix "cursor not found" Errors in MongoDB
+# How to Fix 'cursor not found' Errors in MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

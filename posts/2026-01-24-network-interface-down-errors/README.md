@@ -1,4 +1,4 @@
-# How to Fix "Network Interface Down" Errors
+# How to Fix 'Network Interface Down' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

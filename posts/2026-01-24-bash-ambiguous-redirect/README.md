@@ -1,10 +1,10 @@
-# How to Fix "Ambiguous Redirect" Errors in Bash
+# How to Fix 'Ambiguous Redirect' Errors in Bash
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bash, Shell Scripting, Debugging, Error Handling, DevOps
 
-Description: Learn how to diagnose and fix the common "ambiguous redirect" error in Bash scripts with practical examples and solutions.
+Description: Learn how to diagnose and fix the common 'ambiguous redirect' error in Bash scripts with practical examples and solutions.
 
 ---
 

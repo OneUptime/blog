@@ -1,4 +1,4 @@
-# How to Fix "Collector OOM Killed" Errors
+# How to Fix 'Collector OOM Killed' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

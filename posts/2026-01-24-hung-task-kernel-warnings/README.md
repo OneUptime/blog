@@ -1,10 +1,10 @@
-# How to Fix "Hung Task" Kernel Warnings
+# How to Fix 'Hung Task' Kernel Warnings
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Kernel, System Administration, Troubleshooting, Storage, NFS, Performance
 
-Description: Learn how to diagnose and resolve Linux kernel "hung task" warnings caused by blocked processes waiting on I/O operations.
+Description: Learn how to diagnose and resolve Linux kernel 'hung task' warnings caused by blocked processes waiting on I/O operations.
 
 ---
 

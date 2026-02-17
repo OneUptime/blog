@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cloudflare, Reliability, Incident Management, Security
 
-Description: On November 18, Cloudflare went down and we discovered our "turn off the proxy" failover plan depended on the very control plane that was offline. Here's what blocked us, what the postmortem taught us, and how we're redesigning our runbooks so that a CDN + DDoS Security Provider outage doesn't stall OneUptime.
+Description: On November 18, Cloudflare went down and we discovered our 'turn off the proxy' failover plan depended on the very control plane that was offline. Here's what blocked us, what the postmortem taught us, and how we're redesigning our runbooks so that a CDN + DDoS Security Provider outage doesn't stall OneUptime.
 
 Cloudflare has been our front door for years. They absorb our scrapers, smooth global latency, issue TLS certificates, and hide our IP space from opportunistic attackers. Our pragmatic failover plan was simple: if Cloudflare ever caused trouble, we would toggle their proxy off, expose the origin IPs, eat the traffic directly for a few hours, and rotate the IPs once Cloudflare came back online.
 

@@ -1,4 +1,4 @@
-# How to Fix "DNS Resolution" Issues in Microservices
+# How to Fix 'DNS Resolution' Issues in Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Fix "DbContext disposed" Errors
+# How to Fix 'DbContext disposed' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, Entity Framework, DbContext, ASP.NET Core, Troubleshooting
 
-Description: Learn how to diagnose and fix "Cannot access a disposed context" errors in Entity Framework Core. This guide covers DbContext lifetime management, async pitfalls, and best practices for working with Entity Framework in ASP.NET Core applications.
+Description: Learn how to diagnose and fix 'Cannot access a disposed context' errors in Entity Framework Core. This guide covers DbContext lifetime management, async pitfalls, and best practices for working with Entity Framework in ASP.NET Core applications.
 
 The "Cannot access a disposed context" error is one of the most common issues when working with Entity Framework Core in ASP.NET Core applications. This guide will help you understand why this error occurs and how to fix it properly.
 

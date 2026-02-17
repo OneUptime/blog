@@ -1,4 +1,4 @@
-# How to Fix "Deadline Exceeded" Errors in gRPC
+# How to Fix 'Deadline Exceeded' Errors in gRPC
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

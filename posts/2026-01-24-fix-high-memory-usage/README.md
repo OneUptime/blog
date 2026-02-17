@@ -1,4 +1,4 @@
-# How to Fix "High Memory Usage" Issues
+# How to Fix 'High Memory Usage' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

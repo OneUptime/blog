@@ -1,4 +1,4 @@
-# How to Fix "Volume Node Affinity Conflict" Errors in Kubernetes
+# How to Fix 'Volume Node Affinity Conflict' Errors in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

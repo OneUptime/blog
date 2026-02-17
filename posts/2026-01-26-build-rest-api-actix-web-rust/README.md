@@ -515,19 +515,19 @@ impl ApiKeyAuth {
     }
 }
 
-impl<S, B> Transform<S, ServiceRequest> for ApiKeyAuth
+impl<Svc, Bd> Transform<Svc, ServiceRequest> for ApiKeyAuth
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
-    S::Future: 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error>,
+    Svc::Future: 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
-    type Transform = ApiKeyAuthMiddleware<S>;
+    type Transform = ApiKeyAuthMiddleware<Svc>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
-    fn new_transform(&self, service: S) -> Self::Future {
+    fn new_transform(&self, service: Svc) -> Self::Future {
         ok(ApiKeyAuthMiddleware {
             service,
             api_key: self.api_key.clone(),
@@ -535,21 +535,21 @@ where
     }
 }
 
-pub struct ApiKeyAuthMiddleware<S> {
-    service: S,
+pub struct ApiKeyAuthMiddleware<Svc> {
+    service: Svc,
     api_key: String,
 }
 
-impl<S, B> Service<ServiceRequest> for ApiKeyAuthMiddleware<S>
+impl<Svc, Bd> Service<ServiceRequest> for ApiKeyAuthMiddleware<Svc>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
-    S::Future: 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error>,
+    Svc::Future: 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
     type Future = Either<
-        S::Future,
+        Svc::Future,
         Ready<Result<Self::Response, Self::Error>>,
     >;
 

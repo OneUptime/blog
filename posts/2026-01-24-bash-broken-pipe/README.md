@@ -1,4 +1,4 @@
-# How to Fix "Broken Pipe" Errors in Bash Pipelines
+# How to Fix 'Broken Pipe' Errors in Bash Pipelines
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

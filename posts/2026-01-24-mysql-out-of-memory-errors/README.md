@@ -1,4 +1,4 @@
-# How to Fix "Out of Memory" Errors in MySQL
+# How to Fix 'Out of Memory' Errors in MySQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

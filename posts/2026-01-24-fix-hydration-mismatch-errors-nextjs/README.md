@@ -1,4 +1,4 @@
-# How to Fix "Hydration Mismatch" Errors in Next.js
+# How to Fix 'Hydration Mismatch' Errors in Next.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

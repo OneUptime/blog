@@ -1,4 +1,4 @@
-# How to Fix "Invalid W3C Trace Context" Errors
+# How to Fix 'Invalid W3C Trace Context' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

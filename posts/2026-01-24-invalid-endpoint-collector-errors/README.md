@@ -1,10 +1,10 @@
-# How to Fix "Invalid Endpoint" Collector Errors
+# How to Fix 'Invalid Endpoint' Collector Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Debugging, OTLP, Configuration, Observability
 
-Description: A practical guide to diagnosing and fixing "invalid endpoint" errors in OpenTelemetry Collector configurations, covering common mistakes and solutions.
+Description: A practical guide to diagnosing and fixing 'invalid endpoint' errors in OpenTelemetry Collector configurations, covering common mistakes and solutions.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Fix "TypeError: 'NoneType' is not iterable" in Python
+# How to Fix 'TypeError: 'NoneType' is not iterable' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, TypeError, Debugging, Error Handling, NoneType, Common Errors
 
-Description: Learn why the "TypeError: 'NoneType' is not iterable" error occurs in Python and how to fix it with practical solutions and prevention strategies.
+Description: Learn why the 'TypeError: 'NoneType' is not iterable' error occurs in Python and how to fix it with practical solutions and prevention strategies.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Cross-Browser" Test Issues
+# How to Fix 'Cross-Browser' Test Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

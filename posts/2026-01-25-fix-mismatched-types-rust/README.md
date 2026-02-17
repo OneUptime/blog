@@ -1,10 +1,10 @@
-# How to Fix "Mismatched types" Errors in Rust
+# How to Fix 'Mismatched types' Errors in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Type System, Errors, Debugging, Type Conversion
 
-Description: Learn how to diagnose and fix "mismatched types" errors in Rust. Understand type conversion, coercion, and common type system pitfalls.
+Description: Learn how to diagnose and fix 'mismatched types' errors in Rust. Understand type conversion, coercion, and common type system pitfalls.
 
 ---
 
@@ -102,7 +102,7 @@ fn main() {
     takes_str(owned.as_str());
 
     // Using Into/From
-    fn flexible<S: Into<String>>(s: S) {
+    fn flexible<Str: Into<String>>(s: Str) {
         let string: String = s.into();
         println!("{}", string);
     }

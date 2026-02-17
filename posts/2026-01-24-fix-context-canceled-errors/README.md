@@ -1,4 +1,4 @@
-# How to Fix "Context Canceled" Errors in OpenTelemetry
+# How to Fix 'Context Canceled' Errors in OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

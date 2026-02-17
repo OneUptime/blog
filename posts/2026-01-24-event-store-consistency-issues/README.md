@@ -1,4 +1,4 @@
-# How to Fix "Event Store" Consistency Issues
+# How to Fix 'Event Store' Consistency Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

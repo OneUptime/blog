@@ -1,4 +1,4 @@
-# How to Fix "Cold Start" Serverless Issues
+# How to Fix 'Cold Start' Serverless Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

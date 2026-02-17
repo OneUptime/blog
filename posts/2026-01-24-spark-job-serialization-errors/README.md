@@ -1,4 +1,4 @@
-# How to Fix "Job Serialization" Spark Errors
+# How to Fix 'Job Serialization' Spark Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Mock" Setup Issues in Tests
+# How to Fix 'Mock' Setup Issues in Tests
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

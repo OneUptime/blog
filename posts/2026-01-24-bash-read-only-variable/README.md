@@ -1,4 +1,4 @@
-# How to Fix "Read-Only Variable" Errors in Bash
+# How to Fix 'Read-Only Variable' Errors in Bash
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

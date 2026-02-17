@@ -1,4 +1,4 @@
-# How to Fix "Error: ETIMEDOUT" in Node.js
+# How to Fix 'Error: ETIMEDOUT' in Node.js
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

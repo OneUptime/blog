@@ -1,4 +1,4 @@
-# How to Fix "403 Forbidden: directory index" Errors in Nginx
+# How to Fix '403 Forbidden: directory index' Errors in Nginx
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

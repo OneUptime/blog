@@ -1,4 +1,4 @@
-# How to Fix "OutOfOrderSequenceException" in Kafka
+# How to Fix 'OutOfOrderSequenceException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

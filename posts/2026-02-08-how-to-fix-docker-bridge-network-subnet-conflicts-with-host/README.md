@@ -1,4 +1,4 @@
-# How to Fix Docker "Bridge Network Subnet Conflicts" with Host
+# How to Fix Docker 'Bridge Network Subnet Conflicts' with Host
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

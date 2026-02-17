@@ -1,4 +1,4 @@
-# How to Fix "Connection Reset" Errors in gRPC
+# How to Fix 'Connection Reset' Errors in gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Resource Contention" ETL Issues
+# How to Fix 'Resource Contention' ETL Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

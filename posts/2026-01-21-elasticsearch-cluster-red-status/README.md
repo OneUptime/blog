@@ -1,4 +1,4 @@
-# How to Debug Elasticsearch "Cluster Red" Status
+# How to Debug Elasticsearch 'Cluster Red' Status
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

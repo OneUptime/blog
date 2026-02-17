@@ -1,10 +1,10 @@
-# How to Fix "Argument of Type Not Assignable" Errors
+# How to Fix 'Argument of Type Not Assignable' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Error Handling, Type Errors, Debugging, Programming, Troubleshooting
 
-Description: Learn how to diagnose and fix TypeScript "Argument of type X is not assignable to parameter of type Y" errors with practical examples and solutions.
+Description: Learn how to diagnose and fix TypeScript 'Argument of type X is not assignable to parameter of type Y' errors with practical examples and solutions.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Scale Set" Deployment Errors
+# How to Fix 'Scale Set' Deployment Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -48,22 +48,22 @@ use futures_util::future::{ok, Ready, LocalBoxFuture};
 use std::rc::Rc;
 
 // The Transform trait creates middleware instances
-// S is the wrapped service type, B is the response body type
+// S is the wrapped service type, Bd is the response body type
 pub struct MyMiddleware;
 
-impl<S, B> Transform<S, ServiceRequest> for MyMiddleware
+impl<Svc, Bd> Transform<Svc, ServiceRequest> for MyMiddleware
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
-    type Transform = MyMiddlewareService<S>;
+    type Transform = MyMiddlewareService<Svc>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     // This creates the middleware service, wrapping the inner service
-    fn new_transform(&self, service: S) -> Self::Future {
+    fn new_transform(&self, service: Svc) -> Self::Future {
         ok(MyMiddlewareService {
             service: Rc::new(service),
         })
@@ -71,17 +71,17 @@ where
 }
 
 // The Service trait handles actual request processing
-pub struct MyMiddlewareService<S> {
+pub struct MyMiddlewareService<Svc> {
     // Rc allows cloning the service for async operations
-    service: Rc<S>,
+    service: Rc<Svc>,
 }
 
-impl<S, B> Service<ServiceRequest> for MyMiddlewareService<S>
+impl<Svc, Bd> Service<ServiceRequest> for MyMiddlewareService<Svc>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -128,34 +128,34 @@ use std::time::Instant;
 
 pub struct RequestLogger;
 
-impl<S, B> Transform<S, ServiceRequest> for RequestLogger
+impl<Svc, Bd> Transform<Svc, ServiceRequest> for RequestLogger
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
-    type Transform = RequestLoggerMiddleware<S>;
+    type Transform = RequestLoggerMiddleware<Svc>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
-    fn new_transform(&self, service: S) -> Self::Future {
+    fn new_transform(&self, service: Svc) -> Self::Future {
         ok(RequestLoggerMiddleware {
             service: Rc::new(service),
         })
     }
 }
 
-pub struct RequestLoggerMiddleware<S> {
-    service: Rc<S>,
+pub struct RequestLoggerMiddleware<Svc> {
+    service: Rc<Svc>,
 }
 
-impl<S, B> Service<ServiceRequest> for RequestLoggerMiddleware<S>
+impl<Svc, Bd> Service<ServiceRequest> for RequestLoggerMiddleware<Svc>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -254,18 +254,18 @@ impl JwtAuth {
     }
 }
 
-impl<S, B> Transform<S, ServiceRequest> for JwtAuth
+impl<Svc, Bd> Transform<Svc, ServiceRequest> for JwtAuth
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
-    type Transform = JwtAuthMiddleware<S>;
+    type Transform = JwtAuthMiddleware<Svc>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
-    fn new_transform(&self, service: S) -> Self::Future {
+    fn new_transform(&self, service: Svc) -> Self::Future {
         ok(JwtAuthMiddleware {
             service: Rc::new(service),
             config: self.config.clone(),
@@ -273,8 +273,8 @@ where
     }
 }
 
-pub struct JwtAuthMiddleware<S> {
-    service: Rc<S>,
+pub struct JwtAuthMiddleware<Svc> {
+    service: Rc<Svc>,
     config: AuthConfig,
 }
 
@@ -288,12 +288,12 @@ fn validate_token(token: &str, _secret: &str) -> Option<String> {
     }
 }
 
-impl<S, B> Service<ServiceRequest> for JwtAuthMiddleware<S>
+impl<Svc, Bd> Service<ServiceRequest> for JwtAuthMiddleware<Svc>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -377,34 +377,34 @@ use std::rc::Rc;
 
 pub struct SecurityHeaders;
 
-impl<S, B> Transform<S, ServiceRequest> for SecurityHeaders
+impl<Svc, Bd> Transform<Svc, ServiceRequest> for SecurityHeaders
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
-    type Transform = SecurityHeadersMiddleware<S>;
+    type Transform = SecurityHeadersMiddleware<Svc>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
-    fn new_transform(&self, service: S) -> Self::Future {
+    fn new_transform(&self, service: Svc) -> Self::Future {
         ok(SecurityHeadersMiddleware {
             service: Rc::new(service),
         })
     }
 }
 
-pub struct SecurityHeadersMiddleware<S> {
-    service: Rc<S>,
+pub struct SecurityHeadersMiddleware<Svc> {
+    service: Rc<Svc>,
 }
 
-impl<S, B> Service<ServiceRequest> for SecurityHeadersMiddleware<S>
+impl<Svc, Bd> Service<ServiceRequest> for SecurityHeadersMiddleware<Svc>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -648,18 +648,18 @@ impl RateLimiter {
     }
 }
 
-impl<S, B> Transform<S, ServiceRequest> for RateLimiter
+impl<Svc, Bd> Transform<Svc, ServiceRequest> for RateLimiter
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<EitherBody<B>>;
+    type Response = ServiceResponse<EitherBody<Bd>>;
     type Error = Error;
-    type Transform = RateLimiterMiddleware<S>;
+    type Transform = RateLimiterMiddleware<Svc>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
-    fn new_transform(&self, service: S) -> Self::Future {
+    fn new_transform(&self, service: Svc) -> Self::Future {
         ok(RateLimiterMiddleware {
             service: Rc::new(service),
             max_requests: self.max_requests,
@@ -667,8 +667,8 @@ where
     }
 }
 
-pub struct RateLimiterMiddleware<S> {
-    service: Rc<S>,
+pub struct RateLimiterMiddleware<Svc> {
+    service: Rc<Svc>,
     max_requests: u32,
 }
 
@@ -676,12 +676,12 @@ pub struct RateLimiterMiddleware<S> {
 use std::sync::atomic::{AtomicU32, Ordering};
 static REQUEST_COUNT: AtomicU32 = AtomicU32::new(0);
 
-impl<S, B> Service<ServiceRequest> for RateLimiterMiddleware<S>
+impl<Svc, Bd> Service<ServiceRequest> for RateLimiterMiddleware<Svc>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<EitherBody<B>>;
+    type Response = ServiceResponse<EitherBody<Bd>>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -759,18 +759,18 @@ impl Clone for MetricsCollector {
     }
 }
 
-impl<S, B> Transform<S, ServiceRequest> for MetricsCollector
+impl<Svc, Bd> Transform<Svc, ServiceRequest> for MetricsCollector
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
-    type Transform = MetricsMiddleware<S>;
+    type Transform = MetricsMiddleware<Svc>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
-    fn new_transform(&self, service: S) -> Self::Future {
+    fn new_transform(&self, service: Svc) -> Self::Future {
         ok(MetricsMiddleware {
             service: Rc::new(service),
             counts: Rc::clone(&self.counts),
@@ -778,17 +778,17 @@ where
     }
 }
 
-pub struct MetricsMiddleware<S> {
-    service: Rc<S>,
+pub struct MetricsMiddleware<Svc> {
+    service: Rc<Svc>,
     counts: Rc<Mutex<HashMap<String, u64>>>,
 }
 
-impl<S, B> Service<ServiceRequest> for MetricsMiddleware<S>
+impl<Svc, Bd> Service<ServiceRequest> for MetricsMiddleware<Svc>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
+    Bd: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<Bd>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 

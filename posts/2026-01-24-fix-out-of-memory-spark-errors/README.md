@@ -1,4 +1,4 @@
-# How to Fix "Out of Memory" Spark Errors
+# How to Fix 'Out of Memory' Spark Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix Redis "BUSY" Errors from Lua Scripts
+# How to Fix Redis 'BUSY' Errors from Lua Scripts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

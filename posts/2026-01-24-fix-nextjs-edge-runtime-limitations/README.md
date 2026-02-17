@@ -1,4 +1,4 @@
-# How to Fix "Edge Runtime" Limitations in Next.js
+# How to Fix 'Edge Runtime' Limitations in Next.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

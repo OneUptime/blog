@@ -1,10 +1,10 @@
-# Why "AI content = Bad" is a flawed mindset
+# Why 'AI content = Bad' is a flawed mindset
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AI, Software Development, Engineering Culture, Product Development, Productivity
 
-Description: The knee-jerk reaction to dismiss anything created by AI is fundamentally flawed. Quality should be judged by output, not by origin. When AI helps engineers write better code, produce more content, and eliminate grunt work, the real question isn't "was this made by AI?" but "does this solve the problem effectively?"
+Description: The knee-jerk reaction to dismiss anything created by AI is fundamentally flawed. Quality should be judged by output, not by origin. When AI helps engineers write better code, produce more content, and eliminate grunt work, the real question isn't 'was this made by AI?' but 'does this solve the problem effectively?'
 
 > Quality should be judged by output, not by origin. It doesn't matter if AI helped write the first draft - what matters is whether the final product works well.
 

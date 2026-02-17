@@ -1,10 +1,10 @@
-# How to Fix "Subscription Not Found" Errors in Azure
+# How to Fix 'Subscription Not Found' Errors in Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Troubleshooting, Subscription, Azure CLI, Cloud, DevOps
 
-Description: Learn how to diagnose and fix "Subscription Not Found" errors in Azure, including authentication issues, context problems, and permission misconfigurations.
+Description: Learn how to diagnose and fix 'Subscription Not Found' errors in Azure, including authentication issues, context problems, and permission misconfigurations.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Slow Database Queries" Issues
+# How to Fix 'Slow Database Queries' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

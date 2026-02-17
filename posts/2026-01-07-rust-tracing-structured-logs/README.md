@@ -424,14 +424,14 @@ struct LogRecord<'a> {
     fields: serde_json::Value,
 }
 
-impl<S, N> FormatEvent<S, N> for CustomJsonFormat
+impl<Sub, N> FormatEvent<Sub, N> for CustomJsonFormat
 where
-    S: Subscriber + for<'a> LookupSpan<'a>,
+    Sub: Subscriber + for<'a> LookupSpan<'a>,
     N: for<'a> FormatFields<'a> + 'static,
 {
     fn format_event(
         &self,
-        ctx: &FmtContext<'_, S, N>,
+        ctx: &FmtContext<'_, Sub, N>,
         mut writer: format::Writer<'_>,
         event: &Event<'_>,
     ) -> std::fmt::Result {

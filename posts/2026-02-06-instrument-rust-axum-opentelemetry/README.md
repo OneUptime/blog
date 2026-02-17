@@ -223,13 +223,13 @@ impl<'a> Extractor for HeaderExtractor<'a> {
 }
 
 #[async_trait]
-impl<S> FromRequestParts<S> for TraceContext
+impl<Svc> FromRequestParts<Svc> for TraceContext
 where
-    S: Send + Sync,
+    Svc: Send + Sync,
 {
     type Rejection = (StatusCode, &'static str);
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &Svc) -> Result<Self, Self::Rejection> {
         let extractor = HeaderExtractor(&parts.headers);
         let context = global::get_text_map_propagator(|propagator| {
             propagator.extract(&extractor)
@@ -327,7 +327,7 @@ use uuid::Uuid;
 struct MakeRequestUuid;
 
 impl MakeRequestId for MakeRequestUuid {
-    fn make_request_id<B>(&mut self, _request: &axum::http::Request<B>) -> Option<RequestId> {
+    fn make_request_id<Bd>(&mut self, _request: &axum::http::Request<Bd>) -> Option<RequestId> {
         let request_id = Uuid::new_v4().to_string().parse().unwrap();
         Some(RequestId::new(request_id))
     }

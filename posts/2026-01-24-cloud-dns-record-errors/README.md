@@ -1,4 +1,4 @@
-# How to Fix "Cloud DNS" Record Errors
+# How to Fix 'Cloud DNS' Record Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

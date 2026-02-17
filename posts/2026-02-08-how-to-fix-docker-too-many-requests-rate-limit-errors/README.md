@@ -1,4 +1,4 @@
-# How to Fix Docker "Too Many Requests" Rate Limit Errors
+# How to Fix Docker 'Too Many Requests' Rate Limit Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

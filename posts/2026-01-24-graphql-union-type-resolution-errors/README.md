@@ -1,4 +1,4 @@
-# How to Fix "Union Type" Resolution Errors in GraphQL
+# How to Fix 'Union Type' Resolution Errors in GraphQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

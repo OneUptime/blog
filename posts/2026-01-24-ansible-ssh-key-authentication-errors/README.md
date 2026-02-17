@@ -1,4 +1,4 @@
-# How to Fix "SSH Key" Authentication Errors in Ansible
+# How to Fix 'SSH Key' Authentication Errors in Ansible
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

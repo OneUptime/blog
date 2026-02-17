@@ -1,10 +1,10 @@
-# How to Fix "Expected X Arguments but Got Y" Errors
+# How to Fix 'Expected X Arguments but Got Y' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Debugging, Functions, Type Safety, Error Handling, JavaScript
 
-Description: Learn how to diagnose and fix TypeScript's "Expected X arguments but got Y" errors, including understanding function signatures, optional parameters, and overloads.
+Description: Learn how to diagnose and fix TypeScript's 'Expected X arguments but got Y' errors, including understanding function signatures, optional parameters, and overloads.
 
 ---
 

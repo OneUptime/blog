@@ -1,10 +1,10 @@
-# How to Fix "No Tracer Provider Configured" Warnings in OpenTelemetry
+# How to Fix 'No Tracer Provider Configured' Warnings in OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, TracerProvider, Configuration, SDK, Tracing, Troubleshooting
 
-Description: Learn why OpenTelemetry shows "No TracerProvider configured" warnings and how to properly initialize the TracerProvider in every major language.
+Description: Learn why OpenTelemetry shows 'No TracerProvider configured' warnings and how to properly initialize the TracerProvider in every major language.
 
 ---
 

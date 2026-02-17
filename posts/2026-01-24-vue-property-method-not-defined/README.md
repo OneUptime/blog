@@ -1,10 +1,10 @@
-# How to Fix "Property or Method Not Defined" in Vue
+# How to Fix 'Property or Method Not Defined' in Vue
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Vue, JavaScript, Debugging, Frontend, Web Development, Vue 3, Composition API, Options API
 
-Description: Learn how to diagnose and fix the common Vue error "Property or method is not defined on the instance" with practical solutions for both Options API and Composition API.
+Description: Learn how to diagnose and fix the common Vue error 'Property or method is not defined on the instance' with practical solutions for both Options API and Composition API.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Resolver Timeout" Errors in GraphQL
+# How to Fix 'Resolver Timeout' Errors in GraphQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

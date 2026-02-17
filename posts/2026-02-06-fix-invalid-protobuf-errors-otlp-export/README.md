@@ -1,4 +1,4 @@
-# How to Fix "Invalid Protobuf" Errors in OTLP Export
+# How to Fix 'Invalid Protobuf' Errors in OTLP Export
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

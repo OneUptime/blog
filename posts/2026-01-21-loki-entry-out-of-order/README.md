@@ -1,10 +1,10 @@
-# How to Fix Loki "Entry Out of Order" Errors
+# How to Fix Loki 'Entry Out of Order' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Troubleshooting, Timestamp, Ingestion, Log Ordering, Promtail
 
-Description: A comprehensive guide to diagnosing and resolving Loki "entry out of order" errors, covering timestamp configuration, client ordering, unordered writes, and best practices for reliable log ingestion.
+Description: A comprehensive guide to diagnosing and resolving Loki 'entry out of order' errors, covering timestamp configuration, client ordering, unordered writes, and best practices for reliable log ingestion.
 
 ---
 

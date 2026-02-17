@@ -1,4 +1,4 @@
-# How to Fix "Syntax Error" in Ansible Playbooks
+# How to Fix 'Syntax Error' in Ansible Playbooks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

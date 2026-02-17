@@ -1,4 +1,4 @@
-# How to Fix "useSearchParams" SSR Issues
+# How to Fix 'useSearchParams' SSR Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

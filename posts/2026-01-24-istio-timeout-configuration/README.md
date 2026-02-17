@@ -1,4 +1,4 @@
-# How to Fix "Timeout" Configuration in Istio
+# How to Fix 'Timeout' Configuration in Istio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

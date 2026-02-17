@@ -1,10 +1,10 @@
-# How to Fix "Value borrowed here after move" Errors
+# How to Fix 'Value borrowed here after move' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Ownership, Move Semantics, Errors, Debugging
 
-Description: Learn how to diagnose and fix "value borrowed here after move" errors in Rust. Understand move semantics and discover patterns to work with ownership correctly.
+Description: Learn how to diagnose and fix 'value borrowed here after move' errors in Rust. Understand move semantics and discover patterns to work with ownership correctly.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Parallel Test" Execution Issues
+# How to Fix 'Parallel Test' Execution Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

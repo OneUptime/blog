@@ -1,4 +1,4 @@
-# How to Fix "Error: EACCES: permission denied" in Node.js
+# How to Fix 'Error: EACCES: permission denied' in Node.js
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

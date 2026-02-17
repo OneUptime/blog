@@ -1,4 +1,4 @@
-# How to Fix "Mount Failed" File System Errors
+# How to Fix 'Mount Failed' File System Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

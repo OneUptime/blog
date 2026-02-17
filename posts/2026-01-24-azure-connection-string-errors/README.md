@@ -1,4 +1,4 @@
-# How to Fix "Connection String" Errors in Azure
+# How to Fix 'Connection String' Errors in Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

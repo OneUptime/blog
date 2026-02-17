@@ -1,4 +1,4 @@
-# How to Fix "ERR max number of clients reached"
+# How to Fix 'ERR max number of clients reached'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

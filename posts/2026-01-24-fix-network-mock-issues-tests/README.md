@@ -1,4 +1,4 @@
-# How to Fix "Network Mock" Issues in Tests
+# How to Fix 'Network Mock' Issues in Tests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

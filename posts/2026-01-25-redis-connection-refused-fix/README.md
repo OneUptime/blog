@@ -1,10 +1,10 @@
-# How to Fix "Connection refused" Errors in Redis
+# How to Fix 'Connection refused' Errors in Redis
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Troubleshooting, DevOps, Networking, Error Handling
 
-Description: Diagnose and fix Redis "Connection refused" errors caused by server issues, network problems, firewall rules, or misconfiguration with step-by-step solutions.
+Description: Diagnose and fix Redis 'Connection refused' errors caused by server issues, network problems, firewall rules, or misconfiguration with step-by-step solutions.
 
 ---
 

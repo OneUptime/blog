@@ -1,4 +1,4 @@
-# How to Fix "Teleport Target Not Found" Errors
+# How to Fix 'Teleport Target Not Found' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Fix "connection refused" Errors in PostgreSQL
+# How to Fix 'connection refused' Errors in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Troubleshooting, Connection, Networking, Configuration
 
-Description: Learn how to diagnose and fix "connection refused" errors in PostgreSQL. This guide covers common causes including server configuration, firewall settings, and network issues with step-by-step solutions.
+Description: Learn how to diagnose and fix 'connection refused' errors in PostgreSQL. This guide covers common causes including server configuration, firewall settings, and network issues with step-by-step solutions.
 
 ---
 

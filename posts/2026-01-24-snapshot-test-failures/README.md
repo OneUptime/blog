@@ -1,4 +1,4 @@
-# How to Fix "Snapshot Test" Failures
+# How to Fix 'Snapshot Test' Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
