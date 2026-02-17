@@ -1,4 +1,4 @@
-# How to Fix "cluster_block_exception: FORBIDDEN/12" Errors
+# How to Fix 'cluster_block_exception: FORBIDDEN/12' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

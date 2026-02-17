@@ -1,4 +1,4 @@
-# How to Fix "Redis maximum memory reached" Errors
+# How to Fix 'Redis maximum memory reached' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

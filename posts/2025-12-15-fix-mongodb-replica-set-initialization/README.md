@@ -1,4 +1,4 @@
-# How to Fix "replica set initialization" Errors
+# How to Fix 'replica set initialization' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

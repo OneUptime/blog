@@ -1,4 +1,4 @@
-# How to Fix "API Rate Limiting" Performance
+# How to Fix 'API Rate Limiting' Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

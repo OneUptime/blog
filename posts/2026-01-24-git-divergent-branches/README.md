@@ -1,4 +1,4 @@
-# How to Fix "You Have Divergent Branches" Errors
+# How to Fix 'You Have Divergent Branches' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

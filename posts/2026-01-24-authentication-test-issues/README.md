@@ -1,4 +1,4 @@
-# How to Fix "Authentication" Test Issues
+# How to Fix 'Authentication' Test Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

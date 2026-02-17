@@ -176,7 +176,7 @@ llm = LLM(
 # Chat-style prompts with system message
 def format_chat_prompt(system: str, user: str) -> str:
     """Format prompt for instruction-tuned models"""
-    return f"<s>[INST] {system}\n\n{user} [/INST]"
+    return f"&lt;s&gt;[INST] {system}\n\n{user} [/INST]"
 
 # Example usage with chat formatting
 system_prompt = "You are a helpful DevOps assistant."

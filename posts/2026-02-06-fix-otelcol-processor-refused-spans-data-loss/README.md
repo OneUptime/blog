@@ -1,4 +1,4 @@
-# How to Fix "otelcol_processor_refused_spans" Metric Alerting on Data Loss
+# How to Fix 'otelcol_processor_refused_spans' Metric Alerting on Data Loss
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

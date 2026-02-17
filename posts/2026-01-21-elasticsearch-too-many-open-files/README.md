@@ -1,10 +1,10 @@
-# How to Fix Elasticsearch "Too Many Open Files" Errors
+# How to Fix Elasticsearch 'Too Many Open Files' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, File Descriptors, Troubleshooting, Linux, System Configuration, Operations
 
-Description: A comprehensive guide to fixing Elasticsearch "too many open files" errors, covering file descriptor limits, system configuration, and monitoring best practices.
+Description: A comprehensive guide to fixing Elasticsearch 'too many open files' errors, covering file descriptor limits, system configuration, and monitoring best practices.
 
 ---
 

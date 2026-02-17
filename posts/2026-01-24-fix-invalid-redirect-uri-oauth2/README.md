@@ -1,10 +1,10 @@
-# How to Fix "Invalid Redirect URI" OAuth2 Errors
+# How to Fix 'Invalid Redirect URI' OAuth2 Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OAuth2, Authentication, Security, Debugging, Web Development
 
-Description: Learn how to diagnose and fix the common "Invalid Redirect URI" error in OAuth2 implementations with practical examples and configuration tips.
+Description: Learn how to diagnose and fix the common 'Invalid Redirect URI' error in OAuth2 implementations with practical examples and configuration tips.
 
 ---
 

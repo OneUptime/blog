@@ -1,4 +1,4 @@
-# How to Fix "Minified React Error" in Production
+# How to Fix 'Minified React Error' in Production
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

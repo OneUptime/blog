@@ -1,4 +1,4 @@
-# How to Fix "Circuit Breaker Open" Errors
+# How to Fix 'Circuit Breaker Open' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

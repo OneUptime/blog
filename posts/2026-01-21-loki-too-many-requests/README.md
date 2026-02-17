@@ -1,10 +1,10 @@
-# How to Debug Loki "Too Many Outstanding Requests"
+# How to Debug Loki 'Too Many Outstanding Requests'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Troubleshooting, Rate Limiting, Performance, Scaling, LogQL
 
-Description: A comprehensive guide to diagnosing and resolving Loki "too many outstanding requests" errors, covering rate limiting configuration, query optimization, scaling strategies, and monitoring approaches.
+Description: A comprehensive guide to diagnosing and resolving Loki 'too many outstanding requests' errors, covering rate limiting configuration, query optimization, scaling strategies, and monitoring approaches.
 
 ---
 

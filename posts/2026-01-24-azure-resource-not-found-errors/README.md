@@ -1,10 +1,10 @@
-# How to Fix "Resource Not Found" Errors in Azure
+# How to Fix 'Resource Not Found' Errors in Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Troubleshooting, Resource Management, Azure CLI, ARM, DevOps
 
-Description: Learn how to diagnose and fix "Resource Not Found" errors in Azure, including common causes like wrong subscriptions, typos, soft-deleted resources, and timing issues.
+Description: Learn how to diagnose and fix 'Resource Not Found' errors in Azure, including common causes like wrong subscriptions, typos, soft-deleted resources, and timing issues.
 
 ---
 

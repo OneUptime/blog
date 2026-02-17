@@ -1,4 +1,4 @@
-# How to Fix "Failed Precondition" Errors in gRPC
+# How to Fix 'Failed Precondition' Errors in gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

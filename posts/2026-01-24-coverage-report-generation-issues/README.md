@@ -1,4 +1,4 @@
-# How to Fix "Coverage Report" Generation Issues
+# How to Fix 'Coverage Report' Generation Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

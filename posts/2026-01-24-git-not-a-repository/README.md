@@ -1,10 +1,10 @@
-# How to Fix "Fatal: Not a Git Repository" Errors
+# How to Fix 'Fatal: Not a Git Repository' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Git, Version Control, Troubleshooting, DevOps, Git Errors
 
-Description: Learn how to diagnose and fix the "fatal: not a git repository" error including missing .git folders, wrong directories, and corrupted repositories.
+Description: Learn how to diagnose and fix the 'fatal: not a git repository' error including missing .git folders, wrong directories, and corrupted repositories.
 
 ---
 

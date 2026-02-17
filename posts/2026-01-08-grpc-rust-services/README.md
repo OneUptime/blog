@@ -1007,28 +1007,28 @@ use tracing::{info, warn, Span};
 #[derive(Clone)]
 pub struct LoggingLayer;
 
-impl<S> Layer<S> for LoggingLayer {
-    type Service = LoggingMiddleware<S>;
+impl<Svc> Layer<Svc> for LoggingLayer {
+    type Service = LoggingMiddleware<Svc>;
 
-    fn layer(&self, service: S) -> Self::Service {
+    fn layer(&self, service: Svc) -> Self::Service {
         LoggingMiddleware { inner: service }
     }
 }
 
 /// Logging middleware
 #[derive(Clone)]
-pub struct LoggingMiddleware<S> {
-    inner: S,
+pub struct LoggingMiddleware<Svc> {
+    inner: Svc,
 }
 
-impl<S, ReqBody> Service<http::Request<ReqBody>> for LoggingMiddleware<S>
+impl<Svc, ReqBody> Service<http::Request<ReqBody>> for LoggingMiddleware<Svc>
 where
-    S: Service<http::Request<ReqBody>, Response = http::Response<BoxBody>> + Clone + Send + 'static,
-    S::Future: Send + 'static,
+    Svc: Service<http::Request<ReqBody>, Response = http::Response<BoxBody>> + Clone + Send + 'static,
+    Svc::Future: Send + 'static,
     ReqBody: Send + 'static,
 {
-    type Response = S::Response;
-    type Error = S::Error;
+    type Response = Svc::Response;
+    type Error = Svc::Error;
     type Future = std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
     >;

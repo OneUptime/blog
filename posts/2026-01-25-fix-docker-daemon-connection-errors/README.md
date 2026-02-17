@@ -1,10 +1,10 @@
-# How to Fix Docker "Cannot Connect to Docker Daemon" Errors
+# How to Fix Docker 'Cannot Connect to Docker Daemon' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Troubleshooting, Docker Daemon, DevOps, Installation
 
-Description: Diagnose and resolve the common "Cannot connect to Docker daemon" error including daemon startup issues, socket permission problems, and Docker Desktop connectivity failures.
+Description: Diagnose and resolve the common 'Cannot connect to Docker daemon' error including daemon startup issues, socket permission problems, and Docker Desktop connectivity failures.
 
 ---
 

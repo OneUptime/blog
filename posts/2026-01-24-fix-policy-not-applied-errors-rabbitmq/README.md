@@ -1,4 +1,4 @@
-# How to Fix "Policy Not Applied" Errors in RabbitMQ
+# How to Fix 'Policy Not Applied' Errors in RabbitMQ
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

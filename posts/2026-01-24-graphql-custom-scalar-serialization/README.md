@@ -1,4 +1,4 @@
-# How to Fix "Custom Scalar" Serialization Errors
+# How to Fix 'Custom Scalar' Serialization Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

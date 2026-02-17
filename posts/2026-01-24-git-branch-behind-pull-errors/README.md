@@ -1,4 +1,4 @@
-# How to Fix "Your Branch Is Behind" Pull Errors
+# How to Fix 'Your Branch Is Behind' Pull Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Secret Management" Issues
+# How to Fix 'Secret Management' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

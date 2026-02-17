@@ -1,4 +1,4 @@
-# How to Fix "Duplicate Entry" Primary Key Errors
+# How to Fix 'Duplicate Entry' Primary Key Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

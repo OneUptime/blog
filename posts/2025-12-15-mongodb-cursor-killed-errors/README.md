@@ -1,4 +1,4 @@
-# How to Fix "cursor killed" Errors in MongoDB
+# How to Fix 'cursor killed' Errors in MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

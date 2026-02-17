@@ -1,4 +1,4 @@
-# How to Fix "Memory Leak" Detection
+# How to Fix 'Memory Leak' Detection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

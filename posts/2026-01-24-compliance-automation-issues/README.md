@@ -1,4 +1,4 @@
-# How to Fix "Compliance" Automation Issues
+# How to Fix 'Compliance' Automation Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

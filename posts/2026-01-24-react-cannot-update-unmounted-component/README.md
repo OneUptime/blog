@@ -1,4 +1,4 @@
-# How to Fix "Cannot Update State on Unmounted Component"
+# How to Fix 'Cannot Update State on Unmounted Component'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

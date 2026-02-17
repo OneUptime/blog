@@ -1,4 +1,4 @@
-# How to Fix "ConnectException" in Kafka Connect
+# How to Fix 'ConnectException' in Kafka Connect
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

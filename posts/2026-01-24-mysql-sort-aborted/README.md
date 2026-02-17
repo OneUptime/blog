@@ -1,10 +1,10 @@
-# How to Fix "Sort Aborted" Query Errors in MySQL
+# How to Fix 'Sort Aborted' Query Errors in MySQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Database, Troubleshooting, Performance, Sorting, Query Optimization
 
-Description: Learn how to diagnose and fix MySQL "Sort aborted" errors caused by memory limits, client disconnections, and query timeouts.
+Description: Learn how to diagnose and fix MySQL 'Sort aborted' errors caused by memory limits, client disconnections, and query timeouts.
 
 ---
 

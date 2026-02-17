@@ -1,4 +1,4 @@
-# How to Fix Docker Build "Could Not Resolve Host" Errors
+# How to Fix Docker Build 'Could Not Resolve Host' Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

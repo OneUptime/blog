@@ -1,10 +1,10 @@
-# How to Fix "not master" Errors in MongoDB Replica Set
+# How to Fix 'not master' Errors in MongoDB Replica Set
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Database, Replica Set, Troubleshooting, High Availability
 
-Description: Learn how to diagnose and fix MongoDB "not master" errors in replica sets, including causes like elections, network partitions, and misconfigured read preferences, with practical solutions.
+Description: Learn how to diagnose and fix MongoDB 'not master' errors in replica sets, including causes like elections, network partitions, and misconfigured read preferences, with practical solutions.
 
 ---
 

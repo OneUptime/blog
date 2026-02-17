@@ -1,4 +1,4 @@
-# How to Fix "Node Down" Errors in RabbitMQ Cluster
+# How to Fix 'Node Down' Errors in RabbitMQ Cluster
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

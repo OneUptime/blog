@@ -223,6 +223,45 @@ elasticsearch.hosts: ["http://elasticsearch:9200"]
 monitoring.ui.container.elasticsearch.enabled: true
 ```
 
+## Creating the Project Files
+
+Before starting the stack, you must create all the configuration files. Docker bind mounts expect the host files to already exist. If a file does not exist, Docker will create a directory in its place, which causes mount errors.
+
+```bash
+# Create the directory structure
+mkdir -p elk-stack/logstash/pipeline
+mkdir -p elk-stack/logstash/config
+mkdir -p elk-stack/elasticsearch
+mkdir -p elk-stack/kibana
+cd elk-stack
+```
+
+Now create each configuration file. You can use any text editor. Make sure each path points to a **file**, not a directory:
+
+```bash
+# Create the docker-compose.yml (paste the Docker Compose Configuration from above)
+nano docker-compose.yml
+
+# Create the Elasticsearch config file
+nano elasticsearch/elasticsearch.yml
+
+# Create the Logstash config file (this must be a file, not a directory)
+nano logstash/config/logstash.yml
+
+# Create the Logstash pipeline config
+nano logstash/pipeline/logstash.conf
+
+# Create the Kibana config file
+nano kibana/kibana.yml
+```
+
+Verify the files exist and are regular files (not directories) before proceeding:
+
+```bash
+ls -la logstash/config/logstash.yml
+# Should show "-rw-r--r--" (file), NOT "drwxr-xr-x" (directory)
+```
+
 ## Starting the Stack
 
 ```bash

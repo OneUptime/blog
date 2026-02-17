@@ -1,10 +1,10 @@
-# How to Fix "Connection Refused" Network Errors
+# How to Fix 'Connection Refused' Network Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Networking, Troubleshooting, System Administration, Firewall, TCP/IP
 
-Description: Learn how to diagnose and fix "Connection Refused" errors in Linux by checking services, ports, firewalls, and network configurations.
+Description: Learn how to diagnose and fix 'Connection Refused' errors in Linux by checking services, ports, firewalls, and network configurations.
 
 ---
 

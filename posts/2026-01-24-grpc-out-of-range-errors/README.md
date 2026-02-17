@@ -1,4 +1,4 @@
-# How to Fix "Out of Range" Errors in gRPC
+# How to Fix 'Out of Range' Errors in gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

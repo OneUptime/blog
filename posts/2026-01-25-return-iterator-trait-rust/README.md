@@ -322,25 +322,25 @@ Use generics when the input type varies:
 
 ```rust
 // Generic filter function
-fn filter_positive<I>(iter: I) -> impl Iterator<Item = i32>
+fn filter_positive<It>(iter: It) -> impl Iterator<Item = i32>
 where
-    I: Iterator<Item = i32>,
+    It: Iterator<Item = i32>,
 {
     iter.filter(|n| *n > 0)
 }
 
 // Transform any iterator
-fn double_values<I>(iter: I) -> impl Iterator<Item = i32>
+fn double_values<It>(iter: It) -> impl Iterator<Item = i32>
 where
-    I: Iterator<Item = i32>,
+    It: Iterator<Item = i32>,
 {
     iter.map(|n| n * 2)
 }
 
 // Chain iterators
-fn combine<I, J>(first: I, second: J) -> impl Iterator<Item = i32>
+fn combine<It, J>(first: It, second: J) -> impl Iterator<Item = i32>
 where
-    I: Iterator<Item = i32>,
+    It: Iterator<Item = i32>,
     J: Iterator<Item = i32>,
 {
     first.chain(second)

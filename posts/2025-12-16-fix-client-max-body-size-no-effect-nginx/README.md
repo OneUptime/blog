@@ -1,4 +1,4 @@
-# How to Fix "client_max_body_size has no effect" in Nginx
+# How to Fix 'client_max_body_size has no effect' in Nginx
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

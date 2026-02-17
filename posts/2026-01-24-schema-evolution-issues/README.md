@@ -1,4 +1,4 @@
-# How to Fix "Schema Evolution" Issues
+# How to Fix 'Schema Evolution' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

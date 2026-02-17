@@ -1,4 +1,4 @@
-# How to Fix "Type 'never' Has No Properties" Errors
+# How to Fix 'Type 'never' Has No Properties' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -273,8 +273,8 @@ type ImpossibleGeneric<T extends string & number> = T;
 type FlexibleGeneric<T extends string | number> = T;
 
 // Or use separate type parameters
-type TwoParams<S extends string, N extends number> = {
-  stringValue: S;
+type TwoParams<St extends string, N extends number> = {
+  stringValue: St;
   numberValue: N;
 };
 ```

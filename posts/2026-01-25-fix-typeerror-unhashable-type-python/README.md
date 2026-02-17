@@ -1,4 +1,4 @@
-# How to Fix "TypeError: unhashable type" in Python
+# How to Fix 'TypeError: unhashable type' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

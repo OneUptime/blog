@@ -1,4 +1,4 @@
-# How to Fix "Disk Full" Errors in Linux
+# How to Fix 'Disk Full' Errors in Linux
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

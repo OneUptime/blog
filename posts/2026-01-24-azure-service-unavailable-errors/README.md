@@ -1,4 +1,4 @@
-# How to Fix "Service Unavailable" Errors in Azure
+# How to Fix 'Service Unavailable' Errors in Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

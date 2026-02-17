@@ -1,4 +1,4 @@
-# How to Troubleshoot Intermittent "Export Deadline Exceeded" Errors Caused by Network Latency to the Backend
+# How to Troubleshoot Intermittent 'Export Deadline Exceeded' Errors Caused by Network Latency to the Backend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

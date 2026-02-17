@@ -1,4 +1,4 @@
-# How to Fix "SSH Connection Timeout" Errors
+# How to Fix 'SSH Connection Timeout' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

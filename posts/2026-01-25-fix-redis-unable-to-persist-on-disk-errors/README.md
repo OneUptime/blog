@@ -1,4 +1,4 @@
-# How to Fix "Redis unable to persist on disk" Errors
+# How to Fix 'Redis unable to persist on disk' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

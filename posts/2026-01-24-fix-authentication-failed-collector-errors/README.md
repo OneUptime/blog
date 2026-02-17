@@ -1,4 +1,4 @@
-# How to Fix "Authentication Failed" Collector Errors
+# How to Fix 'Authentication Failed' Collector Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

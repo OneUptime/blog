@@ -1,4 +1,4 @@
-# How to Fix "Worker Node" Failures in Spark
+# How to Fix 'Worker Node' Failures in Spark
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

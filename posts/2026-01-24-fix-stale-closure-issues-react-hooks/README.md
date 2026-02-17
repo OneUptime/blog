@@ -1,4 +1,4 @@
-# How to Fix "Stale Closure" Issues in React Hooks
+# How to Fix 'Stale Closure' Issues in React Hooks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Provide/Inject" Issues in Vue
+# How to Fix 'Provide/Inject' Issues in Vue
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

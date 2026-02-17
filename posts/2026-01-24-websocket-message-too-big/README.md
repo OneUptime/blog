@@ -1,10 +1,10 @@
-# How to Fix "Message Too Big" WebSocket Errors
+# How to Fix 'Message Too Big' WebSocket Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: WebSocket, Debugging, Performance, JavaScript, Networking
 
-Description: Learn how to diagnose and fix WebSocket "Message Too Big" errors by configuring message size limits, implementing chunking, and optimizing payload size.
+Description: Learn how to diagnose and fix WebSocket 'Message Too Big' errors by configuring message size limits, implementing chunking, and optimizing payload size.
 
 ---
 

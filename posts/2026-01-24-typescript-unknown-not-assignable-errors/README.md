@@ -1,4 +1,4 @@
-# How to Fix "Type 'unknown' Is Not Assignable" Errors
+# How to Fix 'Type 'unknown' Is Not Assignable' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

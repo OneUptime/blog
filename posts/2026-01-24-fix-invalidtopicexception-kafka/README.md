@@ -1,4 +1,4 @@
-# How to Fix "InvalidTopicException" in Kafka
+# How to Fix 'InvalidTopicException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

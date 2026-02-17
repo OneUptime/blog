@@ -1,4 +1,4 @@
-# How to Fix "Null Value" Errors in GraphQL Resolvers
+# How to Fix 'Null Value' Errors in GraphQL Resolvers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

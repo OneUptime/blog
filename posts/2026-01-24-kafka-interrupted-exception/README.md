@@ -1,4 +1,4 @@
-# How to Fix "InterruptedException" in Kafka Consumer
+# How to Fix 'InterruptedException' in Kafka Consumer
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

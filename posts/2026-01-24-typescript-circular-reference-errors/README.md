@@ -1,4 +1,4 @@
-# How to Fix "Circular Reference" Type Errors
+# How to Fix 'Circular Reference' Type Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

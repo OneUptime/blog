@@ -1,4 +1,4 @@
-# How to Fix "Canceled" Request Errors in gRPC
+# How to Fix 'Canceled' Request Errors in gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

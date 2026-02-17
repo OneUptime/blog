@@ -1,4 +1,4 @@
-# How to Fix "E11000 duplicate key error" in MongoDB
+# How to Fix 'E11000 duplicate key error' in MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

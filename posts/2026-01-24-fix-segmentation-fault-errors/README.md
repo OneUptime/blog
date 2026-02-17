@@ -1,4 +1,4 @@
-# How to Fix "Segmentation Fault" Errors in Linux
+# How to Fix 'Segmentation Fault' Errors in Linux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

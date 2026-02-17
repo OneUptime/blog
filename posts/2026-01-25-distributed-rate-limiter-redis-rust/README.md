@@ -224,7 +224,7 @@ use axum::{
 use std::sync::Arc;
 
 // Extract client identifier from request - customize based on your needs
-fn get_client_id<B>(req: &Request<B>) -> String {
+fn get_client_id<Bd>(req: &Request<Bd>) -> String {
     // Try API key header first
     if let Some(api_key) = req.headers().get("X-API-Key") {
         if let Ok(key) = api_key.to_str() {
@@ -241,10 +241,10 @@ fn get_client_id<B>(req: &Request<B>) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-pub async fn rate_limit_middleware<B>(
+pub async fn rate_limit_middleware<Bd>(
     State(limiter): State<Arc<RateLimiter>>,
-    req: Request<B>,
-    next: Next<B>,
+    req: Request<Bd>,
+    next: Next<Bd>,
 ) -> Response {
     let client_id = get_client_id(&req);
 

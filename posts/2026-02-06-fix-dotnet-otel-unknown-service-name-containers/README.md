@@ -1,4 +1,4 @@
-# How to Fix the .NET OpenTelemetry SDK Reporting service.name as "unknown_service" in Container Deployments
+# How to Fix the .NET OpenTelemetry SDK Reporting service.name as 'unknown_service' in Container Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

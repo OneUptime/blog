@@ -1,10 +1,10 @@
-# How to Fix "Resource Detection Failed" Errors
+# How to Fix 'Resource Detection Failed' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Resource Detection, Debugging, Kubernetes, AWS, GCP, Azure, Docker, Observability
 
-Description: Learn how to diagnose and resolve "Resource Detection Failed" errors in OpenTelemetry, covering common issues with cloud providers, container environments, and custom resource detectors.
+Description: Learn how to diagnose and resolve 'Resource Detection Failed' errors in OpenTelemetry, covering common issues with cloud providers, container environments, and custom resource detectors.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "ELB S3 Permissions" Issues in Terraform
+# How to Fix 'ELB S3 Permissions' Issues in Terraform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

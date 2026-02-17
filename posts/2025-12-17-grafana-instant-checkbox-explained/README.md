@@ -1,10 +1,10 @@
-# How to Understand the "Instant" Checkbox in Grafana
+# How to Understand the 'Instant' Checkbox in Grafana
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Prometheus, PromQL, Queries, Instant, Range, Monitoring
 
-Description: Learn what the "Instant" checkbox does in Grafana panel queries. This guide explains the difference between instant and range queries, when to use each type, and how they affect your dashboard visualizations and performance.
+Description: Learn what the 'Instant' checkbox does in Grafana panel queries. This guide explains the difference between instant and range queries, when to use each type, and how they affect your dashboard visualizations and performance.
 
 The "Instant" checkbox in Grafana's query editor is a small but powerful option that fundamentally changes how your query executes against Prometheus. Understanding when to use instant versus range queries is essential for building accurate and performant dashboards.
 

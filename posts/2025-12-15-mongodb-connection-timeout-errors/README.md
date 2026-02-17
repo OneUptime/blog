@@ -1,4 +1,4 @@
-# How to Fix "connection timeout" Errors in MongoDB
+# How to Fix 'connection timeout' Errors in MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

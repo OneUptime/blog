@@ -1,4 +1,4 @@
-# How to Fix "Component Not Registered" Errors in Vue
+# How to Fix 'Component Not Registered' Errors in Vue
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

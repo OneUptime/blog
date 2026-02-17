@@ -1,10 +1,10 @@
-# How to Fix "cannot acquire exclusive lock" Errors in MongoDB
+# How to Fix 'cannot acquire exclusive lock' Errors in MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Locking, Database, Troubleshooting, Concurrency, Performance
 
-Description: Learn how to diagnose and resolve MongoDB "cannot acquire exclusive lock" errors, understand MongoDB's locking mechanism, and implement strategies to prevent lock contention issues.
+Description: Learn how to diagnose and resolve MongoDB 'cannot acquire exclusive lock' errors, understand MongoDB's locking mechanism, and implement strategies to prevent lock contention issues.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Cascading Failures" in Microservices
+# How to Fix 'Cascading Failures' in Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

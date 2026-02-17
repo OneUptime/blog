@@ -1,10 +1,10 @@
-# How to Fix "pq: could not resize shared memory" Errors in Grafana
+# How to Fix 'pq: could not resize shared memory' Errors in Grafana
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, PostgreSQL, Database, Docker, Kubernetes, Troubleshooting, Errors
 
-Description: Learn how to diagnose and fix the "pq: could not resize shared memory segment" error in Grafana. This guide covers PostgreSQL shared memory configuration, Docker settings, and Kubernetes resource limits to resolve this common database connectivity issue.
+Description: Learn how to diagnose and fix the 'pq: could not resize shared memory segment' error in Grafana. This guide covers PostgreSQL shared memory configuration, Docker settings, and Kubernetes resource limits to resolve this common database connectivity issue.
 
 The error "pq: could not resize shared memory segment" occurs when Grafana's PostgreSQL database cannot allocate enough shared memory for its operations. This typically happens in containerized environments where default memory settings are too restrictive. This guide explains the causes and provides solutions for different deployment scenarios.
 

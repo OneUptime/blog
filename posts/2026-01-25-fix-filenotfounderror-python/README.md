@@ -1,4 +1,4 @@
-# How to Fix "FileNotFoundError" in Python
+# How to Fix 'FileNotFoundError' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

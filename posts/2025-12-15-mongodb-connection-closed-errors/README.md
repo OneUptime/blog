@@ -1,10 +1,10 @@
-# How to Fix "connection closed" Errors in MongoDB
+# How to Fix 'connection closed' Errors in MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Database, Troubleshooting, Connection Management, DevOps
 
-Description: Learn how to diagnose and fix MongoDB "connection closed" errors caused by network issues, timeouts, connection pool exhaustion, and server-side disconnections with practical solutions and code examples.
+Description: Learn how to diagnose and fix MongoDB 'connection closed' errors caused by network issues, timeouts, connection pool exhaustion, and server-side disconnections with practical solutions and code examples.
 
 ---
 

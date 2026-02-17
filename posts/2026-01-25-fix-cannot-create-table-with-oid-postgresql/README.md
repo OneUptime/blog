@@ -1,10 +1,10 @@
-# How to Fix "cannot create a table with OID" Errors in PostgreSQL
+# How to Fix 'cannot create a table with OID' Errors in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Troubleshooting, OID, Migration, Upgrade, SQL
 
-Description: Learn how to resolve "cannot create a table with OID" errors in PostgreSQL. This guide covers why OIDs were deprecated, how to migrate legacy applications, and modern alternatives.
+Description: Learn how to resolve 'cannot create a table with OID' errors in PostgreSQL. This guide covers why OIDs were deprecated, how to migrate legacy applications, and modern alternatives.
 
 ---
 

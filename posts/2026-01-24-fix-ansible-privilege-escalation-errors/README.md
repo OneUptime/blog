@@ -1,4 +1,4 @@
-# How to Fix "Privilege Escalation" become Errors
+# How to Fix 'Privilege Escalation' become Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

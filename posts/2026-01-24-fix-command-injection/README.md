@@ -1,4 +1,4 @@
-# How to Fix "Command Injection" Vulnerabilities
+# How to Fix 'Command Injection' Vulnerabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

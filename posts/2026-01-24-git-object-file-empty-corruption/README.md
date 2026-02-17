@@ -1,10 +1,10 @@
-# How to Fix "Object File Is Empty" Corruption Errors
+# How to Fix 'Object File Is Empty' Corruption Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Git, Corruption, Recovery, Troubleshooting, DevOps, Data Recovery, Git Objects
 
-Description: Learn how to diagnose and recover from Git repository corruption when you encounter "object file is empty" errors, with step-by-step recovery procedures.
+Description: Learn how to diagnose and recover from Git repository corruption when you encounter 'object file is empty' errors, with step-by-step recovery procedures.
 
 ---
 

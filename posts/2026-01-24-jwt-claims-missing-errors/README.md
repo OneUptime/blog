@@ -1,4 +1,4 @@
-# How to Fix "Claims Missing" JWT Errors
+# How to Fix 'Claims Missing' JWT Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

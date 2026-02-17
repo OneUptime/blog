@@ -1,4 +1,4 @@
-# How to Fix "Access Denied" OAuth2 Errors
+# How to Fix 'Access Denied' OAuth2 Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

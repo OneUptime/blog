@@ -1,4 +1,4 @@
-# How to Fix "Template Module" Rendering Errors
+# How to Fix 'Template Module' Rendering Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

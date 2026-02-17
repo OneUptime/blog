@@ -1,10 +1,10 @@
-# How to Fix "Result window is too large" Errors in Elasticsearch
+# How to Fix 'Result window is too large' Errors in Elasticsearch
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Pagination, Performance, Search, Troubleshooting
 
-Description: Learn how to fix the "Result window is too large" error in Elasticsearch. This guide covers pagination strategies including scroll API, search_after, and point in time for handling large result sets efficiently.
+Description: Learn how to fix the 'Result window is too large' error in Elasticsearch. This guide covers pagination strategies including scroll API, search_after, and point in time for handling large result sets efficiently.
 
 The "Result window is too large" error is one of the most common Elasticsearch errors encountered when paginating through large result sets. This guide explains why this error occurs and provides multiple solutions for different use cases.
 

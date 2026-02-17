@@ -1,10 +1,10 @@
-# How to Fix "Unsupported Grant Type" OAuth2 Errors
+# How to Fix 'Unsupported Grant Type' OAuth2 Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OAuth2, Authentication, Troubleshooting, Security, API, Errors
 
-Description: Learn how to diagnose and fix "unsupported_grant_type" errors in OAuth2 implementations with practical examples and solutions.
+Description: Learn how to diagnose and fix 'unsupported_grant_type' errors in OAuth2 implementations with practical examples and solutions.
 
 ---
 

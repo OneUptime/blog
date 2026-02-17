@@ -1,4 +1,4 @@
-# How to Debug "Evicted" Pod Status Issues
+# How to Debug 'Evicted' Pod Status Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

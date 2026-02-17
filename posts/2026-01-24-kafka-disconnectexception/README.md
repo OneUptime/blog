@@ -1,4 +1,4 @@
-# How to Fix "DisconnectException" in Kafka
+# How to Fix 'DisconnectException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

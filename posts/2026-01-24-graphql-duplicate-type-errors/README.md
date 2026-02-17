@@ -1,4 +1,4 @@
-# How to Fix "Duplicate Type" Errors in GraphQL Schema
+# How to Fix 'Duplicate Type' Errors in GraphQL Schema
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

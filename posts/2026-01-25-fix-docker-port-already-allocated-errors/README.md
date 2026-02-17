@@ -1,4 +1,4 @@
-# How to Fix Docker "Port Already Allocated" Errors
+# How to Fix Docker 'Port Already Allocated' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

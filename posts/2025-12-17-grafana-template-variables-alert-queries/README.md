@@ -1,10 +1,10 @@
-# How to Fix "Template variables not supported in alert queries"
+# How to Fix 'Template variables not supported in alert queries'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Alerts, Template Variables, PromQL, Prometheus, Monitoring, Troubleshooting, Observability
 
-Description: Learn how to fix the "Template variables not supported in alert queries" error in Grafana. This guide covers workarounds using label matchers, recording rules, and multi-dimensional alerts.
+Description: Learn how to fix the 'Template variables not supported in alert queries' error in Grafana. This guide covers workarounds using label matchers, recording rules, and multi-dimensional alerts.
 
 ---
 

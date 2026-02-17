@@ -1,4 +1,4 @@
-# How to Fix "Audience Invalid" JWT Errors
+# How to Fix 'Audience Invalid' JWT Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

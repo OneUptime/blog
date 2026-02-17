@@ -1,10 +1,10 @@
-# How to Fix "Unknown Storage Engine" Errors
+# How to Fix 'Unknown Storage Engine' Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: MySQL, Database, Troubleshooting, Storage Engines, InnoDB
 
-Description: Learn how to diagnose and fix MySQL "Unknown storage engine" errors including missing engine plugins, disabled engines, and table recovery strategies.
+Description: Learn how to diagnose and fix MySQL 'Unknown storage engine' errors including missing engine plugins, disabled engines, and table recovery strategies.
 
 ---
 

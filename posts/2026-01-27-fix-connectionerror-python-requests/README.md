@@ -1,4 +1,4 @@
-# How to Fix "ConnectionError" in Python Requests
+# How to Fix 'ConnectionError' in Python Requests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Slow Page Load" Performance Issues
+# How to Fix 'Slow Page Load' Performance Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

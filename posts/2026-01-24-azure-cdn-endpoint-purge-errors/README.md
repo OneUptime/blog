@@ -1,4 +1,4 @@
-# How to Fix "CDN Endpoint" Purge Errors
+# How to Fix 'CDN Endpoint' Purge Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

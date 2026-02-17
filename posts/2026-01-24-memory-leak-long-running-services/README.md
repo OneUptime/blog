@@ -1,4 +1,4 @@
-# How to Fix "Memory Leak" in Long-Running Services
+# How to Fix 'Memory Leak' in Long-Running Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

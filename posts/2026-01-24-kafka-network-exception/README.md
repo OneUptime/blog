@@ -1,4 +1,4 @@
-# How to Fix "NetworkException" in Kafka
+# How to Fix 'NetworkException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Type Mismatch" Errors in GraphQL Schema
+# How to Fix 'Type Mismatch' Errors in GraphQL Schema
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

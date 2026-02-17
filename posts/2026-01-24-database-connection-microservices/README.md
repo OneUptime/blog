@@ -1,4 +1,4 @@
-# How to Fix "Database Connection" Issues in Microservices
+# How to Fix 'Database Connection' Issues in Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

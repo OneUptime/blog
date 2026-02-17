@@ -1,4 +1,4 @@
-# How to Fix "Configuration Management" Issues
+# How to Fix 'Configuration Management' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

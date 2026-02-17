@@ -1,10 +1,10 @@
-# How to Fix "Row Size Too Large" Errors in MySQL
+# How to Fix 'Row Size Too Large' Errors in MySQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, InnoDB, Database, Troubleshooting, Schema Design
 
-Description: Learn how to diagnose and fix MySQL "Row size too large" errors by understanding InnoDB row size limits and optimizing your table structure.
+Description: Learn how to diagnose and fix MySQL 'Row size too large' errors by understanding InnoDB row size limits and optimizing your table structure.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Fix "Invalid Scope" OAuth2 Errors
+# How to Fix 'Invalid Scope' OAuth2 Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OAuth2, Scopes, Authentication, Security, API, Debugging
 
-Description: Learn how to diagnose and fix "invalid_scope" OAuth2 errors with practical examples for common providers and best practices for scope management.
+Description: Learn how to diagnose and fix 'invalid_scope' OAuth2 errors with practical examples for common providers and best practices for scope management.
 
 ---
 

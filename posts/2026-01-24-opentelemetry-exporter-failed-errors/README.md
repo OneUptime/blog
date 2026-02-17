@@ -1,10 +1,10 @@
-# How to Fix "Exporter Failed" Errors in OpenTelemetry
+# How to Fix 'Exporter Failed' Errors in OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Troubleshooting, Exporter, Observability, Debugging, DevOps
 
-Description: Learn how to diagnose and fix common "Exporter Failed" errors in OpenTelemetry including connection issues, authentication problems, and timeout errors.
+Description: Learn how to diagnose and fix common 'Exporter Failed' errors in OpenTelemetry including connection issues, authentication problems, and timeout errors.
 
 ---
 

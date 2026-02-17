@@ -1,4 +1,4 @@
-# How to Fix Docker "Conflict: Container Name Already in Use" Errors
+# How to Fix Docker 'Conflict: Container Name Already in Use' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

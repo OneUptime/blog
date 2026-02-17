@@ -1,4 +1,4 @@
-# How to Fix "Prop Type Validation" Errors in React
+# How to Fix 'Prop Type Validation' Errors in React
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Fix "host not found in upstream" Nginx Startup Errors
+# How to Fix 'host not found in upstream' Nginx Startup Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Nginx, Troubleshooting, Reverse Proxy, Docker, DNS, Configuration
 
-Description: Learn how to diagnose and fix the "host not found in upstream" error in Nginx, including solutions for Docker environments, DNS resolution issues, and proper upstream configuration.
+Description: Learn how to diagnose and fix the 'host not found in upstream' error in Nginx, including solutions for Docker environments, DNS resolution issues, and proper upstream configuration.
 
 ---
 

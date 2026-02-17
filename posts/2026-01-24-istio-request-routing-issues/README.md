@@ -1,4 +1,4 @@
-# How to Fix "Request Routing" Issues in Istio
+# How to Fix 'Request Routing' Issues in Istio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Unterminated Quoted String" Errors
+# How to Fix 'Unterminated Quoted String' Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

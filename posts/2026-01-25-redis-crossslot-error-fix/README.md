@@ -1,4 +1,4 @@
-# How to Fix "CROSSSLOT" Errors in Redis Cluster
+# How to Fix 'CROSSSLOT' Errors in Redis Cluster
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

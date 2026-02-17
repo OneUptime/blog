@@ -1,4 +1,4 @@
-# How to Fix "Resource Group Locked" Errors
+# How to Fix 'Resource Group Locked' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

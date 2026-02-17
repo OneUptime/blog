@@ -1,4 +1,4 @@
-# How to Fix "Timeout" Errors in RabbitMQ Operations
+# How to Fix 'Timeout' Errors in RabbitMQ Operations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

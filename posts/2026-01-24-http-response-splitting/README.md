@@ -1,4 +1,4 @@
-# How to Fix "HTTP Response Splitting" Vulnerabilities
+# How to Fix 'HTTP Response Splitting' Vulnerabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

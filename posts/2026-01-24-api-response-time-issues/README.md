@@ -1,4 +1,4 @@
-# How to Fix "API Response Time" Issues
+# How to Fix 'API Response Time' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

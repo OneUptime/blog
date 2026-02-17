@@ -1,4 +1,4 @@
-# How to Fix "Record Too Large" Errors in Kafka Producer
+# How to Fix 'Record Too Large' Errors in Kafka Producer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

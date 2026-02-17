@@ -1,4 +1,4 @@
-# How to Fix "TimeoutException" in Kafka Producer
+# How to Fix 'TimeoutException' in Kafka Producer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

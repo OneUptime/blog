@@ -1,4 +1,4 @@
-# How to Fix "Template Compilation" Errors in Vue
+# How to Fix 'Template Compilation' Errors in Vue
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

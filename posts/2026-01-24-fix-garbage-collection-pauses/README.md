@@ -1,4 +1,4 @@
-# How to Fix "Garbage Collection" Pauses
+# How to Fix 'Garbage Collection' Pauses
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

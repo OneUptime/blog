@@ -1,10 +1,10 @@
-# How to Fix "No serializer found" Jackson Errors
+# How to Fix 'No serializer found' Jackson Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Jackson, JSON, Serialization, Backend
 
-Description: Learn how to diagnose and fix Jackson "No serializer found" errors in Spring Boot with solutions for common serialization problems.
+Description: Learn how to diagnose and fix Jackson 'No serializer found' errors in Spring Boot with solutions for common serialization problems.
 
 ---
 

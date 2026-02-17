@@ -1,10 +1,10 @@
-# How to Fix "ImportError: attempted relative import" in Python
+# How to Fix 'ImportError: attempted relative import' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Imports, Modules, Packages, Debugging
 
-Description: Understand and fix the "ImportError: attempted relative import with no known parent package" error in Python with clear explanations and solutions.
+Description: Understand and fix the 'ImportError: attempted relative import with no known parent package' error in Python with clear explanations and solutions.
 
 ---
 

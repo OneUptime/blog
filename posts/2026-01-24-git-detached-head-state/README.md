@@ -1,4 +1,4 @@
-# How to Fix "Detached HEAD" State in Git
+# How to Fix 'Detached HEAD' State in Git
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

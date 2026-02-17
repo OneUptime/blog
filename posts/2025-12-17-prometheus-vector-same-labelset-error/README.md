@@ -1,10 +1,10 @@
-# How to Fix "vector cannot contain metrics with same labelset" Errors
+# How to Fix 'vector cannot contain metrics with same labelset' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, PromQL, Debugging, Metrics, Monitoring, Errors
 
-Description: Learn how to diagnose and fix the common Prometheus error "vector cannot contain metrics with the same labelset". This guide explains why duplicate label sets occur and provides practical solutions for recording rules, aggregations, and metric relabeling.
+Description: Learn how to diagnose and fix the common Prometheus error 'vector cannot contain metrics with the same labelset'. This guide explains why duplicate label sets occur and provides practical solutions for recording rules, aggregations, and metric relabeling.
 
 The error "vector cannot contain metrics with the same labelset" is one of the most common and frustrating issues when working with Prometheus. It occurs when a query or recording rule produces multiple time series with identical label combinations. This guide explains why this happens and how to fix it.
 

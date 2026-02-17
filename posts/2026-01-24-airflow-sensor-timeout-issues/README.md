@@ -1,4 +1,4 @@
-# How to Fix "Sensor" Timeout Issues in Airflow
+# How to Fix 'Sensor' Timeout Issues in Airflow
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Connection timeout" RDS Errors
+# How to Fix 'Connection timeout' RDS Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

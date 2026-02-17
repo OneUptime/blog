@@ -1,4 +1,4 @@
-# How to Fix "Overload Signatures Must All Be Exported"
+# How to Fix 'Overload Signatures Must All Be Exported'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

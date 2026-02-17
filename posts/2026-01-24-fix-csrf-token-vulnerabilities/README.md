@@ -1,4 +1,4 @@
-# How to Fix "CSRF Token" Vulnerabilities
+# How to Fix 'CSRF Token' Vulnerabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

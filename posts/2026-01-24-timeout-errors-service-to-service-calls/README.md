@@ -1,4 +1,4 @@
-# How to Fix "Timeout" Errors in Service-to-Service Calls
+# How to Fix 'Timeout' Errors in Service-to-Service Calls
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

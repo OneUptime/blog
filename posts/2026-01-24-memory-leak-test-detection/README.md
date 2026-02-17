@@ -1,4 +1,4 @@
-# How to Fix "Memory Leak" Test Detection
+# How to Fix 'Memory Leak' Test Detection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

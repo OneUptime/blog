@@ -1,4 +1,4 @@
-# How to Fix "Whitelabel Error Page" in Spring Boot
+# How to Fix 'Whitelabel Error Page' in Spring Boot
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

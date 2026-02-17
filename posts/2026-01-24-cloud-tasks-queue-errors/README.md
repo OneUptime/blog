@@ -1,4 +1,4 @@
-# How to Fix "Cloud Tasks" Queue Errors
+# How to Fix 'Cloud Tasks' Queue Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -229,10 +229,10 @@ pub struct AppState {
     pub is_shutting_down: AtomicBool,
 }
 
-pub async fn shutdown_middleware<B>(
+pub async fn shutdown_middleware<Bd>(
     State(state): State<Arc<AppState>>,
-    request: Request<B>,
-    next: Next<B>,
+    request: Request<Bd>,
+    next: Next<Bd>,
 ) -> Result<Response, StatusCode> {
     // Reject requests during shutdown
     if state.is_shutting_down.load(Ordering::SeqCst) {

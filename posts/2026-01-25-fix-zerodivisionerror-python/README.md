@@ -1,4 +1,4 @@
-# How to Fix "ZeroDivisionError" in Python
+# How to Fix 'ZeroDivisionError' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

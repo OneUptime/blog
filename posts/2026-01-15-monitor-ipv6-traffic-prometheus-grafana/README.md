@@ -137,9 +137,13 @@ node_sockstat_UDP6_inuse
 node_sockstat_RAW6_inuse
 node_sockstat_FRAG6_inuse
 
-# Netstat protocol statistics
-node_netstat_Ip6_InReceives
-node_netstat_Ip6_OutRequests
+# Netstat protocol statistics (from /proc/net/snmp6)
+# Important: InReceives/OutRequests count packets, not bytes.
+# For byte counters, use Ip6_InOctets/Ip6_OutOctets.
+node_netstat_Ip6_InReceives   # packets received
+node_netstat_Ip6_OutRequests  # packets sent
+node_netstat_Ip6_InOctets     # bytes received
+node_netstat_Ip6_OutOctets    # bytes sent
 node_netstat_Ip6_InDelivers
 node_netstat_Ip6_OutNoRoutes
 node_netstat_Icmp6_InMsgs
@@ -404,15 +408,19 @@ groups:
   - name: ipv6_traffic_recording
     interval: 30s
     rules:
-      # IPv6 receive rate per instance
-      - record: instance:node_network_ipv6_receive_bytes:rate5m
+      # IPv6 receive packet rate per instance (packets/sec)
+      # Note: Ip6_InReceives counts packets, not bytes. These values come
+      # from /proc/net/snmp6. For byte counters, use Ip6_InOctets instead.
+      - record: instance:node_network_ipv6_receive_packets:rate5m
         expr: |
           sum by (instance) (
             rate(node_netstat_Ip6_InReceives[5m])
           )
 
-      # IPv6 transmit rate per instance
-      - record: instance:node_network_ipv6_transmit_bytes:rate5m
+      # IPv6 transmit packet rate per instance (packets/sec)
+      # Note: Ip6_OutRequests counts packets, not bytes.
+      # For byte counters, use Ip6_OutOctets instead.
+      - record: instance:node_network_ipv6_transmit_packets:rate5m
         expr: |
           sum by (instance) (
             rate(node_netstat_Ip6_OutRequests[5m])
@@ -650,7 +658,7 @@ groups:
 ### Traffic Analysis Queries
 
 ```promql
-# Total IPv6 receive throughput across all instances
+# Total IPv6 receive rate across all instances (packets/sec)
 sum(rate(node_netstat_Ip6_InReceives[5m]))
 
 # IPv6 receive throughput per instance (packets/sec)
@@ -1150,7 +1158,7 @@ Organize your IPv6 monitoring dashboard into logical sections:
 
 | Metric Category | Key Metrics | Primary Query | Alert Threshold |
 |-----------------|-------------|---------------|-----------------|
-| **Traffic Volume** | `node_netstat_Ip6_InReceives`, `node_netstat_Ip6_OutRequests` | `rate(node_netstat_Ip6_InReceives[5m])` | Baseline deviation > 50% |
+| **Traffic Volume (packets)** | `node_netstat_Ip6_InReceives`, `node_netstat_Ip6_OutRequests` | `rate(node_netstat_Ip6_InReceives[5m])` | Baseline deviation > 50% |
 | **Packet Errors** | `node_netstat_Ip6_InHdrErrors`, `node_netstat_Ip6_InAddrErrors` | `rate(node_netstat_Ip6_InHdrErrors[5m])` | > 50 errors/sec |
 | **Packet Drops** | `node_netstat_Ip6_InDiscards`, `node_netstat_Ip6_OutDiscards` | `rate(node_netstat_Ip6_InDiscards[5m])` | > 100 drops/sec |
 | **Routing Issues** | `node_netstat_Ip6_OutNoRoutes` | `rate(node_netstat_Ip6_OutNoRoutes[5m])` | > 10/sec |

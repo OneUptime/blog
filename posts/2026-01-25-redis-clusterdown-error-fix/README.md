@@ -1,4 +1,4 @@
-# How to Fix "CLUSTERDOWN" Errors in Redis
+# How to Fix 'CLUSTERDOWN' Errors in Redis
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

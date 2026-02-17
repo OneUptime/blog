@@ -1,4 +1,4 @@
-# How to Fix "Token Expired" JWT Errors
+# How to Fix 'Token Expired' JWT Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

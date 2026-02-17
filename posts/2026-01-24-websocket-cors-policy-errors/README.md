@@ -1,4 +1,4 @@
-# How to Fix "CORS Policy" WebSocket Errors
+# How to Fix 'CORS Policy' WebSocket Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

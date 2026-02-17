@@ -1,4 +1,4 @@
-# How to Fix "Network Latency" Issues
+# How to Fix 'Network Latency' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

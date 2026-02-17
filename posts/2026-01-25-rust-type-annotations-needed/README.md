@@ -1,10 +1,10 @@
-# How to Fix "Type annotations needed" Errors in Rust
+# How to Fix 'Type annotations needed' Errors in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Type System, Type Inference, Generics, Error Handling
 
-Description: Learn how to resolve "type annotations needed" errors in Rust. This guide explains when type inference fails and how to provide the necessary annotations.
+Description: Learn how to resolve 'type annotations needed' errors in Rust. This guide explains when type inference fails and how to provide the necessary annotations.
 
 ---
 
@@ -355,9 +355,9 @@ fn main() {
 ### Pattern 3: Multiple Type Parameters
 
 ```rust
-fn convert<T, U>(value: T) -> U
+fn convert<T, R>(value: T) -> R
 where
-    T: Into<U>,
+    T: Into<R>,
 {
     value.into()
 }

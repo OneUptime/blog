@@ -1,10 +1,10 @@
-# How to Fix "Commands Out of Sync" Errors in MySQL
+# How to Fix 'Commands Out of Sync' Errors in MySQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Database, Troubleshooting, PHP, Python, NodeJS, Connection Pooling
 
-Description: Learn how to diagnose and fix the MySQL "Commands out of sync; you can't run this command now" error across different programming languages.
+Description: Learn how to diagnose and fix the MySQL 'Commands out of sync; you can't run this command now' error across different programming languages.
 
 ---
 

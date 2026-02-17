@@ -1,4 +1,4 @@
-# How to Fix "Serialization Version" Mismatch Errors
+# How to Fix 'Serialization Version' Mismatch Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

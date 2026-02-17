@@ -1,10 +1,10 @@
-# How to Fix "Unreachable" Host Errors in Ansible
+# How to Fix 'Unreachable' Host Errors in Ansible
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, DevOps, Automation, Troubleshooting, SSH, Networking
 
-Description: Learn how to diagnose and fix common "unreachable" host errors in Ansible playbooks by checking network connectivity, SSH configuration, and inventory settings.
+Description: Learn how to diagnose and fix common 'unreachable' host errors in Ansible playbooks by checking network connectivity, SSH configuration, and inventory settings.
 
 ---
 

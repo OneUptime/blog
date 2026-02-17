@@ -1,4 +1,4 @@
-# How to Fix "Connection Refused" Errors in Ansible
+# How to Fix 'Connection Refused' Errors in Ansible
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

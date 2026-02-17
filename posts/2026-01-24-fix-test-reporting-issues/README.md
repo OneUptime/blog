@@ -1,4 +1,4 @@
-# How to Fix "Test Reporting" Issues
+# How to Fix 'Test Reporting' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Memory Leak" Warnings in useEffect
+# How to Fix 'Memory Leak' Warnings in useEffect
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

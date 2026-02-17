@@ -1,4 +1,4 @@
-# How to Fix "413 Request Entity Too Large" in Nginx on AWS Elastic Beanstalk
+# How to Fix '413 Request Entity Too Large' in Nginx on AWS Elastic Beanstalk
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

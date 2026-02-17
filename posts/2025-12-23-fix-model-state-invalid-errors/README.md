@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: .NET, C#, ASP.NET Core, Validation, Model Binding, API, Web Development
 
-Description: Learn how to diagnose and fix "Model state is invalid" errors in ASP.NET Core, understand model validation, and implement proper error handling for API responses.
+Description: Learn how to diagnose and fix 'Model state is invalid' errors in ASP.NET Core, understand model validation, and implement proper error handling for API responses.
 
 ---
 

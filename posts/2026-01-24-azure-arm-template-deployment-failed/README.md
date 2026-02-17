@@ -1,4 +1,4 @@
-# How to Fix "Deployment Failed" ARM Template Errors
+# How to Fix 'Deployment Failed' ARM Template Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

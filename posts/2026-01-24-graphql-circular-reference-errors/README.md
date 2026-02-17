@@ -1,4 +1,4 @@
-# How to Fix "Circular Reference" Errors in GraphQL
+# How to Fix 'Circular Reference' Errors in GraphQL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

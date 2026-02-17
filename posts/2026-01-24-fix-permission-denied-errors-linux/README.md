@@ -1,4 +1,4 @@
-# How to Fix "Permission Denied" Errors in Linux
+# How to Fix 'Permission Denied' Errors in Linux
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

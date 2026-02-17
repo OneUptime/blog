@@ -1,4 +1,4 @@
-# How to Fix "revalidatePath" Not Working in Next.js
+# How to Fix 'revalidatePath' Not Working in Next.js
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Context Canceled" Errors in OpenTelemetry Go When Request Context Is Used for Background Work
+# How to Fix 'Context Canceled' Errors in OpenTelemetry Go When Request Context Is Used for Background Work
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

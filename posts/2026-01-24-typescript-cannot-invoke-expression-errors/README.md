@@ -1,10 +1,10 @@
-# How to Fix "Cannot Invoke Expression" Errors
+# How to Fix 'Cannot Invoke Expression' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, JavaScript, Error Handling, Type Safety, Functions, Debugging
 
-Description: A practical guide to understanding and fixing "Cannot invoke an expression whose type lacks a call signature" errors in TypeScript.
+Description: A practical guide to understanding and fixing 'Cannot invoke an expression whose type lacks a call signature' errors in TypeScript.
 
 ---
 

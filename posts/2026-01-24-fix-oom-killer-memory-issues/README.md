@@ -1,4 +1,4 @@
-# How to Fix "OOM Killer" Memory Issues
+# How to Fix 'OOM Killer' Memory Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

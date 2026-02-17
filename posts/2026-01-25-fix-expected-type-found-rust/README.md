@@ -1,10 +1,10 @@
-# How to Fix "Expected type, found" Errors in Rust
+# How to Fix 'Expected type, found' Errors in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Type System, Errors, Debugging, Syntax
 
-Description: Learn how to diagnose and fix "expected type, found" errors in Rust. Understand common causes and discover patterns to resolve type mismatches.
+Description: Learn how to diagnose and fix 'expected type, found' errors in Rust. Understand common causes and discover patterns to resolve type mismatches.
 
 ---
 

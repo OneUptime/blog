@@ -1,4 +1,4 @@
-# How to Fix "Fatal: refusing to merge unrelated histories"
+# How to Fix 'Fatal: refusing to merge unrelated histories'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Fix "Socket Hang Up" WebSocket Errors
+# How to Fix 'Socket Hang Up' WebSocket Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: WebSocket, Debugging, Node.js, Python, Connection Errors, Networking, Troubleshooting
 
-Description: A practical guide to diagnosing and fixing "Socket Hang Up" errors in WebSocket applications caused by abrupt disconnections, timeouts, and server-side issues.
+Description: A practical guide to diagnosing and fixing 'Socket Hang Up' errors in WebSocket applications caused by abrupt disconnections, timeouts, and server-side issues.
 
 ---
 

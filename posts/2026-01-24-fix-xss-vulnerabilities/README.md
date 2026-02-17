@@ -1,4 +1,4 @@
-# How to Fix "Cross-Site Scripting (XSS)" Vulnerabilities
+# How to Fix 'Cross-Site Scripting (XSS)' Vulnerabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

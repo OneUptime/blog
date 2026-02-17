@@ -1,4 +1,4 @@
-# How to Fix "Data Inconsistency" Across Services
+# How to Fix 'Data Inconsistency' Across Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

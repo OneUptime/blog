@@ -1,4 +1,4 @@
-# How to Fix "Late Data" Handling in Streaming
+# How to Fix 'Late Data' Handling in Streaming
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

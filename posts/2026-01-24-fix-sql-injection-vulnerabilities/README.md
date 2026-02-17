@@ -1,4 +1,4 @@
-# How to Fix "SQL Injection" Vulnerabilities
+# How to Fix 'SQL Injection' Vulnerabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

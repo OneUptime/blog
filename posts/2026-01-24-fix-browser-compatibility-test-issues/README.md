@@ -1,4 +1,4 @@
-# How to Fix "Browser Compatibility" Test Issues
+# How to Fix 'Browser Compatibility' Test Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

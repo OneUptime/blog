@@ -1,4 +1,4 @@
-# How to Fix "Broadcast Failed" WebSocket Errors
+# How to Fix 'Broadcast Failed' WebSocket Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Service Mesh Overhead" Issues
+# How to Fix 'Service Mesh Overhead' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Race Condition" Test Failures
+# How to Fix 'Race Condition' Test Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

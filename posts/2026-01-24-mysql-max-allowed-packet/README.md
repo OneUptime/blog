@@ -1,10 +1,10 @@
-# How to Fix "Max Allowed Packet" Errors
+# How to Fix 'Max Allowed Packet' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Database, Errors, Configuration, Troubleshooting, max_allowed_packet
 
-Description: Learn how to diagnose and fix MySQL "max_allowed_packet" errors that occur when queries or data exceed the server's packet size limit.
+Description: Learn how to diagnose and fix MySQL 'max_allowed_packet' errors that occur when queries or data exceed the server's packet size limit.
 
 ---
 

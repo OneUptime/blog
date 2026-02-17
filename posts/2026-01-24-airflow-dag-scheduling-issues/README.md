@@ -1,4 +1,4 @@
-# How to Fix "DAG Scheduling" Airflow Issues
+# How to Fix 'DAG Scheduling' Airflow Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

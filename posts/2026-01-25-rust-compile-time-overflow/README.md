@@ -1,4 +1,4 @@
-# How to Fix "Overflow when adding" at Compile Time in Rust
+# How to Fix 'Overflow when adding' at Compile Time in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

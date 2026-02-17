@@ -1,4 +1,4 @@
-# How to Fix "Redis out of memory" Errors
+# How to Fix 'Redis out of memory' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Fix "Integer Expression Expected" Errors
+# How to Fix 'Integer Expression Expected' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bash, Shell Scripting, Debugging, Error Handling, DevOps
 
-Description: Learn how to diagnose and resolve the common "integer expression expected" error in Bash scripts with practical solutions.
+Description: Learn how to diagnose and resolve the common 'integer expression expected' error in Bash scripts with practical solutions.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Ref vs Reactive" Confusion in Vue 3
+# How to Fix 'Ref vs Reactive' Confusion in Vue 3
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

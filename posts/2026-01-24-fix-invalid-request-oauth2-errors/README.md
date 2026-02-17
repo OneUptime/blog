@@ -1,10 +1,10 @@
-# How to Fix "Invalid Request" OAuth2 Errors
+# How to Fix 'Invalid Request' OAuth2 Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OAuth2, Authentication, Security, API, Troubleshooting, Authorization
 
-Description: A practical guide to diagnosing and fixing "invalid_request" OAuth2 errors, covering common causes like malformed parameters, missing required fields, and redirect URI mismatches.
+Description: A practical guide to diagnosing and fixing 'invalid_request' OAuth2 errors, covering common causes like malformed parameters, missing required fields, and redirect URI mismatches.
 
 ---
 

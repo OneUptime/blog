@@ -1,4 +1,4 @@
-# How to Fix "Error: ENOMEM: not enough memory" in Node.js
+# How to Fix 'Error: ENOMEM: not enough memory' in Node.js
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

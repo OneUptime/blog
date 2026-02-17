@@ -1,4 +1,4 @@
-# How to Fix "IndentationError" in Python
+# How to Fix 'IndentationError' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

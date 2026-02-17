@@ -1,10 +1,10 @@
-# How to Fix "Cannot Find Module" Declaration Errors
+# How to Fix 'Cannot Find Module' Declaration Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Module Resolution, Type Declarations, JavaScript, Node.js
 
-Description: A practical guide to resolving TypeScript's "Cannot find module" and module declaration errors with step-by-step solutions.
+Description: A practical guide to resolving TypeScript's 'Cannot find module' and module declaration errors with step-by-step solutions.
 
 ---
 

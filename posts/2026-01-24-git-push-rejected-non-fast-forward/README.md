@@ -1,4 +1,4 @@
-# How to Fix "Push Rejected" Non-Fast-Forward Errors
+# How to Fix 'Push Rejected' Non-Fast-Forward Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

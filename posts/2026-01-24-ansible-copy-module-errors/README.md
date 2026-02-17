@@ -1,4 +1,4 @@
-# How to Fix "Copy Module" File Transfer Errors
+# How to Fix 'Copy Module' File Transfer Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

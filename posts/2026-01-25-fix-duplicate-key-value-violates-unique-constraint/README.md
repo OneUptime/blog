@@ -1,10 +1,10 @@
-# How to Fix "duplicate key value violates unique constraint" in PostgreSQL
+# How to Fix 'duplicate key value violates unique constraint' in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Troubleshooting, Unique Constraint, SQL, Error Handling
 
-Description: Learn how to diagnose and fix the "duplicate key value violates unique constraint" error in PostgreSQL. This guide covers common causes, prevention strategies, and practical solutions.
+Description: Learn how to diagnose and fix the 'duplicate key value violates unique constraint' error in PostgreSQL. This guide covers common causes, prevention strategies, and practical solutions.
 
 ---
 

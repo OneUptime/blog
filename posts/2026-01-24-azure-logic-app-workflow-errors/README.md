@@ -1,4 +1,4 @@
-# How to Fix "Logic App" Workflow Errors
+# How to Fix 'Logic App' Workflow Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

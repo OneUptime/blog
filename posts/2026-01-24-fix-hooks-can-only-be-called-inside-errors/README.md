@@ -1,10 +1,10 @@
-# How to Fix "Hooks Can Only Be Called Inside" Errors
+# How to Fix 'Hooks Can Only Be Called Inside' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: React, Hooks, JavaScript, TypeScript, Debugging, Error Handling, Components
 
-Description: A detailed troubleshooting guide for fixing the "Hooks can only be called inside of the body of a function component" error, with common causes and solutions.
+Description: A detailed troubleshooting guide for fixing the 'Hooks can only be called inside of the body of a function component' error, with common causes and solutions.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Fix "Query Complexity" Limit Errors
+# How to Fix 'Query Complexity' Limit Errors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

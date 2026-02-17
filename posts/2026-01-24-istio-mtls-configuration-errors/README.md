@@ -1,4 +1,4 @@
-# How to Fix "mTLS" Configuration Errors in Istio
+# How to Fix 'mTLS' Configuration Errors in Istio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Fix "Cannot Find Module" Import Errors
+# How to Fix 'Cannot Find Module' Import Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: JavaScript, TypeScript, Node.js, Module Resolution, Import Errors, Webpack, ESM, CommonJS
 
-Description: A comprehensive troubleshooting guide for resolving "Cannot find module" errors in JavaScript and TypeScript projects, covering path aliases, ESM/CommonJS conflicts, and build tool configurations.
+Description: A comprehensive troubleshooting guide for resolving 'Cannot find module' errors in JavaScript and TypeScript projects, covering path aliases, ESM/CommonJS conflicts, and build tool configurations.
 
 ---
 

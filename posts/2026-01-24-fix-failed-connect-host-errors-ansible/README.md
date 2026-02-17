@@ -1,4 +1,4 @@
-# How to Fix "Failed to connect to host" Errors
+# How to Fix 'Failed to connect to host' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

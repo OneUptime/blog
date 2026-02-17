@@ -1,4 +1,4 @@
-# How to Fix "Cannot Add Foreign Key" Constraint Errors
+# How to Fix 'Cannot Add Foreign Key' Constraint Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

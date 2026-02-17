@@ -1,4 +1,4 @@
-# How to Fix "Firewall Rule" Not Working in GCP
+# How to Fix 'Firewall Rule' Not Working in GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

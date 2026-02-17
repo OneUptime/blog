@@ -1,4 +1,4 @@
-# How to Fix "TLS Handshake" Errors in OpenTelemetry
+# How to Fix 'TLS Handshake' Errors in OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

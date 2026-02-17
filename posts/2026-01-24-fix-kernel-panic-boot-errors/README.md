@@ -1,4 +1,4 @@
-# How to Fix "Kernel Panic" Boot Errors
+# How to Fix 'Kernel Panic' Boot Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Error: listen EADDRINUSE" in Node.js
+# How to Fix 'Error: listen EADDRINUSE' in Node.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

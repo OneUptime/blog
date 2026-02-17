@@ -1,4 +1,4 @@
-# How to Fix "Application Gateway" Health Probe Errors
+# How to Fix 'Application Gateway' Health Probe Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

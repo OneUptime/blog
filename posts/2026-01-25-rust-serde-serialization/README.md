@@ -299,9 +299,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 struct Timestamp(SystemTime);
 
 impl Serialize for Timestamp {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: Serializer,
+        Ser: Serializer,
     {
         let duration = self.0.duration_since(UNIX_EPOCH).unwrap();
         serializer.serialize_u64(duration.as_secs())
@@ -323,9 +323,9 @@ impl<'de> Deserialize<'de> for Timestamp {
 mod date_format {
     use serde::{self, Deserialize, Deserializer, Serializer};
 
-    pub fn serialize<S>(date: &str, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<Ser>(date: &str, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
     where
-        S: Serializer,
+        Ser: Serializer,
     {
         serializer.serialize_str(&format!("DATE:{}", date))
     }

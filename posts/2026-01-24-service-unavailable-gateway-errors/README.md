@@ -1,4 +1,4 @@
-# How to Fix "Service Unavailable" Gateway Errors
+# How to Fix 'Service Unavailable' Gateway Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

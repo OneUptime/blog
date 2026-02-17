@@ -1,4 +1,4 @@
-# How to Fix "Broken Access Control" Vulnerabilities
+# How to Fix 'Broken Access Control' Vulnerabilities
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

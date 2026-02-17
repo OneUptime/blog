@@ -1,10 +1,10 @@
-# How to Fix "Overflow evaluating" Errors in Rust
+# How to Fix 'Overflow evaluating' Errors in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Recursion, Type System, Generics, Error Handling
 
-Description: Learn how to fix "overflow evaluating the requirement" errors in Rust. This guide covers recursive types, trait bounds, and strategies for breaking infinite type recursion.
+Description: Learn how to fix 'overflow evaluating the requirement' errors in Rust. This guide covers recursive types, trait bounds, and strategies for breaking infinite type recursion.
 
 ---
 

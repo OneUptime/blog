@@ -1,4 +1,4 @@
-# How to Fix "Controlled vs Uncontrolled" Input Warnings
+# How to Fix 'Controlled vs Uncontrolled' Input Warnings
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

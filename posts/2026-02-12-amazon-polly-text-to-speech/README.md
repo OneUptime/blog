@@ -107,30 +107,30 @@ def synthesize_ssml(ssml_text, voice_id='Joanna', output_format='mp3'):
 ssml = """
 <speak>
     <p>
-        <s>Good morning, team.</s>
-        <s>Here is your daily infrastructure report.</s>
+        &lt;s&gt;Good morning, team.&lt;/s&gt;
+        &lt;s&gt;Here is your daily infrastructure report.&lt;/s&gt;
     </p>
 
     <break time="500ms"/>
 
     <p>
-        <s>All <emphasis level="strong">critical</emphasis> services are operational.</s>
-        <s>Uptime across all regions is
-           <prosody rate="slow">ninety nine point nine nine percent</prosody>.</s>
+        &lt;s&gt;All <emphasis level="strong">critical</emphasis> services are operational.&lt;/s&gt;
+        &lt;s&gt;Uptime across all regions is
+           <prosody rate="slow">ninety nine point nine nine percent</prosody>.&lt;/s&gt;
     </p>
 
     <break time="300ms"/>
 
     <p>
-        <s>There were <say-as interpret-as="cardinal">3</say-as> minor incidents
+        &lt;s&gt;There were <say-as interpret-as="cardinal">3</say-as> minor incidents
            in the past <say-as interpret-as="cardinal">24</say-as> hours,
-           all resolved within SLA.</s>
+           all resolved within SLA.&lt;/s&gt;
     </p>
 
     <break time="500ms"/>
 
     <p>
-        <s><prosody volume="soft">End of report.</prosody></s>
+        &lt;s&gt;<prosody volume="soft">End of report.</prosody>&lt;/s&gt;
     </p>
 </speak>
 """

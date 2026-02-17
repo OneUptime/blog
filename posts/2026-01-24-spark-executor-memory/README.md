@@ -1,4 +1,4 @@
-# How to Fix "Executor Memory" Spark Errors
+# How to Fix 'Executor Memory' Spark Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

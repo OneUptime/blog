@@ -1,4 +1,4 @@
-# How to Fix "Thread Pool Exhausted" Errors
+# How to Fix 'Thread Pool Exhausted' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Fix "Invalid Token" OAuth2 Errors
+# How to Fix 'Invalid Token' OAuth2 Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OAuth2, Authentication, Troubleshooting, Token Errors, Security
 
-Description: Learn how to diagnose and fix common "Invalid Token" errors in OAuth2 implementations including signature mismatches, audience validation failures, and token format issues.
+Description: Learn how to diagnose and fix common 'Invalid Token' errors in OAuth2 implementations including signature mismatches, audience validation failures, and token format issues.
 
 ---
 

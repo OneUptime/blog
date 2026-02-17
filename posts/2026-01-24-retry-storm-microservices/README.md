@@ -1,4 +1,4 @@
-# How to Fix "Retry Storm" Issues in Microservices
+# How to Fix 'Retry Storm' Issues in Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

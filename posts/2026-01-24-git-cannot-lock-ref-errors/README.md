@@ -1,10 +1,10 @@
-# How to Fix "Cannot Lock Ref" Errors in Git
+# How to Fix 'Cannot Lock Ref' Errors in Git
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Git, Version Control, Troubleshooting, DevOps, Error Handling
 
-Description: Learn how to diagnose and resolve git "cannot lock ref" errors caused by stale lock files, concurrent operations, and filesystem issues.
+Description: Learn how to diagnose and resolve git 'cannot lock ref' errors caused by stale lock files, concurrent operations, and filesystem issues.
 
 ---
 

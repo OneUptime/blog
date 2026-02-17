@@ -1,4 +1,4 @@
-# How to Fix "Anthos" Service Mesh Errors
+# How to Fix 'Anthos' Service Mesh Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

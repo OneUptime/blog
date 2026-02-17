@@ -1,4 +1,4 @@
-# How to Fix "InvalidOffsetException" in Kafka
+# How to Fix 'InvalidOffsetException' in Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

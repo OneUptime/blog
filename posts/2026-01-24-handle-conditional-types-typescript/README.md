@@ -73,7 +73,7 @@ type ReturnType<T> = T extends (...args: any[]) => infer R ? R : never;
 type ElementType<T> = T extends (infer E)[] ? E : never;
 
 // Extract promise resolution type
-type Awaited<T> = T extends Promise<infer U> ? U : T;
+type Awaited<T> = T extends Promise<infer R> ? R : T;
 
 // Examples
 type Fn = (x: number) => string;
@@ -320,16 +320,16 @@ Handle deeply nested structures:
 
 ```typescript
 // Flatten nested arrays to any depth
-type Flatten<T> = T extends Array<infer U>
-  ? Flatten<U>
+type Flatten<T> = T extends Array<infer R>
+  ? Flatten<R>
   : T;
 
 type Nested = number[][][];
 type Flat = Flatten<Nested>;  // number
 
 // Unwrap all promise layers
-type DeepAwaited<T> = T extends Promise<infer U>
-  ? DeepAwaited<U>
+type DeepAwaited<T> = T extends Promise<infer R>
+  ? DeepAwaited<R>
   : T;
 
 type NestedPromise = Promise<Promise<Promise<string>>>;

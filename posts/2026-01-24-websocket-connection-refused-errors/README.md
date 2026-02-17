@@ -1,4 +1,4 @@
-# How to Fix "Connection Refused" WebSocket Errors
+# How to Fix 'Connection Refused' WebSocket Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

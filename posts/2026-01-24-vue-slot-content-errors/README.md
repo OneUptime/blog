@@ -1,4 +1,4 @@
-# How to Fix "Slot Content" Errors in Vue
+# How to Fix 'Slot Content' Errors in Vue
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

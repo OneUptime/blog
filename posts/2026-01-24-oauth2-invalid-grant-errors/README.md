@@ -1,4 +1,4 @@
-# How to Fix "Invalid Grant" OAuth2 Errors
+# How to Fix 'Invalid Grant' OAuth2 Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

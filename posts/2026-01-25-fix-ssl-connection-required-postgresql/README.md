@@ -1,10 +1,10 @@
-# How to Fix "SSL connection is required" Errors in PostgreSQL
+# How to Fix 'SSL connection is required' Errors in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, SSL, TLS, Security, Connection, Troubleshooting
 
-Description: Learn how to resolve "SSL connection is required" errors in PostgreSQL. This guide covers SSL configuration, certificate setup, and connection string parameters for secure database connections.
+Description: Learn how to resolve 'SSL connection is required' errors in PostgreSQL. This guide covers SSL configuration, certificate setup, and connection string parameters for secure database connections.
 
 ---
 

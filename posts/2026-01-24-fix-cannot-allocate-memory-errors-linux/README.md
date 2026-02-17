@@ -1,4 +1,4 @@
-# How to Fix "Cannot Allocate Memory" Errors in Linux
+# How to Fix 'Cannot Allocate Memory' Errors in Linux
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

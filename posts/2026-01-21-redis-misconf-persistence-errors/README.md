@@ -1,4 +1,4 @@
-# How to Fix Redis "MISCONF" Persistence Errors
+# How to Fix Redis 'MISCONF' Persistence Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

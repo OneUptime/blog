@@ -1,4 +1,4 @@
-# How to Fix "IndexError: list index out of range" in Python
+# How to Fix 'IndexError: list index out of range' in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

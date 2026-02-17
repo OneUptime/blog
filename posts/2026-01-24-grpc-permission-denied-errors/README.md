@@ -1,10 +1,10 @@
-# How to Fix "Permission Denied" Errors in gRPC
+# How to Fix 'Permission Denied' Errors in gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, Permission Denied, Authentication, Authorization, TLS, Security, Debugging
 
-Description: A practical guide to diagnosing and fixing "Permission Denied" errors in gRPC services, covering authentication, authorization, TLS configuration, and common misconfigurations.
+Description: A practical guide to diagnosing and fixing 'Permission Denied' errors in gRPC services, covering authentication, authorization, TLS configuration, and common misconfigurations.
 
 ---
 

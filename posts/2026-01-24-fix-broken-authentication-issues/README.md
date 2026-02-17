@@ -1,4 +1,4 @@
-# How to Fix "Broken Authentication" Issues
+# How to Fix 'Broken Authentication' Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

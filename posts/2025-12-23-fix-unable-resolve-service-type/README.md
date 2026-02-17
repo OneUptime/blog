@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: .NET, C#, ASP.NET Core, Dependency Injection, Debugging, Services
 
-Description: Learn how to diagnose and fix the "Unable to resolve service for type" error in ASP.NET Core. Understand dependency injection registration, common causes, and debugging techniques.
+Description: Learn how to diagnose and fix the 'Unable to resolve service for type' error in ASP.NET Core. Understand dependency injection registration, common causes, and debugging techniques.
 
 ---
 

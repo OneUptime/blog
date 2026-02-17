@@ -1,10 +1,10 @@
-# How to Handle "Request method not supported" Errors
+# How to Handle 'Request method not supported' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, REST API, HTTP Methods, Error Handling, Spring MVC
 
-Description: Learn how to diagnose and fix "Request method X not supported" errors in Spring Boot. This guide covers identifying mismatched HTTP methods, proper request mapping, and implementing helpful error responses.
+Description: Learn how to diagnose and fix 'Request method X not supported' errors in Spring Boot. This guide covers identifying mismatched HTTP methods, proper request mapping, and implementing helpful error responses.
 
 ---
 

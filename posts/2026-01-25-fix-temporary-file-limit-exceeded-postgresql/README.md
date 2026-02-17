@@ -1,10 +1,10 @@
-# How to Fix "temporary file limit exceeded" Errors in PostgreSQL
+# How to Fix 'temporary file limit exceeded' Errors in PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Troubleshooting, Temporary Files, Memory, Performance
 
-Description: Learn how to diagnose and fix "temporary file limit exceeded" errors in PostgreSQL. This guide covers query optimization, memory tuning, and temp file management strategies.
+Description: Learn how to diagnose and fix 'temporary file limit exceeded' errors in PostgreSQL. This guide covers query optimization, memory tuning, and temp file management strategies.
 
 ---
 

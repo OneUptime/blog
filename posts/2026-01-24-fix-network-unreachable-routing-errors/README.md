@@ -1,10 +1,10 @@
-# How to Fix "Network Unreachable" Routing Errors
+# How to Fix 'Network Unreachable' Routing Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Networking, Troubleshooting, Routing, System Administration, Network Configuration
 
-Description: Learn how to diagnose and fix "Network is unreachable" errors in Linux, including routing table issues, gateway configuration, interface problems, and DNS resolution.
+Description: Learn how to diagnose and fix 'Network is unreachable' errors in Linux, including routing table issues, gateway configuration, interface problems, and DNS resolution.
 
 ---
 

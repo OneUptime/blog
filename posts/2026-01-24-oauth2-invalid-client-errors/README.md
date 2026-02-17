@@ -1,4 +1,4 @@
-# How to Fix "Invalid Client" OAuth2 Errors
+# How to Fix 'Invalid Client' OAuth2 Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

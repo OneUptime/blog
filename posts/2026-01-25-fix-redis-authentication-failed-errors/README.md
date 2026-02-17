@@ -1,4 +1,4 @@
-# How to Fix "Redis authentication failed" Errors
+# How to Fix 'Redis authentication failed' Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

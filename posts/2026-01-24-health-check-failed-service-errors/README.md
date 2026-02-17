@@ -1,4 +1,4 @@
-# How to Fix "Health Check Failed" Service Errors
+# How to Fix 'Health Check Failed' Service Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix "Consumer Cancelled" Errors in RabbitMQ
+# How to Fix 'Consumer Cancelled' Errors in RabbitMQ
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
