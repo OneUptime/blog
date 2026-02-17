@@ -1,4 +1,4 @@
-# AI Agents Are Changing Incident Response — Here's How
+# AI Agents Are Changing Incident Response - Here's How
 
 Author: [mallersjamie](https://www.github.com/mallersjamie)
 

@@ -22,6 +22,7 @@
  * 16. AUTO-FIX: Fixes header spacing (ensures blank lines between metadata lines)
  * 17. Checks for HTML-conflicting generic type parameters (<S>, <B>, <I>, <U>) in code blocks
  * 18. AUTO-FIX: Replaces double quotes with single quotes in titles and descriptions
+ * 19. AUTO-FIX: Replaces em dashes (—) with regular dashes (-) in titles and descriptions
  *
  * Run with: npm run validate
  */
@@ -1055,6 +1056,73 @@ function fixDoubleQuotes(postsDir: string[], blogsJson: BlogEntry[]): void {
 }
 
 /**
+ * AUTO-FIX: Replace em dashes (—) with regular dashes (-) in title and description lines.
+ */
+function fixEmDashes(postsDir: string[], blogsJson: BlogEntry[]): void {
+  logHeader('Checking for em dashes in titles and descriptions');
+
+  const blogMap = new Map<string, BlogEntry>();
+  for (const blog of blogsJson) {
+    blogMap.set(blog.post, blog);
+  }
+
+  let fixedReadmeCount = 0;
+  let fixedJsonCount = 0;
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) {
+      continue;
+    }
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+    let changed = false;
+
+    // Fix title (first line starting with # )
+    if (lines[0] && lines[0].startsWith('# ') && lines[0].includes('\u2014')) {
+      lines[0] = lines[0].replace(/\u2014/g, '-');
+      changed = true;
+    }
+
+    // Fix description line
+    for (let i = 0; i < Math.min(lines.length, 15); i++) {
+      if (lines[i]?.startsWith('Description:') && lines[i]!.includes('\u2014')) {
+        lines[i] = lines[i]!.replace(/\u2014/g, '-');
+        changed = true;
+        break;
+      }
+    }
+
+    if (changed) {
+      fs.writeFileSync(readmePath, lines.join('\n'), 'utf8');
+      fixedReadmeCount++;
+
+      // Also update the corresponding Blogs.json entry
+      const blogEntry = blogMap.get(dir);
+      if (blogEntry) {
+        const fixedTitle = lines[0]?.startsWith('# ') ? lines[0].substring(2).trim() : blogEntry.title;
+        const descLine = lines.find((l) => l.startsWith('Description:'));
+        const fixedDesc = descLine ? descLine.substring(12).trim() : blogEntry.description;
+
+        if (blogEntry.title !== fixedTitle || blogEntry.description !== fixedDesc) {
+          blogEntry.title = fixedTitle;
+          blogEntry.description = fixedDesc;
+          fixedJsonCount++;
+        }
+      }
+    }
+  }
+
+  if (fixedReadmeCount > 0) {
+    fs.writeFileSync(BLOGS_JSON, JSON.stringify(blogsJson, null, 2) + '\n', 'utf8');
+    logSuccess(`Fixed em dashes in ${fixedReadmeCount} README.md file${fixedReadmeCount === 1 ? '' : 's'} and ${fixedJsonCount} Blogs.json entr${fixedJsonCount === 1 ? 'y' : 'ies'}`);
+  } else {
+    logSuccess('No em dashes found in titles or descriptions');
+  }
+}
+
+/**
  * Check for HTML-conflicting generic type parameters in blog posts.
  * Single-letter uppercase generics like <S>, <B>, <I>, <U> get misinterpreted
  * as HTML tags (<s> strikethrough, <b> bold, <i> italic, <u> underline) by
@@ -1301,6 +1369,9 @@ function main(): void {
 
   // Auto-fix double quotes in titles and descriptions
   fixDoubleQuotes(postsDir, blogsJson);
+
+  // Auto-fix em dashes in titles and descriptions
+  fixEmDashes(postsDir, blogsJson);
 
   // Check for HTML-conflicting generic type parameters
   checkHtmlConflictingGenerics(postsDir);
