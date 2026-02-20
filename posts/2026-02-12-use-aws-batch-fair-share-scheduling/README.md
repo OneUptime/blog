@@ -10,7 +10,7 @@ Description: Learn how to configure AWS Batch fair-share scheduling policies to 
 
 When multiple teams or projects share an AWS Batch compute environment, whoever submits jobs first gets all the resources. That is fine when usage is light, but when the queue fills up, one team can easily monopolize the entire cluster while others wait. Fair-share scheduling fixes this by distributing compute resources based on policies you define.
 
-With fair-share scheduling, you can guarantee that Team A gets at least 40% of resources, Team B gets 30%, and Team C gets 30%, regardless of who submits jobs first. If one team is not using their share, others can use the surplus.
+With fair-share scheduling, you can control how resources are distributed. By assigning lower weight factors to higher-priority teams, you ensure they get a larger share of compute. For example, you can configure it so Team A gets roughly 40% of resources, Team B gets 30%, and Team C gets 30%, regardless of who submits jobs first. If one team is not using their share, others can use the surplus.
 
 ## How Fair-Share Scheduling Works
 
@@ -43,15 +43,15 @@ aws batch create-scheduling-policy \
     "shareDistribution": [
       {
         "shareIdentifier": "team-ml",
-        "weightFactor": 0.4
+        "weightFactor": 0.75
       },
       {
         "shareIdentifier": "team-analytics",
-        "weightFactor": 0.3
+        "weightFactor": 1.0
       },
       {
         "shareIdentifier": "team-research",
-        "weightFactor": 0.3
+        "weightFactor": 1.0
       }
     ]
   }'
@@ -63,7 +63,7 @@ Let me break down each parameter:
 
 - **computeReservation: 10** - Reserves 10% of compute capacity for share identifiers that have not recently used any resources. This ensures that even if the cluster is fully loaded by one team, a new team can get capacity quickly without waiting for the full decay cycle.
 
-- **shareDistribution** - Defines the share identifiers and their weight. A weight of 0.4 means that identifier should get 40% of resources when all groups are active.
+- **shareDistribution** - Defines the share identifiers and their weight factors. The weight factor works inversely: a **lower** value gives **more** resources to that share identifier. For example, a weight of 0.125 (1/8) gives eight times the compute resources compared to a weight of 1. The relative share each identifier receives is proportional to 1/weightFactor.
 
 ## Step 2: Create a Job Queue with the Scheduling Policy
 
@@ -149,26 +149,27 @@ aws batch create-scheduling-policy \
     "shareDistribution": [
       {
         "shareIdentifier": "production",
-        "weightFactor": 0.5
+        "weightFactor": 0.6
       },
       {
         "shareIdentifier": "development",
-        "weightFactor": 0.3
+        "weightFactor": 1.0
       },
       {
         "shareIdentifier": "experimentation",
-        "weightFactor": 0.2
+        "weightFactor": 1.5
       }
     ]
   }'
 ```
 
-In this setup:
-- **Production** (50%) - Scheduled training runs, model retraining pipelines, inference batch jobs
-- **Development** (30%) - Developers testing new models, debugging training code
-- **Experimentation** (20%) - Hyperparameter sweeps, architecture exploration, research
+In this setup, the weight factor works inversely — a lower value means more resources. The relative share each identifier gets is proportional to 1/weightFactor, so: 1/0.6 : 1/1.0 : 1/1.5 = ~50% : ~30% : ~20%.
 
-When production is not running (like overnight), development and experimentation can use all the resources. When production ramps up, it gets priority up to its 50% share.
+- **Production** (weightFactor 0.6, ~50% share) - Scheduled training runs, model retraining pipelines, inference batch jobs. Gets the most resources because it has the lowest weight.
+- **Development** (weightFactor 1.0, ~30% share) - Developers testing new models, debugging training code
+- **Experimentation** (weightFactor 1.5, ~20% share) - Hyperparameter sweeps, architecture exploration, research. Gets the least resources because it has the highest weight.
+
+When production is not running (like overnight), development and experimentation can use all the resources. When production ramps up, it gets priority up to its ~50% share.
 
 ## Programmatic Job Submission with Team Routing
 
