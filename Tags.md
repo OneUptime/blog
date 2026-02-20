@@ -32,6 +32,7 @@
 - 5G
 - 5G NR
 - 7 Days to Die
+- 802.1Q
 - 802.1X
 - A/B Deployments
 - A/B Routing
@@ -564,6 +565,7 @@
 - ARM64
 - ARO
 - ARP
+- arping
 - ARRAY
 - Array Attributes
 - Array Jobs
@@ -597,6 +599,7 @@
 - Assured Workloads
 - Astro
 - Asymmetric Keys
+- Asymmetric Routing
 - Async
 - Async Await
 - Async Communication
@@ -701,6 +704,7 @@
 - Auto-Stop
 - Auto-Unseal
 - Auto-Upgrade
+- autoAssign
 - Autoclass
 - Autocomplete
 - Autohealing
@@ -1094,6 +1098,8 @@
 - BFD
 - BFF
 - BGP
+- BGPAdvertisement
+- BGPPeer
 - BI
 - BI Engine
 - Bi-Encoder
@@ -1270,6 +1276,7 @@
 - Buffering
 - Buffering Metrics
 - Buffers
+- Bug Reports
 - Bug Tracking
 - Bugsnag
 - Build
@@ -1353,6 +1360,7 @@
 - C4 Model
 - Cache
 - Cache Analytics
+- Cache Aside
 - Cache Control
 - Cache Hit Rate
 - Cache Invalidation
@@ -1449,6 +1457,7 @@
 - Centralization
 - Centralized
 - Centralized Logging
+- Centralized Logs
 - Ceph
 - CephFS
 - Cerner
@@ -1807,6 +1816,7 @@
 - cluster-networking
 - Cluster-Scoped Resources
 - Clustering
+- ClusterIP
 - ClusterMesh
 - ClusterRoleBinding
 - Clusters
@@ -3095,6 +3105,7 @@
 - Display
 - Display Server
 - Disposal
+- Disruption Budget
 - Distance Metrics
 - Distributed
 - Distributed Apps
@@ -3262,6 +3273,7 @@
 - Domain Logic
 - Domain Management
 - Domain Modeling
+- Domain Names
 - Domain Ownership
 - Domain Restriction
 - Domain Security
@@ -3314,6 +3326,7 @@
 - DTOs
 - DTU
 - du
+- Dual Advertisement
 - Dual Stack
 - Dual-Region
 - Dual-Stack
@@ -3357,6 +3370,7 @@
 - Dynamic Pipelines
 - Dynamic Policies
 - Dynamic Pricing
+- Dynamic Provisioning
 - Dynamic Routes
 - Dynamic Routing
 - Dynamic Rules
@@ -3383,6 +3397,7 @@
 - ECDSA
 - Echo
 - ECK
+- ECMP
 - Ecommerce
 - Economy V2
 - ECR
@@ -3759,6 +3774,7 @@
 - Extension
 - Extension Functions
 - Extensions
+- External
 - External Cluster
 - External Configuration
 - External Data
@@ -3826,6 +3842,7 @@
 - Fargate
 - Fargate Spot
 - Faro
+- Fast Failover
 - fast-check
 - FastAPI
 - FastAPIInstrumentor
@@ -4005,6 +4022,7 @@
 - Flexible Environment
 - Flexible Server
 - Flight Search
+- Flink
 - Flipper
 - Floating IP
 - Flow
@@ -4068,6 +4086,7 @@
 - Fraud Detection
 - Fraud Detector
 - Fraud Prevention
+- Free Range Routing
 - Free Tier
 - Free Tools
 - Free Trial
@@ -4092,6 +4111,8 @@
 - Frontend Performance
 - Frontend Testing
 - FRR
+- FRR-K8s
+- FRRConfiguration
 - fsck
 - FSLogix
 - fstab
@@ -4376,6 +4397,7 @@
 - GraalVM
 - Grace Periods
 - Graceful Degradation
+- Graceful Restart
 - Graceful Shutdown
 - Gradle
 - gradual-rollout
@@ -5031,6 +5053,7 @@
 - interface
 - Interfaces
 - Interleaved Tables
+- Intermittent
 - Internal Developer Platform
 - Internal DNS
 - Internal Error
@@ -5109,15 +5132,19 @@
 - IP Groups
 - IP Management
 - IP Monitoring
+- IP Planning
+- IP Pools
 - IP Ranges
 - IP Restriction
 - IP Restrictions
 - IP Sharing
 - IP Whitelisting
 - IP-Based Access
+- IPAddressPool
 - IPAM
 - ipc
 - iperf
+- IPFamilyPolicy
 - IPFIX
 - iproute2
 - IPS
@@ -5390,6 +5417,7 @@
 - L1 Cache
 - L2
 - L2 Cache
+- L2Advertisement
 - L3
 - L4
 - L7
@@ -5424,6 +5452,7 @@
 - Laravel
 - Laravel Echo
 - Laravel Scout
+- Large Clusters
 - Large Data
 - Large Data Transfer
 - Large Datasets
@@ -5542,6 +5571,7 @@
 - LIME
 - Limit Ranges
 - LimitRange
+- LimitRanges
 - Limits
 - Line Filters
 - line_profiler
@@ -5561,6 +5591,7 @@
 - Linux kernel
 - Linux Mint
 - Linux Monitoring
+- Linux Namespaces
 - linux networking
 - Linux Security
 - Linux tc
@@ -5613,6 +5644,7 @@
 - load-balancing
 - load-testing
 - LoadBalancer
+- LoadBalancerClass
 - LoadBalancing
 - Loader Hook
 - Loading States
@@ -5620,6 +5652,7 @@
 - Local AI
 - local chat
 - Local Development
+- Local Environment
 - Local Inference
 - Local Network
 - Local Preference
@@ -5769,7 +5802,9 @@
 - Lynis
 - M1
 - MAC
+- MAC Address
 - Mac Instances
+- MAC Spoofing
 - Machine Image
 - Machine Learning
 - Machine Types
@@ -5992,6 +6027,7 @@
 - Metering
 - MeterProvider
 - Method Calls
+- Methodology
 - Methods
 - Metric Absence
 - Metric Alerts
@@ -6065,6 +6101,7 @@
 - Minikube
 - Minimal API
 - Minimal APIs
+- Minimal Images
 - MinIO
 - minmax
 - mirror
@@ -6087,6 +6124,7 @@
 - Mixed Node Pools
 - Mixed OS
 - Mixed Reality
+- Mixed Workloads
 - Mixins
 - ML
 - ML Documentation
@@ -6227,6 +6265,7 @@
 - Multi-Container Applications
 - Multi-Container Pods
 - Multi-Context
+- Multi-Controller
 - Multi-Currency
 - Multi-Datacenter
 - Multi-Environment
@@ -6375,6 +6414,7 @@
 - Navigation Guards
 - NB-IoT
 - NCPDP SCRIPT
+- NDP
 - Nearby Search
 - Needs
 - Negative Caching
@@ -6509,9 +6549,11 @@
 - NLL
 - NLP
 - NLU
+- no-advertise
 - No-Code
 - Nocalhost
 - NocoDB
+- Node
 - Node Affinity
 - Node Authentication
 - Node Auto-Provisioning
@@ -6521,6 +6563,7 @@
 - Node Drain
 - Node Draining
 - Node Efficiency
+- Node Exclusion
 - Node Exporter
 - Node Failures
 - Node Feature Discovery
@@ -6538,6 +6581,7 @@
 - Node Problem Detector
 - Node Recovery
 - Node Runtime
+- Node Scaling
 - Node Scheduling
 - Node Selection
 - Node Selector
@@ -6676,6 +6720,7 @@
 - Offset Tracking
 - Offset-Based Consumption
 - OffsetOutOfRangeException
+- Offsets
 - OHLCV
 - OID
 - OIDC
@@ -6866,6 +6911,7 @@
 - Overlap
 - Overlay
 - Overlay Network
+- Overlay Networks
 - Overlay2
 - Overlays
 - Overprivileged
@@ -6997,6 +7043,7 @@
 - Path Filters
 - Path Traversal
 - Path Triggers
+- Path-Based
 - Path-Based Routing
 - pathlib
 - Patient Engagement
@@ -7028,6 +7075,8 @@
 - Peak Load
 - Peek Messages
 - peer-to-peer
+- Peers
+- Pending
 - Penetration Testing
 - Per-Attempt Metrics
 - Per-Message Tracing
@@ -7176,6 +7225,7 @@
 - PKCE
 - PKI
 - PL/pgSQL
+- Placement
 - Placement Groups
 - Plagiarism Detection
 - PLAIN
@@ -7497,6 +7547,7 @@
 - Progressive Delivery
 - Progressive Rollout
 - Progressive Web App
+- Project Loom
 - Project Management
 - Project Reactor
 - Project References
@@ -7722,6 +7773,7 @@
 - Race Conditions
 - Race Detection
 - Rack
+- Rack and Spine
 - Rack Awareness
 - Radarr
 - Radiology
@@ -7945,6 +7997,7 @@
 - Release Automation
 - Release Channels
 - Release Gating
+- Release History
 - Release Jobs
 - Release Management
 - Release Pipelines
@@ -8238,15 +8291,19 @@
 - Roundcube
 - Route 53
 - Route Advertisements
+- Route Aggregation
 - Route API
 - Route Filters
 - Route Handlers
 - Route Optimization
+- Route Reception
 - Route Tables
+- Route Verification
 - Route53
 - Router
 - Router Advertisement
 - Router Operator
+- Routers
 - Routes
 - Routing
 - Routing Connector
@@ -8258,6 +8315,7 @@
 - Row Keys
 - ROW_NUMBER
 - Row-Level Security
+- rp_filter
 - RPC
 - RPO
 - RPOP
@@ -8362,6 +8420,7 @@
 - Scale Set
 - Scale Sets
 - Scale to Zero
+- Scalers
 - Scaling
 - Scaling Plan
 - Scaling Policies
@@ -8636,6 +8695,7 @@
 - Service Account Impersonation
 - Service Account Keys
 - Service Accounts
+- Service Authentication
 - Service Binding
 - Service Bus
 - Service Catalog
@@ -8678,6 +8738,7 @@
 - Service Quotas
 - Service Readiness
 - Service Registry
+- Service Selectors
 - Service Topology
 - Service Unavailable
 - Service Virtualization
@@ -8824,6 +8885,7 @@
 - Sinatra
 - Single Active Consumer
 - Single Flight
+- Single Node
 - Single Page Application
 - Single Sign-On
 - Single Stat
@@ -8955,10 +9017,12 @@
 - Sort Keys
 - Sorted Sets
 - Sorting
+- Source Address
 - Source Connector
 - Source Connectors
 - Source Control
 - Source Field
+- Source IP
 - Source Location
 - Source Maps
 - SOX Compliance
@@ -9181,6 +9245,7 @@
 - State Synchronization
 - State TTL
 - State-Management
+- Stateful
 - Stateful Actions
 - Stateful Applications
 - Stateful Apps
@@ -9810,6 +9875,7 @@
 - top
 - Top Hits
 - Top-K
+- Top-of-Rack
 - Topic Compaction
 - Topic Configuration
 - Topic Exchange
@@ -9985,6 +10051,7 @@
 - Turn-Based
 - Tutorial
 - Twelve-Factor
+- Twelve-Factor App
 - Twig
 - Twin Graph
 - twine
@@ -10318,6 +10385,7 @@
 - Virtual Repository
 - Virtual Rooms
 - Virtual Scrolling
+- Virtual Threads
 - Virtual WAN
 - VirtualBox
 - Virtualization
@@ -10406,12 +10474,14 @@
 - VPN Gateway
 - VPN Troubleshoot
 - VPN Tunnel
+- VRF
 - VRRP
 - VS Code
 - vSAN
 - VSCode
 - vSphere
 - VTL
+- vtysh
 - Vue
 - Vue 3
 - Vue Router
@@ -10548,6 +10618,7 @@
 - whisper
 - White-Label
 - Widevine
+- WiFi
 - Wiki
 - Wiki.js
 - wikijs
@@ -10642,6 +10713,7 @@
 - Write Limits
 - Write Optimization
 - Write Sharding
+- Write Through
 - Write Throughput
 - Write-Ahead Log
 - Write-Back
