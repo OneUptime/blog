@@ -1,10 +1,10 @@
-# How to Use Tailscale SSH
+# Tailscale SSH: Set Up Secure Remote Access Without Managing Keys
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Tailscale, SSH, Security, Networking, Zero Trust, DevOps
 
-Description: A comprehensive guide to replacing traditional SSH key management with Tailscale SSH for secure, identity-based access to your servers with built-in session recording and granular ACL controls.
+Description: Replace SSH key management with Tailscale SSH. Step-by-step setup for secure, zero-config remote access to your machines over a WireGuard mesh network.
 
 ---
 

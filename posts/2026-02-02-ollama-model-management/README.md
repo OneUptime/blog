@@ -1,10 +1,10 @@
-# How to Pull and Manage Models in Ollama
+# Ollama Models: How to Pull, List, Update, and Manage Local LLMs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ollama, LLM, AI, Model Management, Local AI
 
-Description: A practical guide to pulling, listing, updating, and managing local language models in Ollama. Learn commands and best practices for organizing your model library efficiently.
+Description: Complete guide to managing Ollama models. Pull new models, list installed ones, update to latest versions, customize with Modelfiles, and clean up disk space.
 
 ---
 
