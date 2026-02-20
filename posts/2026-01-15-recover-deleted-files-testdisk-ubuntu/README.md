@@ -1,10 +1,10 @@
-# How to Recover Deleted Files with TestDisk on Ubuntu
+# Recover Deleted Files on Ubuntu with TestDisk and PhotoRec
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ubuntu, TestDisk, PhotoRec, File Recovery, Data Recovery, Tutorial
 
-Description: Complete guide to recovering deleted files and lost partitions using TestDisk on Ubuntu.
+Description: Step-by-step guide to recovering deleted files and lost partitions on Ubuntu using TestDisk. Includes PhotoRec for file carving and ext4 recovery tips.
 
 ---
 

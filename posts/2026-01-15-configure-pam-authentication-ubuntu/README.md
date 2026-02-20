@@ -1,10 +1,10 @@
-# How to Configure PAM Authentication on Ubuntu
+# PAM Authentication on Ubuntu: Configuration Guide with Examples
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ubuntu, PAM, Authentication, Security, Linux, Tutorial
 
-Description: Complete guide to configuring Pluggable Authentication Modules (PAM) on Ubuntu for flexible authentication policies.
+Description: Configure Pluggable Authentication Modules (PAM) on Ubuntu. Covers password policies, two-factor auth, SSH hardening, and custom PAM module stacking.
 
 ---
 

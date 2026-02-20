@@ -292,7 +292,7 @@ Key metrics include `gatekeeper_sync_duration_seconds` and `gatekeeper_sync_last
 
 ## Handling Large Datasets
 
-Optimize performance when syncing many resources:
+Optimize performance when syncing many resources by excluding namespaces:
 
 ```yaml
 apiVersion: config.gatekeeper.sh/v1alpha1
@@ -308,18 +308,11 @@ spec:
         kind: "ConfigMap"
         # Use label selector to limit synced resources
   match:
-    - apiGroups: [""]
-      apiVersions: ["v1"]
-      kinds: ["ConfigMap"]
-      namespaceSelector:
-        matchLabels:
-          policy-sync: "enabled"
-```
-
-Label resources that need syncing:
-
-```bash
-kubectl label configmap important-config policy-sync=enabled
+    - excludedNamespaces:
+      # list of namespaces to exclude
+      - default
+      # list of processes: https://github.com/open-policy-agent/gatekeeper/blob/master/pkg/controller/config/process/excluder.go#L17-L21
+      processes: ["*"]
 ```
 
 This reduces memory usage by only syncing tagged resources.

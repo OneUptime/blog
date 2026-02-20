@@ -1,10 +1,10 @@
-# How to Configure Git Credential Storage
+# Git Credential Storage: Cache, Store, and Manage Passwords Securely
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Git, Security, Authentication, DevOps, Git Configuration, Credentials
 
-Description: Learn how to configure Git credential storage using credential helpers, secure keychains, and best practices for managing authentication.
+Description: Configure Git credential helpers to securely store passwords and tokens. Covers credential cache, OS keychain integration, and per-repo credential management.
 
 ---
 
