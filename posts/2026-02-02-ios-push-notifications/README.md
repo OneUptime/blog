@@ -1,10 +1,10 @@
-# How to Implement Push Notifications in iOS
+# iOS Push Notifications in Swift: APNs Setup, Payloads, and Categories
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Swift, iOS, Push Notifications, APNs, Mobile Development, Apple, Xcode
 
-Description: A comprehensive guide to implementing push notifications in iOS using Swift and Apple Push Notification service (APNs), covering setup, configuration, handling, and best practices.
+Description: Implement push notifications in iOS with Swift. Covers APNs configuration, notification categories, custom actions, rich media, and background handling.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Fix Broken Packages on Ubuntu
+# Fix Broken Packages on Ubuntu: dpkg, apt, and Dependency Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ubuntu, APT, Package Management, Troubleshooting, System Administration, Tutorial
 
-Description: Comprehensive guide to diagnosing and fixing broken, held, and conflicting packages on Ubuntu using APT.
+Description: Resolve broken, held, and conflicting packages on Ubuntu. Fix dpkg errors, apt dependency problems, and recover from interrupted installations.
 
 ---
 

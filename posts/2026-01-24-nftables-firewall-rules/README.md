@@ -1,10 +1,10 @@
-# How to Configure nftables Firewall Rules
+# nftables Guide: Configure Linux Firewall Rules (With Examples)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: nftables, Firewall, Linux Security, Network Security, iptables, Packet Filtering, System Administration
 
-Description: Learn how to configure nftables firewall rules for modern Linux systems, including migration from iptables, rule syntax, and practical security configurations.
+Description: Learn nftables from scratch. Create, list, and manage firewall rules on modern Linux systems with practical examples for filtering, NAT, and port forwarding.
 
 ---
 

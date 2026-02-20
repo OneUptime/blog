@@ -1,10 +1,10 @@
-# How to Build an MCP Server in Node.js: A Complete Guide with Best Practices
+# Build an MCP Server in Node.js: Model Context Protocol Tutorial
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MCP, Model Context Protocol, NodeJS, TypeScript, AI, Open Source, Tutorial
 
-Description: Learn how to build a production-ready Model Context Protocol (MCP) server in Node.js from scratch. This comprehensive guide covers everything from basic setup to advanced patterns, with extensive code examples and best practices for building robust AI tool integrations.
+Description: Build a production-ready Model Context Protocol (MCP) server in Node.js. Covers tool registration, resource handling, streaming, authentication, and deployment.
 
 The Model Context Protocol (MCP) is revolutionizing how AI assistants interact with external systems. Instead of relying solely on their training data, AI models can now securely connect to databases, APIs, and services through MCP servers. In this guide, we'll build a complete MCP server in Node.js from scratch, covering everything you need to know to create production-ready integrations.
 
