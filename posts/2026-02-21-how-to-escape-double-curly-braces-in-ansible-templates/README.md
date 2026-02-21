@@ -1,0 +1,269 @@
+# How to Escape Double Curly Braces in Ansible Templates
+
+Author: [nawazdhandala](https://www.github.com/nawazdhandala)
+
+Tags: Ansible, Jinja2, Templates, Escaping, Configuration Management
+
+Description: Learn multiple techniques to escape double curly braces in Ansible templates when generating configs for tools that also use curly brace syntax.
+
+---
+
+If you have ever tried to use Ansible templates to generate configuration files for applications that also use double curly braces (like Prometheus, Go templates, Terraform, Consul Template, or Grafana), you know the pain. Jinja2 tries to interpret every `{{ }}` it finds, causing errors when those braces are meant for the target application, not for Ansible.
+
+There are several techniques to handle this, and choosing the right one depends on the situation. Let me walk through each approach with real examples.
+
+## The Problem
+
+Consider generating a Prometheus alerting rule file. Prometheus uses Go templates, which also use `{{ }}`:
+
+```yaml
+# This will FAIL - Ansible tries to interpret the Go template variables
+- name: This breaks
+  ansible.builtin.template:
+    src: alert_rules.yml.j2
+    dest: /etc/prometheus/rules/alerts.yml
+```
+
+If the template contains:
+
+```
+alert: HighMemoryUsage
+expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.1
+annotations:
+  summary: "High memory usage on {{ $labels.instance }}"
+```
+
+Ansible will fail with an "undefined variable" error because it tries to resolve `$labels.instance` as a Jinja2 variable.
+
+## Solution 1: The raw Block
+
+The `{% raw %}` block tells Jinja2 to pass everything through without processing:
+
+```jinja2
+{# templates/alert_rules.yml.j2 - Use raw blocks for Go template syntax #}
+groups:
+  - name: node_alerts
+    rules:
+      - alert: HighMemoryUsage
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+{% raw %}
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 90% on {{ $labels.instance }} (current value: {{ $value }})"
+{% endraw %}
+```
+
+Everything between `{% raw %}` and `{% endraw %}` passes through exactly as written.
+
+## Solution 2: Literal Curly Braces with Jinja2 Expression
+
+You can output literal curly braces using Jinja2 string expressions:
+
+```jinja2
+{# Output literal curly braces using string concatenation #}
+{{ '{{' }} $labels.instance {{ '}}' }}
+```
+
+This tells Jinja2: "output the string `{{`, then the text, then the string `}}`". It is verbose but works well for isolated occurrences.
+
+## Solution 3: Using Variables for Braces
+
+Define variables that hold the brace characters:
+
+```yaml
+# Define brace variables for use in templates
+- name: Deploy Prometheus config
+  ansible.builtin.template:
+    src: alert_rules.yml.j2
+    dest: /etc/prometheus/rules/alerts.yml
+  vars:
+    left_brace: "{{"
+    right_brace: "}}"
+```
+
+Then in the template:
+
+```jinja2
+{# templates/alert_rules.yml.j2 - Using brace variables #}
+annotations:
+  summary: "High memory on {{ left_brace }} $labels.instance {{ right_brace }}"
+```
+
+## Practical Example: Prometheus Configuration
+
+Let me show a complete Prometheus alerting rules file that mixes Ansible variables with Go template syntax:
+
+```jinja2
+{# templates/prometheus_alerts.yml.j2 - Mix of Ansible and Go template variables #}
+# Prometheus Alert Rules - Managed by Ansible
+# Generated for: {{ inventory_hostname }}
+# Environment: {{ environment }}
+
+groups:
+  - name: {{ alert_group_name | default('infrastructure') }}
+    rules:
+{% for alert in prometheus_alerts %}
+      - alert: {{ alert.name }}
+        expr: {{ alert.expr }}
+        for: {{ alert.duration | default('5m') }}
+        labels:
+          severity: {{ alert.severity | default('warning') }}
+          environment: {{ environment }}
+        annotations:
+{% raw %}
+          summary: "{{ $labels.alertname }} on {{ $labels.instance }}"
+          description: "{{ $labels.alertname }} is firing on {{ $labels.instance }}. Current value: {{ $value }}"
+{% endraw %}
+{% endfor %}
+```
+
+The Ansible variables (`inventory_hostname`, `environment`, `alert.name`) are resolved normally. The Go template variables (`$labels.instance`, `$value`) pass through untouched.
+
+## Consul Template Configuration
+
+Consul Template uses the same double-brace syntax:
+
+```jinja2
+{# templates/consul_template.hcl.j2 - Consul Template config with escaped braces #}
+# Consul Template Configuration - Managed by Ansible
+# Deployed to: {{ inventory_hostname }}
+
+consul {
+  address = "{{ consul_address }}:{{ consul_port }}"
+}
+
+template {
+  source      = "{{ consul_template_dir }}/nginx.ctmpl"
+  destination = "/etc/nginx/conf.d/upstream.conf"
+  command     = "nginx -s reload"
+}
+```
+
+And the Consul Template file itself:
+
+```jinja2
+{# templates/nginx.ctmpl.j2 - Consul Template that must preserve its own braces #}
+# Upstream Configuration
+# Generated by Consul Template on {{ inventory_hostname }}
+{% raw %}
+upstream backend {
+{{range service "web"}}
+    server {{.Address}}:{{.Port}};
+{{end}}
+}
+{% endraw %}
+```
+
+## Grafana Dashboard Templates
+
+Grafana uses `${variable}` for some things but also `{{ }}` in certain contexts:
+
+```jinja2
+{# templates/grafana_dashboard.json.j2 - Dashboard with mixed variable syntax #}
+{
+  "dashboard": {
+    "title": "{{ dashboard_title }}",
+    "uid": "{{ dashboard_uid }}",
+    "panels": [
+      {
+        "title": "CPU Usage",
+        "targets": [
+          {
+            "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\",instance=~\"$instance\"}[5m])) * 100)",
+{% raw %}
+            "legendFormat": "{{instance}}"
+{% endraw %}
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## Terraform Templates
+
+When Ansible generates Terraform files:
+
+```jinja2
+{# templates/main.tf.j2 - Terraform config with HCL interpolation #}
+# Terraform Configuration - Generated by Ansible
+# Region: {{ aws_region }}
+
+provider "aws" {
+  region = "{{ aws_region }}"
+}
+
+resource "aws_instance" "web" {
+  count         = {{ instance_count }}
+  ami           = "{{ ami_id }}"
+  instance_type = "{{ instance_type }}"
+
+  tags = {
+{% raw %}
+    Name = "web-${count.index + 1}"
+    Environment = var.environment
+{% endraw %}
+  }
+}
+```
+
+Note that Terraform uses `${}` for interpolation, which Jinja2 does not interpret, so raw blocks are only needed for the `{{ }}` cases, not `${}`.
+
+## Mixing raw with Ansible Variables
+
+You cannot use Ansible variables inside raw blocks. Structure your template to alternate between raw and normal sections:
+
+```jinja2
+{# templates/mixed.yml.j2 - Alternating between Ansible and raw sections #}
+# Managed by Ansible for {{ inventory_hostname }}
+groups:
+{% for rule in alert_rules %}
+  - alert: {{ rule.name }}
+    expr: {{ rule.expression }}
+    labels:
+      team: {{ rule.team }}
+{% raw %}
+    annotations:
+      summary: "{{ $labels.alertname }}: {{ $value }}"
+{% endraw %}
+{% endfor %}
+```
+
+Each loop iteration generates Ansible variables, but the annotations section with Go template syntax is protected by raw blocks.
+
+## The {{ '{{' }} Approach in Detail
+
+For single instances where raw blocks are overkill:
+
+```jinja2
+{# templates/single_escape.yml.j2 - Escape individual occurrences #}
+annotations:
+  summary: "Alert on {{ '{{' }} $labels.instance {{ '}}' }}"
+  runbook: "https://wiki.example.com/{{ alert_name }}"
+```
+
+This outputs:
+```yaml
+annotations:
+  summary: "Alert on {{ $labels.instance }}"
+  runbook: "https://wiki.example.com/high_memory"
+```
+
+The `{{ '{{' }}` technique is best when you have just one or two occurrences mixed in with lots of Ansible variables. For larger blocks, `{% raw %}` is much more readable.
+
+## When to Use Which Technique
+
+| Situation | Best Approach |
+|-----------|--------------|
+| Large blocks of non-Jinja2 curly braces | `{% raw %}` blocks |
+| Single occurrences mixed with Ansible vars | `{{ '{{' }}` expression |
+| Reusable templates with many escapes | Variable approach |
+| Entire files that should not be processed | Use `copy` module instead of `template` |
+
+## Summary
+
+Escaping double curly braces in Ansible templates comes up whenever you generate config files for tools that share the `{{ }}` syntax. The `{% raw %}` block is the cleanest solution for large sections of literal braces. The `{{ '{{' }}` expression works well for isolated instances. And if you need to preserve the curly braces throughout but do not need any Ansible variable substitution at all, consider using the `copy` module instead of `template` to skip Jinja2 processing entirely. Choosing the right technique depends on how much of your template needs Ansible processing versus literal pass-through.
