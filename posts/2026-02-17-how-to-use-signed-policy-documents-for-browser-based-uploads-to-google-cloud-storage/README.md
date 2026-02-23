@@ -65,11 +65,10 @@ Each condition restricts what the upload can do:
 Here is a complete backend implementation:
 
 ```python
-import base64
 import datetime
 import json
 
-from google.oauth2 import service_account
+from google.cloud import storage
 
 
 def generate_signed_policy(
@@ -92,29 +91,17 @@ def generate_signed_policy(
         service_account_file: Path to service account JSON key
     """
 
-    # Load the service account credentials (must have a private key for signing)
-    credentials = service_account.Credentials.from_service_account_file(
-        service_account_file
-    )
+    # Create a client from a service account key file
+    client = storage.Client.from_service_account_json(service_account_file)
 
-    # Calculate expiration and signing timestamps
-    now = datetime.datetime.utcnow()
-    expiration = now + datetime.timedelta(minutes=expiration_minutes)
-    date_stamp = now.strftime("%Y%m%d")
-    datetime_stamp = now.strftime("%Y%m%dT%H%M%SZ")
-
-    credential = (
-        f"{credentials.service_account_email}/{date_stamp}/auto/storage/goog4_request"
+    expiration = datetime.datetime.utcnow() + datetime.timedelta(
+        minutes=expiration_minutes
     )
 
     # Build the conditions list
     conditions = [
-        {"bucket": bucket_name},
         ["starts-with", "$key", key_prefix],
         ["content-length-range", 0, max_size_bytes],
-        {"x-goog-algorithm": "GOOG4-RSA-SHA256"},
-        {"x-goog-credential": credential},
-        {"x-goog-date": datetime_stamp},
     ]
 
     # Add content type restrictions if specified
@@ -124,36 +111,21 @@ def generate_signed_policy(
         # Use starts-with for multiple types sharing a prefix
         conditions.append(["starts-with", "$Content-Type", ""])
 
-    # Create the policy document and Base64-encode it
-    policy_document = {
-        "expiration": expiration.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "conditions": conditions,
-    }
-    encoded_policy = base64.b64encode(
-        json.dumps(policy_document).encode("utf-8")
-    ).decode("utf-8")
-
-    # Sign the encoded policy with the service account's private key
-    signature = credentials.signer.sign(encoded_policy.encode("utf-8"))
-    hex_signature = signature.hex()
-
-    # Build the form fields the browser needs to include in the POST
-    fields = {
-        "key": key_prefix + "${filename}",
-        "x-goog-algorithm": "GOOG4-RSA-SHA256",
-        "x-goog-credential": credential,
-        "x-goog-date": datetime_stamp,
-        "policy": encoded_policy,
-        "x-goog-signature": hex_signature,
-    }
-
+    fields = {}
     if allowed_content_types:
         fields["Content-Type"] = allowed_content_types[0]
 
-    return {
-        "url": f"https://storage.googleapis.com/{bucket_name}/",
-        "fields": fields,
-    }
+    # generate_signed_post_policy_v4 lives on the Client, not on Bucket
+    policy = client.generate_signed_post_policy_v4(
+        bucket_name=bucket_name,
+        blob_name=key_prefix + "${filename}",
+        expiration=expiration,
+        conditions=conditions,
+        fields=fields,
+        credentials=client._credentials,
+    )
+
+    return policy
 
 
 # Generate a policy for user image uploads
@@ -169,65 +141,38 @@ print("Upload URL:", policy["url"])
 print("Form fields:", json.dumps(policy["fields"], indent=2))
 ```
 
-## Minimal Helper Using the Same Approach
+## Using the Python Client Library Directly
 
-Here is a shorter helper that wraps the same manual signing logic:
+Here is a shorter helper that uses the same `client.generate_signed_post_policy_v4` method:
 
 ```python
-import base64
 import datetime
-import json
 
-from google.oauth2 import service_account
+from google.cloud import storage
 
 
 def create_upload_policy(bucket_name, blob_prefix, max_size_mb=10,
                          service_account_file="service-account-key.json"):
     """Create a signed POST policy for browser-based uploads."""
-    credentials = service_account.Credentials.from_service_account_file(
-        service_account_file
-    )
+    client = storage.Client.from_service_account_json(service_account_file)
 
-    now = datetime.datetime.utcnow()
-    expiration = now + datetime.timedelta(minutes=30)
-    date_stamp = now.strftime("%Y%m%d")
-    datetime_stamp = now.strftime("%Y%m%dT%H%M%SZ")
-    credential = (
-        f"{credentials.service_account_email}/{date_stamp}/auto/storage/goog4_request"
-    )
+    expiration = datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
 
     # Define conditions for the upload
     conditions = [
-        {"bucket": bucket_name},
         ["starts-with", "$key", blob_prefix],
         ["content-length-range", 0, max_size_mb * 1024 * 1024],
         ["starts-with", "$Content-Type", "image/"],
-        {"x-goog-algorithm": "GOOG4-RSA-SHA256"},
-        {"x-goog-credential": credential},
-        {"x-goog-date": datetime_stamp},
     ]
 
-    # Build and sign the policy document
-    policy_document = {
-        "expiration": expiration.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "conditions": conditions,
-    }
-    encoded_policy = base64.b64encode(
-        json.dumps(policy_document).encode("utf-8")
-    ).decode("utf-8")
-    signature = credentials.signer.sign(encoded_policy.encode("utf-8")).hex()
-
-    return {
-        "url": f"https://storage.googleapis.com/{bucket_name}/",
-        "fields": {
-            "key": f"{blob_prefix}${{filename}}",
-            "x-goog-algorithm": "GOOG4-RSA-SHA256",
-            "x-goog-credential": credential,
-            "x-goog-date": datetime_stamp,
-            "policy": encoded_policy,
-            "x-goog-signature": signature,
-        },
-    }
+    return client.generate_signed_post_policy_v4(
+        bucket_name=bucket_name,
+        blob_name=f"{blob_prefix}${{filename}}",
+        expiration=expiration,
+        conditions=conditions,
+        fields={"Content-Type": "image/jpeg"},
+        credentials=client._credentials,
+    )
 ```
 
 ## Node.js Backend Implementation
