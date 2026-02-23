@@ -316,4 +316,4 @@ terraform apply 2>&1 | tee terraform-debug.log
 
 The `timeouts` block is a straightforward but important feature. It lets you control how patient Terraform is when waiting for infrastructure operations to complete. Set longer timeouts for slow-provisioning resources like databases and Kubernetes clusters. Set shorter timeouts for resources that should provision quickly, so you fail fast when something goes wrong. And when wrapping resources in modules, expose timeout variables so your module users can tune behavior for their environment.
 
-For more on managing resource behavior in Terraform, check out our posts on [lifecycle rules](https://oneuptime.com/blog/post/2026-01-24-terraform-lifecycle-rules/view) and [provisioners](https://oneuptime.com/blog/post/terraform-provisioners/view).
+For more on managing resource behavior in Terraform, check out our posts on [lifecycle rules](https://oneuptime.com/blog/post/2026-01-24-terraform-lifecycle-rules/view) and [provisioners](https://oneuptime.com/blog/post/2026-01-24-terraform-provisioners/view).

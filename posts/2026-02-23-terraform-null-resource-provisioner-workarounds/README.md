@@ -315,4 +315,4 @@ Important: destruction-time provisioners in `null_resource` can only access `sel
 
 The `null_resource` is Terraform's Swiss Army knife for imperative operations. It runs provisioners outside the context of real infrastructure, controlled by triggers that determine when the commands re-execute. While it is a workaround rather than a first-class solution, it solves real problems: running database migrations, applying Kubernetes manifests, building Docker images, and integrating with tools that Terraform does not natively support.
 
-For the modern replacement, see our post on [terraform_data](https://oneuptime.com/blog/post/terraform-data-replacement-null-resource/view). For more on provisioners in general, check out [provisioners with resources](https://oneuptime.com/blog/post/terraform-provisioners-with-resources/view).
+For the modern replacement, see our post on [terraform_data](https://oneuptime.com/blog/post/2026-02-23-terraform-data-replacement-null-resource/view). For more on provisioners in general, check out [provisioners with resources](https://oneuptime.com/blog/post/2026-02-23-terraform-provisioners-with-resources/view).

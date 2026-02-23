@@ -284,7 +284,7 @@ cost_center  = "CC-1234"
 
 ### Variable Sets for Shared Values
 
-Variable sets (covered in a [dedicated guide](https://oneuptime.com/blog/post/variable-sets-hcp-terraform/view)) apply variables to multiple workspaces at once. Use them for:
+Variable sets (covered in a [dedicated guide](https://oneuptime.com/blog/post/2026-02-23-variable-sets-hcp-terraform/view)) apply variables to multiple workspaces at once. Use them for:
 - Cloud provider credentials shared across workspaces
 - Organization-wide tags
 - Common configuration values
@@ -335,4 +335,4 @@ curl \
 
 ## Wrapping Up
 
-Variables in HCP Terraform workspaces are the main way to customize your infrastructure per environment. Use Terraform variables for configuration that your `.tf` files reference, environment variables for credentials and runtime settings, mark sensitive values appropriately, and enable the HCL flag for complex data types. For variables shared across workspaces, look into [variable sets](https://oneuptime.com/blog/post/variable-sets-hcp-terraform/view). For handling secrets securely, check out the guide on [sensitive variables](https://oneuptime.com/blog/post/sensitive-variables-hcp-terraform/view).
+Variables in HCP Terraform workspaces are the main way to customize your infrastructure per environment. Use Terraform variables for configuration that your `.tf` files reference, environment variables for credentials and runtime settings, mark sensitive values appropriately, and enable the HCL flag for complex data types. For variables shared across workspaces, look into [variable sets](https://oneuptime.com/blog/post/2026-02-23-variable-sets-hcp-terraform/view). For handling secrets securely, check out the guide on [sensitive variables](https://oneuptime.com/blog/post/2026-02-23-sensitive-variables-hcp-terraform/view).

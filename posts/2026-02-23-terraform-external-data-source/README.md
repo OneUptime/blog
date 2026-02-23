@@ -362,4 +362,4 @@ The external program should return the same output for the same input. Non-deter
 
 The `external` data source is Terraform's ultimate escape hatch for data retrieval. It runs any program and reads its JSON output, letting you integrate with databases, proprietary APIs, custom scripts, and any tool that can produce JSON. The output must be a flat map of strings, errors go to stderr, and the program should be deterministic.
 
-Use it sparingly - if a Terraform provider or data source exists for your use case, prefer that. But when no provider exists, the `external` data source fills the gap reliably. For simpler HTTP-based lookups, see our post on the [http data source](https://oneuptime.com/blog/post/terraform-http-data-source/view).
+Use it sparingly - if a Terraform provider or data source exists for your use case, prefer that. But when no provider exists, the `external` data source fills the gap reliably. For simpler HTTP-based lookups, see our post on the [http data source](https://oneuptime.com/blog/post/2026-02-23-terraform-http-data-source/view).

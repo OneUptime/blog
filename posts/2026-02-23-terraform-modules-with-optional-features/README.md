@@ -286,4 +286,4 @@ Optional features are powerful but addictive. Every time someone says "can the m
 
 Set a limit. If a feature does not fit the module's core purpose, it belongs in a separate module. A VPC module should not also manage CloudFront distributions just because someone wanted it to be optional.
 
-For more module design patterns, see [how to create Terraform modules with feature flags](https://oneuptime.com/blog/post/terraform-modules-with-feature-flags/view) and [how to develop Terraform modules with best practices](https://oneuptime.com/blog/post/2026-02-23-develop-terraform-modules-with-best-practices/view).
+For more module design patterns, see [how to create Terraform modules with feature flags](https://oneuptime.com/blog/post/2026-02-23-terraform-modules-with-feature-flags/view) and [how to develop Terraform modules with best practices](https://oneuptime.com/blog/post/2026-02-23-develop-terraform-modules-with-best-practices/view).

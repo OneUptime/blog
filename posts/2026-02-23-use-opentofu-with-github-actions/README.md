@@ -406,4 +406,4 @@ gh api repos/myorg/myrepo/environments/production \
 
 GitHub Actions is a natural fit for OpenTofu pipelines. The combination of OIDC authentication, environment approvals, and artifact passing between jobs gives you a secure, auditable deployment pipeline with minimal setup.
 
-For GitLab users, see [How to Use OpenTofu with GitLab CI](https://oneuptime.com/blog/post/use-opentofu-with-gitlab-ci/view).
+For GitLab users, see [How to Use OpenTofu with GitLab CI](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-with-gitlab-ci/view).

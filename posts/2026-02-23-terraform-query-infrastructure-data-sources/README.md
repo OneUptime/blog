@@ -370,4 +370,4 @@ locals {
 
 Data sources are the bridge between your Terraform configuration and the rest of your infrastructure. They let you write configurations that adapt to existing environments instead of demanding specific IDs. Query VPCs by tag, find the latest AMI by filter, look up certificates by domain name, and pull secrets from secret managers - all without hardcoding a single value.
 
-For specific data source deep dives, check out our posts on the [http data source](https://oneuptime.com/blog/post/terraform-http-data-source/view), [external data source](https://oneuptime.com/blog/post/terraform-external-data-source/view), and [dynamic AMI lookup](https://oneuptime.com/blog/post/2026-02-23-terraform-dynamic-ami-lookup/view).
+For specific data source deep dives, check out our posts on the [http data source](https://oneuptime.com/blog/post/2026-02-23-terraform-http-data-source/view), [external data source](https://oneuptime.com/blog/post/2026-02-23-terraform-external-data-source/view), and [dynamic AMI lookup](https://oneuptime.com/blog/post/2026-02-23-terraform-dynamic-ami-lookup/view).

@@ -495,4 +495,4 @@ Setting up VPC Flow Logs with Terraform involves:
 5. Wrap everything in a reusable module for consistency across VPCs
 6. Use Athena with S3 flow logs for ad-hoc network analysis
 
-Start with CloudWatch Logs for immediate visibility, then add S3 as a long-term destination as your logging needs grow. For the broader VPC setup, check out the [Terraform AWS VPC module guide](https://oneuptime.com/blog/post/terraform-aws-vpc-module/view).
+Start with CloudWatch Logs for immediate visibility, then add S3 as a long-term destination as your logging needs grow. For the broader VPC setup, check out the [Terraform AWS VPC module guide](https://oneuptime.com/blog/post/2026-02-12-terraform-aws-vpc-module/view).

@@ -376,4 +376,4 @@ resource "aws_s3_bucket_lifecycle_configuration" "state_lifecycle" {
 
 The S3 backend is battle-tested and reliable. With proper setup, it handles state management for teams of any size.
 
-For other backend options, check out [How to Use OpenTofu with Azure Backend](https://oneuptime.com/blog/post/use-opentofu-with-azure-backend/view) and [How to Use OpenTofu with GCS Backend](https://oneuptime.com/blog/post/use-opentofu-with-gcs-backend/view).
+For other backend options, check out [How to Use OpenTofu with Azure Backend](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-with-azure-backend/view) and [How to Use OpenTofu with GCS Backend](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-with-gcs-backend/view).

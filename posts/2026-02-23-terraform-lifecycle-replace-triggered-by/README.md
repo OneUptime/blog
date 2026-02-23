@@ -318,4 +318,4 @@ Avoid using it for everything. Over-triggering replacements causes unnecessary d
 
 `replace_triggered_by` fills a gap in Terraform's lifecycle management. It lets you declare explicit replacement dependencies between resources, eliminating the need for manual taint operations and hacky workarounds with `null_resource` triggers. Combined with `create_before_destroy`, it enables zero-downtime replacement workflows that are fully automated and version-controlled.
 
-For more on Terraform lifecycle management, see our post on [ignore_changes](https://oneuptime.com/blog/post/terraform-lifecycle-ignore-changes/view) and the [broader lifecycle rules overview](https://oneuptime.com/blog/post/2026-01-24-terraform-lifecycle-rules/view).
+For more on Terraform lifecycle management, see our post on [ignore_changes](https://oneuptime.com/blog/post/2026-02-23-terraform-lifecycle-ignore-changes/view) and the [broader lifecycle rules overview](https://oneuptime.com/blog/post/2026-01-24-terraform-lifecycle-rules/view).

@@ -346,4 +346,4 @@ locals {
 
 The `http` data source connects Terraform to any HTTP-accessible service. It is ideal for fetching configuration from APIs, checking service health, reading IP allowlists, and integrating with systems that lack a dedicated Terraform provider. Parse JSON responses with `jsondecode()`, pass authentication via headers, and be mindful that responses are stored in state.
 
-For other data source types, see our posts on the [external data source](https://oneuptime.com/blog/post/terraform-external-data-source/view) and [querying infrastructure with data sources](https://oneuptime.com/blog/post/terraform-query-infrastructure-data-sources/view).
+For other data source types, see our posts on the [external data source](https://oneuptime.com/blog/post/2026-02-23-terraform-external-data-source/view) and [querying infrastructure with data sources](https://oneuptime.com/blog/post/2026-02-23-terraform-query-infrastructure-data-sources/view).

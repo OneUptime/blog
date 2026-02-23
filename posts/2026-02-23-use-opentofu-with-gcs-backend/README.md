@@ -427,4 +427,4 @@ gcloud storage buckets add-iam-policy-binding \
 
 The GCS backend is reliable and low-maintenance. Combined with proper IAM controls and versioning, it provides a solid foundation for team-based infrastructure management on Google Cloud.
 
-For more on the OpenTofu registry, see [How to Use OpenTofu Registry for Providers](https://oneuptime.com/blog/post/use-opentofu-registry-for-providers/view).
+For more on the OpenTofu registry, see [How to Use OpenTofu Registry for Providers](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-registry-for-providers/view).

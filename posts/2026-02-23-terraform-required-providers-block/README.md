@@ -301,4 +301,4 @@ For third-party providers, this will fail because Terraform does not know where 
 
 The `required_providers` block is a critical part of every Terraform configuration. It pins your provider sources and versions, ensuring reproducible builds across your team. Use `source` to specify where the provider comes from, `version` to constrain acceptable versions, and commit the generated `.terraform.lock.hcl` file to version control. For modules, use loose constraints with `>=` so the root module can control the exact version.
 
-For more on Terraform configuration, see [How to Configure Terraform Settings in the terraform Block](https://oneuptime.com/blog/post/2026-02-23-terraform-settings-block/view) and [How to Manage Provider Versions in Terraform](https://oneuptime.com/blog/post/terraform-provider-versions/view).
+For more on Terraform configuration, see [How to Configure Terraform Settings in the terraform Block](https://oneuptime.com/blog/post/2026-02-23-terraform-settings-block/view) and [How to Manage Provider Versions in Terraform](https://oneuptime.com/blog/post/2026-01-27-terraform-provider-versions/view).

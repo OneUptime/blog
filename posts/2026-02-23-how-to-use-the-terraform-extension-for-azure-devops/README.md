@@ -345,4 +345,4 @@ The service principal behind the service connection needs the right permissions.
 
 The Terraform extension for Azure DevOps simplifies pipeline configuration by handling provider authentication and providing purpose-built tasks for each Terraform command. The installer task ensures version consistency, and the automatic credential management means you do not need to manually wire up environment variables. For teams already invested in the Azure DevOps ecosystem, the extension is the most natural way to integrate Terraform into your pipelines.
 
-For more on Azure DevOps and Terraform, see our guide on [building Azure DevOps pipelines for Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-build-azure-devops-pipelines-for-terraform-plan-and-apply-with-approval-gates/view).
+For more on Azure DevOps and Terraform, see our guide on [building Azure DevOps pipelines for Terraform](https://oneuptime.com/blog/post/2026-02-16-how-to-build-azure-devops-pipelines-for-terraform-plan-and-apply-with-approval-gates/view).

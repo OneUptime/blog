@@ -424,4 +424,4 @@ With `template_file`, all vars must be strings. Passing a number or list causes 
 
 Template rendering is fundamental to Terraform configuration. Whether you use the legacy `template_file` data source or the modern `templatefile()` function, the template syntax is the same: `${}` for interpolation, `%{ if }` for conditionals, and `%{ for }` for loops. For new code, always use `templatefile()` - it requires no external provider and supports complex data types.
 
-For more on reading local files, see our post on the [local_file data source](https://oneuptime.com/blog/post/terraform-local-file-data-source/view). For data sources in general, check out [querying infrastructure with data sources](https://oneuptime.com/blog/post/terraform-query-infrastructure-data-sources/view).
+For more on reading local files, see our post on the [local_file data source](https://oneuptime.com/blog/post/2026-02-23-terraform-local-file-data-source/view). For data sources in general, check out [querying infrastructure with data sources](https://oneuptime.com/blog/post/2026-02-23-terraform-query-infrastructure-data-sources/view).

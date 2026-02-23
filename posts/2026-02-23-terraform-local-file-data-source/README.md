@@ -347,4 +347,4 @@ locals {
 
 The `local_file` data source reads files from the local filesystem and makes their content available in your Terraform configuration. It is useful for loading configuration files, certificates, policies, scripts, and any artifact that lives on disk. For simple file reading, the built-in `file()` function is often sufficient. Use `local_file` when you need multiple attributes like content and hash, or when you need data source features like `for_each`.
 
-For fetching data from remote sources instead, see our posts on the [http data source](https://oneuptime.com/blog/post/terraform-http-data-source/view) and [external data source](https://oneuptime.com/blog/post/terraform-external-data-source/view).
+For fetching data from remote sources instead, see our posts on the [http data source](https://oneuptime.com/blog/post/2026-02-23-terraform-http-data-source/view) and [external data source](https://oneuptime.com/blog/post/2026-02-23-terraform-external-data-source/view).

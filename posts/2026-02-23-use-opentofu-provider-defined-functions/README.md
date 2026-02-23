@@ -383,4 +383,4 @@ Provider functions are better because:
 
 Provider-defined functions are a powerful extension to the HCL language. They bring domain-specific logic directly into your infrastructure code without the overhead of external scripts or data sources. As more providers adopt this feature, the range of available functions will continue to grow.
 
-For another OpenTofu-specific feature, see [How to Use OpenTofu for_each with Count Results](https://oneuptime.com/blog/post/use-opentofu-for-each-with-count-results/view).
+For another OpenTofu-specific feature, see [How to Use OpenTofu for_each with Count Results](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-for-each-with-count-results/view).

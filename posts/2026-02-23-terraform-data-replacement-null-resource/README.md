@@ -298,4 +298,4 @@ For everything else, prefer `terraform_data`.
 
 `terraform_data` is the modern replacement for `null_resource`. It is built into Terraform core, requires no external provider, and offers typed `input`/`output` attributes alongside `triggers_replace` for controlling when provisioners re-execute. If you are writing new Terraform code or refactoring existing configurations, use `terraform_data` instead of `null_resource`.
 
-For more context on the patterns that `terraform_data` supports, see our post on [null_resource workarounds](https://oneuptime.com/blog/post/2026-02-23-terraform-null-resource-provisioner-workarounds/view) and [provisioners with resources](https://oneuptime.com/blog/post/terraform-provisioners-with-resources/view).
+For more context on the patterns that `terraform_data` supports, see our post on [null_resource workarounds](https://oneuptime.com/blog/post/2026-02-23-terraform-null-resource-provisioner-workarounds/view) and [provisioners with resources](https://oneuptime.com/blog/post/2026-02-23-terraform-provisioners-with-resources/view).

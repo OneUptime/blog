@@ -413,4 +413,4 @@ data "google_compute_instances" "app" {
 
 Filters are what make data sources practical in real-world environments. Without them, you would need exact IDs for every lookup. With filters, you can find resources by name patterns, tags, states, types, and any other attribute the cloud API exposes. Use multiple filter blocks for AND logic, multiple values within a filter for OR logic, and wildcards for pattern matching.
 
-For specific filter examples, see our posts on [dynamic AMI lookup](https://oneuptime.com/blog/post/2026-02-23-terraform-dynamic-ami-lookup/view) and [availability zone discovery](https://oneuptime.com/blog/post/terraform-availability-zone-discovery/view).
+For specific filter examples, see our posts on [dynamic AMI lookup](https://oneuptime.com/blog/post/2026-02-23-terraform-dynamic-ami-lookup/view) and [availability zone discovery](https://oneuptime.com/blog/post/2026-02-23-terraform-availability-zone-discovery/view).

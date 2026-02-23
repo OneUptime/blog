@@ -366,4 +366,4 @@ esac
 
 A well-built CI/CD pipeline turns OpenTofu from a manual tool into a reliable, auditable infrastructure deployment system. The investment in pipeline setup pays off quickly as your infrastructure grows.
 
-For platform-specific guides, see [How to Use OpenTofu with GitHub Actions](https://oneuptime.com/blog/post/use-opentofu-with-github-actions/view) and [How to Use OpenTofu with GitLab CI](https://oneuptime.com/blog/post/use-opentofu-with-gitlab-ci/view).
+For platform-specific guides, see [How to Use OpenTofu with GitHub Actions](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-with-github-actions/view) and [How to Use OpenTofu with GitLab CI](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-with-gitlab-ci/view).

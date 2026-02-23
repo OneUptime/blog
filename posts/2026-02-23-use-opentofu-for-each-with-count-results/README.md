@@ -371,4 +371,4 @@ Even with this improvement, the general guidance remains:
 
 The ability to use `for_each` with count results removes one of the most annoying limitations in HCL. It lets you mix count and for_each in the same configuration without restructuring everything into maps upfront. This is a practical improvement that simplifies real-world infrastructure code.
 
-For more OpenTofu features, check out [How to Use OpenTofu State Encryption](https://oneuptime.com/blog/post/use-opentofu-state-encryption/view) and [How to Use OpenTofu Early Variable Evaluation](https://oneuptime.com/blog/post/use-opentofu-early-variable-evaluation/view).
+For more OpenTofu features, check out [How to Use OpenTofu State Encryption](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-state-encryption/view) and [How to Use OpenTofu Early Variable Evaluation](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-early-variable-evaluation/view).

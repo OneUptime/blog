@@ -343,4 +343,4 @@ Use alternatives when:
 
 The `remote-exec` provisioner is a powerful but brittle tool. It lets you run commands on remote resources over SSH or WinRM, which is useful for bootstrapping and one-time configuration tasks. The main challenges are timing (waiting for the instance to be ready), connectivity (SSH access, bastion hosts), and idempotency (making sure commands can run safely more than once).
 
-For most use cases, prefer `user_data` or a baked AMI. Reserve `remote-exec` for situations where you genuinely need to run commands interactively on a newly created resource. For local automation, see our post on [local-exec](https://oneuptime.com/blog/post/terraform-local-exec-provisioner/view).
+For most use cases, prefer `user_data` or a baked AMI. Reserve `remote-exec` for situations where you genuinely need to run commands interactively on a newly created resource. For local automation, see our post on [local-exec](https://oneuptime.com/blog/post/2026-02-23-terraform-local-exec-provisioner/view).

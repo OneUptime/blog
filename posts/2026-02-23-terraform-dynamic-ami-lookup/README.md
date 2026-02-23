@@ -404,4 +404,4 @@ Or pin to a specific version in the filter rather than using wildcards.
 
 Dynamic AMI lookup replaces fragile hardcoded IDs with descriptive, portable queries. Use the `owners` argument for security, `most_recent` for automatic updates, and filters for precise matching. Build your AMI naming conventions to support clean filter patterns, and consider `ignore_changes` for production instances where you want controlled updates.
 
-For more on data source filters, see our post on [using data sources with filters](https://oneuptime.com/blog/post/terraform-data-sources-filters/view). For other dynamic lookups, check out [availability zone discovery](https://oneuptime.com/blog/post/terraform-availability-zone-discovery/view).
+For more on data source filters, see our post on [using data sources with filters](https://oneuptime.com/blog/post/2026-02-23-terraform-data-sources-filters/view). For other dynamic lookups, check out [availability zone discovery](https://oneuptime.com/blog/post/2026-02-23-terraform-availability-zone-discovery/view).

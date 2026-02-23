@@ -309,4 +309,4 @@ The cache stores downloaded provider binaries. When you run `tofu init` in a new
 
 The OpenTofu Registry is a critical piece of the OpenTofu ecosystem. It ensures that the open-source community has reliable, independent access to the providers that make infrastructure-as-code work. For most users, the transition from the Terraform Registry is seamless.
 
-For module discovery, see [How to Use OpenTofu Registry for Modules](https://oneuptime.com/blog/post/use-opentofu-registry-for-modules/view).
+For module discovery, see [How to Use OpenTofu Registry for Modules](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-registry-for-modules/view).

@@ -400,4 +400,4 @@ For production workloads, consider these alternatives:
 
 The `file` provisioner is straightforward: it copies files from the Terraform host to a remote resource. The `content` argument adds flexibility by letting you generate file contents from Terraform expressions. Always pair it with `remote-exec` to handle permissions and placement, and remember the trailing slash behavior when uploading directories.
 
-For more on provisioners, see our guides on [local-exec](https://oneuptime.com/blog/post/terraform-local-exec-provisioner/view) and [remote-exec](https://oneuptime.com/blog/post/2026-02-23-terraform-remote-exec-provisioner/view).
+For more on provisioners, see our guides on [local-exec](https://oneuptime.com/blog/post/2026-02-23-terraform-local-exec-provisioner/view) and [remote-exec](https://oneuptime.com/blog/post/2026-02-23-terraform-remote-exec-provisioner/view).

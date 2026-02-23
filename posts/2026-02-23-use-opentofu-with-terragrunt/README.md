@@ -423,4 +423,4 @@ jobs:
 
 Terragrunt and OpenTofu complement each other well. OpenTofu handles the infrastructure provisioning, while Terragrunt handles the orchestration and DRY configuration that OpenTofu lacks natively. The switch from Terraform to OpenTofu in a Terragrunt setup is one of the simplest migrations because it is literally a single configuration change.
 
-For OpenTofu-specific features, check out [How to Use OpenTofu Early Variable Evaluation](https://oneuptime.com/blog/post/use-opentofu-early-variable-evaluation/view).
+For OpenTofu-specific features, check out [How to Use OpenTofu Early Variable Evaluation](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-early-variable-evaluation/view).

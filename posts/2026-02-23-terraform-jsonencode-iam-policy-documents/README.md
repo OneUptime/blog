@@ -304,7 +304,7 @@ resource "aws_iam_role" "cross_account" {
 
 ## When to Use jsonencode vs. the Data Source
 
-Terraform also offers the `aws_iam_policy_document` data source (covered in a [separate post](https://oneuptime.com/blog/post/terraform-aws-iam-policy-document-data-source/view)). Here is a quick comparison:
+Terraform also offers the `aws_iam_policy_document` data source (covered in a [separate post](https://oneuptime.com/blog/post/2026-02-23-terraform-aws-iam-policy-document-data-source/view)). Here is a quick comparison:
 
 - Use `jsonencode` when you want something quick and readable, when your policy is relatively static, or when you are already comfortable with the JSON policy structure.
 - Use the `aws_iam_policy_document` data source when you need to merge policies, when you want Terraform-native validation, or when you have complex condition blocks.

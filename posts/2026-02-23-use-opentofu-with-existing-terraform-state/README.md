@@ -291,4 +291,4 @@ terraform {
 
 The state transition from Terraform to OpenTofu is the easiest part of the migration. The hard work is updating CI/CD pipelines and team workflows, not the state files themselves.
 
-For next steps, see [How to Use OpenTofu with Existing Terraform Modules](https://oneuptime.com/blog/post/use-opentofu-with-existing-terraform-modules/view).
+For next steps, see [How to Use OpenTofu with Existing Terraform Modules](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-with-existing-terraform-modules/view).

@@ -357,4 +357,4 @@ tofu state pull | python3 -m json.tool | head -20
 
 State encryption is one of the strongest arguments for OpenTofu over Terraform. It addresses a real security gap that the Terraform community has been asking about for years.
 
-For more details on the client-side approach, see [How to Use OpenTofu Client-Side State Encryption](https://oneuptime.com/blog/post/use-opentofu-client-side-state-encryption/view).
+For more details on the client-side approach, see [How to Use OpenTofu Client-Side State Encryption](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-client-side-state-encryption/view).

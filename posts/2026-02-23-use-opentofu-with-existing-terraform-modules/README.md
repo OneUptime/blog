@@ -309,4 +309,4 @@ This pattern works identically with OpenTofu. No changes are needed to the modul
 
 The module ecosystem is one of OpenTofu's strongest compatibility points with Terraform. For the vast majority of modules, the transition is invisible. Just run `tofu init` and everything works.
 
-For more on configuring OpenTofu, check out [How to Configure OpenTofu Providers](https://oneuptime.com/blog/post/configure-opentofu-providers/view).
+For more on configuring OpenTofu, check out [How to Configure OpenTofu Providers](https://oneuptime.com/blog/post/2026-02-23-configure-opentofu-providers/view).

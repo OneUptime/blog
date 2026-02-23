@@ -299,4 +299,4 @@ In those cases, separate root modules with separate state files are usually a be
 
 The `terraform.workspace` reference is a straightforward way to make your configuration environment-aware. Combine it with local maps for configuration lookups, use it in resource names to avoid collisions, and include it in tags for visibility. Just remember to handle the `default` workspace and validate workspace names to prevent mistakes.
 
-For broader workspace strategies, see [How to Build Terraform Workspace Patterns](https://oneuptime.com/blog/post/terraform-workspace-patterns/view). For other reference types, check out [How to Reference Input Variables in Terraform](https://oneuptime.com/blog/post/2026-02-23-terraform-reference-input-variables/view).
+For broader workspace strategies, see [How to Build Terraform Workspace Patterns](https://oneuptime.com/blog/post/2026-01-30-terraform-workspace-patterns/view). For other reference types, check out [How to Reference Input Variables in Terraform](https://oneuptime.com/blog/post/2026-02-23-terraform-reference-input-variables/view).

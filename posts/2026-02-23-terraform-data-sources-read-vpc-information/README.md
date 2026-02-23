@@ -503,4 +503,4 @@ data "aws_subnets" "private" {
 
 Reading existing VPC information with data sources is fundamental to deploying applications in shared network environments. Look up VPCs by tag or ID, find subnets by tier and availability zone, reference existing security groups, and query route tables and NAT gateways. Combine these lookups to deploy application resources into pre-existing networks without managing the network infrastructure yourself.
 
-For more on data sources, see our posts on [querying infrastructure with data sources](https://oneuptime.com/blog/post/terraform-query-infrastructure-data-sources/view) and [data source filters](https://oneuptime.com/blog/post/terraform-data-sources-filters/view).
+For more on data sources, see our posts on [querying infrastructure with data sources](https://oneuptime.com/blog/post/2026-02-23-terraform-query-infrastructure-data-sources/view) and [data source filters](https://oneuptime.com/blog/post/2026-02-23-terraform-data-sources-filters/view).

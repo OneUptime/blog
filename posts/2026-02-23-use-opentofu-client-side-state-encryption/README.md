@@ -338,4 +338,4 @@ The main performance consideration is KMS latency. Each state read/write require
 
 Client-side state encryption is one of OpenTofu's most compelling features. It fills a genuine security gap and does it in a way that is straightforward to configure and maintain. If your state contains any sensitive data (and it almost certainly does), enable encryption.
 
-For CI/CD integration, see [How to Use OpenTofu with CI/CD Pipelines](https://oneuptime.com/blog/post/use-opentofu-with-ci-cd-pipelines/view).
+For CI/CD integration, see [How to Use OpenTofu with CI/CD Pipelines](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-with-ci-cd-pipelines/view).

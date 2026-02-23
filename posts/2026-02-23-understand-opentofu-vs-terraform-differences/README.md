@@ -219,4 +219,4 @@ For individual developers and most organizations, the practical differences betw
 
 If you are starting a new project with no existing investment in either ecosystem, OpenTofu is the safer long-term bet for open-source continuity. If you are already deeply integrated with HashiCorp's commercial offerings, staying with Terraform may be more pragmatic.
 
-For a hands-on migration guide, see [How to Migrate from Terraform to OpenTofu](https://oneuptime.com/blog/post/migrate-from-terraform-to-opentofu/view).
+For a hands-on migration guide, see [How to Migrate from Terraform to OpenTofu](https://oneuptime.com/blog/post/2026-02-23-migrate-from-terraform-to-opentofu/view).

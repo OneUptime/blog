@@ -389,4 +389,4 @@ tofu state push restored-state.json
 
 The Azure backend is well-suited for teams running infrastructure on Azure. Built-in lease-based locking means less infrastructure to manage compared to the S3 backend, and tight integration with Azure AD makes authentication straightforward.
 
-For other backend options, see [How to Use OpenTofu with GCS Backend](https://oneuptime.com/blog/post/use-opentofu-with-gcs-backend/view).
+For other backend options, see [How to Use OpenTofu with GCS Backend](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-with-gcs-backend/view).

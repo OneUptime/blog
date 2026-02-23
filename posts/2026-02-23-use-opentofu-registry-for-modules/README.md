@@ -364,4 +364,4 @@ resource "aws_security_group_rule" "allow_rds" {
 
 The OpenTofu Registry is one of the most valuable resources in the infrastructure-as-code ecosystem. Using well-maintained modules saves weeks of development time and gives you access to battle-tested configurations used by thousands of teams.
 
-For state security, see [How to Use OpenTofu State Encryption](https://oneuptime.com/blog/post/use-opentofu-state-encryption/view).
+For state security, see [How to Use OpenTofu State Encryption](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-state-encryption/view).

@@ -299,4 +299,4 @@ npx jest
 
 Pre-built constructs make CDKTF development faster and more consistent. They let you focus on what makes your infrastructure unique rather than rebuilding common patterns from scratch. Start with the official provider constructs, then gradually adopt higher-level community constructs as you gain confidence in the ecosystem.
 
-For more on this topic, see our guide on [How to Publish CDKTF Constructs](https://oneuptime.com/blog/post/publish-cdktf-constructs/view).
+For more on this topic, see our guide on [How to Publish CDKTF Constructs](https://oneuptime.com/blog/post/2026-02-23-publish-cdktf-constructs/view).

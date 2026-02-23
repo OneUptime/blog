@@ -281,4 +281,4 @@ provisioner "local-exec" {
 
 The `on_failure` setting is a simple but important control for provisioner error handling. Use `fail` when the provisioner is essential to the resource's functionality, and `continue` when the provisioner performs optional tasks like monitoring, notifications, or cleanup. For destruction-time provisioners, `continue` is almost always the right choice to prevent blocked teardowns.
 
-For more on provisioners, check out our posts on [local-exec](https://oneuptime.com/blog/post/terraform-local-exec-provisioner/view) and [remote-exec](https://oneuptime.com/blog/post/2026-02-23-terraform-remote-exec-provisioner/view) provisioners.
+For more on provisioners, check out our posts on [local-exec](https://oneuptime.com/blog/post/2026-02-23-terraform-local-exec-provisioner/view) and [remote-exec](https://oneuptime.com/blog/post/2026-02-23-terraform-remote-exec-provisioner/view) provisioners.

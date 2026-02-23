@@ -327,4 +327,4 @@ If you forget the `data.` prefix on a data source reference, Terraform will look
 
 Referencing data source attributes with `data.<type>.<name>.<attribute>` lets you pull information from your existing infrastructure into Terraform. This is essential for working with resources you did not create through Terraform, integrating with shared infrastructure, and keeping your configurations dynamic rather than hardcoding values.
 
-For related reading, see [How to Reference Resource Attributes in Terraform](https://oneuptime.com/blog/post/2026-02-23-terraform-reference-resource-attributes/view) and [How to Use Terraform Data Sources to Reference Existing AWS Resources](https://oneuptime.com/blog/post/terraform-data-sources-reference-existing-aws-resources/view).
+For related reading, see [How to Reference Resource Attributes in Terraform](https://oneuptime.com/blog/post/2026-02-23-terraform-reference-resource-attributes/view) and [How to Use Terraform Data Sources to Reference Existing AWS Resources](https://oneuptime.com/blog/post/2026-02-12-terraform-data-sources-reference-existing-aws-resources/view).

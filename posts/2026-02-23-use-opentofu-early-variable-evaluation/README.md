@@ -379,4 +379,4 @@ Update your CI/CD pipeline accordingly:
 
 Early variable evaluation is one of those features that seems small but changes how you structure your entire project. It removes the need for wrapper tools, code generation, and awkward `-backend-config` flags. If you are already using OpenTofu, there is no reason not to take advantage of it.
 
-For more OpenTofu-specific features, see [How to Use OpenTofu Provider-Defined Functions](https://oneuptime.com/blog/post/use-opentofu-provider-defined-functions/view).
+For more OpenTofu-specific features, see [How to Use OpenTofu Provider-Defined Functions](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-provider-defined-functions/view).

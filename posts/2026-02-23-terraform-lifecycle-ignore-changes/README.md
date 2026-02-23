@@ -275,4 +275,4 @@ lifecycle {
 
 The `ignore_changes` lifecycle argument is a critical tool for managing infrastructure where Terraform is not the only actor. Auto-scaling groups, CI/CD-managed deployments, externally tagged resources, and anything with a lifecycle beyond Terraform's control benefit from targeted use of `ignore_changes`.
 
-The key is to be intentional about it. Ignore only what you need to, document why you are ignoring it with comments, and periodically review your `ignore_changes` blocks to make sure they are still necessary. If you want to learn more about related lifecycle arguments, check out our post on [replace_triggered_by](https://oneuptime.com/blog/post/terraform-lifecycle-replace-triggered-by/view).
+The key is to be intentional about it. Ignore only what you need to, document why you are ignoring it with comments, and periodically review your `ignore_changes` blocks to make sure they are still necessary. If you want to learn more about related lifecycle arguments, check out our post on [replace_triggered_by](https://oneuptime.com/blog/post/2026-02-23-terraform-lifecycle-replace-triggered-by/view).
