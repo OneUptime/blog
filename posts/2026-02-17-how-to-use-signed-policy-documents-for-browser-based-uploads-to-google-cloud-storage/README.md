@@ -68,10 +68,7 @@ Here is a complete backend implementation:
 import base64
 import datetime
 import json
-import hashlib
-import hmac
 
-from google.cloud import storage
 from google.oauth2 import service_account
 
 
@@ -95,18 +92,29 @@ def generate_signed_policy(
         service_account_file: Path to service account JSON key
     """
 
-    # Use the storage client to generate the policy
-    client = storage.Client.from_service_account_json(service_account_file)
-    bucket = client.bucket(bucket_name)
+    # Load the service account credentials (must have a private key for signing)
+    credentials = service_account.Credentials.from_service_account_file(
+        service_account_file
+    )
 
-    # Calculate expiration time
-    expiration = datetime.datetime.utcnow() + datetime.timedelta(minutes=expiration_minutes)
+    # Calculate expiration and signing timestamps
+    now = datetime.datetime.utcnow()
+    expiration = now + datetime.timedelta(minutes=expiration_minutes)
+    date_stamp = now.strftime("%Y%m%d")
+    datetime_stamp = now.strftime("%Y%m%dT%H%M%SZ")
+
+    credential = (
+        f"{credentials.service_account_email}/{date_stamp}/auto/storage/goog4_request"
+    )
 
     # Build the conditions list
     conditions = [
         {"bucket": bucket_name},
         ["starts-with", "$key", key_prefix],
         ["content-length-range", 0, max_size_bytes],
+        {"x-goog-algorithm": "GOOG4-RSA-SHA256"},
+        {"x-goog-credential": credential},
+        {"x-goog-date": datetime_stamp},
     ]
 
     # Add content type restrictions if specified
@@ -116,18 +124,36 @@ def generate_signed_policy(
         # Use starts-with for multiple types sharing a prefix
         conditions.append(["starts-with", "$Content-Type", ""])
 
-    # Generate the signed post policy using the client library
-    policy = bucket.generate_signed_post_policy_v4(
-        blob_name=key_prefix,
-        expiration=expiration,
-        conditions=conditions,
-        fields={
-            "Content-Type": allowed_content_types[0] if allowed_content_types else "",
-        },
-        credentials=client._credentials,
-    )
+    # Create the policy document and Base64-encode it
+    policy_document = {
+        "expiration": expiration.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "conditions": conditions,
+    }
+    encoded_policy = base64.b64encode(
+        json.dumps(policy_document).encode("utf-8")
+    ).decode("utf-8")
 
-    return policy
+    # Sign the encoded policy with the service account's private key
+    signature = credentials.signer.sign(encoded_policy.encode("utf-8"))
+    hex_signature = signature.hex()
+
+    # Build the form fields the browser needs to include in the POST
+    fields = {
+        "key": key_prefix + "${filename}",
+        "x-goog-algorithm": "GOOG4-RSA-SHA256",
+        "x-goog-credential": credential,
+        "x-goog-date": datetime_stamp,
+        "policy": encoded_policy,
+        "x-goog-signature": hex_signature,
+    }
+
+    if allowed_content_types:
+        fields["Content-Type"] = allowed_content_types[0]
+
+    return {
+        "url": f"https://storage.googleapis.com/{bucket_name}/",
+        "fields": fields,
+    }
 
 
 # Generate a policy for user image uploads
@@ -143,35 +169,65 @@ print("Upload URL:", policy["url"])
 print("Form fields:", json.dumps(policy["fields"], indent=2))
 ```
 
-## Using the Python Client Library Directly
+## Minimal Helper Using the Same Approach
 
-The Google Cloud Storage Python library has built-in support for generating V4 signed POST policies:
+Here is a shorter helper that wraps the same manual signing logic:
 
 ```python
-from google.cloud import storage
-from datetime import datetime, timedelta
+import base64
+import datetime
+import json
 
-def create_upload_policy(bucket_name, blob_prefix, max_size_mb=10):
-    """Create a signed POST policy using the GCS Python client."""
-    client = storage.Client()
-    bucket = client.bucket(bucket_name)
+from google.oauth2 import service_account
+
+
+def create_upload_policy(bucket_name, blob_prefix, max_size_mb=10,
+                         service_account_file="service-account-key.json"):
+    """Create a signed POST policy for browser-based uploads."""
+    credentials = service_account.Credentials.from_service_account_file(
+        service_account_file
+    )
+
+    now = datetime.datetime.utcnow()
+    expiration = now + datetime.timedelta(minutes=30)
+    date_stamp = now.strftime("%Y%m%d")
+    datetime_stamp = now.strftime("%Y%m%dT%H%M%SZ")
+    credential = (
+        f"{credentials.service_account_email}/{date_stamp}/auto/storage/goog4_request"
+    )
 
     # Define conditions for the upload
     conditions = [
+        {"bucket": bucket_name},
         ["starts-with", "$key", blob_prefix],
         ["content-length-range", 0, max_size_mb * 1024 * 1024],
         ["starts-with", "$Content-Type", "image/"],
+        {"x-goog-algorithm": "GOOG4-RSA-SHA256"},
+        {"x-goog-credential": credential},
+        {"x-goog-date": datetime_stamp},
     ]
 
-    # Generate the signed post policy
-    policy = storage.Blob.generate_signed_post_policy_v4(
-        bucket_name=bucket_name,
-        blob_name=f"{blob_prefix}${{filename}}",
-        expiration=datetime.utcnow() + timedelta(minutes=30),
-        conditions=conditions,
-    )
+    # Build and sign the policy document
+    policy_document = {
+        "expiration": expiration.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "conditions": conditions,
+    }
+    encoded_policy = base64.b64encode(
+        json.dumps(policy_document).encode("utf-8")
+    ).decode("utf-8")
+    signature = credentials.signer.sign(encoded_policy.encode("utf-8")).hex()
 
-    return policy
+    return {
+        "url": f"https://storage.googleapis.com/{bucket_name}/",
+        "fields": {
+            "key": f"{blob_prefix}${{filename}}",
+            "x-goog-algorithm": "GOOG4-RSA-SHA256",
+            "x-goog-credential": credential,
+            "x-goog-date": datetime_stamp,
+            "policy": encoded_policy,
+            "x-goog-signature": signature,
+        },
+    }
 ```
 
 ## Node.js Backend Implementation
