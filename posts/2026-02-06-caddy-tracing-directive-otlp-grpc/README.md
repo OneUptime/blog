@@ -14,16 +14,11 @@ Add the `tracing` directive to your Caddyfile:
 
 ```
 # Caddyfile
-{
-    # Global tracing configuration
+:8080 {
+    # Enable tracing for this site with a custom span name
     tracing {
         span "caddy-server"
     }
-}
-
-:8080 {
-    # Enable tracing for this site
-    tracing
 
     # Your reverse proxy or file server config
     reverse_proxy localhost:3000
@@ -145,14 +140,10 @@ The Caddyfile for this setup:
 
 ```
 # Caddyfile
-{
+:80 {
     tracing {
         span "caddy"
     }
-}
-
-:80 {
-    tracing
     reverse_proxy api:8080
 }
 ```
