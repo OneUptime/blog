@@ -129,9 +129,9 @@ Now for the interesting part. The poll endpoint needs to:
 
 ```rust
 use axum::{
+    Json,
     extract::{Query, State},
     http::StatusCode,
-    Json,
 };
 use std::time::Duration;
 use tokio::time::timeout;
