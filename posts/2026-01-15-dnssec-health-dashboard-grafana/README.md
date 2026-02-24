@@ -52,12 +52,12 @@ go install github.com/chrj/prometheus-dnssec-exporter@latest
 
 # Create configuration file (TOML format)
 cat > /etc/dnssec-checks << 'EOF'
-[[check]]
+[[records]]
 zone = "example.com"
 record = "@"
 type = "SOA"
 
-[[check]]
+[[records]]
 zone = "yourdomain.com"
 record = "@"
 type = "SOA"
