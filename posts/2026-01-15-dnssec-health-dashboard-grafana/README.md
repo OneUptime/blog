@@ -29,7 +29,7 @@ Common failure scenarios:
 
 ```mermaid
 flowchart LR
-    A["DNS Probes<br/>(dnssec-exporter)"] --> B["Prometheus/<br/>InfluxDB"]
+    A["DNS Probes<br/>(prometheus-dnssec-exporter)"] --> B["Prometheus/<br/>InfluxDB"]
     B --> C["Grafana<br/>Dashboard"]
 ```
 
@@ -37,26 +37,46 @@ flowchart LR
 
 1. **Grafana 9.0+** (or Grafana Cloud)
 2. **Data source**: Prometheus or InfluxDB
-3. **DNSSEC metrics collector**
+3. **DNSSEC metrics collector** (e.g. [prometheus-dnssec-exporter](https://github.com/chrj/prometheus-dnssec-exporter) or a custom script)
 4. **Domains to monitor**
 
 ## Setting Up DNSSEC Metrics Collection
 
-### Option 1: Prometheus with dnssec_exporter
+### Option 1: Prometheus with prometheus-dnssec-exporter
+
+We use the [prometheus-dnssec-exporter](https://github.com/chrj/prometheus-dnssec-exporter) by chrj. It checks DNSSEC validity and signature expiration, exposing metrics for Prometheus.
 
 ```bash
-# Install and configure dnssec_exporter
-cat > config.yaml << 'EOF'
-domains:
-  - name: example.com
-    resolver: 8.8.8.8
-  - name: yourdomain.com
-    resolver: 1.1.1.1
-check_interval: 60s
+# Install the exporter (requires Go)
+go install github.com/chrj/prometheus-dnssec-exporter@latest
+
+# Create configuration file (TOML format)
+cat > /etc/dnssec-checks << 'EOF'
+[[check]]
+zone = "example.com"
+record = "@"
+type = "SOA"
+
+[[check]]
+zone = "yourdomain.com"
+record = "@"
+type = "SOA"
 EOF
 
-./dnssec_exporter --config=config.yaml --listen=:9204
+# Run the exporter (default port 9204)
+prometheus-dnssec-exporter \
+  -config /etc/dnssec-checks \
+  -listen-address :9204 \
+  -resolvers "8.8.8.8:53,1.1.1.1:53"
 ```
+
+This exporter provides three metrics:
+
+| Metric | Description | Labels |
+|--------|-------------|--------|
+| `dnssec_zone_record_resolves` | 1 if the record resolves and validates, 0 otherwise | `resolver`, `zone`, `record`, `type` |
+| `dnssec_zone_record_days_left` | Number of days until the RRSIG signature expires | `zone`, `record`, `type` |
+| `dnssec_zone_record_earliest_rrsig_expiry` | Earliest RRSIG expiry as Unix timestamp | `resolver`, `zone`, `record`, `type` |
 
 Add to Prometheus:
 
@@ -67,6 +87,8 @@ scrape_configs:
       - targets: ['localhost:9204']
     scrape_interval: 60s
 ```
+
+> **Note:** The exporter covers validation status and signature expiry. For additional metrics like DNSKEY counts, DS record counts, and query latency, use the custom script in Option 2 below.
 
 ### Option 2: Custom Script with Telegraf
 
@@ -102,9 +124,9 @@ done
 
 ### Panel 1: Overall DNSSEC Health Status
 
-**Prometheus Query:**
+**Prometheus Query (using prometheus-dnssec-exporter):**
 ```promql
-sum(dnssec_valid{job="dnssec"}) / count(dnssec_valid{job="dnssec"}) * 100
+sum(dnssec_zone_record_resolves{job="dnssec"}) / count(dnssec_zone_record_resolves{job="dnssec"}) * 100
 ```
 
 **Panel Configuration:**
@@ -130,9 +152,9 @@ sum(dnssec_valid{job="dnssec"}) / count(dnssec_valid{job="dnssec"}) * 100
 
 ### Panel 2: Domain Validation Status Table
 
-**Prometheus Query:**
+**Prometheus Query (using prometheus-dnssec-exporter):**
 ```promql
-dnssec_valid{job="dnssec"}
+dnssec_zone_record_resolves{job="dnssec"}
 ```
 
 **Panel Configuration:**
@@ -143,7 +165,7 @@ dnssec_valid{job="dnssec"}
   "gridPos": { "x": 6, "y": 0, "w": 18, "h": 8 },
   "fieldConfig": {
     "overrides": [{
-      "matcher": { "id": "byName", "options": "valid" },
+      "matcher": { "id": "byName", "options": "Value" },
       "properties": [{
         "id": "mappings",
         "value": [
@@ -158,9 +180,9 @@ dnssec_valid{job="dnssec"}
 
 ### Panel 3: RRSIG Expiration Timeline
 
-**Prometheus Query:**
+**Prometheus Query (using prometheus-dnssec-exporter):**
 ```promql
-dnssec_rrsig_expiry_days{job="dnssec"}
+dnssec_zone_record_days_left{job="dnssec"}
 ```
 
 **Panel Configuration:**
@@ -186,7 +208,9 @@ dnssec_rrsig_expiry_days{job="dnssec"}
 
 ### Panel 4: DNS Response Time
 
-**Prometheus Query:**
+> **Note:** This panel requires custom instrumentation (see Option 2) since `prometheus-dnssec-exporter` does not expose query latency metrics.
+
+**Prometheus Query (using custom script metrics):**
 ```promql
 histogram_quantile(0.95, sum(rate(dnssec_query_duration_seconds_bucket[5m])) by (le, domain))
 ```
@@ -214,7 +238,9 @@ histogram_quantile(0.95, sum(rate(dnssec_query_duration_seconds_bucket[5m])) by 
 
 ### Panel 5: DNSKEY and DS Record Counts
 
-**Prometheus Query:**
+> **Note:** This panel requires the custom script from Option 2. The `prometheus-dnssec-exporter` does not expose key or DS record counts.
+
+**Prometheus Query (using custom script metrics):**
 ```promql
 dnssec_dnskey_count{job="dnssec"}
 ```
@@ -236,9 +262,9 @@ dnssec_dnskey_count{job="dnssec"}
 
 ### Panel 6: Validation Failures Over Time
 
-**Prometheus Query:**
+**Prometheus Query (using prometheus-dnssec-exporter):**
 ```promql
-sum(rate(dnssec_validation_failures_total{job="dnssec"}[5m])) by (domain)
+count(dnssec_zone_record_resolves{job="dnssec"} == 0) by (zone)
 ```
 
 **Panel Configuration:**
@@ -262,9 +288,12 @@ sum(rate(dnssec_validation_failures_total{job="dnssec"}[5m])) by (domain)
 
 ### Panel 7: Chain of Trust Status
 
-**Prometheus Query:**
+**Prometheus Query (using prometheus-dnssec-exporter):**
+
+The exporter validates the full DNSSEC chain as part of its resolution check. Use `dnssec_zone_record_resolves` as the chain of trust indicator:
+
 ```promql
-dnssec_chain_valid{job="dnssec"}
+dnssec_zone_record_resolves{job="dnssec"}
 ```
 
 **Panel Configuration:**
@@ -299,37 +328,39 @@ groups:
   - name: dnssec_alerts
     rules:
       - alert: DNSSECValidationFailure
-        expr: dnssec_valid{job="dnssec"} == 0
+        expr: dnssec_zone_record_resolves{job="dnssec"} == 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "DNSSEC validation failed for {{ $labels.domain }}"
-          description: "Domain {{ $labels.domain }} has been failing DNSSEC validation for more than 5 minutes."
+          summary: "DNSSEC validation failed for {{ $labels.zone }}"
+          description: "Zone {{ $labels.zone }} has been failing DNSSEC validation for more than 5 minutes."
 ```
 
 ### Alert 2: RRSIG Expiration Warning
 
 ```yaml
 - alert: DNSSECSignatureExpiring
-  expr: dnssec_rrsig_expiry_days{job="dnssec"} < 7
+  expr: dnssec_zone_record_days_left{job="dnssec"} < 7
   for: 1h
   labels:
     severity: warning
   annotations:
-    summary: "DNSSEC signatures expiring soon for {{ $labels.domain }}"
-    description: "Domain {{ $labels.domain }} has RRSIG records expiring in {{ $value }} days."
+    summary: "DNSSEC signatures expiring soon for {{ $labels.zone }}"
+    description: "Zone {{ $labels.zone }} has RRSIG records expiring in {{ $value }} days."
 
 - alert: DNSSECSignatureCritical
-  expr: dnssec_rrsig_expiry_days{job="dnssec"} < 2
+  expr: dnssec_zone_record_days_left{job="dnssec"} < 2
   for: 15m
   labels:
     severity: critical
   annotations:
-    summary: "DNSSEC signatures critically low for {{ $labels.domain }}"
+    summary: "DNSSEC signatures critically low for {{ $labels.zone }}"
 ```
 
 ### Alert 3: DS Record Mismatch
+
+> **Note:** This alert requires the custom script from Option 2, as `prometheus-dnssec-exporter` does not expose DNSKEY or DS record counts.
 
 ```yaml
 - alert: DNSSECDSRecordMissing
@@ -343,6 +374,8 @@ groups:
 ```
 
 ### Alert 4: High Query Latency
+
+> **Note:** This alert requires custom instrumentation (see Option 2), as `prometheus-dnssec-exporter` does not expose query duration metrics.
 
 ```yaml
 - alert: DNSSECHighLatency
@@ -367,7 +400,7 @@ for resolver_info in "${RESOLVERS[@]}"; do
     IFS=':' read -r resolver name <<< "$resolver_info"
     ad_flag=$(dig +dnssec "$DOMAIN" @"$resolver" | grep -c "flags:.*ad")
     [[ "$ad_flag" -gt 0 ]] && valid=1 || valid=0
-    echo "dnssec_multi,domain=$DOMAIN,resolver=$name valid=${valid}i"
+    echo "dnssec_zone_record_resolves{zone=\"$DOMAIN\",resolver=\"$name\"} ${valid}"
 done
 ```
 
