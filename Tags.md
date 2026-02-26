@@ -5164,7 +5164,6 @@
 - Hosting
 - Hostname
 - Hostname Configuration
-- Hostname Resolution
 - hostNetwork
 - Hosts File
 - hostvars

@@ -978,7 +978,7 @@ function checkBrokenLinks(postsDir: string[]): void {
 
     console.log(`${colors.bold}How to fix:${colors.reset}
   - For links missing date prefix: update the link to include the full directory name (e.g. 2025-01-01-slug)
-  - For non-existent posts: either create the missing blog post, or update the link to point to an existing post
+  - For non-existent posts: remove the link
 `);
   } else {
     logSuccess('All internal cross-reference links are valid');
