@@ -8,7 +8,7 @@ Description: Atlassian's StatusPage product suffered a 21-day critical outage on
 
 There's a special kind of irony when your status page provider can't keep its own product working.
 
-From **February 2 to February 23, 2026**, Atlassian StatusPage experienced a critical outage on its **System Metrics** feature — the component that displays real-time metrics on your public status page. For **21 days**, customers couldn't show their users the metric graphs they were paying for.
+From **February 2 to February 23, 2026**, Atlassian StatusPage experienced a critical outage on its **System Metrics** feature - the component that displays real-time metrics on your public status page. For **21 days**, customers couldn't show their users the metric graphs they were paying for.
 
 Let that sink in. Three weeks. On a product whose entire purpose is communicating reliability.
 
@@ -18,16 +18,16 @@ On February 2, Atlassian identified an issue with the underlying data infrastruc
 
 Here's the timeline from their own incident page:
 
-- **Feb 2** — Issue identified. System Metrics disabled.
-- **Feb 4** — "Actively engaged in exploring possible solutions." (Day 2 of no metrics.)
-- **Feb 9** — "Continue to explore possible solutions." (A full week in.)
-- **Feb 11** — Gradual rollout of a new implementation begins.
-- **Feb 13** — Rolled out to "some customers."
-- **Feb 17** — Rollout slowed down. (Day 15.)
-- **Feb 20** — Rolled out to majority. Librato integration deprecated entirely.
-- **Feb 23** — Finally resolved. 21 days after it started.
+- **Feb 2** - Issue identified. System Metrics disabled.
+- **Feb 4** - "Actively engaged in exploring possible solutions." (Day 2 of no metrics.)
+- **Feb 9** - "Continue to explore possible solutions." (A full week in.)
+- **Feb 11** - Gradual rollout of a new implementation begins.
+- **Feb 13** - Rolled out to "some customers."
+- **Feb 17** - Rollout slowed down. (Day 15.)
+- **Feb 20** - Rolled out to majority. Librato integration deprecated entirely.
+- **Feb 23** - Finally resolved. 21 days after it started.
 
-The root cause? Their metrics infrastructure provider, **Librato, deprecated their platform**. Atlassian's System Metrics feature was built on top of it. When Librato pulled the plug, Atlassian had to rebuild the entire feature from scratch — while customers waited.
+The root cause? Their metrics infrastructure provider, **Librato, deprecated their platform**. Atlassian's System Metrics feature was built on top of it. When Librato pulled the plug, Atlassian had to rebuild the entire feature from scratch - while customers waited.
 
 ## Why This Matters More Than You Think
 
@@ -56,7 +56,7 @@ This isn't a team executing an incident response plan. This is a team discoverin
 
 ## The Deeper Problem: The Atlassian Tax
 
-This incident is a symptom of a larger issue. Atlassian has been acquiring and integrating products for years — StatusPage, Opsgenie, Jira Service Management — but the integration quality hasn't kept pace.
+This incident is a symptom of a larger issue. Atlassian has been acquiring and integrating products for years - StatusPage, Opsgenie, Jira Service Management - but the integration quality hasn't kept pace.
 
 If you're an Atlassian shop, your typical reliability stack looks like:
 
@@ -69,13 +69,13 @@ If you're an Atlassian shop, your typical reliability stack looks like:
 | Log Management | ??? | $$$+ |
 | Error Tracking | ??? | $$$+ |
 
-For a team of 20 engineers, you're easily spending **$3,000-$5,000/month** — and you *still* don't have monitoring, logging, or error tracking. And as we just saw, the products you are paying for can lose critical features for weeks at a time.
+For a team of 20 engineers, you're easily spending **$3,000-$5,000/month** - and you *still* don't have monitoring, logging, or error tracking. And as we just saw, the products you are paying for can lose critical features for weeks at a time.
 
 ## What Should You Do?
 
 ### If You're Currently on Atlassian StatusPage
 
-Don't panic-migrate during an active incident (that ship has sailed — it's resolved now). But use this as a catalyst to evaluate your options:
+Don't panic-migrate during an active incident (that ship has sailed - it's resolved now). But use this as a catalyst to evaluate your options:
 
 **Ask yourself:**
 - Did the 21-day metrics outage affect your customers' trust?
@@ -84,7 +84,7 @@ Don't panic-migrate during an active incident (that ship has sailed — it's res
 
 ### Consider Open Source Alternatives
 
-The move toward open-source observability tools isn't just a cost play — it's a control play. When you self-host or use an open-source platform, you're not at the mercy of a vendor's dependency chain.
+The move toward open-source observability tools isn't just a cost play - it's a control play. When you self-host or use an open-source platform, you're not at the mercy of a vendor's dependency chain.
 
 [OneUptime](https://oneuptime.com) (full disclosure: that's us) offers status pages, incident management, on-call scheduling, monitoring, logging, APM, and error tracking in a single open-source platform. The status page feature is free and doesn't depend on third-party metrics providers that could disappear overnight.
 
@@ -96,11 +96,11 @@ Regardless of which tool you use:
 
 - **Don't rely solely on embedded metrics.** Have a backup communication channel (email, Slack, social media) for status updates.
 - **Own your status page infrastructure** or at minimum, ensure your provider doesn't have critical single points of failure.
-- **Test your status page** as part of your incident response drills. You test your monitoring — why not test the thing that tells your customers about outages?
+- **Test your status page** as part of your incident response drills. You test your monitoring - why not test the thing that tells your customers about outages?
 
 ## The Bottom Line
 
-Atlassian StatusPage just demonstrated that even the market leader in status pages can lose a critical feature for three weeks. They disabled System Metrics — the visual proof of your system's health — and it took 21 days of "exploring solutions" to bring it back.
+Atlassian StatusPage just demonstrated that even the market leader in status pages can lose a critical feature for three weeks. They disabled System Metrics - the visual proof of your system's health - and it took 21 days of "exploring solutions" to bring it back.
 
 At $399-$1,499/month, your status page should be the most reliable thing in your stack. It's the last line of communication with your users when everything else is on fire.
 

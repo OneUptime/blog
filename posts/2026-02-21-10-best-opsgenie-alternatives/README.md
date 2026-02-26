@@ -6,14 +6,14 @@ Tags: Incident Management, On-Call, Comparison, Open Source
 
 Description: Looking for an Opsgenie alternative? Here are 10 incident management and on-call platforms worth considering, with honest pros, cons, and pricing.
 
-Atlassian announced in March 2025 that Opsgenie will no longer be available for purchase after June 4, 2025, with end of support set for April 5, 2027. If you're on Opsgenie today, you have about two years to migrate — and Atlassian is steering everyone toward Jira Service Management or Compass.
+Atlassian announced in March 2025 that Opsgenie will no longer be available for purchase after June 4, 2025, with end of support set for April 5, 2027. If you're on Opsgenie today, you have about two years to migrate - and Atlassian is steering everyone toward Jira Service Management or Compass.
 
 But JSM isn't for everyone. If you want something purpose-built for on-call and incident management without buying into the full Atlassian ecosystem, here are 10 alternatives worth evaluating.
 
 ## Why Teams Are Moving Off Opsgenie
 
 - **End of life**: Opsgenie is officially sunsetting. No new purchases, no plan changes after June 2025.
-- **Forced migration**: Atlassian wants you on JSM, but JSM bundles incident management with IT service management — more tool than many engineering teams need.
+- **Forced migration**: Atlassian wants you on JSM, but JSM bundles incident management with IT service management - more tool than many engineering teams need.
 - **Pricing shifts**: JSM pricing works differently than Opsgenie's. Some teams will pay more for features they don't use.
 - **Independence**: Many teams don't want their incident response tied to a single vendor's ecosystem decisions.
 
@@ -27,15 +27,15 @@ OneUptime is a fully open-source observability platform that combines incident m
 
 - **On-call scheduling** with flexible rotations and multi-level escalation policies
 - **Incident management** with timelines, postmortems, and severity classification
-- **Status pages** (public and private) included — no separate tool needed
+- **Status pages** (public and private) included - no separate tool needed
 - **Uptime monitoring** for websites, APIs, and services
 - **Alerting** via SMS, email, phone calls, Slack, and Microsoft Teams
-- **Logs and APM** built in — not bolted on
+- **Logs and APM** built in - not bolted on
 
 ### Pros
 
 - Replaces multiple tools (Opsgenie + StatusPage + Pingdom + Datadog) with one platform
-- Fully open source — self-host or use the cloud version
+- Fully open source - self-host or use the cloud version
 - No per-user pricing for on-call features
 - Active development with frequent releases
 
@@ -68,12 +68,12 @@ PagerDuty is the incumbent in incident management. It's been around since 2009 a
 ### Pros
 
 - Most mature platform in the category
-- Extensive integrations — if a tool exists, PagerDuty probably connects to it
+- Extensive integrations - if a tool exists, PagerDuty probably connects to it
 - Strong enterprise features (analytics, postmortems, stakeholder communication)
 
 ### Cons
 
-- Expensive at scale — enterprise plans run $59/user/month
+- Expensive at scale - enterprise plans run $59/user/month
 - Can feel over-engineered for smaller teams
 - Core product hasn't changed dramatically in recent years
 
@@ -99,7 +99,7 @@ Grafana OnCall is an open-source on-call management tool that integrates nativel
 
 ### Pros
 
-- Free and open source — self-host or use Grafana Cloud
+- Free and open source - self-host or use Grafana Cloud
 - Seamless integration with Grafana dashboards and alerts
 - Clean, modern UI
 - Active community and regular updates
@@ -132,15 +132,15 @@ Incident.io takes a Slack-first approach to incident management. Every incident 
 
 ### Pros
 
-- Excellent UX — possibly the best in the category
+- Excellent UX - possibly the best in the category
 - Slack integration is genuinely deep, not just notifications
 - Strong post-incident workflow
 - Growing fast with good engineering culture
 
 ### Cons
 
-- Heavily dependent on Slack — less useful if your team uses something else
-- Relatively new — still building out some enterprise features
+- Heavily dependent on Slack - less useful if your team uses something else
+- Relatively new - still building out some enterprise features
 - No self-hosted option
 - Can get expensive for larger teams
 
@@ -166,7 +166,7 @@ Squadcast is an incident management platform focused on SRE workflows. It's popu
 
 ### Pros
 
-- Competitive pricing — significantly cheaper than PagerDuty
+- Competitive pricing - significantly cheaper than PagerDuty
 - Good SRE-focused features (SLO tracking, error budgets)
 - Responsive support team
 - Free tier is genuinely usable
@@ -175,7 +175,7 @@ Squadcast is an incident management platform focused on SRE workflows. It's popu
 
 - Smaller integration ecosystem
 - UI can feel cluttered in places
-- Less brand recognition — may be harder to get approved in enterprises
+- Less brand recognition - may be harder to get approved in enterprises
 
 ### Best For
 
@@ -187,7 +187,7 @@ Cost-conscious SRE teams that want solid incident management without enterprise 
 
 **Pricing**: Custom pricing, free tier available | [rootly.com](https://rootly.com)
 
-Rootly automates the operational side of incident response — creating channels, paging responders, sending status updates, running retrospectives. It's Slack-native like Incident.io but focuses more on automation.
+Rootly automates the operational side of incident response - creating channels, paging responders, sending status updates, running retrospectives. It's Slack-native like Incident.io but focuses more on automation.
 
 ### Key Features
 
@@ -206,7 +206,7 @@ Rootly automates the operational side of incident response — creating channels
 
 ### Cons
 
-- Pricing isn't transparent — you'll need to talk to sales
+- Pricing isn't transparent - you'll need to talk to sales
 - Smaller company, so long-term viability questions exist
 - Can be complex to set up initially
 
@@ -272,7 +272,7 @@ Better Stack combines uptime monitoring, on-call alerting, status pages, and log
 
 ### Cons
 
-- Closed source — no self-hosting option
+- Closed source - no self-hosting option
 - Still maturing in enterprise features
 - Log management is separate from core incident product
 - Less flexible routing than dedicated incident tools
@@ -306,7 +306,7 @@ xMatters (now part of Everbridge) focuses on event-driven automation and intelli
 
 ### Cons
 
-- Pricing is opaque — enterprise sales process
+- Pricing is opaque - enterprise sales process
 - UI feels dated compared to newer tools
 - Now part of Everbridge, so product direction may shift
 - Overkill for teams that just need on-call scheduling
@@ -340,7 +340,7 @@ Splunk On-Call (previously VictorOps) integrates with Splunk's observability sui
 
 ### Cons
 
-- Acquired by Cisco via Splunk — product roadmap uncertainty
+- Acquired by Cisco via Splunk - product roadmap uncertainty
 - Less useful without the broader Splunk stack
 - Development pace has slowed
 - Another tool being absorbed into a larger platform (sound familiar?)

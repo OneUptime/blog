@@ -163,7 +163,7 @@ aws batch create-scheduling-policy \
   }'
 ```
 
-In this setup, the weight factor works inversely — a lower value means more resources. The relative share each identifier gets is proportional to 1/weightFactor, so: 1/0.6 : 1/1.0 : 1/1.5 = ~50% : ~30% : ~20%.
+In this setup, the weight factor works inversely - a lower value means more resources. The relative share each identifier gets is proportional to 1/weightFactor, so: 1/0.6 : 1/1.0 : 1/1.5 = ~50% : ~30% : ~20%.
 
 - **Production** (weightFactor 0.6, ~50% share) - Scheduled training runs, model retraining pipelines, inference batch jobs. Gets the most resources because it has the lowest weight.
 - **Development** (weightFactor 1.0, ~30% share) - Developers testing new models, debugging training code

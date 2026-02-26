@@ -8,7 +8,7 @@ Description: A detailed breakdown of what Datadog actually costs when you add up
 
 Datadog is a good product. Let's get that out of the way. The agents work, the dashboards are polished, and the integrations are extensive. But "good product" and "good deal" are different conversations.
 
-If you're evaluating monitoring tools — or trying to understand why your Datadog bill keeps climbing — this post breaks down the real numbers.
+If you're evaluating monitoring tools - or trying to understand why your Datadog bill keeps climbing - this post breaks down the real numbers.
 
 ## The Pricing Structure
 
@@ -30,7 +30,7 @@ These are list prices. Enterprise contracts vary, but the structure stays the sa
 
 ## A Realistic Scenario
 
-Let's model a mid-size engineering team. Nothing exotic — just a company running microservices in production with the monitoring you'd expect:
+Let's model a mid-size engineering team. Nothing exotic - just a company running microservices in production with the monitoring you'd expect:
 
 **Team:** 20 engineers, 50 hosts, 5 services, moderate traffic
 
@@ -56,7 +56,7 @@ The numbers above assume steady-state. Reality is messier.
 
 ### Custom Metrics
 
-Datadog charges $0.05 per custom metric per month after the first 100 per host. That sounds cheap until your team instruments a few services. A single well-instrumented microservice can emit 500+ custom metrics. With 5 services across 50 hosts, you're looking at thousands of custom metrics — and an extra $500-2,000/month that nobody budgeted for.
+Datadog charges $0.05 per custom metric per month after the first 100 per host. That sounds cheap until your team instruments a few services. A single well-instrumented microservice can emit 500+ custom metrics. With 5 services across 50 hosts, you're looking at thousands of custom metrics - and an extra $500-2,000/month that nobody budgeted for.
 
 ### Log Volume Spikes
 
@@ -72,7 +72,7 @@ The default log retention is 15 days. Need 30 days? That's extra. 90 days for co
 
 ## The Multi-Product Tax
 
-Here's the less obvious cost: **each Datadog product is priced assuming you'll buy several.** The individual prices look reasonable. But the total for a full observability stack — infrastructure + APM + logs + synthetics + RUM + incidents + error tracking — adds up fast.
+Here's the less obvious cost: **each Datadog product is priced assuming you'll buy several.** The individual prices look reasonable. But the total for a full observability stack - infrastructure + APM + logs + synthetics + RUM + incidents + error tracking - adds up fast.
 
 A team that just needs "monitoring" ends up paying for 5-8 separate products to get there. Each with its own pricing model, its own billing unit, and its own overages.
 
@@ -82,14 +82,14 @@ This is by design. Datadog's business model depends on expanding the number of p
 
 If you're a 500-person company with a dedicated platform team, Datadog is probably fine. You can negotiate enterprise pricing, you have people to manage the bill, and the cost is a rounding error on your cloud spend.
 
-But if you're a 20-100 person engineering team? The math gets painful. $40-80K/year for monitoring is a significant line item — especially when you're also paying for AWS/GCP, CI/CD, and every other SaaS tool.
+But if you're a 20-100 person engineering team? The math gets painful. $40-80K/year for monitoring is a significant line item - especially when you're also paying for AWS/GCP, CI/CD, and every other SaaS tool.
 
 This is the gap that open-source observability platforms fill. Not because they're "free" (self-hosting has costs), but because they consolidate the stack. One platform for monitoring, logs, traces, status pages, incidents, and on-call means one bill, one pricing model, and no multi-product tax.
 
 ## The Bottom Line
 
-Datadog is good software with expensive pricing. That's not a criticism — it's a business model. But if your monitoring bill is growing faster than your revenue, it's worth understanding exactly what you're paying for and whether the per-product pricing structure still makes sense for your team.
+Datadog is good software with expensive pricing. That's not a criticism - it's a business model. But if your monitoring bill is growing faster than your revenue, it's worth understanding exactly what you're paying for and whether the per-product pricing structure still makes sense for your team.
 
-The observability market has changed. Self-hosted options have gotten dramatically better. Cloud alternatives with simpler pricing exist. The question isn't whether Datadog works — it's whether it's the right trade-off for your stage and budget.
+The observability market has changed. Self-hosted options have gotten dramatically better. Cloud alternatives with simpler pricing exist. The question isn't whether Datadog works - it's whether it's the right trade-off for your stage and budget.
 
 Do the math. Then decide.

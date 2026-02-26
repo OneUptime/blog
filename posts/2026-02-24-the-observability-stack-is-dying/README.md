@@ -10,7 +10,7 @@ For the last decade, the observability industry has been selling you the same pi
 
 But here's the uncomfortable truth: **the three pillars model is failing.**
 
-Not because metrics, logs, and traces are useless — they're not. But because the model was always about *collecting data*, never about *solving problems*. And the gap between those two things has become a canyon.
+Not because metrics, logs, and traces are useless - they're not. But because the model was always about *collecting data*, never about *solving problems*. And the gap between those two things has become a canyon.
 
 ## The Problem with Pillar-Based Observability
 
@@ -28,7 +28,7 @@ That's not observability. That's archaeology.
 
 ## Why We Built It This Way
 
-The three pillars emerged because of how distributed systems evolved. Monoliths had straightforward debugging — attach a debugger, read the logs, done. When microservices exploded onto the scene, we needed new primitives to understand what was happening across service boundaries.
+The three pillars emerged because of how distributed systems evolved. Monoliths had straightforward debugging - attach a debugger, read the logs, done. When microservices exploded onto the scene, we needed new primitives to understand what was happening across service boundaries.
 
 Metrics gave us the "what" (something is slow). Logs gave us the "when" (at 3:47am, this error appeared). Traces gave us the "where" (the latency is in the payment service calling the database).
 
@@ -38,9 +38,9 @@ Each pillar solved a real problem. But collectively, they created a new one: **c
 
 There's another issue that gets less attention: the economics of pillar-based observability are terrible.
 
-The average mid-market engineering team spends between $50K and $500K annually on observability tooling. Not because they need all that data — but because the pillar model encourages *collecting everything* on the off chance you might need it during an incident.
+The average mid-market engineering team spends between $50K and $500K annually on observability tooling. Not because they need all that data - but because the pillar model encourages *collecting everything* on the off chance you might need it during an incident.
 
-Log volumes grow 30-50% year over year for most teams. Trace data is even worse — capturing every span in a microservices architecture can generate terabytes per day. And the vendors are happy to charge you for every byte.
+Log volumes grow 30-50% year over year for most teams. Trace data is even worse - capturing every span in a microservices architecture can generate terabytes per day. And the vendors are happy to charge you for every byte.
 
 This isn't sustainable. When your observability bill grows faster than your infrastructure, something is fundamentally broken in the model.
 
@@ -52,15 +52,15 @@ The next generation of observability isn't about better dashboards or smarter qu
 
 Instead of collecting everything and hoping a human can find the needle in the haystack, the new model starts with the question: *what's actually wrong?*
 
-AI-driven anomaly detection isn't new, but it's finally getting good enough to be useful. Modern systems can baseline normal behavior across hundreds of services and surface deviations that actually matter — not just threshold breaches on metrics you set up two years ago and forgot about.
+AI-driven anomaly detection isn't new, but it's finally getting good enough to be useful. Modern systems can baseline normal behavior across hundreds of services and surface deviations that actually matter - not just threshold breaches on metrics you set up two years ago and forgot about.
 
-The key insight: **you don't need all the data all the time.** You need the *right* data at the *right* moment. Intelligent sampling and dynamic collection — ramping up detail when something looks wrong, scaling back when things are healthy — is replacing the "collect everything" approach.
+The key insight: **you don't need all the data all the time.** You need the *right* data at the *right* moment. Intelligent sampling and dynamic collection - ramping up detail when something looks wrong, scaling back when things are healthy - is replacing the "collect everything" approach.
 
 ### 2. From Correlation to Causation
 
 The hardest part of incident response isn't finding data. It's understanding *causality*. Service A is slow, but is it because of Service B's database, Service C's memory leak, or a network issue between availability zones?
 
-The new generation of tools is moving from showing you correlated signals to actually determining root cause. This requires understanding the topology of your system — not just the data flowing through it. When an AI model knows that Service A depends on Service B which depends on Database C, it can follow the dependency chain automatically instead of making a human do it.
+The new generation of tools is moving from showing you correlated signals to actually determining root cause. This requires understanding the topology of your system - not just the data flowing through it. When an AI model knows that Service A depends on Service B which depends on Database C, it can follow the dependency chain automatically instead of making a human do it.
 
 This isn't theoretical. Open source projects like OpenTelemetry are building the semantic layer that makes this possible, with resource attributes, service graphs, and standardized context propagation that give AI models the structural understanding they need.
 
@@ -68,7 +68,7 @@ This isn't theoretical. Open source projects like OpenTelemetry are building the
 
 This is the big one. The ultimate failure of pillar-based observability is that it stops at "here's what's wrong." It never gets to "here's how to fix it."
 
-The next wave is **autonomous remediation**: systems that don't just detect problems but fix them. Not for every issue — nobody's suggesting AI should redesign your architecture at 3am. But for the 60-70% of incidents that follow known patterns (pod crashes, memory leaks, certificate expirations, capacity limits), automated response is not just possible, it's already happening.
+The next wave is **autonomous remediation**: systems that don't just detect problems but fix them. Not for every issue - nobody's suggesting AI should redesign your architecture at 3am. But for the 60-70% of incidents that follow known patterns (pod crashes, memory leaks, certificate expirations, capacity limits), automated response is not just possible, it's already happening.
 
 Imagine waking up to a message: "At 3:47am, the payment service exceeded its memory limit. Root cause: a connection pool leak introduced in yesterday's deploy. The service was automatically rolled back to the previous version. P95 latency recovered within 4 minutes. Here's the trace showing the leak."
 
@@ -88,8 +88,8 @@ If you're evaluating observability tools today, here's what to look for:
 
 ## The Bottom Line
 
-The three pillars were a necessary step in the evolution of observability. They gave us the primitives we needed to understand distributed systems. But they were always means to an end — and somewhere along the way, the industry confused the means for the end itself.
+The three pillars were a necessary step in the evolution of observability. They gave us the primitives we needed to understand distributed systems. But they were always means to an end - and somewhere along the way, the industry confused the means for the end itself.
 
-The future of observability isn't about collecting more data. It's about solving problems faster — and eventually, solving them automatically. The platforms that understand this will define the next decade. The ones clinging to "better dashboards for your metrics, logs, and traces" will get left behind.
+The future of observability isn't about collecting more data. It's about solving problems faster - and eventually, solving them automatically. The platforms that understand this will define the next decade. The ones clinging to "better dashboards for your metrics, logs, and traces" will get left behind.
 
 The observability stack isn't just dying. It's being reborn as something genuinely useful.

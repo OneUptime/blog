@@ -71,7 +71,7 @@ Here are 10 alternatives worth considering.
 - PromQL is powerful for metric queries
 
 **Trade-offs:**
-- Requires assembly — Prometheus, Grafana, Loki, and Tempo are separate projects
+- Requires assembly - Prometheus, Grafana, Loki, and Tempo are separate projects
 - Self-hosting at scale needs expertise
 - No built-in incident management or status pages
 
@@ -91,7 +91,7 @@ Here are 10 alternatives worth considering.
 
 **Trade-offs:**
 - Expensive for smaller teams
-- Can feel like a black box — less control over configuration
+- Can feel like a black box - less control over configuration
 - Proprietary platform with vendor lock-in
 
 ## 5. Elastic APM (ELK Stack)
@@ -167,7 +167,7 @@ Here are 10 alternatives worth considering.
 - Query-driven exploration rather than pre-built dashboards
 
 **Trade-offs:**
-- Different mental model — requires buy-in from the team
+- Different mental model - requires buy-in from the team
 - Less comprehensive for infrastructure monitoring
 - Smaller ecosystem than Datadog or New Relic
 - No built-in status pages or incident management
@@ -216,10 +216,10 @@ Here are 10 alternatives worth considering.
 
 The right choice depends on what is driving your switch from New Relic:
 
-- **Cost** — Look at OneUptime, Grafana + Prometheus, or SigNoz. All offer self-hosted options.
-- **Simplicity** — OneUptime or Honeycomb. Fewer moving parts than assembling a stack.
-- **Enterprise features** — Dynatrace or Datadog if budget is not the primary concern.
-- **OpenTelemetry** — SigNoz, Uptrace, or OneUptime. All have native OTel support.
-- **Consolidation** — OneUptime replaces the most tools in one platform (monitoring, status pages, incidents, on-call, logs, traces, metrics).
+- **Cost** - Look at OneUptime, Grafana + Prometheus, or SigNoz. All offer self-hosted options.
+- **Simplicity** - OneUptime or Honeycomb. Fewer moving parts than assembling a stack.
+- **Enterprise features** - Dynatrace or Datadog if budget is not the primary concern.
+- **OpenTelemetry** - SigNoz, Uptrace, or OneUptime. All have native OTel support.
+- **Consolidation** - OneUptime replaces the most tools in one platform (monitoring, status pages, incidents, on-call, logs, traces, metrics).
 
 Whatever you choose, most of these tools support OpenTelemetry, which means switching between them later is significantly easier than it used to be. Avoid proprietary instrumentation where possible.

@@ -124,4 +124,4 @@ Your observability should not cost more than your cloud. If it does, something i
 
 ---
 
-*OneUptime is fully open source at [github.com/OneUptime/oneuptime](https://github.com/OneUptime/oneuptime). Monitor, debug, and fix your applications — all in one platform. Free to self-host, always.*
+*OneUptime is fully open source at [github.com/OneUptime/oneuptime](https://github.com/OneUptime/oneuptime). Monitor, debug, and fix your applications - all in one platform. Free to self-host, always.*

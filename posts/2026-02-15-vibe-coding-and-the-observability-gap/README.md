@@ -6,7 +6,7 @@ Tags: Observability, DevOps, Monitoring
 
 Description: AI-assisted coding is shipping code faster than ever. But if you don't deeply understand every line, you need observability to catch what you missed.
 
-Andrej Karpathy called it "vibe coding" — you describe what you want, the AI writes it, you accept the diff, and the thing mostly works. It's not a joke. It's how a growing number of developers actually ship software in 2026.
+Andrej Karpathy called it "vibe coding" - you describe what you want, the AI writes it, you accept the diff, and the thing mostly works. It's not a joke. It's how a growing number of developers actually ship software in 2026.
 
 And it works. Sort of.
 
@@ -16,7 +16,7 @@ The code compiles. The tests pass (if there are tests). The feature does what yo
 
 Let's get this out of the way: AI-generated code isn't inherently worse than human-written code. Sometimes it's better. It follows patterns consistently, doesn't get tired, and doesn't cut corners because it's Friday afternoon.
 
-The problem is understanding. When you write code line by line, you build a mental model of how it behaves — the edge cases, the failure modes, the performance characteristics. When you accept a 200-line diff from an AI, that mental model is thinner. You know *what* it does. You might not know *how* it fails.
+The problem is understanding. When you write code line by line, you build a mental model of how it behaves - the edge cases, the failure modes, the performance characteristics. When you accept a 200-line diff from an AI, that mental model is thinner. You know *what* it does. You might not know *how* it fails.
 
 This isn't a skill issue. It's a physics issue. You can't deeply understand code at the speed you can generate it.
 
@@ -26,7 +26,7 @@ Here's what typically goes wrong with AI-assisted code in production:
 
 **Memory and resource usage.** AI models optimize for correctness, not efficiency. That elegant solution might allocate objects in a loop, hold database connections open, or buffer entire responses in memory. It works in development. It falls over under load.
 
-**Error handling at boundaries.** AI is great at the happy path. The sad path — network timeouts, malformed inputs, partial failures, race conditions — is where things get creative. AI-generated error handling tends to be generic. Production errors are specific.
+**Error handling at boundaries.** AI is great at the happy path. The sad path - network timeouts, malformed inputs, partial failures, race conditions - is where things get creative. AI-generated error handling tends to be generic. Production errors are specific.
 
 **Implicit assumptions.** The AI assumed your database supports transactions. It assumed the API returns JSON. It assumed the file system is writable. These assumptions are invisible until they're violated.
 
@@ -36,7 +36,7 @@ None of these show up in unit tests. All of them show up in production.
 
 ## Observability Is the Safety Net
 
-If you can't fully understand every line of code before it ships — and let's be honest, even without AI, most of us couldn't — you need something that tells you what's actually happening at runtime.
+If you can't fully understand every line of code before it ships - and let's be honest, even without AI, most of us couldn't - you need something that tells you what's actually happening at runtime.
 
 That means:
 
@@ -46,7 +46,7 @@ That means:
 
 **Metrics that establish baselines.** You need to know what "normal" looks like before you can detect "abnormal." Memory usage trending up? Response times creeping? Error rates spiking on a specific endpoint? These patterns emerge from metrics, not from reading code.
 
-**Alerts that wake you up before users notice.** If you shipped code you don't fully understand, you need an early warning system. Not a dashboard you check manually — an active system that monitors thresholds and tells you when something's off.
+**Alerts that wake you up before users notice.** If you shipped code you don't fully understand, you need an early warning system. Not a dashboard you check manually - an active system that monitors thresholds and tells you when something's off.
 
 ## The Faster You Ship, the More You Need to Monitor
 
@@ -62,7 +62,7 @@ A team doing vibe coding well has this stack:
 
 1. **Distributed tracing** on every service, so any performance regression from AI-generated code is immediately visible.
 2. **Structured logging** with enough context to debug issues without reproducing them locally.
-3. **Real-time metrics** with automated anomaly detection — catch the memory leak before it causes an OOM.
+3. **Real-time metrics** with automated anomaly detection - catch the memory leak before it causes an OOM.
 4. **Status pages** that communicate issues to users automatically, because when you ship fast, some things will break.
 5. **Incident management** with runbooks, because the person on-call might not be the person who accepted the AI-generated diff.
 6. **Error tracking** that groups and deduplicates, so you see patterns instead of noise.
