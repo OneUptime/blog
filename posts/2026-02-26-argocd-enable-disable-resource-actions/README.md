@@ -312,4 +312,4 @@ data:
           return obj
 ```
 
-The combination of discovery scripts and RBAC gives you fine-grained control over who can do what to which resources. For writing the Lua scripts themselves, see [how to write Lua scripts for custom resource actions](https://oneuptime.com/blog/post/2026-02-26-argocd-lua-scripts-resource-actions/view). For RBAC configuration details, check out [how to configure RBAC policies in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-rbac-policies/view).
+The combination of discovery scripts and RBAC gives you fine-grained control over who can do what to which resources. For writing the Lua scripts themselves, see [how to write Lua scripts for custom resource actions](https://oneuptime.com/blog/post/2026-02-26-argocd-lua-scripts-resource-actions/view). For RBAC configuration details, check out how to configure RBAC policies in ArgoCD.

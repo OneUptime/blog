@@ -366,7 +366,7 @@ spec:
         summary: "Scheduled deployment job {{ $labels.job_name }} failed"
 ```
 
-Integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) for alerting when scheduled deployments fail or miss their windows.
+Integrate with OneUptime for alerting when scheduled deployments fail or miss their windows.
 
 ## Conclusion
 

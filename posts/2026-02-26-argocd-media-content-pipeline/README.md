@@ -407,7 +407,7 @@ hs.status = "Unknown"
 return hs
 ```
 
-For comprehensive pipeline monitoring, connect ArgoCD metrics to [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to get alerts when transcoding jobs fail or content delivery latency spikes.
+For comprehensive pipeline monitoring, connect ArgoCD metrics to OneUptime to get alerts when transcoding jobs fail or content delivery latency spikes.
 
 ## Conclusion
 

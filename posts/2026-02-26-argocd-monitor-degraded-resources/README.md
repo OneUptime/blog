@@ -293,4 +293,4 @@ spec:
 
 5. **Create runbooks**: For each type of degraded resource, document the investigation and remediation steps.
 
-For setting up ArgoCD metrics, see [how to expose ArgoCD Prometheus metrics](https://oneuptime.com/blog/post/2026-02-26-argocd-prometheus-metrics/view). For automated responses to degraded health, check out [how to use resource health for automated rollbacks](https://oneuptime.com/blog/post/2026-02-26-argocd-resource-health-automated-rollbacks/view).
+For setting up ArgoCD metrics, see how to expose ArgoCD Prometheus metrics. For automated responses to degraded health, check out [how to use resource health for automated rollbacks](https://oneuptime.com/blog/post/2026-02-26-argocd-resource-health-automated-rollbacks/view).

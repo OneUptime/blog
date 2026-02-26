@@ -271,4 +271,4 @@ Sometimes "Missing" is expected and not a problem:
 
 In these cases, you can either ignore the "Missing" status or configure ArgoCD to exclude these resources from tracking.
 
-For more on sync ordering, see [how to order resource deployment with sync waves](https://oneuptime.com/blog/post/2026-02-26-argocd-sync-waves-ordering/view). For debugging health issues in general, check out [how to debug health check failures in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-debug-health-check-failures/view).
+For more on sync ordering, see how to order resource deployment with sync waves. For debugging health issues in general, check out [how to debug health check failures in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-debug-health-check-failures/view).

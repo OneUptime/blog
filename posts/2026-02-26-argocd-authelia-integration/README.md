@@ -354,7 +354,7 @@ If this returns an error, check that Authelia's OIDC provider is properly config
 
 Ensure the `groups` scope is included in both the Authelia client configuration and the Dex connector scopes. Also verify that users actually have groups assigned in the user database.
 
-Monitor your Authelia and ArgoCD authentication chain with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to get alerts when login failures spike or authentication services become unavailable.
+Monitor your Authelia and ArgoCD authentication chain with OneUptime to get alerts when login failures spike or authentication services become unavailable.
 
 ## Conclusion
 

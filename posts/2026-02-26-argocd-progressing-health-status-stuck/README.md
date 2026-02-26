@@ -264,4 +264,4 @@ kubectl exec -n argocd deployment/argocd-application-controller -- curl -s local
 7. Is ArgoCD's cache stale? Try `--hard-refresh`.
 8. Is the controller overloaded? Check controller logs and metrics.
 
-For writing better health checks, see [how to write custom health check scripts in Lua](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-health-check-lua-scripts/view). For general health check debugging, check out [how to debug health check failures in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-debug-health-check-failures/view).
+For writing better health checks, see how to write custom health check scripts in Lua. For general health check debugging, check out [how to debug health check failures in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-debug-health-check-failures/view).

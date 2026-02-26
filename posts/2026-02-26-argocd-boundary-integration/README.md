@@ -306,7 +306,7 @@ boundary sessions list \
 boundary sessions read -id <session-id>
 ```
 
-Boundary session events can be forwarded to your SIEM for compliance. Combine with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) monitoring for complete visibility into both Boundary tunnel health and ArgoCD application health.
+Boundary session events can be forwarded to your SIEM for compliance. Combine with OneUptime monitoring for complete visibility into both Boundary tunnel health and ArgoCD application health.
 
 ## Defense-in-Depth Security Model
 

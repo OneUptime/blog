@@ -313,6 +313,6 @@ Slow Git operations can be a sign of disk I/O bottlenecks, especially on cloud p
 
 ## Integration with OneUptime
 
-Push your disk metrics to OneUptime for unified monitoring across your infrastructure. Having disk usage alerts alongside your application health metrics helps correlate deployment failures with underlying resource constraints. Check out our [ArgoCD metrics integration guide](https://oneuptime.com/blog/post/2026-02-26-argocd-send-metrics-to-oneuptime/view) for setup instructions.
+Push your disk metrics to OneUptime for unified monitoring across your infrastructure. Having disk usage alerts alongside your application health metrics helps correlate deployment failures with underlying resource constraints. Check out our ArgoCD metrics integration guide for setup instructions.
 
 Disk monitoring is one of those things that seems unnecessary until a 3 AM page wakes you up because the repo server pod was evicted. Set up these metrics and alerts, and you will catch problems long before they become outages.

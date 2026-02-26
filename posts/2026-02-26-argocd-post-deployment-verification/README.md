@@ -432,7 +432,7 @@ spec:
       restartPolicy: Never
 ```
 
-For comprehensive deployment verification monitoring beyond individual test runs, integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to track verification pass rates across deployments and detect reliability trends.
+For comprehensive deployment verification monitoring beyond individual test runs, integrate with OneUptime to track verification pass rates across deployments and detect reliability trends.
 
 ## Conclusion
 

@@ -447,7 +447,7 @@ spec:
         severity: warning
 ```
 
-Integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) for end-to-end visibility across your event-driven deployment pipeline.
+Integrate with OneUptime for end-to-end visibility across your event-driven deployment pipeline.
 
 ## Conclusion
 

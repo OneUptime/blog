@@ -286,7 +286,7 @@ Ensure the group names in `policy.csv` match exactly what Dex returns. AD group 
 3. Set a strong password and rotate it regularly
 4. Enable AD account lockout policies for the service account
 5. Restrict the service account to only query the OUs it needs
-6. Monitor failed authentication attempts through [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to detect potential brute-force attempts
+6. Monitor failed authentication attempts through OneUptime to detect potential brute-force attempts
 
 ## Conclusion
 

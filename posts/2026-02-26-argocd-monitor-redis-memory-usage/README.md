@@ -341,7 +341,7 @@ Sizing guidelines based on application count:
 
 ## Integrating with OneUptime
 
-For centralized monitoring, you can forward ArgoCD Redis metrics to OneUptime. Configure your Prometheus remote write to push Redis metrics, or use the OneUptime agent to scrape the Redis exporter endpoint directly. This gives you unified visibility across all your ArgoCD components alongside your application metrics. See our guide on [sending ArgoCD metrics to OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-send-metrics-to-oneuptime/view) for the full setup.
+For centralized monitoring, you can forward ArgoCD Redis metrics to OneUptime. Configure your Prometheus remote write to push Redis metrics, or use the OneUptime agent to scrape the Redis exporter endpoint directly. This gives you unified visibility across all your ArgoCD components alongside your application metrics. See our guide on sending ArgoCD metrics to OneUptime for the full setup.
 
 ## Troubleshooting Common Redis Memory Issues
 

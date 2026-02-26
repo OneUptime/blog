@@ -293,7 +293,7 @@ spec:
     interval: 30s
 ```
 
-Set up alerts for authentication failures and proxy errors through [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to catch identity provider outages before they block your entire team from accessing ArgoCD.
+Set up alerts for authentication failures and proxy errors through OneUptime to catch identity provider outages before they block your entire team from accessing ArgoCD.
 
 ## Troubleshooting
 

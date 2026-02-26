@@ -386,7 +386,7 @@ HIL (Hardware-in-the-Loop) testing is specific to automotive - real ECU hardware
 
 ## Monitoring and Observability
 
-Monitor the health of your automotive ArgoCD deployment across all tiers. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to aggregate alerts from cloud and edge clusters, ensuring that factory deployments are always in sync and OTA services maintain their SLAs.
+Monitor the health of your automotive ArgoCD deployment across all tiers. Use OneUptime to aggregate alerts from cloud and edge clusters, ensuring that factory deployments are always in sync and OTA services maintain their SLAs.
 
 ## Conclusion
 

@@ -465,7 +465,7 @@ spec:
         summary: "Application {{ $labels.name }} has rolled back more than 3 times in 24h"
 ```
 
-Use [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to monitor both the health metrics that trigger rollbacks and the rollback events themselves, creating a complete picture of deployment reliability.
+Use OneUptime to monitor both the health metrics that trigger rollbacks and the rollback events themselves, creating a complete picture of deployment reliability.
 
 ## Conclusion
 

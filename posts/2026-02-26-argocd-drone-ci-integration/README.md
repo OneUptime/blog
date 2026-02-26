@@ -288,7 +288,7 @@ Add a verification step that checks if the deployment is healthy after ArgoCD sy
 
 ## Monitoring and Observability
 
-Track your Drone-to-ArgoCD deployments by integrating with monitoring tools. You can configure ArgoCD notifications to report deployment outcomes back to your team. For comprehensive monitoring of both your CI pipeline and deployment health, consider using [OneUptime to monitor ArgoCD metrics](https://oneuptime.com/blog/post/2026-02-26-argocd-prometheus-metrics/view).
+Track your Drone-to-ArgoCD deployments by integrating with monitoring tools. You can configure ArgoCD notifications to report deployment outcomes back to your team. For comprehensive monitoring of both your CI pipeline and deployment health, consider using OneUptime to monitor ArgoCD metrics.
 
 ## Troubleshooting Common Issues
 

@@ -260,4 +260,4 @@ spec:
 
 Certificate rotation in ArgoCD does not have to be stressful. The best approach is to use cert-manager for automatic rotation wherever possible. For internal certificates, ArgoCD's auto-generation on restart makes rotation straightforward. For everything else, build automation around certificate checks and renewals so you never get caught off guard by an expiring certificate. Monitor your certificate expiry dates and set up alerts well before they become a problem.
 
-For related security hardening, check out our post on [configuring TLS certificates for ArgoCD server](https://oneuptime.com/blog/post/2026-02-26-argocd-configure-tls-certificates/view).
+For related security hardening, check out our post on configuring TLS certificates for ArgoCD server.

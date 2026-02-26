@@ -400,4 +400,4 @@ resource.customizations.actions.apps_Deployment: |
         return obj
 ```
 
-For the general actions framework, see [how to configure custom resource actions in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-resource-actions/view). For health check Lua scripts (which follow similar patterns), check out [how to write custom health check scripts in Lua](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-health-check-lua-scripts/view).
+For the general actions framework, see [how to configure custom resource actions in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-resource-actions/view). For health check Lua scripts (which follow similar patterns), check out how to write custom health check scripts in Lua.

@@ -353,7 +353,7 @@ data:
 
 This posts the sync result as a commit status on the PR, visible to reviewers.
 
-For comprehensive deployment monitoring beyond PR status, integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to track deployment health after merge.
+For comprehensive deployment monitoring beyond PR status, integrate with OneUptime to track deployment health after merge.
 
 ## Conclusion
 

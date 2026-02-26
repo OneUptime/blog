@@ -285,4 +285,4 @@ kubectl logs deployment/argocd-server -n argocd | \
 
 Read-only mode in ArgoCD is best implemented through RBAC policies. The built-in `readonly` role covers most use cases, but custom roles give you fine-grained control over what each team can see. For monitoring integrations, use dedicated API tokens with read-only permissions. Avoid anonymous access unless ArgoCD is behind a VPN. The goal is to give everyone the visibility they need without the ability to make changes they should not.
 
-For more on RBAC configuration, see our guide on [configuring RBAC policies in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-rbac-policies/view).
+For more on RBAC configuration, see our guide on configuring RBAC policies in ArgoCD.

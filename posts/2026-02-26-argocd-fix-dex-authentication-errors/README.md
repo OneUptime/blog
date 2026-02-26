@@ -293,4 +293,4 @@ kubectl rollout status deployment argocd-server -n argocd
 
 ## Summary
 
-Most Dex authentication errors fall into a few categories: misconfigured redirect URIs, unreachable identity providers, missing secrets, or invalid YAML configuration. Always start by checking Dex pod health and logs, then verify the `argocd-cm` ConfigMap settings. For monitoring Dex health in production, consider setting up alerts on the Dex pod status and watching for authentication error rates using [OneUptime monitoring](https://oneuptime.com/blog/post/2026-02-26-argocd-prometheus-metrics-monitoring/view).
+Most Dex authentication errors fall into a few categories: misconfigured redirect URIs, unreachable identity providers, missing secrets, or invalid YAML configuration. Always start by checking Dex pod health and logs, then verify the `argocd-cm` ConfigMap settings. For monitoring Dex health in production, consider setting up alerts on the Dex pod status and watching for authentication error rates using OneUptime monitoring.

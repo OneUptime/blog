@@ -334,7 +334,7 @@ spec:
 
 This creates a feedback loop where ArgoCD deploys and manages the monitoring stack, and the monitoring stack observes ArgoCD's health - a common and powerful pattern in production Kubernetes environments.
 
-For more on monitoring ArgoCD itself, check out [how ArgoCD architecture works under the hood](https://oneuptime.com/blog/post/2026-02-26-argocd-architecture-under-the-hood/view) and for setting up alerting on your monitoring stack, refer to your Alertmanager configuration in the values file above.
+For more on monitoring ArgoCD itself, check out how ArgoCD architecture works under the hood and for setting up alerting on your monitoring stack, refer to your Alertmanager configuration in the values file above.
 
 ## Summary
 

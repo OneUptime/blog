@@ -402,7 +402,7 @@ git push
 
 ## Monitoring Lab Health
 
-Use ArgoCD's built-in metrics to monitor lab status. Connect these to [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) for alerting when student environments have issues:
+Use ArgoCD's built-in metrics to monitor lab status. Connect these to OneUptime for alerting when student environments have issues:
 
 ```yaml
 # Monitor that all student apps are healthy

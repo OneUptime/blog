@@ -429,7 +429,7 @@ data:
 
 ## Integration with OneUptime
 
-For production-grade continuous verification, integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to:
+For production-grade continuous verification, integrate with OneUptime to:
 
 - Monitor application health 24/7 after deployment
 - Set up synthetic monitors that run continuously

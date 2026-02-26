@@ -329,7 +329,7 @@ LDAPS on port 636 is generally preferred because the entire connection is encryp
 
 ## Monitoring LDAP Authentication Health
 
-Monitor authentication success and failure rates to detect issues early. Connect ArgoCD metrics to [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to alert on authentication failures that could indicate LDAP server issues or misconfiguration.
+Monitor authentication success and failure rates to detect issues early. Connect ArgoCD metrics to OneUptime to alert on authentication failures that could indicate LDAP server issues or misconfiguration.
 
 ## Conclusion
 

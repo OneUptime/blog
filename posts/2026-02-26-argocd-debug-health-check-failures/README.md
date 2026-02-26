@@ -263,4 +263,4 @@ argocd app list -o name | xargs -I {} argocd app get {} --hard-refresh
 6. Are there Lua errors in the controller logs? Check `kubectl logs`.
 7. Did the ConfigMap change get picked up? Restart the controller if needed.
 
-For more on writing custom health checks, see [how to write custom health check scripts in Lua](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-health-check-lua-scripts/view). For monitoring degraded resources, check out [how to monitor degraded resources in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-degraded-resources/view).
+For more on writing custom health checks, see how to write custom health check scripts in Lua. For monitoring degraded resources, check out [how to monitor degraded resources in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-degraded-resources/view).

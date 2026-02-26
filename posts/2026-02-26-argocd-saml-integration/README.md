@@ -258,7 +258,7 @@ echo "<base64-saml-response>" | base64 -d | xmllint --format -
 3. Set a reasonable session timeout in ArgoCD
 4. Enable MFA at the IdP level for ArgoCD access
 5. Regularly rotate the IdP signing certificate and update `caData`
-6. Monitor authentication events with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to detect anomalies
+6. Monitor authentication events with OneUptime to detect anomalies
 
 ## Conclusion
 

@@ -289,4 +289,4 @@ There are a few edge cases worth considering.
 
 A complete Velero health check configuration covers Backup, Restore, Schedule, and BackupStorageLocation resources. With these in place, your ArgoCD dashboard becomes a reliable source of truth for the state of your disaster recovery setup. No more checking Velero CLI separately to see if backups are actually succeeding.
 
-For more on writing Lua health checks in ArgoCD, see our guide on [how to write custom health check scripts in Lua](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-health-check-lua-scripts/view). For general Velero backup strategies, check out [how to back up and restore Kubernetes with Velero](https://oneuptime.com/blog/post/2026-01-06-kubernetes-backup-restore-velero/view).
+For more on writing Lua health checks in ArgoCD, see our guide on how to write custom health check scripts in Lua. For general Velero backup strategies, check out [how to back up and restore Kubernetes with Velero](https://oneuptime.com/blog/post/2026-01-06-kubernetes-backup-restore-velero/view).

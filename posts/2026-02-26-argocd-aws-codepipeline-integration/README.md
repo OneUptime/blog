@@ -229,7 +229,7 @@ When integrating CodePipeline with ArgoCD, keep these security practices in mind
 
 ## Monitoring the Integration
 
-You can monitor your ArgoCD deployments alongside your AWS pipeline using OneUptime. Set up monitors for both the CodePipeline execution status and ArgoCD application health to get end-to-end visibility into your deployment pipeline. Check out [how to send ArgoCD metrics to monitoring tools](https://oneuptime.com/blog/post/2026-02-26-argocd-prometheus-metrics/view) for more on observability.
+You can monitor your ArgoCD deployments alongside your AWS pipeline using OneUptime. Set up monitors for both the CodePipeline execution status and ArgoCD application health to get end-to-end visibility into your deployment pipeline. Check out how to send ArgoCD metrics to monitoring tools for more on observability.
 
 ## Troubleshooting Common Issues
 

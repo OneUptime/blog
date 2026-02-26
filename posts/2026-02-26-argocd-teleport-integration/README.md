@@ -347,7 +347,7 @@ spec:
         summary: "Teleport agent for ArgoCD is down"
 ```
 
-Integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) for comprehensive monitoring of both the Teleport agent and ArgoCD health.
+Integrate with OneUptime for comprehensive monitoring of both the Teleport agent and ArgoCD health.
 
 ## Conclusion
 

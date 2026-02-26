@@ -295,4 +295,4 @@ gcloud projects get-iam-policy my-project \
 
 **Workload Identity not working** - Verify the node pool has the Workload Identity metadata server enabled and the pod can access the GKE metadata service.
 
-For monitoring Image Updater operations on GCP, check out the [ArgoCD monitoring guide](https://oneuptime.com/blog/post/2026-02-26-argocd-prometheus-metrics/view) to track update frequency and detect failures.
+For monitoring Image Updater operations on GCP, check out the ArgoCD monitoring guide to track update frequency and detect failures.

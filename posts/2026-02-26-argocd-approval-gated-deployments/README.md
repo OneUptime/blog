@@ -381,7 +381,7 @@ data:
         }]
 ```
 
-Track approval latency and deployment pipeline health with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to identify bottlenecks in your approval workflow.
+Track approval latency and deployment pipeline health with OneUptime to identify bottlenecks in your approval workflow.
 
 ## Conclusion
 

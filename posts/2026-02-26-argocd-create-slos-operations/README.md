@@ -296,7 +296,7 @@ This helps you identify specific applications that are dragging down your overal
 
 ### Connecting SLOs to OneUptime
 
-OneUptime supports SLO tracking natively. Push your ArgoCD SLI metrics to OneUptime and define SLO targets in the UI. This gives you automated error budget tracking, SLO compliance reports, and integration with your incident management workflow. Learn more about [monitoring ArgoCD with OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-send-metrics-to-oneuptime/view).
+OneUptime supports SLO tracking natively. Push your ArgoCD SLI metrics to OneUptime and define SLO targets in the UI. This gives you automated error budget tracking, SLO compliance reports, and integration with your incident management workflow. Learn more about monitoring ArgoCD with OneUptime.
 
 ## Common Pitfalls
 

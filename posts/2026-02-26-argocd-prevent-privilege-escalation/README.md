@@ -352,4 +352,4 @@ argocd app create test-escalation \
 
 Preventing privilege escalation in ArgoCD requires a defense-in-depth approach. Start with ArgoCD project restrictions to limit resource types and namespaces. Add Kubernetes admission controllers (Kyverno, OPA Gatekeeper, or Pod Security Standards) as a second layer. Restrict source repositories to prevent unauthorized manifests. And monitor for escalation attempts so you can respond quickly. No single control is sufficient - it is the combination that creates a secure deployment pipeline.
 
-For related security topics, see our guides on [hardening ArgoCD server for production](https://oneuptime.com/blog/post/2026-02-26-argocd-harden-server-production/view) and [configuring RBAC policies](https://oneuptime.com/blog/post/2026-02-26-argocd-rbac-policies/view).
+For related security topics, see our guides on [hardening ArgoCD server for production](https://oneuptime.com/blog/post/2026-02-26-argocd-harden-server-production/view) and configuring RBAC policies.

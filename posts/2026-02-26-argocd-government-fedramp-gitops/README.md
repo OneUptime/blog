@@ -330,7 +330,7 @@ Before going to production in a government environment, verify these settings:
 9. Container images pulled from approved internal registry
 10. Policy engine enforcing STIG requirements on all managed resources
 
-For monitoring your ArgoCD deployment and ensuring it meets uptime SLAs required by government contracts, consider integrating with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to get real-time visibility into sync failures and deployment health.
+For monitoring your ArgoCD deployment and ensuring it meets uptime SLAs required by government contracts, consider integrating with OneUptime to get real-time visibility into sync failures and deployment health.
 
 ## Conclusion
 

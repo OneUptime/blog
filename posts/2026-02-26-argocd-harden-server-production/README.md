@@ -435,4 +435,4 @@ kubectl get pods -n argocd -o jsonpath='{range .items[*]}{.metadata.name}{": run
 
 Hardening ArgoCD for production is not optional - it is essential. Start with the highest impact items: disable the admin account, configure strict RBAC, and enable network policies. Then work through container security, audit logging, and Redis hardening. Review your configuration regularly and test it against your security requirements. A secure ArgoCD installation is the foundation of a trustworthy GitOps pipeline.
 
-For related security topics, see our guides on [configuring RBAC policies in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-rbac-policies/view) and [content security policy headers](https://oneuptime.com/blog/post/2026-02-26-argocd-content-security-policy-headers/view).
+For related security topics, see our guides on configuring RBAC policies in ArgoCD and [content security policy headers](https://oneuptime.com/blog/post/2026-02-26-argocd-content-security-policy-headers/view).

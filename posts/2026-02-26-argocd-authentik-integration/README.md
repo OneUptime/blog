@@ -315,7 +315,7 @@ Ensure the redirect URI in Authentik exactly matches: `https://argocd.example.co
 
 Check for common mismatches: trailing slashes, http vs https, port numbers.
 
-Monitor your Authentik and ArgoCD integration health with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to detect authentication issues before they block your team.
+Monitor your Authentik and ArgoCD integration health with OneUptime to detect authentication issues before they block your team.
 
 ## Conclusion
 

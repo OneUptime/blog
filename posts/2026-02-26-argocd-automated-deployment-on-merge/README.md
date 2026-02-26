@@ -335,7 +335,7 @@ If the PreSync hook fails, the deployment does not proceed - even with auto-sync
 
 ## Monitoring Automated Deployments
 
-Track deployment frequency and success rate with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to identify trends and catch degradation in your deployment pipeline.
+Track deployment frequency and success rate with OneUptime to identify trends and catch degradation in your deployment pipeline.
 
 ## Conclusion
 

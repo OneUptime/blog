@@ -201,4 +201,4 @@ The savings multiply when you have multiple applications syncing concurrently. Y
 
 The `ApplyOutOfSyncOnly` sync option is one of the most impactful performance optimizations you can enable in ArgoCD. It reduces sync time, minimizes API server load, and lowers the risk of unintended side effects during deployment. For any application with more than a handful of resources, it should be your default choice.
 
-If you are looking to understand other sync options that complement this one, check out our guide on [how to use the PruneLast sync option](https://oneuptime.com/blog/post/2026-02-26-argocd-prunelast-sync-option/view) and [how to configure ArgoCD server-side apply](https://oneuptime.com/blog/post/2026-02-26-argocd-serversideapply-sync-option/view).
+If you are looking to understand other sync options that complement this one, check out our guide on [how to use the PruneLast sync option](https://oneuptime.com/blog/post/2026-02-26-argocd-prunelast-sync-option/view) and how to configure ArgoCD server-side apply.

@@ -305,4 +305,4 @@ kubectl rollout restart deployment argocd-application-controller -n argocd
 
 ArgoCD will fall back to its built-in health check for that resource type.
 
-For more on writing custom health checks from scratch, see [how to write custom health check scripts in Lua](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-health-check-lua-scripts/view). For debugging health check issues, check out [how to debug health check failures in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-debug-health-check-failures/view).
+For more on writing custom health checks from scratch, see how to write custom health check scripts in Lua. For debugging health check issues, check out [how to debug health check failures in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-debug-health-check-failures/view).

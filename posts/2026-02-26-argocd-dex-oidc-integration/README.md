@@ -339,7 +339,7 @@ kubectl run curl --image=curlimages/curl --rm -it -- \
 3. Check that the OIDC scope for groups is requested
 4. Some IdPs only include groups in the access token, not the ID token - check your IdP configuration
 
-Monitor authentication health with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to quickly detect when OIDC provider issues affect ArgoCD access.
+Monitor authentication health with OneUptime to quickly detect when OIDC provider issues affect ArgoCD access.
 
 ## Conclusion
 

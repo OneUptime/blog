@@ -365,7 +365,7 @@ data:
         }]
 ```
 
-For comprehensive deployment monitoring that goes beyond chat notifications, integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to track deployment health trends and set up escalation policies when chat-based alerts are missed.
+For comprehensive deployment monitoring that goes beyond chat notifications, integrate with OneUptime to track deployment health trends and set up escalation policies when chat-based alerts are missed.
 
 ## Conclusion
 

@@ -299,4 +299,4 @@ You should see the TaskRun show as "Progressing" while running, then "Healthy" w
 
 Tekton pipelines can take a while to complete, especially if they include build, test, and deploy stages. ArgoCD will show these as "Progressing" for the duration of the run. This is expected behavior. If you need to distinguish between a legitimately long-running pipeline and one that is stuck, consider adding timeout logic in your pipeline specs rather than in the ArgoCD health check.
 
-For more on writing Lua health checks, see [how to write custom health check scripts in Lua](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-health-check-lua-scripts/view). To learn about Tekton pipeline deployments with Helm, check out [automating Helm deployments with Tekton pipelines](https://oneuptime.com/blog/post/2026-01-17-helm-tekton-pipelines-cicd/view).
+For more on writing Lua health checks, see how to write custom health check scripts in Lua. To learn about Tekton pipeline deployments with Helm, check out [automating Helm deployments with Tekton pipelines](https://oneuptime.com/blog/post/2026-01-17-helm-tekton-pipelines-cicd/view).

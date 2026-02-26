@@ -313,4 +313,4 @@ For production environments, I strongly recommend Argo Rollouts. It gives you th
 
 **Partial failures**: Sometimes only some resources in an application are degraded. Make sure your rollback logic accounts for this and does not unnecessarily roll back the entire application.
 
-For more on ArgoCD's rollback capabilities, see [how to create custom rollback actions](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-rollback-actions/view). For setting up health checks, check out [how to understand built-in health checks in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-builtin-health-checks/view).
+For more on ArgoCD's rollback capabilities, see [how to create custom rollback actions](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-rollback-actions/view). For setting up health checks, check out how to understand built-in health checks in ArgoCD.

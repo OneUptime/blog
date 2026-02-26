@@ -460,7 +460,7 @@ spec:
     - "*"
 ```
 
-For monitoring your manufacturing IoT platform and getting alerts when sensor pipelines fail or edge nodes go offline, integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) for end-to-end visibility across cloud and factory floor.
+For monitoring your manufacturing IoT platform and getting alerts when sensor pipelines fail or edge nodes go offline, integrate with OneUptime for end-to-end visibility across cloud and factory floor.
 
 ## Conclusion
 

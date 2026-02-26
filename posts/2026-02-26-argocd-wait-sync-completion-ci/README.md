@@ -290,4 +290,4 @@ echo "All applications synced successfully"
 
 4. **Handle network errors** - The CI runner might lose connectivity to ArgoCD. Add retry logic around API calls.
 
-5. **Monitor deployment duration** - Track how long syncs take over time. If they are getting slower, investigate resource constraints. For comprehensive monitoring, explore [ArgoCD Prometheus metrics](https://oneuptime.com/blog/post/2026-02-26-argocd-prometheus-metrics/view).
+5. **Monitor deployment duration** - Track how long syncs take over time. If they are getting slower, investigate resource constraints. For comprehensive monitoring, explore ArgoCD Prometheus metrics.

@@ -398,7 +398,7 @@ metadata:
     notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: ""
 ```
 
-For comprehensive deployment monitoring beyond notifications, integrate ArgoCD metrics with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to track deployment frequency, success rates, and mean time to recovery across all your environments.
+For comprehensive deployment monitoring beyond notifications, integrate ArgoCD metrics with OneUptime to track deployment frequency, success rates, and mean time to recovery across all your environments.
 
 ## Conclusion
 

@@ -286,6 +286,6 @@ p, role:admin, applications, action/*, *, allow
 p, role:developer, applications, action/*, *, deny
 ```
 
-For more on ArgoCD RBAC, see the documentation on [configuring RBAC policies in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-rbac-policies/view).
+For more on ArgoCD RBAC, see the documentation on configuring RBAC policies in ArgoCD.
 
 Resource actions are a powerful tool for day-to-day operations. They bring common operational tasks into the ArgoCD interface, reducing context switching between ArgoCD and kubectl. For writing the Lua scripts that power these actions, see [how to write Lua scripts for custom resource actions](https://oneuptime.com/blog/post/2026-02-26-argocd-lua-scripts-resource-actions/view).

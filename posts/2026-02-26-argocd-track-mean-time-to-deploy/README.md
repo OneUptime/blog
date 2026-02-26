@@ -352,6 +352,6 @@ spec:
 
 ## Connecting to OneUptime
 
-Track MTTD alongside your other DORA metrics in OneUptime. By correlating deployment time with incident frequency and change failure rate, you get a complete picture of your delivery performance. See the [ArgoCD metrics guide](https://oneuptime.com/blog/post/2026-02-26-argocd-send-metrics-to-oneuptime/view) for integration setup.
+Track MTTD alongside your other DORA metrics in OneUptime. By correlating deployment time with incident frequency and change failure rate, you get a complete picture of your delivery performance. See the ArgoCD metrics guide for integration setup.
 
 Mean Time to Deploy is the metric that tells you if your GitOps pipeline is actually fast. Measure it, set targets, and continuously optimize the pipeline to keep your deployments flowing smoothly.

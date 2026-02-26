@@ -352,7 +352,7 @@ fi
 
 ## Monitoring Rollbacks
 
-Track rollback events to identify patterns. If you are rolling back frequently, it points to quality issues in your pipeline. Configure [ArgoCD notifications](https://oneuptime.com/blog/post/2026-01-25-notifications-argocd/view) to send rollback alerts to your ops channel, and use [monitoring tools](https://oneuptime.com/blog/post/2026-02-26-argocd-prometheus-metrics/view) to track rollback frequency over time.
+Track rollback events to identify patterns. If you are rolling back frequently, it points to quality issues in your pipeline. Configure [ArgoCD notifications](https://oneuptime.com/blog/post/2026-01-25-notifications-argocd/view) to send rollback alerts to your ops channel, and use monitoring tools to track rollback frequency over time.
 
 ## Best Practices
 

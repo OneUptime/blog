@@ -330,6 +330,6 @@ get_health() {
 }
 ```
 
-For a complete view of your application health across all environments, consider integrating with [OneUptime monitoring](https://oneuptime.com/blog/post/2026-02-26-argocd-prometheus-metrics/view) to track health status over time and get alerted on degradations.
+For a complete view of your application health across all environments, consider integrating with OneUptime monitoring to track health status over time and get alerted on degradations.
 
 Health status checks are the foundation of reliable CI/CD automation with ArgoCD. By integrating these checks into your pipelines, you can build deployment workflows that are both automated and safe.

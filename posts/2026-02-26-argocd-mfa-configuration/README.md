@@ -334,7 +334,7 @@ spec:
         summary: "High authentication failure rate detected"
 ```
 
-Integrate authentication metrics with [OneUptime](https://oneuptime.com/blog/post/2026-02-09-argocd-monitoring-prometheus/view) to get alerts when MFA challenges fail at an unusual rate, which could indicate credential theft attempts.
+Integrate authentication metrics with OneUptime to get alerts when MFA challenges fail at an unusual rate, which could indicate credential theft attempts.
 
 ## ArgoCD CLI with MFA
 
