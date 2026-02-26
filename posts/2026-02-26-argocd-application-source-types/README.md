@@ -297,6 +297,6 @@ Here is a quick guide for picking the right source type:
 
 4. **Test locally first** - Before pushing to Git, test your manifests locally with `helm template`, `kustomize build`, or the relevant tool for your source type.
 
-For more on deploying Helm charts with ArgoCD, check out our guide on [Helm + ArgoCD GitOps Deployment](https://oneuptime.com/blog/post/helm-argocd-gitops-deployment/view). For Kustomize-based deployments, see [How to Deploy with Kustomize in ArgoCD](https://oneuptime.com/blog/post/deploy-kustomize-argocd/view).
+For more on deploying Helm charts with ArgoCD, check out our guide on [Helm + ArgoCD GitOps Deployment](https://oneuptime.com/blog/post/2026-01-17-helm-argocd-gitops-deployment/view). For Kustomize-based deployments, see [How to Deploy with Kustomize in ArgoCD](https://oneuptime.com/blog/post/2026-01-25-deploy-kustomize-argocd/view).
 
 Understanding source types is foundational to working effectively with ArgoCD. Once you have picked the right source type for your team, everything else - sync policies, health checks, and application management - becomes much more straightforward.

@@ -157,7 +157,7 @@ spec:
 
 When you deploy the root app, ArgoCD creates all child applications automatically. Adding a new service means adding a new YAML file to the `argocd-apps/` directory.
 
-For a deeper dive into this pattern, check out [How to Build ArgoCD App of Apps Pattern](https://oneuptime.com/blog/post/argocd-app-of-apps/view).
+For a deeper dive into this pattern, check out [How to Build ArgoCD App of Apps Pattern](https://oneuptime.com/blog/post/2026-01-30-argocd-app-of-apps-pattern/view).
 
 ## Strategy 2: ApplicationSets with Git Generator
 

@@ -450,7 +450,7 @@ kubeseal --format yaml < postgres-secret.yaml > sealed-postgres-secret.yaml
 # Add the sealed secret to your manifests
 ```
 
-For more on secret management with ArgoCD, see [How to Handle ArgoCD Secrets with Sealed Secrets](https://oneuptime.com/blog/post/argocd-sealed-secrets/view).
+For more on secret management with ArgoCD, see [How to Handle ArgoCD Secrets with Sealed Secrets](https://oneuptime.com/blog/post/2026-01-27-argocd-sealed-secrets/view).
 
 ## Step 6: Verify the Full Deployment
 

@@ -15,7 +15,7 @@ Deploying Nginx with ArgoCD is one of the best ways to learn GitOps fundamentals
 Before starting, make sure you have:
 
 - A running Kubernetes cluster (minikube, kind, or any cloud provider)
-- ArgoCD installed and running (see [How to Install ArgoCD on Kubernetes](https://oneuptime.com/blog/post/install-argocd-kubernetes/view))
+- ArgoCD installed and running (see [How to Install ArgoCD on Kubernetes](https://oneuptime.com/blog/post/2026-01-25-install-argocd-kubernetes/view))
 - kubectl configured to access your cluster
 - ArgoCD CLI installed
 - A Git repository you can push to (GitHub, GitLab, Bitbucket)
@@ -342,7 +342,7 @@ Now that you have a basic Nginx deployment working with ArgoCD, you can:
 
 - Add an Ingress resource with TLS termination
 - Create environment-specific overlays using Kustomize
-- Set up [ArgoCD notifications](https://oneuptime.com/blog/post/argocd-notifications/view) to get alerted on sync events
-- Use [ArgoCD sync waves](https://oneuptime.com/blog/post/argocd-sync-waves/view) to order resource creation
+- Set up [ArgoCD notifications](https://oneuptime.com/blog/post/2026-02-02-argocd-notifications/view) to get alerted on sync events
+- Use [ArgoCD sync waves](https://oneuptime.com/blog/post/2026-01-27-argocd-sync-waves/view) to order resource creation
 
 Deploying Nginx with ArgoCD may seem like overkill for a single application, but it establishes the GitOps workflow that scales to hundreds of applications. The patterns you learn here - declarative configuration, automated sync, self-healing - apply to every application you deploy with ArgoCD.

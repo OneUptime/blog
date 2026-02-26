@@ -266,7 +266,7 @@ metadata:
     notifications.argoproj.io/subscribe.on-sync-failed.slack: alerts
 ```
 
-For more on notification setup, see [How to Configure Notifications in ArgoCD](https://oneuptime.com/blog/post/argocd-notifications/view).
+For more on notification setup, see [How to Configure Notifications in ArgoCD](https://oneuptime.com/blog/post/2026-02-02-argocd-notifications/view).
 
 ## Tips for Working with Events
 
