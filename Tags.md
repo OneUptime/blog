@@ -263,6 +263,7 @@
 - Akka
 - Akka HTTP
 - AKS
+- Akuity
 - Alarms
 - ALB
 - Alembic
@@ -509,6 +510,7 @@
 - App Installation
 - App Launch
 - App Mesh
+- App of Apps
 - App Platform
 - App Protection
 - App Registration
@@ -517,6 +519,7 @@
 - App Service
 - App Signing
 - App Store
+- App-of-Apps
 - app.yaml
 - App2Container
 - AppArmor
@@ -528,8 +531,10 @@
 - Apple Development
 - Apple Silicon
 - Application
+- Application Architecture
 - Application Composer
 - Application Consistency
+- Application Controller
 - Application Cost Profiler
 - Application Default Credentials
 - Application Delivery
@@ -542,6 +547,7 @@
 - Application Gateway
 - Application Groups
 - Application Insights
+- Application Lifecycle
 - Application Logs
 - Application Management
 - Application Map
@@ -605,9 +611,11 @@
 - argMax
 - Argo
 - Argo CD
+- Argo Events
 - Argo Rollouts
 - Argo Workflows
 - ArgoCD
+- ArgoCD UI
 - Argon2
 - argparse
 - Argument Specs
@@ -809,6 +817,7 @@
 - Automation Hub
 - Automation Platform
 - AutoML
+- Automotive
 - Autonomous Agents
 - Autonomous Systems
 - Autonomous Vehicles
@@ -892,6 +901,7 @@
 - AzCopy
 - azd
 - Azure
+- Azure ACR
 - Azure Active Directory
 - Azure AD
 - Azure AD B2C
@@ -1342,6 +1352,7 @@
 - Branch Protection
 - Branches
 - Branching
+- Branching Strategy
 - Brand Configuration
 - Branding
 - Break Glass
@@ -1412,6 +1423,7 @@
 - Build Checks
 - Build Configuration
 - build context
+- Build Environment
 - build error
 - Build Errors
 - Build Farm
@@ -1431,6 +1443,7 @@
 - Build Tracing
 - Build Triggers
 - Build Validation
+- Build Variables
 - Buildah
 - BuildConfigs
 - Builder Pattern
@@ -1658,8 +1671,10 @@
 - Character Encoding
 - Chargeback
 - Chargebee
+- Chart Dependencies
 - Chart Management
 - Chart Repository
+- ChartMuseum
 - Charts
 - Chat
 - chat application
@@ -1981,6 +1996,7 @@
 - Cluster Expansion
 - Cluster Extensions
 - Cluster Health
+- Cluster Hygiene
 - Cluster Maintenance
 - Cluster Management
 - Cluster Migration
@@ -2006,6 +2022,7 @@
 - CMake
 - CMDB
 - CMEK
+- CMP
 - CMS
 - CNCF
 - CNI
@@ -2182,6 +2199,7 @@
 - Computing
 - concat Function
 - Concept Drift
+- Concepts
 - Concerns
 - Concurrency
 - Concurrency Control
@@ -2209,6 +2227,7 @@
 - Config
 - Config Connector
 - Config Management
+- Config Management Plugins
 - Config Server
 - Config Source
 - Config Sync
@@ -2421,6 +2440,7 @@
 - Continuous Profiling
 - Continuous Testing
 - Continuous Training
+- Continuous Verification
 - Contour
 - Contract Testing
 - Contract Tests
@@ -2438,6 +2458,7 @@
 - Controlled Components
 - Controller
 - Controller Runtime
+- Controller Sharding
 - controller-gen
 - controller-runtime
 - ControllerAdvice
@@ -2771,6 +2792,7 @@
 - Custom Targets
 - Custom Tasks
 - Custom Templates
+- Custom Tooling
 - Custom Tools
 - Custom Training
 - Custom Types
@@ -2813,6 +2835,7 @@
 - Dapper
 - Dapr
 - Dark Launch
+- Dark Launches
 - Dart
 - DASH
 - Dashboard
@@ -2964,6 +2987,7 @@
 - Data Science
 - Data Scrubbing
 - Data Security
+- Data Seeding
 - Data Serialization
 - Data Services
 - Data Sharing
@@ -3216,12 +3240,16 @@
 - Deployment
 - Deployment Annotations
 - Deployment Approvals
+- Deployment Automation
+- Deployment Freeze
 - Deployment Frequency
 - Deployment Gates
+- Deployment History
 - Deployment Management
 - Deployment Manager
 - Deployment Manifests
 - Deployment Modes
+- Deployment Orchestration
 - Deployment Ordering
 - Deployment Patterns
 - Deployment Pipeline
@@ -3234,6 +3262,8 @@
 - Deployment Strategies
 - Deployment Strategy
 - Deployment Tracking
+- Deployment Verification
+- Deployment Workflow
 - Deployments
 - deprecation
 - Deref
@@ -3338,7 +3368,11 @@
 - DID
 - Diesel
 - Diff
+- Diff Configuration
+- Diff Customization
+- Diff Management
 - Diff Mode
+- Diff Strategy
 - Differential
 - Differential Privacy
 - dify
@@ -3365,6 +3399,7 @@
 - Directed Reads
 - Directives
 - Directories
+- Directory Management
 - Directory Services
 - Directory Structure
 - DirectQuery
@@ -3831,8 +3866,10 @@
 - Emby
 - Emergency Access
 - Emergency Changes
+- Emergency Deployment
 - EMF
 - Emissary
+- Emissary-Ingress
 - EMP
 - Empty Blocks
 - Empty Values
@@ -4043,6 +4080,7 @@
 - Event-Driven
 - Event-Driven Architecture
 - Event-Driven Automation
+- Event-Driven Autoscaling
 - Event-Gateway
 - Event-Processing
 - Eventarc
@@ -4161,6 +4199,7 @@
 - External Services
 - External Systems
 - External Tables
+- External Tools
 - External Traffic
 - External Traffic Policy
 - External Users
@@ -4304,6 +4343,7 @@
 - File Organization
 - File Parsing
 - File Paths
+- File Patterns
 - File Permissions
 - File Processing
 - File Provider
@@ -4542,6 +4582,7 @@
 - Full Stack
 - Full Stack Observability
 - Full-stack
+- Full-Stack Deployment
 - Full-Stack Development
 - Full-Stack Performance
 - Full-Text Search
@@ -4672,6 +4713,7 @@
 - GiST
 - Git
 - Git Blame
+- Git Branching
 - Git Commands
 - Git Configuration
 - Git Errors
@@ -4679,9 +4721,13 @@
 - Git Hooks
 - Git LFS
 - Git Objects
+- Git Optimization
 - Git Staging
+- Git Submodules
+- Git Subtrees
 - Git Tags
 - Git Webhooks
+- Git Workflows
 - Gitea
 - GitHub
 - GitHub Actions
@@ -4730,6 +4776,7 @@
 - GMP
 - gMSA
 - GNOME
+- GnuPG
 - Go
 - Go 1.18
 - Go 1.21
@@ -4764,6 +4811,7 @@
 - Google Artifact Registry
 - Google Auth
 - Google Authenticator
+- Google Chat
 - Google Cloud
 - Google Cloud Alerts
 - Google Cloud APIs
@@ -4799,6 +4847,7 @@
 - Google Dataflow
 - Google Deployment Manager
 - Google Domains
+- Google GKE
 - Google Kubernetes Engine
 - Google Maps
 - Google Play Console
@@ -4992,6 +5041,8 @@
 - Health Probes
 - Health Score
 - Health Scores
+- Health Status
+- Health Verification
 - Healthcare
 - Healthcare Analytics
 - Healthcare API
@@ -5296,6 +5347,7 @@
 - IDS
 - IDs Filter
 - IGMP
+- IgnoreDifferences
 - IHostedService
 - IIoT
 - IIS
@@ -5323,6 +5375,7 @@
 - image policies
 - Image Processing
 - Image Promotion
+- Image Pull
 - Image Pull Secrets
 - Image Recognition
 - Image Redaction
@@ -5745,6 +5798,7 @@
 - JDK
 - Jellyfin
 - Jenkins
+- Jenkins X
 - Jenkinsfile
 - Jest
 - JetBrains
@@ -5754,6 +5808,7 @@
 - JetStream
 - Jetty
 - JFR
+- JFrog Artifactory
 - Jib
 - Jimp
 - Jinja Templates
@@ -5810,6 +5865,7 @@
 - JSON Mode
 - JSON Parsing
 - JSON Patch
+- JSON Pointer
 - JSON Schema
 - JSON Web Token
 - JSON-RPC
@@ -5950,6 +6006,7 @@
 - KubeFed
 - Kubeflow
 - Kubeflow Pipelines
+- Kubeless
 - Kubelet
 - Kubenet
 - Kubernetes
@@ -6208,6 +6265,7 @@
 - LLM Evaluation
 - LLM Observability
 - LLM Security
+- LLM Serving
 - LLM-as-Judge
 - LLMOps
 - LMDB
@@ -6463,10 +6521,12 @@
 - Management
 - Management Groups
 - Mandatory Access Control
+- Manifest Generation
 - Manifests
 - Manipulation
 - Manticore Search
 - Manual Instrumentation
+- Manual Sync
 - Manual Testing
 - Manual Triggers
 - Manufacturing
@@ -6588,6 +6648,7 @@
 - Meraki
 - Merge
 - Merge Conflicts
+- Merge Generator
 - Merge Keys
 - Merge Request
 - Merge Requests
@@ -6735,6 +6796,7 @@
 - Minimal Profile
 - MinIO
 - minmax
+- Mirantis
 - mirror
 - Mirrord
 - Mirrored Queues
@@ -6767,6 +6829,7 @@
 - ML Pipeline
 - ML Pipelines
 - ML Quality
+- ML Serving
 - ML Tracking
 - ML Training
 - MLflow
@@ -6778,6 +6841,7 @@
 - Mobile Apps
 - Mobile Development
 - Mobile Location
+- Mobile Notifications
 - Mobile Testing
 - Mocha
 - Mock Data
@@ -6972,6 +7036,7 @@
 - Multi-threading
 - Multi-Tier
 - Multi-Tier Architecture
+- Multi-Tool
 - Multi-Turn Dialogs
 - Multi-User
 - Multi-Vendor
@@ -7210,6 +7275,7 @@
 - Nextcloud
 - NextJS
 - Nexus
+- Nexus Repository
 - NFS
 - nftables
 - Nginx
@@ -7370,6 +7436,7 @@
 - OAuth
 - OAuth 2.0
 - OAuth2
+- OAuth2 Proxy
 - Oban
 - Obfuscation
 - Object Detection
@@ -7447,6 +7514,7 @@
 - One-Off Commands
 - One-Time Tokens
 - OneAgent
+- OneLogin
 - OneUptime
 - Online Learning
 - Online Migration
@@ -7510,6 +7578,7 @@
 - OpenTofu
 - OpenTracing
 - OpenTracing Bridge
+- OpenUnison
 - OpenVPN
 - OpenYurt
 - OpenZFS
@@ -7525,6 +7594,7 @@
 - Ops Agent
 - OpsCenter
 - Opsgenie
+- OpsLevel
 - Optimistic Locking
 - Optimistic Updates
 - Optimization
@@ -8049,6 +8119,7 @@
 - Pod Anti-Affinity
 - pod communication
 - Pod Configuration
+- Pod Disruption
 - Pod Disruption Budget
 - Pod Disruption Budgets
 - Pod Distribution
@@ -8075,6 +8146,7 @@
 - Podcasting
 - Podcasts
 - PodDisruptionBudget
+- PodDisruptionBudgets
 - Podman
 - Podman Compose
 - PodMonitor
@@ -8173,6 +8245,7 @@
 - Postman
 - Postmortem
 - Postmortems
+- PostSync Hooks
 - Posture Management
 - pow Function
 - Power Apps
@@ -8236,6 +8309,7 @@
 - preStop
 - PreStop Hook
 - PreStop Hooks
+- PreSync Hooks
 - Prettier
 - Prevention
 - Preview
@@ -8384,6 +8458,7 @@
 - Projects
 - Projen
 - Prometheus
+- Prometheus Federation
 - Prometheus Operator
 - PrometheusRule
 - Promises
@@ -8515,6 +8590,7 @@
 - Push-Based
 - Pusher
 - Pushgateway
+- Pushover
 - PVC
 - PWA
 - PXE
@@ -8823,6 +8899,7 @@
 - Refactor Spaces
 - Refactoring
 - RefCell
+- Reference
 - Reference Data
 - References
 - Referencing
@@ -8941,6 +9018,7 @@
 - Replication
 - Replication Lag
 - Replication Policy
+- Repo Server
 - Report Generation
 - Reported Properties
 - Reporting
@@ -8951,9 +9029,11 @@
 - Repository Management
 - Repository Manager
 - Repository Pattern
+- Repository Patterns
 - Repository Repair
 - Repository Strategy
 - Repository Structure
+- Repository Templates
 - Reprocessing
 - Reproducibility
 - Reproducible Builds
@@ -9012,6 +9092,7 @@
 - Resolvers
 - Resource
 - Resource Access Manager
+- Resource Actions
 - Resource Addressing
 - Resource Adoption
 - Resource Analysis
@@ -9026,9 +9107,12 @@
 - Resource Detection
 - Resource Detector
 - Resource Detectors
+- Resource Diff
 - Resource Events
+- Resource Exclusion
 - Resource Exhausted
 - Resource Exhaustion
+- Resource Filtering
 - Resource Generation
 - Resource Graph
 - Resource Groups
@@ -9037,6 +9121,7 @@
 - Resource IDs
 - Resource Import
 - Resource Inventory
+- Resource Lifecycle
 - Resource Limiting
 - Resource Limits
 - Resource Loading
@@ -9057,11 +9142,13 @@
 - Resource Processor
 - Resource Protection
 - Resource Providers
+- Resource Quota
 - Resource Quotas
 - Resource Replacement
 - Resource Reservation
 - Resource Sharing
 - Resource Targeting
+- Resource Tracking
 - Resource Transformation
 - Resource Triggers
 - Resource Types
@@ -9181,6 +9268,7 @@
 - RLS
 - Roadmap
 - Rocket
+- Rocket.Chat
 - RocksDB
 - Rocky Linux
 - ROI
@@ -9189,6 +9277,7 @@
 - Role-Playing Dimensions
 - Roles
 - Rollback
+- Rollbacks
 - Rollbar
 - Rolling Deployment
 - Rolling Deployments
@@ -9505,6 +9594,7 @@
 - Secrets Detection
 - Secrets Management
 - Secrets Manager
+- Secrets Store
 - Secrets-Management
 - Secure Access
 - Secure Boot
@@ -9549,6 +9639,7 @@
 - Security Recommendations
 - Security Rules
 - Security Scanning
+- Security Standards
 - Security Testing
 - security tools
 - Security Updates
@@ -9562,6 +9653,7 @@
 - Select
 - Selective Execution
 - Selective Indexing
+- Selective Sync
 - Selector Labels
 - Selectors
 - Selenium
@@ -9644,6 +9736,7 @@
 - Server-Side
 - Server-Side Apply
 - Server-Side Copy
+- Server-Side Diff
 - Server-Side Events
 - Server-Side Programming
 - Server-Side Rendering
@@ -10187,6 +10280,7 @@
 - SSH
 - SSH Check
 - SSH Config
+- SSH Deploy Keys
 - SSH Key
 - SSH Tunneling
 - SSHFP
@@ -10204,6 +10298,7 @@
 - SSM Parameter Store
 - SSML
 - SSO
+- SSO Authentication
 - SSR
 - SSRF
 - SSSD
@@ -10240,6 +10335,7 @@
 - Star Schema
 - Stargz
 - Starlette
+- StarRocks
 - Start Time
 - Starter
 - Starters
@@ -10518,7 +10614,11 @@
 - Synapse
 - Synapse Analytics
 - Sync
+- Sync Configuration
 - Sync Hooks
+- Sync Operations
+- Sync Options
+- Sync Status
 - Sync Waves
 - Sync Windows
 - sync.Map
@@ -10618,6 +10718,7 @@
 - Talos Linux
 - Tamper-Proof
 - TanStack Query
+- Tanzu
 - Tape Gateway
 - Tarball
 - Target Allocator
@@ -10701,8 +10802,10 @@
 - Technical Writing
 - Technology Strategy
 - Tekton
+- Telecom
 - Telecommunications
 - Telegraf
+- Telegram
 - Telehealth
 - Telemedicine
 - Telemetry
@@ -10967,6 +11070,7 @@
 - TLS Modes
 - TLS Origination
 - TLS Provider
+- TLS Security
 - TLS Termination
 - TLS Version
 - tls-termination
@@ -11007,6 +11111,7 @@
 - TOML
 - tonic
 - Too Many Requests
+- Tool Detection
 - Tool Execution
 - Tool Integration
 - Tool Schema
@@ -11271,6 +11376,8 @@
 - UGC
 - UI
 - UI Components
+- UI Customization
+- UI Extensions
 - UI Testing
 - UI/UX
 - ulimit
@@ -11499,6 +11606,7 @@
 - Verdaccio
 - Verifiable Credentials
 - Verification
+- Verification Scripts
 - Verified Access
 - Verified ID
 - Verified Modules
@@ -11513,6 +11621,7 @@
 - Version Mismatch
 - Version Pinning
 - Version Skew
+- Version Tracking
 - Version Upgrade
 - Version Upgrades
 - Versioning
@@ -11806,6 +11915,7 @@
 - WebClient
 - WebDevelopment
 - WebDriver
+- Webex
 - WebFlux
 - Webhook
 - Webhook Development
