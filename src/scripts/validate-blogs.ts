@@ -23,6 +23,19 @@
  * 17. Checks for HTML-conflicting generic type parameters (<S>, <B>, <I>, <U>) in code blocks
  * 18. AUTO-FIX: Replaces double quotes with single quotes in titles and descriptions
  * 19. AUTO-FIX: Replaces em dashes (—) with regular dashes (-) in entire blog post content
+ * 20. Duplicate titles — Flag posts with identical or near-identical titles
+ * 21. Title max length — Cap at ~70 chars for SEO/rendering
+ * 22. Description max length — Cap at ~160 chars for SEO (meta description best practice)
+ * 23. Broken image references — Check that ![alt](path) images actually exist in the post directory
+ * 24. Orphaned images — Files in the post directory not referenced in README.md (besides social-media.png)
+ * 25. Missing image alt text — Flag ![](...) with empty alt text (accessibility)
+ * 26. Unclosed code blocks — Detect mismatched ``` fences
+ * 27. Code block language tags — Ensure fenced code blocks specify a language (for syntax highlighting)
+ * 28. Heading hierarchy — Only one H1 (the title), no skipping levels (H2 → H4 without H3)
+ * 29. Empty sections — Headings with no content beneath them
+ * 30. Relative link validation — Check that relative markdown links resolve to real files
+ * 31. Tag normalization — Detect near-duplicate tags across posts (e.g., "Docker" vs "docker" vs "Dockers")
+ * 32. social-media.png dimensions — Verify the image is the expected size (1200x630)
  *
  * Run with: npm run validate
  */
@@ -37,6 +50,10 @@ const BLOGS_JSON = 'Blogs.json';
 const AUTHORS_JSON = 'Authors.json';
 const TAGS_MD = 'Tags.md';
 const MIN_DESCRIPTION_LENGTH = 50;
+const MAX_TITLE_LENGTH = 70;
+const MAX_DESCRIPTION_LENGTH = 160;
+const SOCIAL_MEDIA_EXPECTED_WIDTH = 1200;
+const SOCIAL_MEDIA_EXPECTED_HEIGHT = 630;
 const DATE_PREFIX_REGEX = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])-/;
 
 // Types
@@ -1310,6 +1327,777 @@ function fixAllHeaderSpacing(postsDir: string[]): void {
 }
 
 /**
+ * Normalize a title for near-duplicate comparison.
+ * Lowercases, strips punctuation, collapses whitespace.
+ */
+function normalizeTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Read PNG dimensions from the IHDR chunk header.
+ * Returns { width, height } or null if the file is not a valid PNG.
+ */
+function readPngDimensions(filePath: string): { width: number; height: number } | null {
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const buffer = Buffer.alloc(24);
+    fs.readSync(fd, buffer, 0, 24, 0);
+    fs.closeSync(fd);
+
+    // Check PNG signature: 0x89 P N G
+    if (buffer[0] !== 0x89 || buffer[1] !== 0x50 || buffer[2] !== 0x4E || buffer[3] !== 0x47) {
+      return null;
+    }
+
+    // IHDR chunk: width at bytes 16-19, height at bytes 20-23 (big-endian)
+    const width = buffer.readUInt32BE(16);
+    const height = buffer.readUInt32BE(20);
+    return { width, height };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check for duplicate or near-identical titles across all posts.
+ * Titles are normalized (lowercased, punctuation stripped) for comparison.
+ */
+function checkDuplicateTitles(blogsJson: BlogEntry[]): void {
+  logHeader('Checking for duplicate or near-identical titles');
+
+  const titleGroups = new Map<string, BlogEntry[]>();
+
+  for (const blog of blogsJson) {
+    if (!blog.title) continue;
+    const normalized = normalizeTitle(blog.title);
+    const existing = titleGroups.get(normalized) || [];
+    existing.push(blog);
+    titleGroups.set(normalized, existing);
+  }
+
+  const duplicates = Array.from(titleGroups.entries()).filter(([_, entries]) => entries.length > 1);
+
+  if (duplicates.length > 0) {
+    hasWarnings = true;
+    console.log(
+      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${duplicates.length} group${duplicates.length === 1 ? '' : 's'} of duplicate/near-identical titles:\n`
+    );
+    for (const [_, entries] of duplicates) {
+      for (const entry of entries) {
+        console.log(`  - ${colors.yellow}${entry.post}${colors.reset}: "${entry.title}"`);
+      }
+      console.log('');
+    }
+    console.log(
+      `${colors.bold}How to fix:${colors.reset}\n  Ensure each blog post has a unique, distinguishable title.\n`
+    );
+  } else {
+    logSuccess('No duplicate or near-identical titles found');
+  }
+}
+
+/**
+ * Check that titles do not exceed the SEO-recommended maximum length (~70 chars).
+ */
+function checkTitleMaxLength(blogsJson: BlogEntry[]): void {
+  logHeader(`Checking title length (SEO max ~${MAX_TITLE_LENGTH} chars)`);
+
+  const tooLong = blogsJson.filter((b) => b.title && b.title.length > MAX_TITLE_LENGTH);
+
+  if (tooLong.length > 0) {
+    hasWarnings = true;
+    console.log(
+      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${tooLong.length} title${tooLong.length === 1 ? '' : 's'} exceeding ${MAX_TITLE_LENGTH} characters:\n`
+    );
+    for (const blog of tooLong) {
+      console.log(
+        `  - ${colors.yellow}${blog.post}${colors.reset}: ${blog.title.length} chars - "${blog.title}"`
+      );
+    }
+    console.log(
+      `\n${colors.bold}How to fix:${colors.reset}\n  Shorten titles to ${MAX_TITLE_LENGTH} characters or fewer for optimal SEO and rendering.\n`
+    );
+  } else {
+    logSuccess(`All titles are within ${MAX_TITLE_LENGTH} character limit`);
+  }
+}
+
+/**
+ * Check that descriptions do not exceed the SEO-recommended maximum length (~160 chars).
+ */
+function checkDescriptionMaxLength(blogsJson: BlogEntry[]): void {
+  logHeader(`Checking description length (SEO max ~${MAX_DESCRIPTION_LENGTH} chars)`);
+
+  const tooLong = blogsJson.filter((b) => b.description && b.description.length > MAX_DESCRIPTION_LENGTH);
+
+  if (tooLong.length > 0) {
+    hasWarnings = true;
+    console.log(
+      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${tooLong.length} description${tooLong.length === 1 ? '' : 's'} exceeding ${MAX_DESCRIPTION_LENGTH} characters:\n`
+    );
+    for (const blog of tooLong) {
+      console.log(`  - ${colors.yellow}${blog.post}${colors.reset}: ${blog.description.length} chars`);
+    }
+    console.log(
+      `\n${colors.bold}How to fix:${colors.reset}\n  Shorten descriptions to ${MAX_DESCRIPTION_LENGTH} characters or fewer for optimal SEO meta descriptions.\n`
+    );
+  } else {
+    logSuccess(`All descriptions are within ${MAX_DESCRIPTION_LENGTH} character limit`);
+  }
+}
+
+/**
+ * Check that all image references in README.md (![alt](path)) point to existing files.
+ * Skips external URLs and images inside code blocks.
+ */
+function checkBrokenImageReferences(postsDir: string[]): void {
+  logHeader('Checking for broken image references');
+
+  const imageRefRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+  const issues: Array<{ dir: string; line: number; ref: string }> = [];
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) continue;
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+
+    let inCodeBlock = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      if (line.trimStart().startsWith('```') || line.trimStart().startsWith('~~~')) {
+        inCodeBlock = !inCodeBlock;
+        continue;
+      }
+      if (inCodeBlock) continue;
+
+      imageRefRegex.lastIndex = 0;
+      let match;
+      while ((match = imageRefRegex.exec(line)) !== null) {
+        const imgPath = match[1]!;
+
+        // Skip external URLs
+        if (imgPath.startsWith('http://') || imgPath.startsWith('https://')) continue;
+
+        // Resolve relative to the post directory
+        const resolvedPath = path.resolve(POSTS_DIR, dir, imgPath);
+        if (!fs.existsSync(resolvedPath)) {
+          issues.push({ dir, line: i + 1, ref: imgPath });
+        }
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    hasErrors = true;
+    logError(`Found ${issues.length} broken image reference${issues.length === 1 ? '' : 's'}:\n`);
+    for (const issue of issues) {
+      console.log(`  - ${colors.red}${issue.dir}${colors.reset} (line ${issue.line}): ${issue.ref}`);
+    }
+    console.log(
+      `\n${colors.bold}How to fix:${colors.reset}\n  Ensure each referenced image file exists in the post directory, or fix the image path.\n`
+    );
+  } else {
+    logSuccess('All image references point to existing files');
+  }
+}
+
+/**
+ * Check for image files in post directories that are not referenced in README.md.
+ * social-media.png is excluded from this check.
+ */
+function checkOrphanedImages(postsDir: string[]): void {
+  logHeader('Checking for orphaned images');
+
+  const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']);
+  const issues: Array<{ dir: string; file: string }> = [];
+
+  for (const dir of postsDir) {
+    const postPath = path.join(POSTS_DIR, dir);
+    const readmePath = path.join(postPath, 'README.md');
+
+    if (!fs.existsSync(readmePath)) continue;
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+
+    // Get all image files in the directory (excluding social-media.png)
+    const files = fs.readdirSync(postPath);
+    const imageFiles = files.filter((f) => {
+      const ext = path.extname(f).toLowerCase();
+      return imageExtensions.has(ext) && f !== 'social-media.png';
+    });
+
+    for (const imageFile of imageFiles) {
+      // Check if this image filename appears anywhere in the README
+      if (!content.includes(imageFile)) {
+        issues.push({ dir, file: imageFile });
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    hasWarnings = true;
+    console.log(
+      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${issues.length} orphaned image${issues.length === 1 ? '' : 's'} (not referenced in README.md):\n`
+    );
+    for (const issue of issues) {
+      console.log(`  - ${colors.yellow}${issue.dir}${colors.reset}: ${issue.file}`);
+    }
+    console.log(
+      `\n${colors.bold}How to fix:${colors.reset}\n  Either reference the image in README.md or remove it from the post directory.\n  Note: social-media.png is excluded from this check.\n`
+    );
+  } else {
+    logSuccess('No orphaned images found');
+  }
+}
+
+/**
+ * Check for images with missing alt text: ![](path).
+ * Empty alt text is an accessibility concern for screen readers.
+ */
+function checkMissingImageAltText(postsDir: string[]): void {
+  logHeader('Checking for missing image alt text');
+
+  const emptyAltRegex = /!\[\]\([^)]+\)/g;
+  const issues: Array<{ dir: string; line: number; ref: string }> = [];
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) continue;
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+
+    let inCodeBlock = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      if (line.trimStart().startsWith('```') || line.trimStart().startsWith('~~~')) {
+        inCodeBlock = !inCodeBlock;
+        continue;
+      }
+      if (inCodeBlock) continue;
+
+      emptyAltRegex.lastIndex = 0;
+      let match;
+      while ((match = emptyAltRegex.exec(line)) !== null) {
+        issues.push({ dir, line: i + 1, ref: match[0] });
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    hasWarnings = true;
+    console.log(
+      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${issues.length} image${issues.length === 1 ? '' : 's'} with missing alt text:\n`
+    );
+    for (const issue of issues) {
+      console.log(`  - ${colors.yellow}${issue.dir}${colors.reset} (line ${issue.line}): ${issue.ref}`);
+    }
+    console.log(
+      `\n${colors.bold}How to fix:${colors.reset}\n  Add descriptive alt text: ![description of image](path/to/image.png)\n  Alt text improves accessibility for screen readers.\n`
+    );
+  } else {
+    logSuccess('All images have alt text');
+  }
+}
+
+/**
+ * Detect unclosed/mismatched fenced code blocks (``` or ~~~).
+ */
+function checkUnclosedCodeBlocks(postsDir: string[]): void {
+  logHeader('Checking for unclosed code blocks');
+
+  const issues: Array<{ dir: string; openLine: number }> = [];
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) continue;
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+
+    let inCodeBlock = false;
+    let openLine = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i]!.trimStart();
+      // Match ``` or ~~~ fences (with optional language tag for opening)
+      if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+        if (!inCodeBlock) {
+          inCodeBlock = true;
+          openLine = i + 1;
+        } else {
+          inCodeBlock = false;
+        }
+      }
+    }
+
+    if (inCodeBlock) {
+      issues.push({ dir, openLine });
+    }
+  }
+
+  if (issues.length > 0) {
+    hasErrors = true;
+    logError(`Found ${issues.length} unclosed code block${issues.length === 1 ? '' : 's'}:\n`);
+    for (const issue of issues) {
+      console.log(`  - ${colors.red}${issue.dir}${colors.reset} (opened at line ${issue.openLine})`);
+    }
+    console.log(
+      `\n${colors.bold}How to fix:${colors.reset}\n  Add a closing \`\`\` fence to match every opening fence.\n`
+    );
+  } else {
+    logSuccess('All code blocks are properly closed');
+  }
+}
+
+/**
+ * Ensure fenced code blocks specify a language tag for syntax highlighting.
+ */
+function checkCodeBlockLanguageTags(postsDir: string[]): void {
+  logHeader('Checking code block language tags');
+
+  const issues: Array<{ dir: string; line: number }> = [];
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) continue;
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+
+    let inCodeBlock = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i]!.trimStart();
+      if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+        if (!inCodeBlock) {
+          inCodeBlock = true;
+          // Check if there's a language tag after the fence
+          const fence = trimmed.startsWith('```') ? '```' : '~~~';
+          const afterFence = trimmed.substring(fence.length).trim();
+          if (!afterFence) {
+            issues.push({ dir, line: i + 1 });
+          }
+        } else {
+          inCodeBlock = false;
+        }
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    hasWarnings = true;
+    console.log(
+      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${issues.length} code block${issues.length === 1 ? '' : 's'} without a language tag:\n`
+    );
+    // Group by directory
+    const byDir = new Map<string, number[]>();
+    for (const issue of issues) {
+      const existing = byDir.get(issue.dir) || [];
+      existing.push(issue.line);
+      byDir.set(issue.dir, existing);
+    }
+    for (const [dir, lineNums] of byDir) {
+      console.log(
+        `  - ${colors.yellow}${dir}${colors.reset}: line${lineNums.length > 1 ? 's' : ''} ${lineNums.join(', ')}`
+      );
+    }
+    console.log(
+      `\n${colors.bold}How to fix:${colors.reset}\n  Add a language identifier after the opening fence: \`\`\`javascript, \`\`\`python, etc.\n  Use \`\`\`text or \`\`\`plaintext for plain text blocks.\n`
+    );
+  } else {
+    logSuccess('All code blocks have language tags');
+  }
+}
+
+/**
+ * Validate heading hierarchy:
+ * - Only one H1 (the title) per post
+ * - No skipping heading levels (e.g., H2 directly to H4 without H3)
+ * Skips headings inside code blocks.
+ */
+function checkHeadingHierarchy(postsDir: string[]): void {
+  logHeader('Checking heading hierarchy');
+
+  interface HeadingIssue {
+    dir: string;
+    issue: string;
+    line: number;
+  }
+
+  const issues: HeadingIssue[] = [];
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) continue;
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+
+    let inCodeBlock = false;
+    let h1Count = 0;
+    let lastLevel = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      if (line.trimStart().startsWith('```') || line.trimStart().startsWith('~~~')) {
+        inCodeBlock = !inCodeBlock;
+        continue;
+      }
+      if (inCodeBlock) continue;
+
+      const headingMatch = line.match(/^(#{1,6})\s+/);
+      if (!headingMatch) continue;
+
+      const level = headingMatch[1]!.length;
+
+      if (level === 1) {
+        h1Count++;
+        if (h1Count > 1) {
+          issues.push({ dir, issue: `Multiple H1 headings (found ${h1Count})`, line: i + 1 });
+        }
+      }
+
+      if (lastLevel > 0 && level > lastLevel + 1) {
+        issues.push({
+          dir,
+          issue: `Heading level skipped: H${lastLevel} -> H${level}`,
+          line: i + 1,
+        });
+      }
+
+      lastLevel = level;
+    }
+  }
+
+  if (issues.length > 0) {
+    hasWarnings = true;
+    console.log(
+      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${issues.length} heading hierarchy issue${issues.length === 1 ? '' : 's'}:\n`
+    );
+    // Group by directory
+    const byDir = new Map<string, HeadingIssue[]>();
+    for (const issue of issues) {
+      const existing = byDir.get(issue.dir) || [];
+      existing.push(issue);
+      byDir.set(issue.dir, existing);
+    }
+    for (const [dir, dirIssues] of byDir) {
+      console.log(`  ${colors.bold}${dir}${colors.reset}`);
+      for (const issue of dirIssues) {
+        console.log(`    - Line ${issue.line}: ${colors.yellow}${issue.issue}${colors.reset}`);
+      }
+    }
+    console.log(
+      `\n${colors.bold}How to fix:${colors.reset}\n  Use only one H1 (# Title) per post. Don't skip heading levels (e.g., H2 -> H4 without H3).\n`
+    );
+  } else {
+    logSuccess('All heading hierarchies are valid');
+  }
+}
+
+/**
+ * Check for empty sections: headings with no content beneath them
+ * (only blank lines or --- separators before the next heading or EOF).
+ * Skips headings inside code blocks.
+ */
+function checkEmptySections(postsDir: string[]): void {
+  logHeader('Checking for empty sections');
+
+  const issues: Array<{ dir: string; line: number; heading: string }> = [];
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) continue;
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+
+    let inCodeBlock = false;
+    let lastHeadingLine = -1;
+    let lastHeadingText = '';
+    let hasContentAfterHeading = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      const trimmed = line.trimStart();
+
+      if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+        inCodeBlock = !inCodeBlock;
+        if (inCodeBlock) hasContentAfterHeading = true;
+        continue;
+      }
+      if (inCodeBlock) continue;
+
+      const isHeading = /^#{1,6}\s+/.test(line);
+
+      if (isHeading) {
+        // If previous heading had no content, flag it
+        if (lastHeadingLine !== -1 && !hasContentAfterHeading) {
+          issues.push({ dir, line: lastHeadingLine, heading: lastHeadingText });
+        }
+        lastHeadingLine = i + 1;
+        lastHeadingText = line.trim();
+        hasContentAfterHeading = false;
+      } else if (line.trim() !== '' && line.trim() !== '---') {
+        hasContentAfterHeading = true;
+      }
+    }
+
+    // Check last heading in the file
+    if (lastHeadingLine !== -1 && !hasContentAfterHeading) {
+      issues.push({ dir, line: lastHeadingLine, heading: lastHeadingText });
+    }
+  }
+
+  if (issues.length > 0) {
+    hasWarnings = true;
+    console.log(
+      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${issues.length} empty section${issues.length === 1 ? '' : 's'} (headings with no content):\n`
+    );
+    const byDir = new Map<string, Array<{ line: number; heading: string }>>();
+    for (const issue of issues) {
+      const existing = byDir.get(issue.dir) || [];
+      existing.push({ line: issue.line, heading: issue.heading });
+      byDir.set(issue.dir, existing);
+    }
+    for (const [dir, dirIssues] of byDir) {
+      console.log(`  ${colors.bold}${dir}${colors.reset}`);
+      for (const issue of dirIssues) {
+        console.log(`    - Line ${issue.line}: ${colors.yellow}${issue.heading}${colors.reset}`);
+      }
+    }
+    console.log(
+      `\n${colors.bold}How to fix:${colors.reset}\n  Add content beneath each heading or remove empty headings.\n`
+    );
+  } else {
+    logSuccess('No empty sections found');
+  }
+}
+
+/**
+ * Check that relative markdown links (not images, not external URLs) resolve to real files.
+ * Skips links inside code blocks.
+ */
+function checkRelativeLinkValidation(postsDir: string[]): void {
+  logHeader('Checking relative markdown links');
+
+  // Match markdown links [text](path) but NOT images ![alt](path) and NOT URLs
+  const linkRegex = /(?<!!)\[([^\]]*)\]\(([^)]+)\)/g;
+  const issues: Array<{ dir: string; line: number; linkText: string; linkTarget: string }> = [];
+
+  for (const dir of postsDir) {
+    const readmePath = path.join(POSTS_DIR, dir, 'README.md');
+    if (!fs.existsSync(readmePath)) continue;
+
+    const content = fs.readFileSync(readmePath, 'utf8');
+    const lines = content.split('\n');
+
+    let inCodeBlock = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      if (line.trimStart().startsWith('```') || line.trimStart().startsWith('~~~')) {
+        inCodeBlock = !inCodeBlock;
+        continue;
+      }
+      if (inCodeBlock) continue;
+
+      linkRegex.lastIndex = 0;
+      let match;
+      while ((match = linkRegex.exec(line)) !== null) {
+        const linkTarget = match[2]!;
+
+        // Skip external URLs, anchors, and mailto
+        if (
+          linkTarget.startsWith('http://') ||
+          linkTarget.startsWith('https://') ||
+          linkTarget.startsWith('#') ||
+          linkTarget.startsWith('mailto:')
+        )
+          continue;
+
+        // Strip anchor from path
+        const targetPath = linkTarget.split('#')[0]!;
+        if (!targetPath) continue; // Pure anchor link
+
+        // Resolve relative to the post directory
+        const resolvedPath = path.resolve(POSTS_DIR, dir, targetPath);
+        if (!fs.existsSync(resolvedPath)) {
+          issues.push({ dir, line: i + 1, linkText: match[1]!, linkTarget });
+        }
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    hasErrors = true;
+    logError(`Found ${issues.length} broken relative link${issues.length === 1 ? '' : 's'}:\n`);
+    for (const issue of issues) {
+      console.log(
+        `  - ${colors.red}${issue.dir}${colors.reset} (line ${issue.line}): [${issue.linkText}](${issue.linkTarget})`
+      );
+    }
+    console.log(
+      `\n${colors.bold}How to fix:${colors.reset}\n  Ensure relative links point to existing files, or convert to absolute URLs.\n`
+    );
+  } else {
+    logSuccess('All relative markdown links are valid');
+  }
+}
+
+/**
+ * Detect near-duplicate tags across all posts.
+ * Checks for:
+ * - Case-inconsistent tags (e.g., "Docker" vs "docker")
+ * - Singular/plural variants (e.g., "Docker" vs "Dockers")
+ */
+function checkTagNormalization(blogsJson: BlogEntry[]): void {
+  logHeader('Checking for near-duplicate tags across posts');
+
+  // Group all tags by their normalized form (lowercase)
+  const tagVariants = new Map<string, Set<string>>();
+
+  for (const blog of blogsJson) {
+    if (!blog.tags) continue;
+    for (const tag of blog.tags) {
+      const normalized = tag.toLowerCase().trim();
+      const variants = tagVariants.get(normalized) || new Set();
+      variants.add(tag);
+      tagVariants.set(normalized, variants);
+    }
+  }
+
+  // Check for singular/plural near-duplicates
+  const normalizedKeys = Array.from(tagVariants.keys());
+  const pluralGroups: Array<{ variants: string[] }> = [];
+  const seen = new Set<string>();
+
+  for (const key of normalizedKeys) {
+    if (seen.has(key)) continue;
+
+    // Check if adding/removing 's' matches another tag
+    const potentialPlural = key.endsWith('s') ? key.slice(0, -1) : key + 's';
+    if (tagVariants.has(potentialPlural) && !seen.has(potentialPlural)) {
+      const allVariants = new Set([
+        ...Array.from(tagVariants.get(key)!),
+        ...Array.from(tagVariants.get(potentialPlural)!),
+      ]);
+      pluralGroups.push({ variants: Array.from(allVariants) });
+      seen.add(key);
+      seen.add(potentialPlural);
+    }
+  }
+
+  // Find case-variant groups (same lowercase, different casing)
+  const caseVariants = Array.from(tagVariants.entries()).filter(([_, variants]) => variants.size > 1);
+
+  const hasIssues = caseVariants.length > 0 || pluralGroups.length > 0;
+
+  if (hasIssues) {
+    hasWarnings = true;
+
+    if (caseVariants.length > 0) {
+      console.log(
+        `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${caseVariants.length} tag${caseVariants.length === 1 ? '' : 's'} with inconsistent casing:\n`
+      );
+      for (const [_, variants] of caseVariants) {
+        const variantList = Array.from(variants);
+        console.log(`  - ${colors.yellow}${variantList.join(' vs ')}${colors.reset}`);
+      }
+      console.log('');
+    }
+
+    if (pluralGroups.length > 0) {
+      console.log(
+        `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${pluralGroups.length} potential singular/plural tag duplicate${pluralGroups.length === 1 ? '' : 's'}:\n`
+      );
+      for (const group of pluralGroups) {
+        console.log(`  - ${colors.yellow}${group.variants.join(' vs ')}${colors.reset}`);
+      }
+      console.log('');
+    }
+
+    console.log(
+      `${colors.bold}How to fix:${colors.reset}\n  Normalize tags to use consistent casing and singular/plural forms across all posts.\n`
+    );
+  } else {
+    logSuccess('All tags are consistently named across posts');
+  }
+}
+
+/**
+ * Verify social-media.png images have the expected dimensions (1200x630 for optimal social sharing).
+ * Reads dimensions directly from the PNG IHDR chunk header without external dependencies.
+ */
+function checkSocialMediaDimensions(postsDir: string[]): void {
+  logHeader(
+    `Checking social-media.png dimensions (expected ${SOCIAL_MEDIA_EXPECTED_WIDTH}x${SOCIAL_MEDIA_EXPECTED_HEIGHT})`
+  );
+
+  const issues: Array<{ dir: string; width: number; height: number }> = [];
+  const unreadable: string[] = [];
+
+  for (const dir of postsDir) {
+    const imgPath = path.join(POSTS_DIR, dir, 'social-media.png');
+    if (!fs.existsSync(imgPath)) continue;
+
+    const dims = readPngDimensions(imgPath);
+    if (!dims) {
+      unreadable.push(dir);
+      continue;
+    }
+
+    if (dims.width !== SOCIAL_MEDIA_EXPECTED_WIDTH || dims.height !== SOCIAL_MEDIA_EXPECTED_HEIGHT) {
+      issues.push({ dir, width: dims.width, height: dims.height });
+    }
+  }
+
+  if (issues.length > 0 || unreadable.length > 0) {
+    hasWarnings = true;
+
+    if (issues.length > 0) {
+      console.log(
+        `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${issues.length} social-media.png with unexpected dimensions:\n`
+      );
+      for (const issue of issues) {
+        console.log(
+          `  - ${colors.yellow}${issue.dir}${colors.reset}: ${issue.width}x${issue.height} (expected ${SOCIAL_MEDIA_EXPECTED_WIDTH}x${SOCIAL_MEDIA_EXPECTED_HEIGHT})`
+        );
+      }
+      console.log('');
+    }
+
+    if (unreadable.length > 0) {
+      console.log(
+        `${colors.yellow}${colors.bold}WARNING:${colors.reset} Could not read dimensions for ${unreadable.length} social-media.png file${unreadable.length === 1 ? '' : 's'}:\n`
+      );
+      for (const dir of unreadable) {
+        console.log(`  - ${colors.yellow}${dir}${colors.reset}`);
+      }
+      console.log('');
+    }
+
+    console.log(
+      `${colors.bold}How to fix:${colors.reset}\n  Resize social-media.png to ${SOCIAL_MEDIA_EXPECTED_WIDTH}x${SOCIAL_MEDIA_EXPECTED_HEIGHT} pixels for optimal social media sharing.\n`
+    );
+  } else {
+    logSuccess(
+      `All social-media.png files have correct dimensions (${SOCIAL_MEDIA_EXPECTED_WIDTH}x${SOCIAL_MEDIA_EXPECTED_HEIGHT})`
+    );
+  }
+}
+
+/**
  * Main function
  */
 function main(): void {
@@ -1367,6 +2155,47 @@ function main(): void {
 
   // Fix header spacing in README.md files
   fixAllHeaderSpacing(postsDir);
+
+  // --- New validations ---
+
+  // Check for duplicate or near-identical titles
+  checkDuplicateTitles(sortedBlogs);
+
+  // Check title max length (SEO)
+  checkTitleMaxLength(sortedBlogs);
+
+  // Check description max length (SEO)
+  checkDescriptionMaxLength(sortedBlogs);
+
+  // Check for broken image references
+  checkBrokenImageReferences(postsDir);
+
+  // Check for orphaned images
+  checkOrphanedImages(postsDir);
+
+  // Check for missing image alt text
+  checkMissingImageAltText(postsDir);
+
+  // Check for unclosed code blocks
+  checkUnclosedCodeBlocks(postsDir);
+
+  // Check code block language tags
+  checkCodeBlockLanguageTags(postsDir);
+
+  // Check heading hierarchy
+  checkHeadingHierarchy(postsDir);
+
+  // Check for empty sections
+  checkEmptySections(postsDir);
+
+  // Check relative link validation
+  checkRelativeLinkValidation(postsDir);
+
+  // Check tag normalization across posts
+  checkTagNormalization(sortedBlogs);
+
+  // Check social-media.png dimensions
+  checkSocialMediaDimensions(postsDir);
 
   // Generate missing social media images before final validation
   generateMissingSocialImages();
