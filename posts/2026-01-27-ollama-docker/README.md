@@ -1,10 +1,10 @@
-# How to Use Ollama with Docker
+# How to Run Ollama in Docker and Docker Compose (With GPU Support)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ollama, Docker, LLM, AI, Machine Learning, GPU, Docker Compose, Self-Hosted, DevOps
 
-Description: A comprehensive guide to running Ollama in Docker containers with GPU passthrough, persistent model storage, and multi-container deployment patterns.
+Description: Run Ollama in Docker with GPU passthrough and Docker Compose. Covers ollama Docker image setup, persistent model storage, GPU configuration, and multi-container deployment.
 
 ---
 

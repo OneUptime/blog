@@ -1,10 +1,10 @@
-# Ollama Models: How to Pull, List, Update, and Manage Local LLMs
+# Ollama Models: Pull, List, Store, and Manage Local LLMs (Where Ollama Stores Models)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ollama, LLM, AI, Model Management, Local AI
 
-Description: Complete guide to managing Ollama models. Pull new models, list installed ones, update to latest versions, customize with Modelfiles, and clean up disk space.
+Description: Where does Ollama store models? How to pull, list, update, delete, and manage Ollama models. Includes storage locations, Modelfile customization, and disk cleanup.
 
 ---
 

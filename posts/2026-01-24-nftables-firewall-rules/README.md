@@ -1,10 +1,10 @@
-# nftables Guide: Configure Linux Firewall Rules (With Examples)
+# nftables Guide: List Rules, Configure Firewall, and DDoS Protection (With Examples)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: nftables, Firewall, Linux Security, Network Security, iptables, Packet Filtering, System Administration
 
-Description: Learn nftables from scratch. Create, list, and manage firewall rules on modern Linux systems with practical examples for filtering, NAT, and port forwarding.
+Description: nftables tutorial with examples. List rules with nft, configure firewall chains, set up NAT, port forwarding, and DDoS protection on modern Linux.
 
 ---
 

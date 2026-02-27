@@ -1,10 +1,10 @@
-# Docker CPU & Memory Limits: Prevent Container Resource Exhaustion
+# Docker and Docker Compose CPU & Memory Limits: Set Resource Constraints
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Containers, DevOps, Performance, Resource Management
 
-Description: Set Docker container CPU and memory limits to prevent crashes. Learn --memory, --cpus flags, soft limits, and production best practices.
+Description: Set CPU and memory limits in Docker and Docker Compose. Covers --memory, --cpus, deploy.resources, soft limits, and production best practices for container resource management.
 
 ---
 
