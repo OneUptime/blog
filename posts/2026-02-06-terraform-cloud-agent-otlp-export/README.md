@@ -1,4 +1,4 @@
-# How to Configure Terraform Cloud Agent OpenTelemetry Telemetry Export via OTLP Environment Variables
+# How to Configure Terraform Cloud Agent OpenTelemetry Telemetry Export via OTLP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

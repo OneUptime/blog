@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Configuration, Hot Reload, File Watching, DevOps, Production Systems
 
-Description: Learn how to build a configuration system in Python that supports hot reloading without restarting your application. This guide covers file watching, environment variables, validation, and thread-safe config updates.
+Description: Learn how to build a configuration system in Python that supports hot reloading without restarting your application.
 
 ---
 

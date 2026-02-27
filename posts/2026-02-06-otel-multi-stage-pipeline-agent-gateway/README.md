@@ -1,4 +1,4 @@
-# How to Implement a Multi-Stage Pipeline: Agent Collector for Sampling, Gateway Collector for Enrichment and Export
+# How to Build a Multi-Stage Pipeline: Agent Collector for Sampling, Gateway
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

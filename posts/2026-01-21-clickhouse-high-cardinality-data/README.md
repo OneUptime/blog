@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, High Cardinality, Performance, Database, Analytics, Optimization, Schema Design
 
-Description: Strategies for efficiently storing and querying high-cardinality dimensions in ClickHouse, including column encoding, schema design patterns, and query optimization techniques for columns with millions of unique values.
+Description: Strategies for efficiently storing and querying high-cardinality dimensions in ClickHouse, including column encoding, schema design patterns.
 
 ---
 

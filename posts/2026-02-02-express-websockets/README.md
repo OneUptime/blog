@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Express.js, Node.js, WebSockets, Real-time, Web Development, Backend
 
-Description: A comprehensive guide to implementing WebSocket connections in Express.js applications for real-time bidirectional communication, including authentication, scaling patterns, and production best practices.
+Description: A comprehensive guide to implementing WebSocket connections in Express.
 
 ---
 

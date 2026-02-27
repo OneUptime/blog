@@ -1,4 +1,4 @@
-# How to Configure Pod Disruption Budgets in GKE to Maintain Availability During Upgrades
+# Configure Pod Disruption Budgets in GKE to Maintain Availability During Upgrades
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

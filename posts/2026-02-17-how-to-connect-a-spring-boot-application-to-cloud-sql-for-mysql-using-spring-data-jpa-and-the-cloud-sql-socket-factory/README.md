@@ -1,4 +1,4 @@
-# How to Connect a Spring Boot Application to Cloud SQL for MySQL Using Spring Data JPA and the Cloud SQL Socket Factory
+# How to Connect a Spring Boot App to Cloud SQL for MySQL Using Spring Data JPA
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

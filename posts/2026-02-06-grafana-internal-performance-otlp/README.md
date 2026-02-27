@@ -1,4 +1,4 @@
-# How to Collect Grafana Internal Performance Metrics (Dashboard Load Time, Query Duration) via OTLP Export
+# How to Collect Grafana Internal Performance Metrics via OTLP Export
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

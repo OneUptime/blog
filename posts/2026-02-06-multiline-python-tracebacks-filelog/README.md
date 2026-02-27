@@ -1,4 +1,4 @@
-# How to Parse Multiline Python Tracebacks with the OpenTelemetry Filelog Receiver multiline Operator
+# How to Parse Multiline Python Tracebacks with the OpenTelemetry Filelog
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

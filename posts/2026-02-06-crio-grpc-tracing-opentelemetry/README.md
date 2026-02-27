@@ -1,4 +1,4 @@
-# How to Monitor CRI-O Container Runtime gRPC Tracing with OpenTelemetry Trace Export
+# How to Monitor CRI-O Container Runtime gRPC Tracing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

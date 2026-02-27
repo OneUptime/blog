@@ -1,4 +1,4 @@
-# How to Build a Lambda Architecture for Telemetry: Real-Time OTel Stream + Batch Reprocessing from Kafka
+# How to Build a Lambda Architecture for Telemetry: Real-Time OTel Stream + Batch
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

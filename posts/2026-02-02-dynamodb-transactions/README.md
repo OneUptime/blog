@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: DynamoDB, AWS, NoSQL, Transactions, Database, Serverless
 
-Description: Learn how to implement ACID transactions in DynamoDB using TransactWriteItems and TransactGetItems. Covers multi-item operations, error handling, conditional writes, and best practices for building reliable applications.
+Description: Learn how to implement ACID transactions in DynamoDB using TransactWriteItems and TransactGetItems.
 
 ---
 

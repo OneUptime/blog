@@ -1,4 +1,4 @@
-# How to Ingest and Query Medical Imaging Data Using the DICOM Service in Azure Health Data Services
+# How to Ingest and Query Medical Imaging Data Using the DICOM Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

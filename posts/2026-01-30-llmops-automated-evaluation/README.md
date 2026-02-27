@@ -2529,8 +2529,8 @@ Automated evaluation transforms LLM development from guesswork into engineering.
 
 ### See Also
 
-- [OpenTelemetry for LLM Applications](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/) - Instrument your LLM calls with distributed tracing
-- [Structured Logging for AI Systems](/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/) - Log evaluation results for debugging
+- [OpenTelemetry for LLM Applications](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Instrument your LLM calls with distributed tracing
+- [Structured Logging for AI Systems](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view) - Log evaluation results for debugging
 
 **Related Reading:**
 

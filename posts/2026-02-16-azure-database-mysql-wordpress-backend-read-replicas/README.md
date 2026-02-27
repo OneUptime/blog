@@ -1,4 +1,4 @@
-# How to Configure Azure Database for MySQL as a WordPress Backend with Read Replicas
+# How to Configure Azure Database for MySQL as a WordPress Backend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

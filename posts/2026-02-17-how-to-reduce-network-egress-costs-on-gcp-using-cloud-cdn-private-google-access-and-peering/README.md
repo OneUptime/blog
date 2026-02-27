@@ -1,4 +1,4 @@
-# How to Reduce Network Egress Costs on GCP Using Cloud CDN Private Google Access and Peering
+# How to Reduce Network Egress Costs on GCP Using Cloud CDN Private Google Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

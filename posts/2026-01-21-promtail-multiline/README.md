@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Promtail, Multi-Line Logs, Stack Traces, Log Parsing, Exception Handling
 
-Description: A comprehensive guide to parsing multi-line logs with Promtail for Grafana Loki, covering stack trace handling, multi-line stage configuration, regex patterns, and best practices for aggregating related log lines.
+Description: A comprehensive guide to parsing multi-line logs with Promtail for Grafana Loki, covering stack trace handling, multi-line stage configuration, regex patterns.
 
 ---
 

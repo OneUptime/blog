@@ -1,4 +1,4 @@
-# How to Perform Spatial Joins in BigQuery GIS to Analyze Location Data with Geographic Boundaries
+# How to Perform Spatial Joins in BigQuery GIS to Analyze Location Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

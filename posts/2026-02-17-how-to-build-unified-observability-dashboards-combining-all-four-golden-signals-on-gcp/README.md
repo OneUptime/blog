@@ -1,4 +1,4 @@
-# How to Build Unified Observability Dashboards Combining All Four Golden Signals on GCP
+# How to Build Unified Observability Dashboards Combining All Four Golden Signals
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

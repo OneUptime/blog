@@ -1,4 +1,4 @@
-# How to Implement Read-Through and Write-Through Cache Patterns with Redis on Kubernetes
+# How to Use Read-Through and Write-Through Cache Patterns
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

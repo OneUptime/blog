@@ -1,4 +1,4 @@
-# How to Create a Multi-Architecture Docker Build for ARM and x86 Using Cloud Build and Deploy to GKE
+# How to Create a Multi-Architecture Docker Build for ARM and x86 Using Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

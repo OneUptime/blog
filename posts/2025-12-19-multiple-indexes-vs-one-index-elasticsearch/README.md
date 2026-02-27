@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Index Design, Architecture, Data Modeling, Performance
 
-Description: Learn when to use multiple indexes versus a single index in Elasticsearch. This guide covers index design patterns, performance considerations, and migration strategies for different data modeling scenarios.
+Description: Learn when to use multiple indexes versus a single index in Elasticsearch.
 
 One of the most important decisions in Elasticsearch is how to structure your indexes. Should you use multiple indexes for different data types or consolidate everything into a single index? This guide covers the considerations, patterns, and best practices for making this decision.
 

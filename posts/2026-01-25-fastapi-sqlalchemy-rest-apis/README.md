@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, FastAPI, SQLAlchemy, REST API, Database, ORM, Async, PostgreSQL
 
-Description: Learn how to build production-ready REST APIs with FastAPI and SQLAlchemy. This guide covers database models, async operations, CRUD endpoints, validation with Pydantic, and best practices for scalable API design.
+Description: Learn how to build production-ready REST APIs with FastAPI and SQLAlchemy.
 
 ---
 

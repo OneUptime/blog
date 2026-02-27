@@ -1,4 +1,4 @@
-# How to Troubleshoot Kubernetes Job Failures from Incorrect Backoff Limit and Restart Policies
+# How to Troubleshoot Kubernetes Job Failures from Incorrect Backoff Limit
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

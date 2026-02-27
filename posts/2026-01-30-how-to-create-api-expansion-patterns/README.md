@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: API Design, REST, GraphQL, Backend, Performance, Node.js, TypeScript, Database
 
-Description: A practical guide to implementing API expansion patterns that let clients request related resources in a single call. Learn how to build flexible, performant APIs that reduce round trips while keeping your backend maintainable.
+Description: A practical guide to implementing API expansion patterns that let clients request related resources in a single call.
 
 ---
 

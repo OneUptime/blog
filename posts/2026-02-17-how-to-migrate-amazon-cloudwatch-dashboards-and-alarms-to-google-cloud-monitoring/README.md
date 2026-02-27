@@ -1,4 +1,4 @@
-# How to Migrate Amazon CloudWatch Dashboards and Alarms to Google Cloud Monitoring
+# How to Migrate Amazon CloudWatch Dashboards
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

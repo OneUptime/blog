@@ -1,4 +1,4 @@
-# How to Set Up Cloud Functions to Send Email Notifications Using SendGrid When Alerts Fire
+# How to Set Up Cloud Functions to Send Email Notifications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

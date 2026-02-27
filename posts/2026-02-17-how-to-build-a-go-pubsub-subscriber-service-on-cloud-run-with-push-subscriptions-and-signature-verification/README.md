@@ -1,4 +1,4 @@
-# How to Build a Go Pub/Sub Subscriber Service on Cloud Run with Push Subscriptions and Signature Verification
+# How to Build a Go Pub/Sub Subscriber Service on Cloud Run with Push
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement the Circuit Breaker Pattern in GCP Microservices Using Istio on GKE
+# How to Use the Circuit Breaker Pattern in GCP Microservices Using Istio on GKE
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

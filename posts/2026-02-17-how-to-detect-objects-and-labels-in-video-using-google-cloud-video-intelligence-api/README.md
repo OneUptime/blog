@@ -1,4 +1,4 @@
-# How to Detect Objects and Labels in Video Using Google Cloud Video Intelligence API
+# Detect Objects and Labels in Video Using Google Cloud Video Intelligence API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

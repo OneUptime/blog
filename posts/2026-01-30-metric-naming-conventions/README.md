@@ -380,5 +380,5 @@ The time invested in naming conventions pays dividends every time someone debugs
 
 ### See Also
 
-- [18 SRE Metrics Worth Tracking](/blog/post/2025-11-28-sre-metrics-to-track/) - Understand which metrics matter most for reliability.
-- [Three Pillars of Observability](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/) - Learn how metrics fit into logs and traces.
+- [18 SRE Metrics Worth Tracking](https://oneuptime.com/blog/post/2025-11-28-sre-metrics-to-track/view) - Understand which metrics matter most for reliability.
+- [Three Pillars of Observability](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view) - Learn how metrics fit into logs and traces.

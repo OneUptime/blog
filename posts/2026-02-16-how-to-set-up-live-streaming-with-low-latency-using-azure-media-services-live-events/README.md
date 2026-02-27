@@ -1,4 +1,4 @@
-# How to Set Up Live Streaming with Low Latency Using Azure Media Services Live Events
+# Set Up Live Streaming with Low Latency Using Azure Media Services Live Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

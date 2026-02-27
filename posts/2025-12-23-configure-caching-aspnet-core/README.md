@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, ASP.NET Core, C#, Caching, Redis, Performance, Memory Cache
 
-Description: Learn how to implement effective caching strategies in ASP.NET Core applications. This guide covers in-memory caching, distributed caching with Redis, response caching, and best practices for cache invalidation.
+Description: Learn how to implement effective caching strategies in ASP.NET Core applications.
 
 Caching is one of the most effective ways to improve application performance. This guide covers all the caching options available in ASP.NET Core and shows you how to implement them effectively.
 

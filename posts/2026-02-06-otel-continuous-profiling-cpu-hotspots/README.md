@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Continuous Profiling to Correlate CPU Hotspots with Slow Trace Spans
+# How to Use OpenTelemetry Continuous Profiling to Correlate CPU Hotspots
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

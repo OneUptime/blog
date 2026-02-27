@@ -1,4 +1,4 @@
-# How to Set Up Azure Pipelines Multi-Repository Triggers for Cross-Repo Build Coordination
+# How to Set Up Azure Pipelines Multi-Repository Triggers for Cross-Repo Build
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Multi-Tenant Azure Key Vault Access Policies for Shared SaaS Infrastructure
+# How to Configure Multi-Tenant Azure Key Vault Access Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build an Error Tracking Dashboard That Correlates OpenTelemetry Traces with Exceptions
+# How to Build an Error Tracking Dashboard That Correlates OpenTelemetry Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure OTel Arrow for Cross-Region Telemetry Transport to Minimize WAN Bandwidth Costs
+# How to Configure OTel Arrow for Cross-Region Telemetry Transport to Minimize
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

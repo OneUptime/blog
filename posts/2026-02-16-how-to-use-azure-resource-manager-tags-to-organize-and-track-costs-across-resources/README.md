@@ -1,4 +1,4 @@
-# How to Use Azure Resource Manager Tags to Organize and Track Costs Across Resources
+# How to Use Azure Resource Manager Tags to Organize
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

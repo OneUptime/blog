@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CNI, MTU, Networking, Performance
 
-Description: Configure custom MTU (Maximum Transmission Unit) settings for Kubernetes CNI plugins to optimize network performance, avoid packet fragmentation, and resolve connectivity issues in various network environments.
+Description: Configure custom MTU (Maximum Transmission Unit) settings for Kubernetes CNI plugins to optimize network performance, avoid packet fragmentation.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot OpenTelemetry Java SDK Version Conflicts with Jakarta EE Application Servers
+# How to Troubleshoot OpenTelemetry Java SDK Version Conflicts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Migrate a Monolithic Database to Microservice-Specific Databases on Cloud SQL
+# How to Migrate a Monolithic Database to Microservice-Specific Databases
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

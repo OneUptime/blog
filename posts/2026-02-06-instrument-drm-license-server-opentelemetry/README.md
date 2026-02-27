@@ -1,4 +1,4 @@
-# How to Instrument Digital Rights Management (DRM) License Server Performance with OpenTelemetry
+# How to Instrument Digital Rights Management License Server Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

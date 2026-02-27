@@ -1,4 +1,4 @@
-# How to Implement Domain-Driven Design Boundaries When Splitting a Monolith on GCP
+# How to Use Domain-Driven Design Boundaries When Splitting a Monolith on GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

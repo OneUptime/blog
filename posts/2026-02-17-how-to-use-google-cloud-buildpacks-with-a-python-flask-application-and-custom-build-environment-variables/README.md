@@ -1,4 +1,4 @@
-# How to Use Google Cloud Buildpacks with a Python Flask Application and Custom Build Environment Variables
+# How to Use Google Cloud Buildpacks with a Python Flask Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

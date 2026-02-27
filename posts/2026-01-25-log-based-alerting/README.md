@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Log Alerting, Monitoring, Observability, Incident Response, Alert Fatigue, Log Management, DevOps
 
-Description: Learn how to implement effective log-based alerting that catches real problems without causing alert fatigue. This guide covers alert design, threshold configuration, anomaly detection, and best practices for actionable alerts.
+Description: Learn how to implement effective log-based alerting that catches real problems without causing alert fatigue.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Implement Change Control Documentation Automation for Kubernetes Deployments
+# How to Use Change Control Documentation Automation for Kubernetes Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Change Management, GitOps, Compliance, Documentation, Automation
 
-Description: Automate change control documentation for Kubernetes deployments using GitOps workflows, admission webhooks, and audit logging to maintain compliant change records for SOC2, ISO 27001, and ITIL frameworks.
+Description: Automate change control documentation for Kubernetes deployments using GitOps workflows, admission webhooks, and audit logging to maintain compliant change records for SOC2, ISO 27001.
 
 ---
 

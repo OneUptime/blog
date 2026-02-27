@@ -1,4 +1,4 @@
-# How to Build a Kubernetes Test Fixture Framework for Reproducible Integration Testing
+# How to Build a Kubernetes Test Fixture Framework
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

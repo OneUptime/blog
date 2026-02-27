@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, YugabyteDB, Database, Multi-Zone, High Availability
 
-Description: Deploy YugabyteDB across multiple availability zones on Kubernetes for high availability and fault tolerance, including zone-aware placement policies, replication configuration, and disaster recovery strategies.
+Description: Deploy YugabyteDB across multiple availability zones on Kubernetes for high availability and fault tolerance, including zone-aware placement policies, replication configuration.
 
 ---
 

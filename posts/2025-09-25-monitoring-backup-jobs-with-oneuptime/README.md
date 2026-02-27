@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Backup, Monitoring, Incoming Request, Heartbeat, Jobs, Reliability, DevOps, Data Protection, Automation
 
-Description: A comprehensive guide to monitoring backup jobs with OneUptime's incoming request monitors. Learn how to track backup job status, detect failures, and ensure your data protection strategy works when you need it most.
+Description: A comprehensive guide to monitoring backup jobs with OneUptime's incoming request monitors.
 
 ---
 

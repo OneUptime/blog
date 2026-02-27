@@ -1,4 +1,4 @@
-# How to Monitor API Gateway Throttling and Rate Limit Responses (HTTP 429) with OpenTelemetry Metrics
+# How to Monitor API Gateway Throttling and Rate Limit Responses
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

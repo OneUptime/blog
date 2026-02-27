@@ -1,4 +1,4 @@
-# How to Set Up a Compute Engine VM as a NAT Gateway for Instances Without External IPs
+# How to Set Up a Compute Engine VM as a NAT Gateway
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

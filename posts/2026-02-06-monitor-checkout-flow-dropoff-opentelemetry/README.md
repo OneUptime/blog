@@ -1,4 +1,4 @@
-# How to Monitor Checkout Flow Drop-Off Rates Using OpenTelemetry Funnel Metrics Across Payment, Shipping, and Confirmation Steps
+# How to Monitor Checkout Flow Drop-Off Rates Using OpenTelemetry Funnel Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

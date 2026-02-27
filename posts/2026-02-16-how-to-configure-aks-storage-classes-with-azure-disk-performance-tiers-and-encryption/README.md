@@ -1,4 +1,4 @@
-# How to Configure AKS Storage Classes with Azure Disk Performance Tiers and Encryption
+# How to Configure AKS Storage Classes with Azure Disk Performance Tiers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

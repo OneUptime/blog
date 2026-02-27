@@ -1,4 +1,4 @@
-# How to Build Automated Remediation Workflows for SCC Findings with Cloud Functions
+# How to Build Automated Remediation Workflows for SCC Findings
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

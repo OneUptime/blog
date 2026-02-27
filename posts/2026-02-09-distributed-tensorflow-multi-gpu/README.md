@@ -1,4 +1,4 @@
-# How to Set Up Distributed TensorFlow Training Across Multiple GPU Nodes in Kubernetes
+# How to Set Up Distributed TensorFlow Training Across Multiple GPU Nodes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

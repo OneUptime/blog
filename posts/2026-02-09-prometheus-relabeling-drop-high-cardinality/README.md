@@ -1,4 +1,4 @@
-# How to Use Prometheus Metric Relabeling to Drop High-Cardinality Kubernetes Labels
+# Use Prometheus Metric Relabeling to Drop High-Cardinality Kubernetes Labels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

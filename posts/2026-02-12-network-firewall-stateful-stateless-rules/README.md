@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, VPC, Security, Firewall
 
-Description: A deep dive into AWS Network Firewall rule types, covering stateless rules for fast packet-level filtering and stateful rules for connection tracking, domain filtering, and Suricata-compatible IDS signatures.
+Description: A deep dive into AWS Network Firewall rule types, covering stateless rules for fast packet-level filtering and stateful rules for connection tracking, domain filtering.
 
 ---
 

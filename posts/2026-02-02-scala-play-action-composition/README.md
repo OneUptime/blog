@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Scala, Play Framework, Actions, Web, Middleware, Authentication, Logging, Security
 
-Description: Learn how to build reusable, composable actions in Play Framework using action composition. This guide covers authentication, logging, rate limiting, and custom action builders with practical examples.
+Description: Learn how to build reusable, composable actions in Play Framework using action composition.
 
 ---
 

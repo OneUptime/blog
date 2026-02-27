@@ -1,4 +1,4 @@
-# How to Deploy a Cloud Run Service from a GitHub Repository Using Cloud Build Triggers
+# How to Deploy a Cloud Run Service from a GitHub Repository
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

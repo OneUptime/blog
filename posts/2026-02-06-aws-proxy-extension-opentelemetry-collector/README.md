@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Extensions, AWS, Authentication, IAM, SigV4
 
-Description: Master the AWS Proxy Extension in OpenTelemetry Collector to enable AWS IAM authentication, automatic credential management, and secure telemetry export to AWS services like CloudWatch, X-Ray, and Kinesis using SigV4 signing.
+Description: Master the AWS Proxy Extension in OpenTelemetry Collector to enable AWS IAM authentication, automatic credential management, and secure telemetry export to AWS services like CloudWatch, X-Ray.
 
 ---
 

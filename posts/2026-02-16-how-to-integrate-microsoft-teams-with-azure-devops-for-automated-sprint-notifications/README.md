@@ -1,4 +1,4 @@
-# How to Integrate Microsoft Teams with Azure DevOps for Automated Sprint Notifications
+# How to Integrate Microsoft Teams with Azure DevOps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

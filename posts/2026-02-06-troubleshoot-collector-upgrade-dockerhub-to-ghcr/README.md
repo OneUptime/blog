@@ -1,4 +1,4 @@
-# How to Troubleshoot Collector Version Upgrade Breaking Changes (Docker Image Repo Moved from DockerHub to GHCR)
+# How to Troubleshoot Collector Version Upgrade Breaking Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

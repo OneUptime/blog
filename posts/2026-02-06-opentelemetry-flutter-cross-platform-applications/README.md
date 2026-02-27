@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Flutter, Dart, Cross-Platform, Mobile, Tracing
 
-Description: Learn how to implement OpenTelemetry in Flutter applications to track performance, errors, and user behavior across iOS and Android with a single codebase while handling platform-specific considerations.
+Description: Learn how to implement OpenTelemetry in Flutter applications to track performance, errors.
 
 Flutter enables developers to build native iOS and Android apps from a single codebase. However, monitoring these apps requires understanding both Flutter's architecture and platform-specific considerations. OpenTelemetry provides a unified way to instrument Flutter apps, capturing telemetry data that works consistently across platforms while respecting each platform's unique characteristics.
 

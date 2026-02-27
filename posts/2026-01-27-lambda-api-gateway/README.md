@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Lambda, API Gateway, Serverless, REST API, HTTP API, SAM, CDK, DevOps
 
-Description: A comprehensive guide to integrating AWS Lambda with API Gateway, covering REST vs HTTP APIs, proxy integration, request/response mapping, authorizers, CORS, stages, custom domains, and Infrastructure as Code examples.
+Description: A comprehensive guide to integrating AWS Lambda with API Gateway, covering REST vs HTTP APIs, proxy integration, request/response mapping, authorizers, CORS, stages, custom domains.
 
 ---
 

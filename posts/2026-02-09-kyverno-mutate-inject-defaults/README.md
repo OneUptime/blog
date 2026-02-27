@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kyverno, Mutation, Policy Automation, DevOps
 
-Description: Learn how to use Kyverno mutate policies to automatically inject default values, labels, annotations, and configuration into Kubernetes resources, reducing manual configuration and enforcing organizational standards.
+Description: Learn how to use Kyverno mutate policies to automatically inject default values, labels, annotations, and configuration into Kubernetes resources.
 
 ---
 

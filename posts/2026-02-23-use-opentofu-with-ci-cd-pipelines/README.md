@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, CI/CD, DevOps, Automation, Infrastructure as Code
 
-Description: A comprehensive guide to integrating OpenTofu into CI/CD pipelines, covering pipeline design, approval workflows, state management, secrets handling, and best practices for automated infrastructure deployment.
+Description: A comprehensive guide to integrating OpenTofu into CI/CD pipelines, covering pipeline design, approval workflows, state management, secrets handling.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Set Up Knative Functions CLI for Building and Deploying Functions on Kubernetes
+# How to Set Up Knative Functions CLI for Building and Deploying Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

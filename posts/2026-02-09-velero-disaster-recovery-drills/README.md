@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Velero, Disaster Recovery, Automation
 
-Description: Learn how to implement Velero disaster recovery drills and runbook automation to regularly test your backup strategy, validate recovery procedures, and ensure your team can respond effectively to real disasters.
+Description: Learn how to implement Velero disaster recovery drills and runbook automation to regularly test your backup strategy, validate recovery procedures.
 
 ---
 

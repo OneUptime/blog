@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kyverno, Security, Pod Security, Admission Control
 
-Description: Learn how to write Kyverno validation policies that enforce Kubernetes Pod Security Standards, implement baseline and restricted policies, and automate security compliance checks for your cluster workloads.
+Description: Learn how to write Kyverno validation policies that enforce Kubernetes Pod Security Standards, implement baseline and restricted policies.
 
 ---
 

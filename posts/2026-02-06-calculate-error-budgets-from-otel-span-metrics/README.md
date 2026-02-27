@@ -1,4 +1,4 @@
-# How to Calculate Error Budgets from OpenTelemetry Span Metrics (Error Rate, Success Rate, SLO Burn)
+# How to Calculate Error Budgets from OpenTelemetry Span Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

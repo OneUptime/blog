@@ -1,4 +1,4 @@
-# How to Use the Remote Tap Processor to Live-Debug Production Telemetry Without Disrupting Pipelines
+# How to Use the Remote Tap Processor to Live-Debug Production Telemetry Without
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

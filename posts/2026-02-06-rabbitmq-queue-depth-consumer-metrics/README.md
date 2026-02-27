@@ -1,4 +1,4 @@
-# How to Monitor RabbitMQ Queue Depth, Consumer Count, Unacked Messages, and Publish Rates with the Collector
+# How to Monitor RabbitMQ Queue Depth, Consumer Count, Unacked Messages,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

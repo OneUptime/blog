@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, HikariCP, Spring Boot, Connection Pool, Performance
 
-Description: HikariCP is the default connection pool in Spring Boot and one of the fastest available. But out-of-the-box settings rarely match your workload. This guide walks through the key configuration parameters and how to tune them for maximum throughput.
+Description: HikariCP is the default connection pool in Spring Boot and one of the fastest available. But out-of-the-box settings rarely match your workload.
 
 ---
 

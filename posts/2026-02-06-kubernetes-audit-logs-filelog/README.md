@@ -1,4 +1,4 @@
-# How to Parse Kubernetes Audit Logs (JSON Format) with the Filelog Receiver and Extract Request Metadata
+# How to Parse Kubernetes Audit Logs with the Filelog Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

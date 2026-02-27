@@ -1,4 +1,4 @@
-# How to Deploy vLLM on Kubernetes for High-Throughput Large Language Model Inference
+# Deploy vLLM on Kubernetes for High-Throughput Large Language Model Inference
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

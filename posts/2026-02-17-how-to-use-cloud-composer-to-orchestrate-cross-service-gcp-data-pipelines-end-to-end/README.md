@@ -1,4 +1,4 @@
-# How to Use Cloud Composer to Orchestrate Cross-Service GCP Data Pipelines End-to-End
+# Use Cloud Composer to Orchestrate Cross-Service GCP Data Pipelines End-to-End
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

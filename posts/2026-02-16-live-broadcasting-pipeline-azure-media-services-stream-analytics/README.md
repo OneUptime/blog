@@ -1,4 +1,4 @@
-# How to Build a Live Broadcasting Pipeline with Azure Media Services Live Events and Stream Analytics
+# How to Build a Live Broadcasting Pipeline with Azure Media Services Live Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

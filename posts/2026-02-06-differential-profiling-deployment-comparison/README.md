@@ -1,4 +1,4 @@
-# How to Implement Differential Profiling with OpenTelemetry to Compare Before and After Deployment Performance
+# How to Use Differential Profiling with OpenTelemetry to Compare Before
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

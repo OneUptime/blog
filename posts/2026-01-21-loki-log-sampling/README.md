@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Log Sampling, Cost Optimization, Promtail, Log Volume, Performance
 
-Description: A comprehensive guide to implementing log sampling strategies with Grafana Loki, covering probabilistic sampling, adaptive sampling, hash-based sampling, and best practices for reducing log volume while maintaining visibility.
+Description: A comprehensive guide to implementing log sampling strategies with Grafana Loki, covering probabilistic sampling, adaptive sampling, hash-based sampling.
 
 ---
 

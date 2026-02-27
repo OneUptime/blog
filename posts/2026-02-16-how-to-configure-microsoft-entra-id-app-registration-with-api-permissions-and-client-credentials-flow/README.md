@@ -1,4 +1,4 @@
-# How to Configure Microsoft Entra ID App Registration with API Permissions and Client Credentials Flow
+# How to Configure Microsoft Entra ID App Registration with API Permissions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

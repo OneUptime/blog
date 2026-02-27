@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Scrapy, Playwright, Web Scraping, Data Extraction, Browser Automation, JavaScript Rendering
 
-Description: Learn how to build powerful web scrapers in Python using Scrapy and Playwright. This guide covers handling JavaScript-rendered pages, managing sessions, avoiding detection, and structuring large-scale scraping projects.
+Description: Learn how to build powerful web scrapers in Python using Scrapy and Playwright.
 
 ---
 

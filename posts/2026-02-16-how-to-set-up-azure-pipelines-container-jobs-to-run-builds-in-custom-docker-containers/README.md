@@ -1,4 +1,4 @@
-# How to Set Up Azure Pipelines Container Jobs to Run Builds in Custom Docker Containers
+# How to Set Up Azure Pipelines Container Jobs to Run Builds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

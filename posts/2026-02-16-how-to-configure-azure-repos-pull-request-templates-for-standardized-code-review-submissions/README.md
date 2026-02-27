@@ -1,4 +1,4 @@
-# How to Configure Azure Repos Pull Request Templates for Standardized Code Review Submissions
+# How to Configure Azure Repos Pull Request Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

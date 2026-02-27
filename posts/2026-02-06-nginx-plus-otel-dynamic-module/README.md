@@ -1,4 +1,4 @@
-# How to Install the NGINX Plus OpenTelemetry Dynamic Module with Reduced Performance Overhead
+# How to Install the NGINX Plus OpenTelemetry Dynamic Module
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

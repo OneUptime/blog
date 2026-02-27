@@ -1,4 +1,4 @@
-# How to Tune Envoy OpenTelemetry Sampling Rates, Max Tag Length, and Custom Tags for Production Traffic
+# How to Tune Envoy OpenTelemetry Sampling Rates, Max Tag Length, and Custom Tags
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

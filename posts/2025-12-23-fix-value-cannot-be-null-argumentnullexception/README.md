@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, ArgumentNullException, Null Safety, Troubleshooting, Best Practices
 
-Description: Learn how to diagnose and prevent ArgumentNullException errors in C# applications. This guide covers null checking patterns, nullable reference types, guard clauses, and best practices for building null-safe code.
+Description: Learn how to diagnose and prevent ArgumentNullException errors in C# applications.
 
 The `ArgumentNullException` with the message "Value cannot be null" is one of the most common runtime errors in C# applications. This guide will help you understand why this error occurs and how to write null-safe code.
 

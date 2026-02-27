@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Streaming, Low Latency, Performance, Real-time
 
-Description: A practical guide to building ultra-low-latency streaming data pipelines in Rust, covering zero-copy parsing, lock-free channels, and memory optimization techniques that keep processing times under a millisecond.
+Description: A practical guide to building ultra-low-latency streaming data pipelines in Rust, covering zero-copy parsing, lock-free channels.
 
 ---
 

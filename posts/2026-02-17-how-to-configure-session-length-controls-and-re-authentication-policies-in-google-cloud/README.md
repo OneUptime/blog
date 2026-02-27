@@ -1,4 +1,4 @@
-# How to Configure Session Length Controls and Re-Authentication Policies in Google Cloud
+# How to Configure Session Length Controls and Re-Authentication Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build an End-to-End Data Pipeline from Power Automate to Azure Data Lake to Power BI
+# How to Build an End-to-End Data Pipeline from Power Automate to Azure Data Lake
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

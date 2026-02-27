@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Pub/Sub, Real-Time, Chat, WebSocket, Node.js
 
-Description: Build a scalable real-time chat application using Redis Pub/Sub for message distribution across multiple server instances. This guide covers WebSocket integration, room management, and message persistence.
+Description: Build a scalable real-time chat application using Redis Pub/Sub for message distribution across multiple server instances.
 
 ---
 

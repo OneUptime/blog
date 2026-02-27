@@ -1,4 +1,4 @@
-# How to Configure Service Connections in Azure DevOps for Secure Azure Resource Access
+# How to Configure Service Connections in Azure DevOps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

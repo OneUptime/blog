@@ -1,4 +1,4 @@
-# How to Troubleshoot CrashLoopBackOff Errors on AKS Pods with Init Container Debugging
+# How to Troubleshoot CrashLoopBackOff Errors on AKS Pods
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

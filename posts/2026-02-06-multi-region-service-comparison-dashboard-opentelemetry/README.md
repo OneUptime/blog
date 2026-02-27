@@ -1,4 +1,4 @@
-# How to Create a Multi-Region Service Comparison Dashboard from OpenTelemetry Distributed Metrics
+# How to Create a Multi-Region Service Comparison Dashboard from OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

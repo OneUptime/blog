@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: TimescaleDB, Node.js, PostgreSQL, Time-Series, Database, Backend
 
-Description: Learn how to use TimescaleDB with Node.js to build scalable time-series applications. Covers setup, hypertables, continuous aggregates, data retention policies, and best practices for IoT and monitoring use cases.
+Description: Learn how to use TimescaleDB with Node.js to build scalable time-series applications.
 
 ---
 

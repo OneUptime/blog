@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Keycloak, Authentication, Authorization, RBAC, Security, Identity Management, OAuth2, OpenID Connect
 
-Description: Learn how to configure Keycloak roles and permissions for fine-grained access control. Master realm roles, client roles, composite roles, and authorization services to build secure applications with proper access management.
+Description: Learn how to configure Keycloak roles and permissions for fine-grained access control.
 
 ---
 

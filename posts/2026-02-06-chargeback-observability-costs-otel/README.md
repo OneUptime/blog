@@ -1,4 +1,4 @@
-# How to Build a Chargeback Model for Observability Costs Using OpenTelemetry Resource Attributes
+# How to Build a Chargeback Model for Observability Costs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

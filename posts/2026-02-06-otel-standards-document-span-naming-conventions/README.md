@@ -1,4 +1,4 @@
-# How to Create an OpenTelemetry Standards Document Defining Span Naming, Attribute, and Metric Conventions
+# How to Create an OpenTelemetry Standards Document Defining Span Naming,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

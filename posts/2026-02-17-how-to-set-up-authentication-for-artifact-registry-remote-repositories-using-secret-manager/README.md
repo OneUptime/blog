@@ -1,4 +1,4 @@
-# How to Set Up Authentication for Artifact Registry Remote Repositories Using Secret Manager
+# How to Set Up Authentication for Artifact Registry Remote Repositories
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

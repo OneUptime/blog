@@ -1,4 +1,4 @@
-# How to Improve Compute Engine Disk Performance by Configuring Local SSD Striping with mdadm
+# How to Improve Compute Engine Disk Performance by Configuring Local SSD Striping
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

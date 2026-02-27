@@ -1,4 +1,4 @@
-# How to Use the google-cloud/logging-winston Transport to Send Node.js Logs to Cloud Logging
+# How to Use the google-cloud/logging-winston Transport to Send Node.js Logs to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

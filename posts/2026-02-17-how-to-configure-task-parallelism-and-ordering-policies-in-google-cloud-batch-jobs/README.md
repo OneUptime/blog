@@ -1,4 +1,4 @@
-# How to Configure Task Parallelism and Ordering Policies in Google Cloud Batch Jobs
+# How to Configure Task Parallelism and Ordering Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

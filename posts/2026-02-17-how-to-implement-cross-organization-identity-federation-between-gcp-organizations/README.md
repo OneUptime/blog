@@ -1,4 +1,4 @@
-# How to Implement Cross-Organization Identity Federation Between GCP Organizations
+# How to Use Cross-Organization Identity Federation Between GCP Organizations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Automatically Start and Stop Azure VMs on a Schedule Using Azure Automation
+# How to Automatically Start and Stop Azure VMs on a Schedule
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

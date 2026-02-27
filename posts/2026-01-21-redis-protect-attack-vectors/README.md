@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Security, Attack Vectors, Unauthorized Access, DoS, Injection, Hardening
 
-Description: A comprehensive guide to protecting Redis from common attack vectors including unauthorized access, command injection, denial of service attacks, and data exfiltration, with practical mitigation strategies and security hardening techniques.
+Description: A comprehensive guide to protecting Redis from common attack vectors including unauthorized access, command injection, denial of service attacks, and data exfiltration.
 
 ---
 

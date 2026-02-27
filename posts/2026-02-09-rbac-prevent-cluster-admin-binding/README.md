@@ -1,4 +1,4 @@
-# How to Implement RBAC Policies That Prevent Binding Cluster-Admin Role to Regular Users
+# Use RBAC Policies That Prevent Binding Cluster-Admin Role to Regular Users
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Monitor Social Media Ad Targeting and Audience Segmentation Pipeline with OpenTelemetry
+# How to Monitor Social Media Ad Targeting and Audience Segmentation Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

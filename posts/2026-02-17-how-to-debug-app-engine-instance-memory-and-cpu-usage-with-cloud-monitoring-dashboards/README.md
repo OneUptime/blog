@@ -1,4 +1,4 @@
-# How to Debug App Engine Instance Memory and CPU Usage with Cloud Monitoring Dashboards
+# How to Debug App Engine Instance Memory and CPU Usage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

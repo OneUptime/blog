@@ -1,4 +1,4 @@
-# How to Choose Between Cloud NAT Cloud VPN and Cloud Interconnect for Network Egress
+# How to Choose Between Cloud NAT Cloud VPN and Cloud Interconnect
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

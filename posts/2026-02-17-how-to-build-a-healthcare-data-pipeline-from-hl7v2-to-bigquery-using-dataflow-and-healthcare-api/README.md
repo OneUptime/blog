@@ -1,4 +1,4 @@
-# How to Build a Healthcare Data Pipeline from HL7v2 to BigQuery Using Dataflow and Healthcare API
+# How to Build a Healthcare Data Pipeline from HL7v2 to BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

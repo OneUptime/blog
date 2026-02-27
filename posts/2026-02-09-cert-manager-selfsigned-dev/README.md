@@ -1,4 +1,4 @@
-# How to Use cert-manager SelfSigned Issuer for Development and Testing Certificates
+# How to Use cert-manager SelfSigned Issuer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

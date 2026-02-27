@@ -1,4 +1,4 @@
-# How to Use Cloud Run Execution Environment Gen2 for Better CPU and Network Performance
+# How to Use Cloud Run Execution Environment Gen2 for Better CPU
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure NVIDIA GPU Operator for Automated Driver Management on Kubernetes
+# How to Configure NVIDIA GPU Operator for Automated Driver Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

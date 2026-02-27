@@ -1,4 +1,4 @@
-# How to Fix the Go OpenTelemetry Exporter Failing Silently Because GOMEMLIMIT Is Not Set on the Collector
+# How to Fix the Go OpenTelemetry Exporter Failing Silently Because GOMEMLIMIT Is
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

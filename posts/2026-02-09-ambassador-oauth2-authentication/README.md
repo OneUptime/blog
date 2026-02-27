@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Ambassador, OAuth2
 
-Description: Learn how to configure Ambassador Edge Stack OAuth2 filter for secure authentication, including integration with identity providers, token validation, and session management in Kubernetes environments.
+Description: Learn how to configure Ambassador Edge Stack OAuth2 filter for secure authentication, including integration with identity providers, token validation.
 
 ---
 

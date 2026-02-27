@@ -1,4 +1,4 @@
-# How to Set Up an HL7v2 Store and Ingest Clinical Messages with Google Cloud Healthcare API
+# How to Set Up an HL7v2 Store and Ingest Clinical Messages
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

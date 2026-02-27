@@ -1,4 +1,4 @@
-# How to Trace CloudEvents Flowing Through Kafka, HTTP, and MQTT Brokers with OpenTelemetry
+# How to Trace CloudEvents Flowing Through Kafka, HTTP, and MQTT Brokers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

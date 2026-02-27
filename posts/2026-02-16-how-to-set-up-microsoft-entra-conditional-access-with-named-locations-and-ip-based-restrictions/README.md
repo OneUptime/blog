@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Entra Conditional Access with Named Locations and IP-Based Restrictions
+# How to Set Up Microsoft Entra Conditional Access with Named Locations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

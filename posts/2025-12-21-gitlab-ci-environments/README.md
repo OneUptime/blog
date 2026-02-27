@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab CI, Environments, DevOps, Deployment, CI/CD
 
-Description: Learn how to use GitLab CI environments to manage deployments across development, staging, and production. This guide covers environment configuration, dynamic environments, protected environments, and deployment tracking.
+Description: Learn how to use GitLab CI environments to manage deployments across development, staging, and production.
 
 > Environments in GitLab CI provide a powerful way to track and manage deployments across your infrastructure, giving you visibility into what code is running where.
 

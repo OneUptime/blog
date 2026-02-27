@@ -1,4 +1,4 @@
-# How to Deploy Azure Chaos Studio Experiments with Target Resources Using Terraform
+# How to Deploy Azure Chaos Studio Experiments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Scheduled Node Pool Scaling for Kubernetes Non-Production Environments
+# Set Up Scheduled Node Pool Scaling for Kubernetes Non-Production Environments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

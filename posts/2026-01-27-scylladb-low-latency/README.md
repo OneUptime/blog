@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ScyllaDB, Database, Low-Latency, Performance, NoSQL, Cassandra, Real-Time
 
-Description: A practical guide to configuring and tuning ScyllaDB for low-latency workloads. Learn about shard-per-core architecture, workload prioritization, scheduling groups, and latency monitoring techniques to achieve sub-millisecond response times.
+Description: A practical guide to configuring and tuning ScyllaDB for low-latency workloads.
 
 ---
 

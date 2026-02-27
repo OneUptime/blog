@@ -1,4 +1,4 @@
-# How to Create Golden Path Templates for OpenTelemetry Instrumentation in Your Platform
+# How to Create Golden Path Templates for OpenTelemetry Instrumentation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

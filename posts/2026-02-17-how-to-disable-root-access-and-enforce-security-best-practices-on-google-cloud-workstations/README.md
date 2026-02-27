@@ -1,4 +1,4 @@
-# How to Disable Root Access and Enforce Security Best Practices on Google Cloud Workstations
+# How to Disable Root Access and Enforce Security Best Practices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

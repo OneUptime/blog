@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Docker, Kubernetes, Containers, Helm, DevOps, Database, Analytics
 
-Description: A practical guide to deploying ClickHouse in containers, covering Docker single-node setups, Docker Compose clusters, Kubernetes deployments with the Altinity operator, and production configuration patterns.
+Description: A practical guide to deploying ClickHouse in containers, covering Docker single-node setups, Docker Compose clusters, Kubernetes deployments with the Altinity operator.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Set Up Azure Repos Branch Protection Rules to Prevent Force Pushes to Main
+# Set Up Azure Repos Branch Protection Rules to Prevent Force Pushes to Main
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

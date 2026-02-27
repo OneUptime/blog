@@ -1,4 +1,4 @@
-# How to Create Prometheus Alerts for Kubernetes Certificate Expiration Using x509 Metrics
+# How to Create Prometheus Alerts for Kubernetes Certificate Expiration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

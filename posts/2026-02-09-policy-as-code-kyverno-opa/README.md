@@ -1,4 +1,4 @@
-# How to Build Policy as Code Frameworks for Kubernetes Using Kyverno and OPA Together
+# How to Build Policy as Code Frameworks for Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

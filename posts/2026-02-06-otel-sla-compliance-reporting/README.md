@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry to Measure and Report on SLA Compliance Across Hundreds of Internal Services
+# How to Use OpenTelemetry to Measure and Report on SLA Compliance Across
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

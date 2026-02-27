@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Spring Kafka, Producers, Consumers, Distributed Tracing, Java
 
-Description: Comprehensive guide to implementing distributed tracing for Spring Kafka applications using OpenTelemetry, including producer and consumer instrumentation, context propagation, and troubleshooting patterns.
+Description: Comprehensive guide to implementing distributed tracing for Spring Kafka applications using OpenTelemetry, including producer and consumer instrumentation, context propagation.
 
 Message brokers like Kafka introduce unique challenges for distributed tracing. Unlike synchronous HTTP requests where context flows naturally through request headers, asynchronous messaging requires explicit context propagation through message metadata. When traces break at Kafka boundaries, debugging distributed systems becomes exponentially harder. OpenTelemetry provides robust instrumentation for Spring Kafka that maintains trace continuity across producer-consumer boundaries.
 

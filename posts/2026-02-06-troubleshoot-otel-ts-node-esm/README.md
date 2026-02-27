@@ -1,4 +1,4 @@
-# How to Troubleshoot OpenTelemetry Not Producing Traces in TypeScript Projects Using ts-node with ESM
+# How to Troubleshoot OpenTelemetry Not Producing Traces in TypeScript Projects
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

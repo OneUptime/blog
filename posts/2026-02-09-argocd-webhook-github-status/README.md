@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, GitHub, GitOps, Webhooks, CI/CD
 
-Description: Learn how to configure ArgoCD webhook notifications to automatically update GitHub commit statuses, providing real-time deployment feedback directly in pull requests and commit interfaces for better GitOps visibility.
+Description: Learn how to configure ArgoCD webhook notifications to automatically update GitHub commit statuses.
 
 ---
 

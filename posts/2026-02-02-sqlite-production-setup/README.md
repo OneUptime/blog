@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SQLite, Database, Production, Performance, DevOps
 
-Description: A comprehensive guide to setting up SQLite for production use. Learn configuration best practices, performance optimization, backup strategies, concurrency handling, and monitoring techniques for reliable SQLite deployments.
+Description: A comprehensive guide to setting up SQLite for production use.
 
 ---
 

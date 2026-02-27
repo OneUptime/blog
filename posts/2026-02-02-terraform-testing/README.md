@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure Testing, DevOps, IaC, CI/CD, Validation
 
-Description: Learn how to implement comprehensive infrastructure testing strategies for Terraform, covering static analysis, unit testing, integration testing, compliance testing, and contract testing to build reliable infrastructure as code.
+Description: Learn how to implement comprehensive infrastructure testing strategies for Terraform, covering static analysis, unit testing, integration testing, compliance testing.
 
 ---
 

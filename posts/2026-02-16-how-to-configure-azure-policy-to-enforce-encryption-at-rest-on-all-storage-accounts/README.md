@@ -1,4 +1,4 @@
-# How to Configure Azure Policy to Enforce Encryption at Rest on All Storage Accounts
+# How to Configure Azure Policy to Enforce Encryption at Rest
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

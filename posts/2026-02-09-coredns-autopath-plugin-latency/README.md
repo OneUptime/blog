@@ -1,4 +1,4 @@
-# How to Implement CoreDNS Autopath Plugin to Reduce DNS Query Latency in Kubernetes
+# How to Use CoreDNS Autopath Plugin to Reduce DNS Query Latency in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

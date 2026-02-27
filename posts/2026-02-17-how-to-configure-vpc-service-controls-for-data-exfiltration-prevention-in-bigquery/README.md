@@ -1,4 +1,4 @@
-# How to Configure VPC Service Controls for Data Exfiltration Prevention in BigQuery
+# How to Configure VPC Service Controls for Data Exfiltration Prevention
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

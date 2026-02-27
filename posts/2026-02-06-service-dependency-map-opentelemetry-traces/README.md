@@ -1,4 +1,4 @@
-# How to Build a Platform-Wide Service Dependency Map from OpenTelemetry Trace Data
+# Build a Platform-Wide Service Dependency Map from OpenTelemetry Trace Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

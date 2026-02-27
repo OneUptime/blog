@@ -1,4 +1,4 @@
-# How to Create a Multi-Stage Docker Build for a Java Quarkus Native Application Targeting Cloud Run
+# How to Create a Multi-Stage Docker Build for a Java Quarkus Native App
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

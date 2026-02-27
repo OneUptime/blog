@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry to Debug Message Queue Consumer Lag and Processing Bottlenecks
+# How to Use OpenTelemetry to Debug Message Queue Consumer Lag
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

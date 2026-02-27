@@ -1,4 +1,4 @@
-# How to Correlate OpenTelemetry Profiles with Metrics to Identify Resource-Intensive Code Paths
+# How to Correlate OpenTelemetry Profiles with Metrics to Identify
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

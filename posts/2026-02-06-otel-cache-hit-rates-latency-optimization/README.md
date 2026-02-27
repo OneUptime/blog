@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry to Measure and Optimize Cache Hit Rates and Their Impact on Latency
+# How to Use OpenTelemetry to Measure and Optimize Cache Hit Rates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

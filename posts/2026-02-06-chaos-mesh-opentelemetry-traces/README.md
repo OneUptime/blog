@@ -1,4 +1,4 @@
-# How to Implement Chaos Testing with Chaos Mesh and Correlate Failures Using OpenTelemetry Traces
+# How to Use Chaos Testing with Chaos Mesh and Correlate Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Trace Marketplace Seller Order Routing and Commission Calculation with OpenTelemetry
+# How to Trace Marketplace Seller Order Routing and Commission Calculation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: VPN, Split Tunneling, Networking, Security
 
-Description: A comprehensive guide to implementing VPN split tunneling, covering configuration for major platforms, security considerations, practical code examples, and best practices for balancing performance with security in enterprise and remote work environments.
+Description: A comprehensive guide to implementing VPN split tunneling, covering configuration for major platforms, security considerations, practical code examples.
 
 ---
 

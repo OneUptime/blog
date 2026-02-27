@@ -1,4 +1,4 @@
-# How to Fix Dataflow Streaming Pipeline Watermark Stuck and Late Data Not Processing
+# How to Fix Dataflow Streaming Pipeline Watermark Stuck
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

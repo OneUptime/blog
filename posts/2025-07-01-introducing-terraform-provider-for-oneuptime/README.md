@@ -1,10 +1,10 @@
-# Introducing the OneUptime Terraform Provider: Infrastructure as Code for Complete Observability
+# Introducing the OneUptime Terraform Provider: Infrastructure as Code
 
 Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: Infrastructure as Code, Terraform, DevOps, Automation
 
-Description: We're excited to announce the release of the official OneUptime Terraform provider! Now you can manage your entire observability infrastructure as code, from uptime monitors and status pages to incident management workflows and on-call schedules.
+Description: We're excited to announce the release of the official OneUptime Terraform provider!
 
 We're thrilled to announce the release of the **official OneUptime Terraform provider**! This marks a significant milestone in our mission to make observability infrastructure management as seamless and scalable as possible. Now you can define, deploy, and manage your entire OneUptime setup using Infrastructure as Code (IaC) principles.
 

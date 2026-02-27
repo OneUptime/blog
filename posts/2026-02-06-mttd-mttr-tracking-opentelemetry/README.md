@@ -1,4 +1,4 @@
-# How to Track Mean Time to Detection (MTTD) and Mean Time to Resolution (MTTR) with OpenTelemetry
+# How to Track Mean Time to Detection and Mean Time to Resolution
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

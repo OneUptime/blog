@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, SBOM, Security, Supply Chain, Compliance, CycloneDX
 
-Description: Automate Software Bill of Materials (SBOM) generation for every container image running in Kubernetes clusters using Syft, integrate with admission webhooks, and maintain compliance with software transparency requirements.
+Description: Automate Software Bill of Materials (SBOM) generation for every container image running in Kubernetes clusters using Syft, integrate with admission webhooks.
 
 ---
 

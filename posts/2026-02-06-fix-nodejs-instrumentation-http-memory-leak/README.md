@@ -1,4 +1,4 @@
-# How to Fix the Node.js OpenTelemetry instrumentation-http Memory Leak on Node 20+
+# Fix the Node.js OpenTelemetry instrumentation-http Memory Leak on Node 20+
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement AKS Long-Running Workload Graceful Shutdown with preStop Hooks and terminationGracePeriodSeconds
+# How to Use AKS Long-Running Workload Graceful Shutdown
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

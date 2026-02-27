@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: pytest, Python, Mocking, Testing, Unit Tests, pytest-mock, unittest.mock, Test Isolation
 
-Description: A comprehensive guide to mocking in pytest using unittest.mock and pytest-mock. Learn how to isolate tests, mock functions, classes, and external dependencies, and write maintainable test suites with practical examples and best practices.
+Description: A comprehensive guide to mocking in pytest using unittest.mock and pytest-mock.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Instrument Game State Synchronization and Conflict Resolution with OpenTelemetry
+# How to Instrument Game State Synchronization and Conflict Resolution
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

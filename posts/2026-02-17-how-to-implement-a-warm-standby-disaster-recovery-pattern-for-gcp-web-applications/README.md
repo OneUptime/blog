@@ -1,4 +1,4 @@
-# How to Implement a Warm Standby Disaster Recovery Pattern for GCP Web Applications
+# How to Build a Warm Standby Disaster Recovery Pattern for GCP Web Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Trace Student Assignment Submission and Auto-Grading Pipeline Performance with OpenTelemetry
+# How to Trace Student Assignment Submission and Auto-Grading Pipeline Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

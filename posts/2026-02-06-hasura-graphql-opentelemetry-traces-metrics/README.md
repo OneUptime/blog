@@ -1,4 +1,4 @@
-# How to Monitor Hasura GraphQL Engine Performance with OpenTelemetry Traces and Metrics
+# How to Monitor Hasura GraphQL Engine Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

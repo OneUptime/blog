@@ -1,4 +1,4 @@
-# How to Implement IoT Device Firmware Updates Over the Air Using Azure IoT Hub Device Twins
+# Use IoT Device Firmware Updates Over the Air Using Azure IoT Hub Device Twins
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

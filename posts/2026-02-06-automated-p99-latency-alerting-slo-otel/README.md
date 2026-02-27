@@ -1,4 +1,4 @@
-# How to Set Up Automated Performance Alerting When P99 Latency Exceeds SLO Targets Using OpenTelemetry
+# How to Set Up Automated Performance Alerting When P99 Latency Exceeds SLO
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Artifact Registry Virtual Repositories to Aggregate Multiple Sources
+# Set Up Artifact Registry Virtual Repositories to Aggregate Multiple Sources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

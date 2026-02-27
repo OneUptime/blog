@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: IPv6, Anycast, Load Balancing, Networking, Infrastructure, DevOps
 
-Description: A comprehensive guide to implementing IPv6 anycast for distributing traffic globally, reducing latency, and building resilient infrastructure that routes users to the nearest healthy server automatically.
+Description: A comprehensive guide to implementing IPv6 anycast for distributing traffic globally, reducing latency.
 
 ---
 

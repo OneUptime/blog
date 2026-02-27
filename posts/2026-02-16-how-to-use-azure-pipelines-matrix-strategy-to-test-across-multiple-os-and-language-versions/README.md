@@ -1,4 +1,4 @@
-# How to Use Azure Pipelines Matrix Strategy to Test Across Multiple OS and Language Versions
+# How to Use Azure Pipelines Matrix Strategy to Test Across Multiple OS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

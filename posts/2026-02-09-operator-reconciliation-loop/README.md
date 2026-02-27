@@ -1,4 +1,4 @@
-# Understanding and Implementing the Reconciliation Loop Pattern in Kubernetes Operators
+# Understanding and Implementing the Reconciliation Loop Pattern
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

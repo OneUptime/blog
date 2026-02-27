@@ -1,4 +1,4 @@
-# How to Debug Compute Engine SSH Connection Failures Caused by OS Login Misconfiguration
+# Debug Compute Engine SSH Connection Failures Caused by OS Login Misconfiguration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

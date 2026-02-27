@@ -1,4 +1,4 @@
-# How to Configure Sidecar Container Resource Limits Separately from Main Container
+# Configure Sidecar Container Resource Limits Separately from Main Container
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

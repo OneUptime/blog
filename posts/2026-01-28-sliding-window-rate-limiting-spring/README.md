@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Rate Limiting, Sliding Window, API, Security, Redis, Performance
 
-Description: Learn how to implement sliding window rate limiting in Spring Boot to protect your APIs from abuse. This guide covers the algorithm, Redis-based implementation, and integration with Spring MVC interceptors.
+Description: Learn how to implement sliding window rate limiting in Spring Boot to protect your APIs from abuse.
 
 ---
 

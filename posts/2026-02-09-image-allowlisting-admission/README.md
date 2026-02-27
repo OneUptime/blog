@@ -1,10 +1,10 @@
-# How to Configure Image Allowlisting Policies for Kubernetes Using Admission Controllers
+# How to Configure Image Allowlisting Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Admission Controllers, Container Images, Supply Chain
 
-Description: Implement container image allowlisting policies using Kubernetes admission controllers to restrict deployments to approved registries and verified images, preventing supply chain attacks and ensuring compliance.
+Description: Implement container image allowlisting policies using Kubernetes admission controllers to restrict deployments to approved registries and verified images.
 
 ---
 

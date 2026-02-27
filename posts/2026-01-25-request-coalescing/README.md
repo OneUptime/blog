@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Request Coalescing, Caching, Performance, Thundering Herd, Backend, Python, Go
 
-Description: Learn how to implement request coalescing to prevent duplicate work and protect backend services. This guide covers singleflight patterns, cache stampede prevention, and deduplication strategies with practical examples.
+Description: Learn how to implement request coalescing to prevent duplicate work and protect backend services.
 
 ---
 

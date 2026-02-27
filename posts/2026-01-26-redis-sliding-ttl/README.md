@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, TTL, Expiration, Session Management, Caching, Sliding Window
 
-Description: Learn how to implement sliding TTL patterns in Redis for session management and caching. This guide covers automatic expiration extension on access, Lua scripts for atomic operations, and practical patterns for keep-alive scenarios.
+Description: Learn how to implement sliding TTL patterns in Redis for session management and caching.
 
 ---
 

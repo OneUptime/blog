@@ -1,4 +1,4 @@
-# How to Build a Terraform Module for BigQuery Datasets with Authorized Views and Column-Level Security
+# How to Build a Terraform Module for BigQuery Datasets with Authorized Views
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

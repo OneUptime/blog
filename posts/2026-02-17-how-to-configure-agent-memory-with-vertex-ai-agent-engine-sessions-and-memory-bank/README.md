@@ -1,4 +1,4 @@
-# How to Configure Agent Memory with Vertex AI Agent Engine Sessions and Memory Bank
+# How to Configure Agent Memory with Vertex AI Agent Engine Sessions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

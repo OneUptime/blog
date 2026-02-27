@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TimescaleDB, PostgreSQL, Backup, Disaster Recovery, WAL, Point-in-Time Recovery, Database, DevOps, SRE
 
-Description: A comprehensive guide to backing up TimescaleDB databases covering pg_dump strategies, continuous archiving with WAL, point-in-time recovery, backup strategies for large hypertables, and restoration procedures.
+Description: A comprehensive guide to backing up TimescaleDB databases covering pg_dump strategies, continuous archiving with WAL, point-in-time recovery, backup strategies for large hypertables.
 
 ---
 

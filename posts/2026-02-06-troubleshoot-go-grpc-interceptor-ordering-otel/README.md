@@ -1,4 +1,4 @@
-# How to Troubleshoot Go gRPC Interceptor Ordering Issues That Break OpenTelemetry Trace Propagation
+# How to Troubleshoot Go gRPC Interceptor Ordering Issues That Break
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

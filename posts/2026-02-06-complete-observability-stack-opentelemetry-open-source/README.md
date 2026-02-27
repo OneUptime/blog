@@ -1,4 +1,4 @@
-# How to Set Up a Complete Observability Stack with OpenTelemetry and Open-Source Tools
+# How to Set Up a Complete Observability Stack with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

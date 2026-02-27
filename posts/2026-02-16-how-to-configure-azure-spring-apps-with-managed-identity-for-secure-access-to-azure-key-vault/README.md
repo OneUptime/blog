@@ -1,4 +1,4 @@
-# How to Configure Azure Spring Apps with Managed Identity for Secure Access to Azure Key Vault
+# How to Configure Azure Spring Apps with Managed Identity for Secure Access to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

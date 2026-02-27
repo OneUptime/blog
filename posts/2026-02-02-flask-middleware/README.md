@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flask, Python, Middleware, Web Development, WSGI, Request Processing
 
-Description: Learn how to implement middleware in Flask applications using WSGI middleware, before/after request hooks, and custom decorators. This guide covers logging, authentication, request modification, and error handling patterns.
+Description: Learn how to implement middleware in Flask applications using WSGI middleware, before/after request hooks, and custom decorators.
 
 ---
 

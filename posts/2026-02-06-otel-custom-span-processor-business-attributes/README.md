@@ -1,4 +1,4 @@
-# How to Create a Custom SpanProcessor That Enriches Spans with Business-Specific Attributes
+# How to Create a Custom SpanProcessor That Enriches Spans with Business-Specific
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Gin, API Development, Backend, Microservices, Production, REST API
 
-Description: A comprehensive guide to building production-ready APIs with Gin framework in Go, covering project structure, middleware, request validation, error handling, graceful shutdown, and monitoring integration.
+Description: A comprehensive guide to building production-ready APIs with Gin framework in Go, covering project structure, middleware, request validation, error handling, graceful shutdown.
 
 ---
 

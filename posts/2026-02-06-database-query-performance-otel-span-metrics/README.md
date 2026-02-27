@@ -1,4 +1,4 @@
-# How to Monitor Database Query Performance Trends Over Time with OpenTelemetry Span Metrics Connector
+# How to Monitor Database Query Performance Trends Over Time
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

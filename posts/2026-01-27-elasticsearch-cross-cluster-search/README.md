@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Cross-Cluster Search, Distributed Systems, Search, Observability, DevOps
 
-Description: A comprehensive guide to implementing Elasticsearch Cross-Cluster Search (CCS) for querying data across multiple clusters. Learn how to configure remote clusters, write cross-cluster queries, handle security, and optimize performance for distributed search workloads.
+Description: A comprehensive guide to implementing Elasticsearch Cross-Cluster Search (CCS) for querying data across multiple clusters.
 
 ---
 
@@ -1179,6 +1179,6 @@ Start monitoring your Elasticsearch infrastructure with [OneUptime](https://oneu
 
 ### Related Reading
 
-- [What is OpenTelemetry Collector and Why Use One](/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one)
-- [The Three Pillars of Observability: Logs, Metrics, Traces](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces)
-- [SRE Best Practices](/blog/post/2025-11-28-sre-best-practices)
+- [What is OpenTelemetry Collector and Why Use One](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view)
+- [The Three Pillars of Observability: Logs, Metrics, Traces](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)
+- [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view)

@@ -1,4 +1,4 @@
-# How to Create a Custom Machine Type with Specific vCPU and Memory Ratios on GCP Compute Engine
+# How to Create a Custom Machine Type with Specific vCPU and Memory Ratios
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

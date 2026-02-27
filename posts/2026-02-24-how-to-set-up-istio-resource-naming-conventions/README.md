@@ -23,7 +23,11 @@ Before getting into resource-specific conventions, some ground rules apply to ev
 - Include the service name or purpose in the resource name
 - Use consistent suffixes or prefixes to indicate resource type when needed
 
-Kubernetes resource names must match the regex `[a-z0-9]([-a-z0-9]*[a-z0-9])?`, so stick to that pattern.
+Kubernetes resource names must match the following regex, so stick to that pattern:
+
+```
+[a-z0-9]([-a-z0-9]*[a-z0-9])?
+```
 
 ## VirtualService Naming
 

@@ -1,4 +1,4 @@
-# How to Choose Between Standard HDD, Standard SSD, Premium SSD, and Ultra Disks in Azure
+# How to Choose Between Standard HDD, Standard SSD, Premium SSD, and Ultra Disks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

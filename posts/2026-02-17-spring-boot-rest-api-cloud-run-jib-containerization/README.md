@@ -1,4 +1,4 @@
-# How to Build a Spring Boot REST API and Deploy It to Cloud Run with Jib Containerization
+# How to Build a Spring Boot REST API and Deploy It to Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

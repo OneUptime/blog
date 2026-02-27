@@ -1,4 +1,4 @@
-# How to Monitor Reverse Logistics and Returns Processing Center Performance with OpenTelemetry
+# How to Monitor Reverse Logistics and Returns Processing Center Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

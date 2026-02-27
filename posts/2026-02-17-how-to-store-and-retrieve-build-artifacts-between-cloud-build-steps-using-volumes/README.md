@@ -1,4 +1,4 @@
-# How to Store and Retrieve Build Artifacts Between Cloud Build Steps Using Volumes
+# How to Store and Retrieve Build Artifacts Between Cloud Build Steps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

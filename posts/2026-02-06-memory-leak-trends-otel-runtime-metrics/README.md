@@ -1,4 +1,4 @@
-# How to Detect Memory Leak Trends in Production Using OpenTelemetry Runtime Metrics Over Time
+# How to Detect Memory Leak Trends in Production Using OpenTelemetry Runtime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

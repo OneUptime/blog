@@ -1,4 +1,4 @@
-# How to Configure Crossplane Managed Resources for Azure Storage Account Provisioning
+# How to Configure Crossplane Managed Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

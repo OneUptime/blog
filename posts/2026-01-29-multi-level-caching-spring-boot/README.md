@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Caching, Redis, Caffeine, Performance, Spring Cache
 
-Description: Learn how to implement multi-level caching in Spring Boot using local (Caffeine) and distributed (Redis) caches. This guide covers cache configuration, invalidation strategies, and best practices for optimal performance.
+Description: Learn how to implement multi-level caching in Spring Boot using local (Caffeine) and distributed (Redis) caches.
 
 ---
 

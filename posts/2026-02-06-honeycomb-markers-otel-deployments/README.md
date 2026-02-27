@@ -1,4 +1,4 @@
-# How to Use Honeycomb Markers with OpenTelemetry to Annotate Deployments on Trace Visualizations
+# How to Use Honeycomb Markers with OpenTelemetry to Annotate Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

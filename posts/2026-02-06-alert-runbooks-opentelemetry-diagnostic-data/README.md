@@ -1,4 +1,4 @@
-# How to Build Alert Runbooks That Auto-Populate with OpenTelemetry Diagnostic Data
+# How to Build Alert Runbooks That Auto-Populate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

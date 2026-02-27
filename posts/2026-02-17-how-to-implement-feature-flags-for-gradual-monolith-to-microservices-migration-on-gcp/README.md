@@ -1,4 +1,4 @@
-# How to Implement Feature Flags for Gradual Monolith-to-Microservices Migration on GCP
+# How to Use Feature Flags for Gradual Monolith-to-Microservices Migration on GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

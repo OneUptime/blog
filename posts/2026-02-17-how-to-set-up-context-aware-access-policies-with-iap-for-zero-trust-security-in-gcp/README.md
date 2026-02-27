@@ -1,4 +1,4 @@
-# How to Set Up Context-Aware Access Policies with IAP for Zero-Trust Security in GCP
+# How to Set Up Context-Aware Access Policies with IAP for Zero-Trust Security
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

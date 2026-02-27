@@ -1,4 +1,4 @@
-# How to Configure Azure Pipelines to Scan for Secrets and Vulnerabilities with Built-In Security Tasks
+# How to Configure Azure Pipelines to Scan for Secrets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

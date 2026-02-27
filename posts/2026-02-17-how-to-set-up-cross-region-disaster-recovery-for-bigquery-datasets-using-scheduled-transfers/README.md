@@ -1,4 +1,4 @@
-# How to Set Up Cross-Region Disaster Recovery for BigQuery Datasets Using Scheduled Transfers
+# How to Set Up Cross-Region Disaster Recovery for BigQuery Datasets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

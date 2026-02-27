@@ -1,4 +1,4 @@
-# How to Route High-Value Telemetry to Real-Time Storage and Low-Value Data to S3 Cold Storage
+# How to Route High-Value Telemetry to Real-Time Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Trace SaaS Free-Trial to Paid Conversion Workflows with OpenTelemetry Business Metrics
+# How to Trace SaaS Free-Trial to Paid Conversion Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

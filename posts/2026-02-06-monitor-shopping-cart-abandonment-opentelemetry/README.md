@@ -1,4 +1,4 @@
-# How to Monitor Shopping Cart Abandonment Patterns by Correlating OpenTelemetry Traces with Business Metrics
+# How to Monitor Shopping Cart Abandonment Patterns by Correlating OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

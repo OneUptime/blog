@@ -1,10 +1,10 @@
-# How to Configure Priority-Based GPU Scheduling for Mixed ML Training and Inference Workloads
+# How to Configure Priority-Based GPU Scheduling for Mixed ML Training
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Machine Learning, GPU
 
-Description: Learn how to implement priority-based GPU scheduling in Kubernetes to efficiently manage mixed machine learning workloads, ensuring critical inference services get resources while allowing batch training jobs to utilize spare capacity.
+Description: Learn how to implement priority-based GPU scheduling in Kubernetes to efficiently manage mixed machine learning workloads.
 
 ---
 

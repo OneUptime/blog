@@ -1,4 +1,4 @@
-# How to Fix the Mistake of Not Adding the memory_limiter Processor as the First Step in Your Pipeline
+# How to Fix the Mistake of Not Adding the memory_limiter Processor as the First
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

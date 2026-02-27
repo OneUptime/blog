@@ -1,4 +1,4 @@
-# How to Trace Privilege Escalation Attempts Across Microservices with OpenTelemetry Span Attributes
+# How to Trace Privilege Escalation Attempts Across Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Azure Confidential Computing with DCsv3 Virtual Machines for Data-in-Use Protection
+# How to Set Up Azure Confidential Computing with DCsv3 Virtual Machines for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Write LogQL Aggregation Queries to Count Kubernetes Error Rates per Microservice
+# Write LogQL Aggregation Queries to Count Kubernetes Error Rates per Microservice
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

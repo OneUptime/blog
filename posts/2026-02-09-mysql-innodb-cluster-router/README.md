@@ -1,10 +1,10 @@
-# How to Configure MySQL InnoDB Cluster on Kubernetes with MySQL Router Load Balancing
+# How to Configure MySQL InnoDB Cluster on Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Kubernetes, InnoDB Cluster, MySQL Router, High Availability
 
-Description: Learn how to configure MySQL InnoDB Cluster on Kubernetes with MySQL Router load balancing, implementing Oracle's official MySQL high availability solution with automatic failover and intelligent query routing.
+Description: Learn how to configure MySQL InnoDB Cluster on Kubernetes with MySQL Router load balancing.
 
 ---
 

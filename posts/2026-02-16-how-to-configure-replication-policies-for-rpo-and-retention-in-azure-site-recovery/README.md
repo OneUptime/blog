@@ -1,4 +1,4 @@
-# How to Configure Replication Policies for RPO and Retention in Azure Site Recovery
+# How to Configure Replication Policies for RPO and Retention
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

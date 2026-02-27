@@ -1,4 +1,4 @@
-# How to Troubleshoot AKS Control Plane Errors Using Diagnostic Logs and Azure Monitor
+# How to Troubleshoot AKS Control Plane Errors Using Diagnostic Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

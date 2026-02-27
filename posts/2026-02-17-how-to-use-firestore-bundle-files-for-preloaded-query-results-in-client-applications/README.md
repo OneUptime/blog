@@ -1,4 +1,4 @@
-# How to Use Firestore Bundle Files for Preloaded Query Results in Client Applications
+# How to Use Firestore Bundle Files for Preloaded Query Results
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

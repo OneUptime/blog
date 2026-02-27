@@ -1,4 +1,4 @@
-# How to Implement Structured JSON Logging for Python Applications Running in Kubernetes
+# How to Use Structured JSON Logging for Python Applications Running in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

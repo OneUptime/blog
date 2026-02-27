@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, TLS, Certificates, Security, IaC, DevOps, HTTPS
 
-Description: A practical guide to managing TLS certificates in Terraform, covering ACM, Let's Encrypt, self-signed certificates, certificate storage, renewal automation, and integration with load balancers and CDNs.
+Description: A practical guide to managing TLS certificates in Terraform, covering ACM, Let's Encrypt, self-signed certificates, certificate storage, renewal automation.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Build a Django Application with Cloud SQL and Deploy It to Cloud Run with Cloud Build
+# How to Build a Django Application with Cloud SQL and Deploy It to Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

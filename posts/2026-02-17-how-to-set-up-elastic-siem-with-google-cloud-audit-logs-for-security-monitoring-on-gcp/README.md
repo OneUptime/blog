@@ -1,4 +1,4 @@
-# How to Set Up Elastic SIEM with Google Cloud Audit Logs for Security Monitoring on GCP
+# How to Set Up Elastic SIEM with Google Cloud Audit Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Cross-Region Replication with Dual-Region Buckets in Google Cloud Storage
+# How to Set Up Cross-Region Replication with Dual-Region Buckets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

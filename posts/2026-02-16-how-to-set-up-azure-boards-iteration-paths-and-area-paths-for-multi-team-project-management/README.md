@@ -1,4 +1,4 @@
-# How to Set Up Azure Boards Iteration Paths and Area Paths for Multi-Team Project Management
+# How to Set Up Azure Boards Iteration Paths
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

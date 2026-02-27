@@ -1,4 +1,4 @@
-# How to Track API Consumer Usage Patterns (Top Endpoints, Heavy Users) with OpenTelemetry Metrics
+# How to Track API Consumer Usage Patterns with OpenTelemetry Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

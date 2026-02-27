@@ -1,4 +1,4 @@
-# How to Optimize Query Performance in Azure Synapse Dedicated SQL Pool with Distribution Keys
+# How to Optimize Query Performance in Azure Synapse Dedicated SQL Pool
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

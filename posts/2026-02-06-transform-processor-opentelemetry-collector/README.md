@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processors, Transform Processor, OTTL, Data Transformation, Advanced Configuration
 
-Description: Learn how to configure the powerful transform processor in OpenTelemetry Collector using OTTL to modify, enrich, and reshape telemetry data with advanced transformations beyond simple attribute operations.
+Description: Learn how to configure the powerful transform processor in OpenTelemetry Collector using OTTL to modify, enrich.
 
 The transform processor is the most powerful and flexible data transformation component in the OpenTelemetry Collector. It uses OTTL (OpenTelemetry Transformation Language) to perform complex operations on telemetry data that go far beyond the capabilities of the attributes and resource processors.
 

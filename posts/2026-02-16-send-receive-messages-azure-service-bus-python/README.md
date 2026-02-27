@@ -1,4 +1,4 @@
-# How to Send and Receive Messages with Azure Service Bus Using azure-servicebus in Python
+# How to Send and Receive Messages with Azure Service Bus Using azure-servicebus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -543,6 +543,6 @@ Start with the framework in this guide, then tune it based on your team's experi
 
 **Related Reading:**
 
-- [Designing an SRE On-Call Rotation Without Burning Out Your Team](/blog/post/2025-11-28-sre-on-call-rotation-design/)
-- [Effective Incident Postmortem Templates](/blog/post/2025-09-09-effective-incident-postmortem-templates-ready-to-use-examples/)
-- [SRE Best Practices](/blog/post/2025-11-28-sre-best-practices/)
+- [Designing an SRE On-Call Rotation Without Burning Out Your Team](https://oneuptime.com/blog/post/2025-11-28-sre-on-call-rotation-design/view)
+- [Effective Incident Postmortem Templates](https://oneuptime.com/blog/post/2025-09-09-effective-incident-postmortem-templates-ready-to-use-examples/view)
+- [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view)

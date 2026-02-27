@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Rancher, RKE2, Cluster Management, DevOps, Cloud Native, Infrastructure
 
-Description: A comprehensive guide to creating and managing Kubernetes clusters using Rancher, covering installation, RKE2 clusters, importing existing clusters, node pools, cluster templates, and cloud provider integration.
+Description: A comprehensive guide to creating and managing Kubernetes clusters using Rancher, covering installation, RKE2 clusters, importing existing clusters, node pools, cluster templates.
 
 ---
 

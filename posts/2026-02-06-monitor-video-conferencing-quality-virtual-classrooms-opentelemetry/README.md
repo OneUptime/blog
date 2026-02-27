@@ -1,4 +1,4 @@
-# How to Monitor Video Conferencing Quality (Jitter, Packet Loss, Latency) for Virtual Classrooms with OpenTelemetry
+# How to Monitor Video Conferencing Quality
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

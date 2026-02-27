@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, TLS, cert-manager, Let's Encrypt, Security
 
-Description: Learn how to set up automatic TLS certificate management in Kubernetes using cert-manager and Let's Encrypt. This guide covers ClusterIssuer configuration, DNS and HTTP challenges, and troubleshooting.
+Description: Learn how to set up automatic TLS certificate management in Kubernetes using cert-manager and Let's Encrypt.
 
 ---
 

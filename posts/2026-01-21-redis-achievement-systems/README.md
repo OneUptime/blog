@@ -971,4 +971,4 @@ Redis provides an excellent foundation for building achievement systems. Its dat
 
 The key is choosing the right data structure for each achievement type and implementing proper validation to prevent cheating or duplicate unlocks.
 
-For more gaming patterns with Redis, check out our guides on [Game State Management](/blog/redis-game-state-management) and [Real-Time Leaderboards](/blog/redis-sorted-sets-leaderboards).
+For more gaming patterns with Redis, check out our guides on [Game State Management](https://oneuptime.com/blog/post/2026-01-21-redis-game-state-management/view) and [Real-Time Leaderboards](https://oneuptime.com/blog/post/2026-01-21-redis-sorted-sets-leaderboards/view).

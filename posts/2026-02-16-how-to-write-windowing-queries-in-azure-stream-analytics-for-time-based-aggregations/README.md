@@ -1,4 +1,4 @@
-# How to Write Windowing Queries in Azure Stream Analytics for Time-Based Aggregations
+# Write Windowing Queries in Azure Stream Analytics for Time-Based Aggregations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use Post Selectors to Filter Generated Applications in ArgoCD ApplicationSets
+# How to Use Post Selectors to Filter Generated Applications
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Instrument Apollo GraphQL Server with OpenTelemetry for Federated Graph Trace Visibility
+# How to Instrument Apollo GraphQL Server with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

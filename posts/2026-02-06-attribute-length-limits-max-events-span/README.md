@@ -1,4 +1,4 @@
-# How to Set Attribute Value Length Limits and Max Events Per Span to Prevent SDK Memory Issues
+# How to Set Attribute Value Length Limits and Max Events Per Span to Prevent SDK
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

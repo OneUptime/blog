@@ -1,4 +1,4 @@
-# How to Use the google-cloud-storage Python Library to Upload and Download Files from Cloud Storage Buckets
+# How to Use the google-cloud-storage Python Library to Upload
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

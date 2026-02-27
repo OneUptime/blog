@@ -1,4 +1,4 @@
-# How to Create Azure Log Analytics Workspace-Level Access Control for Different Teams
+# How to Create Azure Log Analytics Workspace-Level Access Control
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

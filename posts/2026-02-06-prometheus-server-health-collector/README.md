@@ -1,4 +1,4 @@
-# How to Monitor Prometheus Server Health (TSDB Compaction, WAL Size, Scrape Duration) with the Collector
+# How to Monitor Prometheus Server Health with the Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

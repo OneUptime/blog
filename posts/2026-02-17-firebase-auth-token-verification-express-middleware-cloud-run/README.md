@@ -1,4 +1,4 @@
-# How to Implement Firebase Auth Token Verification in an Express.js Middleware on Cloud Run
+# How to Use Firebase Auth Token Verification in an Express.js Middleware
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

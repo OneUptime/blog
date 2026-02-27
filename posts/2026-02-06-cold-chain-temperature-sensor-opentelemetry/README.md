@@ -1,4 +1,4 @@
-# How to Monitor Cold Chain Logistics Temperature Sensor Data Pipelines with OpenTelemetry
+# How to Monitor Cold Chain Logistics Temperature Sensor Data Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

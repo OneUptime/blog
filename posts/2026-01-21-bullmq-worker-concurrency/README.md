@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Concurrency, Performance, Worker Configuration, Parallel Processing
 
-Description: A comprehensive guide to configuring BullMQ worker concurrency, including parallel job processing, resource management, dynamic concurrency adjustment, and strategies for optimizing throughput while maintaining system stability.
+Description: A comprehensive guide to configuring BullMQ worker concurrency, including parallel job processing, resource management, dynamic concurrency adjustment.
 
 ---
 

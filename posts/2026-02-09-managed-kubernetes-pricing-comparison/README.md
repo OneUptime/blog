@@ -1,4 +1,4 @@
-# How to Compare Managed Kubernetes Pricing Across AWS, GCP, Azure, and DigitalOcean
+# How to Compare Managed Kubernetes Pricing Across AWS, GCP, Azure,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

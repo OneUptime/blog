@@ -1,4 +1,4 @@
-# How to Set Up Hybrid Connectivity Between On-Premises and Azure Using VPN Gateway
+# How to Set Up Hybrid Connectivity Between On-Premises and Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

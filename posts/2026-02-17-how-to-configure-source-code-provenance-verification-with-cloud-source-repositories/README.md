@@ -1,4 +1,4 @@
-# How to Configure Source Code Provenance Verification with Cloud Source Repositories
+# How to Configure Source Code Provenance Verification
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

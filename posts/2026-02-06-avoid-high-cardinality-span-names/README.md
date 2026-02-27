@@ -1,4 +1,4 @@
-# How to Avoid the Anti-Pattern of Putting High-Cardinality Values in Span Names Instead of Attributes
+# How to Avoid the Anti-Pattern of Putting High-Cardinality Values in Span Names
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, RabbitMQ, Pika, Message Queue, Async, Microservices, Event-Driven Architecture, Consumers
 
-Description: Learn how to build robust RabbitMQ consumers in Python using Pika. This guide covers connection management, message acknowledgment, error handling, prefetch settings, and patterns for building reliable message-driven applications.
+Description: Learn how to build robust RabbitMQ consumers in Python using Pika.
 
 ---
 

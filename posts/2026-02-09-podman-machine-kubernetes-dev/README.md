@@ -1,4 +1,4 @@
-# How to Set Up Podman Machine as a Container Runtime Alternative for Kubernetes Development
+# How to Set Up Podman Machine as a Container Runtime Alternative
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

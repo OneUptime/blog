@@ -1,4 +1,4 @@
-# How to Implement Progressive Rollout Policies Based on Error Budget Consumption on GCP
+# How to Use Progressive Rollout Policies Based on Error Budget Consumption on GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

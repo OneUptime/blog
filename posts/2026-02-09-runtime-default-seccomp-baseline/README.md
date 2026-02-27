@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Seccomp, Baseline Security, System Calls
 
-Description: Learn how to implement the runtime/default seccomp profile in Kubernetes to establish baseline security by blocking dangerous system calls while maintaining application compatibility across container runtimes.
+Description: Learn how to implement the runtime/default seccomp profile in Kubernetes to establish baseline security by blocking dangerous system calls while maintaining application compatibility across container.
 
 ---
 

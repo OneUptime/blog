@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: React Native, Custom Components, Mobile Development, JavaScript, TypeScript, UI Components, Reusable Components, Props, State Management
 
-Description: Learn how to build reusable custom components in React Native with proper typing, composition patterns, and performance optimization. A practical guide covering component architecture, styling strategies, and testing approaches.
+Description: Learn how to build reusable custom components in React Native with proper typing, composition patterns, and performance optimization.
 
 ---
 

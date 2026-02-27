@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, Dependencies, DevOps, Resource Management
 
-Description: Learn how Terraform manages resource dependencies automatically and manually, including implicit dependencies through references, explicit depends_on, and strategies for handling complex dependency chains.
+Description: Learn how Terraform manages resource dependencies automatically and manually, including implicit dependencies through references, explicit depends_on.
 
 ---
 

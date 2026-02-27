@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SQS, Message Queue, Retry Logic, Dead Letter Queue, Error Handling, Node.js, Python
 
-Description: Learn how to implement robust retry logic with Amazon SQS. Covers visibility timeout configuration, exponential backoff strategies, Dead Letter Queue setup, and best practices for handling transient failures in distributed systems.
+Description: Learn how to implement robust retry logic with Amazon SQS.
 
 ---
 

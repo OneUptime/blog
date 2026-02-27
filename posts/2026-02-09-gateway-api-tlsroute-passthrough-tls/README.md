@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, TLS
 
-Description: Configure TLSRoute resources in the Kubernetes Gateway API to implement TLS passthrough routing, allowing encrypted traffic to flow directly to backend services without termination at the gateway for end-to-end encryption.
+Description: Configure TLSRoute resources in the Kubernetes Gateway API to implement TLS passthrough routing.
 
 ---
 

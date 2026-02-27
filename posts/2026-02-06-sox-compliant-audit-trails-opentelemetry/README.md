@@ -1,4 +1,4 @@
-# How to Build SOX-Compliant Audit Trails for Financial Transactions Using OpenTelemetry Structured Logs
+# How to Build SOX-Compliant Audit Trails for Financial Transactions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

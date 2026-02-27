@@ -1,4 +1,4 @@
-# How to Monitor DNS Resolution Latency and Failures with the OpenTelemetry Collector
+# How to Monitor DNS Resolution Latency and Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

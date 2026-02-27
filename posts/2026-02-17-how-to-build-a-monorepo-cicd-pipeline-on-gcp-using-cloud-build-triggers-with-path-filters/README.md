@@ -1,4 +1,4 @@
-# How to Build a Monorepo CI/CD Pipeline on GCP Using Cloud Build Triggers with Path Filters
+# How to Build a Monorepo CI/CD Pipeline on GCP Using Cloud Build Triggers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

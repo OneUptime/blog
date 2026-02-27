@@ -1,10 +1,10 @@
-# How to Configure Contour Ingress Controller with HTTPProxy for Advanced Traffic Management
+# How to Configure Contour Ingress Controller with HTTPProxy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Contour, Traffic Management
 
-Description: Master Contour's HTTPProxy CRD to implement advanced traffic management including load balancing strategies, health checks, timeout configuration, and sophisticated routing patterns for Kubernetes applications.
+Description: Master Contour's HTTPProxy CRD to implement advanced traffic management including load balancing strategies, health checks, timeout configuration.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Diagnose and Fix CrashLoopBackOff Caused by Missing Configuration Dependencies
+# Diagnose and Fix CrashLoopBackOff Caused by Missing Configuration Dependencies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

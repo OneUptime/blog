@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: C#, .NET, Logging, ASP.NET Core, Observability
 
-Description: Learn how to build custom logging providers in .NET to send logs to any destination. This guide covers the ILoggerProvider interface, structured logging, log enrichment, and production-ready implementations.
+Description: Learn how to build custom logging providers in .NET to send logs to any destination.
 
 ---
 

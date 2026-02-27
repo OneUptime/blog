@@ -1,4 +1,4 @@
-# How to Set Up Azure Private Link Service for Exposing Internal Applications to Other Tenants
+# How to Set Up Azure Private Link Service for Exposing Internal Apps to Other
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

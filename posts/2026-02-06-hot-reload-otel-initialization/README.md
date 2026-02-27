@@ -1,4 +1,4 @@
-# How to Configure Hot-Reload Friendly OpenTelemetry Initialization for Local Development Workflows
+# How to Configure Hot-Reload Friendly OpenTelemetry Initialization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

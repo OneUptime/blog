@@ -1,4 +1,4 @@
-# How to Instrument Remote Patient Monitoring (RPM) IoT Device Data Pipelines with OpenTelemetry
+# How to Instrument Remote Patient Monitoring IoT Device Data Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

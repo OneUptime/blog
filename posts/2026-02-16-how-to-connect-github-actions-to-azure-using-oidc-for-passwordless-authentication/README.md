@@ -1,4 +1,4 @@
-# How to Connect GitHub Actions to Azure Using OIDC for Passwordless Authentication
+# How to Connect GitHub Actions to Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

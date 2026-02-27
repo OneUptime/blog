@@ -1,4 +1,4 @@
-# How to Build a Go REST API with Chi Router and Deploy It to Cloud Run with Cloud SQL Connection
+# How to Build a Go REST API with Chi Router and Deploy It to Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

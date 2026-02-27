@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab CI, Auto DevOps, Kubernetes, DevOps, CI/CD, Automation
 
-Description: Learn how to set up GitLab Auto DevOps to automatically build, test, and deploy your applications. This guide covers Auto DevOps configuration, customization, Kubernetes integration, and best practices.
+Description: Learn how to set up GitLab Auto DevOps to automatically build, test, and deploy your applications.
 
 > Auto DevOps provides a complete CI/CD pipeline out of the box, automatically detecting your application type and deploying to Kubernetes with zero configuration.
 

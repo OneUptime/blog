@@ -1,10 +1,10 @@
-# How to Set Up Cosign Image Signing and Verification in Kubernetes Admission Controllers
+# How to Set Up Cosign Image Signing and Verification
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Cosign, Admission Controllers, Image Signing
 
-Description: Implement Cosign image signing verification in Kubernetes admission controllers to ensure only cryptographically signed and verified container images can run in your clusters with automated policy enforcement.
+Description: Implement Cosign image signing verification in Kubernetes admission controllers to ensure only cryptographically signed and verified container images can run in your clusters with automated policy.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: React, OpenTelemetry, User Interactions, Tracing, UX, Observability
 
-Description: Learn how to implement comprehensive user interaction tracing in React applications using OpenTelemetry spans, including click tracking, form submissions, navigation events, and performance correlation.
+Description: Learn how to implement comprehensive user interaction tracing in React applications using OpenTelemetry spans, including click tracking, form submissions, navigation events.
 
 ---
 

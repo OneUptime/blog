@@ -1,4 +1,4 @@
-# How to Implement Backend Service Failover Policies for Regional Disaster Recovery on GCP
+# How to Use Backend Service Failover Policies for Regional Disaster Recovery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

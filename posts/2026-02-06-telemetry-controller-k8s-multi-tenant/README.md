@@ -1,4 +1,4 @@
-# How to Use the Telemetry Controller for Kubernetes Multi-Tenant Observability with Custom Resource Definitions
+# How to Use the Telemetry Controller for Kubernetes Multi-Tenant Observability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

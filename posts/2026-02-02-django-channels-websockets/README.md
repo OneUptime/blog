@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Django, Python, WebSockets, Channels, Real-time
 
-Description: A comprehensive guide to implementing WebSockets in Django using Django Channels. Learn connection lifecycle management, message protocols, authentication, scaling strategies, and testing patterns with production-ready code examples.
+Description: A comprehensive guide to implementing WebSockets in Django using Django Channels.
 
 ---
 

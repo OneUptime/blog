@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, FIFO, Queue Ordering, Job Queue, Sequential Processing
 
-Description: A comprehensive guide to implementing FIFO (First-In-First-Out) queues with BullMQ, including strict ordering guarantees, ordered processing by key, handling concurrent workers, and patterns for sequential job execution.
+Description: A comprehensive guide to implementing FIFO (First-In-First-Out) queues with BullMQ, including strict ordering guarantees, ordered processing by key, handling concurrent workers.
 
 ---
 

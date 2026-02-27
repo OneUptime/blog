@@ -1,4 +1,4 @@
-# How to Propagate OpenTelemetry Trace Context Through gRPC Metadata for Distributed Tracing
+# How to Propagate OpenTelemetry Trace Context Through gRPC Metadata
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Deployment Approvals and Promotion Gates Using Cloud Deploy for GKE
+# How to Set Up Deployment Approvals and Promotion Gates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

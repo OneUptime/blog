@@ -1,4 +1,4 @@
-# How to Send Power Automate Flow Data to Azure Event Hubs for Real-Time Stream Processing
+# How to Send Power Automate Flow Data to Azure Event Hubs for Real-Time Stream
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

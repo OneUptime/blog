@@ -1,4 +1,4 @@
-# Using Velero with Volume Snapshots for Kubernetes Persistent Volume Backup and Restore
+# Using Velero with Volume Snapshots for Kubernetes Persistent Volume Backup
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

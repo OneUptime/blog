@@ -1,4 +1,4 @@
-# How to Configure the OTel Arrow Receiver in the Collector as a Drop-In Replacement for the OTLP Receiver
+# How to Configure the OTel Arrow Receiver in the Collector as a Drop-In
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

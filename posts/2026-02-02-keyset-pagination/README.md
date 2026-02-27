@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pagination, REST API, Database, Performance, PostgreSQL, MySQL, SQL, Backend Development
 
-Description: Learn how to implement keyset pagination (also known as seek pagination) for efficiently handling large datasets. This guide covers the fundamentals, database indexing strategies, multi-column sorting, bidirectional navigation, and production best practices.
+Description: Learn how to implement keyset pagination (also known as seek pagination) for efficiently handling large datasets.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry with Apache Druid for Real-Time OLAP Analytics on Trace and Metric Data
+# How to Configure OpenTelemetry with Apache Druid for Real-Time OLAP Analytics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Network Policies with Calico on AKS to Restrict Pod-to-Pod Traffic
+# How to Use Network Policies with Calico on AKS to Restrict Pod-to-Pod Traffic
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

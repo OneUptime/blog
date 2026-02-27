@@ -1,4 +1,4 @@
-# How to Configure AKS Node Auto-Provisioning with NAP for Dynamic Workload Scheduling
+# How to Configure AKS Node Auto-Provisioning with NAP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

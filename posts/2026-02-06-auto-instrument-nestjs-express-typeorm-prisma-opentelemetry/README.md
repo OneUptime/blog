@@ -1,4 +1,4 @@
-# How to Auto-Instrument NestJS with Express, TypeORM, and Prisma via OpenTelemetry
+# How to Auto-Instrument NestJS with Express, TypeORM,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

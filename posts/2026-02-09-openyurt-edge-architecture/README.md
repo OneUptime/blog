@@ -1,4 +1,4 @@
-# How to Set Up OpenYurt for Converting Existing Kubernetes Clusters to Edge Architecture
+# Set Up OpenYurt for Converting Existing Kubernetes Clusters to Edge Architecture
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

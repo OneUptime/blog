@@ -1,10 +1,10 @@
-# How to Migrate from Docker Registry v2 to Harbor Container Registry on Kubernetes
+# How to Migrate from Docker Registry v2 to Harbor Container Registry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Harbor, Docker Registry, Kubernetes, Container Registry, Migration
 
-Description: Step-by-step guide to migrate from Docker Registry v2 to Harbor on Kubernetes, including image replication, metadata preservation, and implementing advanced features like vulnerability scanning and access control.
+Description: Step-by-step guide to migrate from Docker Registry v2 to Harbor on Kubernetes, including image replication, metadata preservation.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DNS, Troubleshooting, Networking, CoreDNS
 
-Description: Diagnose and resolve DNS resolution problems in Kubernetes pods, including CoreDNS configuration issues, network policies blocking DNS traffic, and pod-specific DNS failures affecting service discovery.
+Description: Diagnose and resolve DNS resolution problems in Kubernetes pods, including CoreDNS configuration issues, network policies blocking DNS traffic.
 
 ---
 

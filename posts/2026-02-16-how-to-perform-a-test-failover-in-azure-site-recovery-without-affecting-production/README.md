@@ -1,4 +1,4 @@
-# How to Perform a Test Failover in Azure Site Recovery Without Affecting Production
+# Perform a Test Failover in Azure Site Recovery Without Affecting Production
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

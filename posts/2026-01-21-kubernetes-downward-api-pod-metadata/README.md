@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Downward API, Pod Metadata, Configuration, DevOps
 
-Description: A practical guide to using the Kubernetes Downward API to expose pod and container metadata to applications via environment variables and volume files, enabling dynamic configuration without hardcoding values.
+Description: A practical guide to using the Kubernetes Downward API to expose pod and container metadata to applications via environment variables and volume files.
 
 ---
 

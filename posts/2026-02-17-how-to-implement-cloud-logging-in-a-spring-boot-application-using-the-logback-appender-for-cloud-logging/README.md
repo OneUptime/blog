@@ -1,4 +1,4 @@
-# How to Implement Cloud Logging in a Spring Boot Application Using the Logback Appender for Cloud Logging
+# How to Use Cloud Logging in a Spring Boot Application Using the Logback Appender
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

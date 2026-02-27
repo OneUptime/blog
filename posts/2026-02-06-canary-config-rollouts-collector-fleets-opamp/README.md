@@ -1,4 +1,4 @@
-# How to Implement Canary Configuration Rollouts Across Collector Fleets with OpAMP
+# How to Use Canary Configuration Rollouts Across Collector Fleets with OpAMP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

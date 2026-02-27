@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Full-Text Search, GIN Index, Search, Database, Performance
 
-Description: Learn how to implement fast full-text search in PostgreSQL using GIN indexes and tsvector columns. This guide covers search configuration, ranking, highlighting, and performance optimization with practical examples.
+Description: Learn how to implement fast full-text search in PostgreSQL using GIN indexes and tsvector columns.
 
 ---
 

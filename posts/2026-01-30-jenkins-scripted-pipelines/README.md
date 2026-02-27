@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Jenkins, CI/CD, Groovy, Pipelines
 
-Description: A comprehensive guide to mastering Jenkins Scripted Pipelines. Learn the Groovy-based syntax, build stages, parallel execution, error handling, shared libraries, and best practices for creating powerful CI/CD workflows.
+Description: A comprehensive guide to mastering Jenkins Scripted Pipelines.
 
 > Jenkins Scripted Pipelines give you the full power of Groovy to define complex build logic that declarative syntax simply cannot express.
 

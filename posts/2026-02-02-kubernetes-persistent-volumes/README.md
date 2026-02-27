@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Persistent Volumes, Storage, PVC
 
-Description: A comprehensive guide to using Kubernetes Persistent Volumes for stateful workloads. Learn how to create PVs and PVCs, configure storage classes, implement dynamic provisioning, and apply best practices for production deployments.
+Description: A comprehensive guide to using Kubernetes Persistent Volumes for stateful workloads.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Providers, Compatibility, Infrastructure as Code
 
-Description: Learn how to handle provider compatibility issues in OpenTofu, including version conflicts, registry differences, provider protocol versions, and strategies for working with providers not yet in the OpenTofu registry.
+Description: Learn how to handle provider compatibility issues in OpenTofu, including version conflicts, registry differences, provider protocol versions.
 
 ---
 

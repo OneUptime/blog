@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, CloudWatch, Monitoring, Queue Depth, Observability, Alarms, DevOps
 
-Description: A comprehensive guide to monitoring Amazon SQS queue depth using CloudWatch metrics, alarms, and dashboards. Learn how to track queue depth, age of oldest message, and set up proactive alerting to prevent message processing bottlenecks.
+Description: A comprehensive guide to monitoring Amazon SQS queue depth using CloudWatch metrics, alarms, and dashboards.
 
 ---
 

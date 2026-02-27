@@ -1,4 +1,4 @@
-# How to Estimate Azure Infrastructure Costs Before Deployment Using Infracost with Terraform
+# How to Estimate Azure Infrastructure Costs Before Deployment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

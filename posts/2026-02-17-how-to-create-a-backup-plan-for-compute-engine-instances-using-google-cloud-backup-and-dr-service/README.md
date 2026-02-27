@@ -1,4 +1,4 @@
-# How to Create a Backup Plan for Compute Engine Instances Using Google Cloud Backup and DR Service
+# How to Create a Backup Plan for Compute Engine Instances Using Google Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

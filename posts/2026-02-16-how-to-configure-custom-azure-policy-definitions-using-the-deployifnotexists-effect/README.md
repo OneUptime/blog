@@ -1,4 +1,4 @@
-# How to Configure Custom Azure Policy Definitions Using the DeployIfNotExists Effect
+# How to Configure Custom Azure Policy Definitions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Observability, Data Processing, Transformation, Configuration
 
-Description: Configure OpenTelemetry Collector processors to transform, filter, enrich, and sample telemetry data including batch processing, resource detection, attribute manipulation, and tail-based sampling strategies.
+Description: Configure OpenTelemetry Collector processors to transform, filter, enrich, and sample telemetry data including batch processing, resource detection, attribute manipulation.
 
 ---
 

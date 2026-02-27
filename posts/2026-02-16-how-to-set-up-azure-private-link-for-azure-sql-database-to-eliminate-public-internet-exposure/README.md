@@ -1,4 +1,4 @@
-# How to Set Up Azure Private Link for Azure SQL Database to Eliminate Public Internet Exposure
+# How to Set Up Azure Private Link for Azure SQL Database to Eliminate Public
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

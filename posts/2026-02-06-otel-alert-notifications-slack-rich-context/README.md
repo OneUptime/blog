@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Alert Notifications to Slack Channels with Rich Context
+# How to Send OpenTelemetry Alert Notifications to Slack Channels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

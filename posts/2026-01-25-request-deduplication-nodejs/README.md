@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NodeJS, TypeScript, API, Performance, Reliability
 
-Description: Learn how to implement request deduplication in Node.js to prevent duplicate processing, save resources, and ensure idempotent operations using various strategies including in-memory caching, Redis, and database-level deduplication.
+Description: Learn how to implement request deduplication in Node.
 
 ---
 

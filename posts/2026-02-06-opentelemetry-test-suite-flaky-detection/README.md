@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry to Monitor Test Suite Execution Performance and Flaky Test Detection
+# How to Use OpenTelemetry to Monitor Test Suite Execution Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

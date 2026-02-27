@@ -1,10 +1,10 @@
-# Native apps had a good run, but PWA has caught up and is the future. 
+# Native apps had a good run, but PWA has caught up and is the future.
 
 Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: PWA, Web Architecture, Product, Platform Strategy
 
-Description: Why Progressive Web Apps are the future and why OneUptime chose a PWA-first approach. Here's why PWAs now rival traditional native app strategies for most SaaS platforms, and why we at OneUptime intentionally chose a single PWA-first codebase instead of writing separate iOS and Android apps.
+Description: Why Progressive Web Apps are the future and why OneUptime chose a PWA-first approach.
 
 The debate between building native mobile apps vs. embracing the web isn’t new, but the balance has shifted. Modern Progressive Web Apps (PWAs) now deliver capabilities that were once exclusive to native platforms: offline resilience, rich caching, push notifications, installability, background sync, responsive performance, and deep integration hooks.
 

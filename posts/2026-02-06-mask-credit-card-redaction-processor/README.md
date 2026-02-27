@@ -1,4 +1,4 @@
-# How to Mask Credit Card Numbers in OpenTelemetry Span Attributes Using the Redaction Processor Regex Patterns
+# How to Mask Credit Card Numbers in OpenTelemetry Span Attributes Using the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

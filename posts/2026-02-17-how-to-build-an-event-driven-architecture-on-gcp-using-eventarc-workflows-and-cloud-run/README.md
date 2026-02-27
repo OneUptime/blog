@@ -1,4 +1,4 @@
-# How to Build an Event-Driven Architecture on GCP Using Eventarc Workflows and Cloud Run
+# How to Build an Event-Driven Architecture on GCP Using Eventarc Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up a Maven Repository in Artifact Registry for Java Package Management
+# How to Set Up a Maven Repository in Artifact Registry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

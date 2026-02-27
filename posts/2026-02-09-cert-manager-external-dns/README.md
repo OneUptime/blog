@@ -1,4 +1,4 @@
-# How to Configure cert-manager with External DNS for Automated DNS Record Creation
+# How to Configure cert-manager with External DNS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

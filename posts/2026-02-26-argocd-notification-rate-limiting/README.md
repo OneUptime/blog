@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Notifications, DevOps
 
-Description: Learn how to handle and prevent ArgoCD notification rate limiting by configuring oncePer deduplication, adjusting reconciliation intervals, and implementing strategies to avoid flooding notification channels.
+Description: Learn how to handle and prevent ArgoCD notification rate limiting by configuring oncePer deduplication, adjusting reconciliation intervals.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Build Azure DevOps Pipelines for Terraform Plan and Apply with Approval Gates
+# How to Build Azure DevOps Pipelines for Terraform Plan and Apply
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

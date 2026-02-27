@@ -1,4 +1,4 @@
-# How to Build a Complete LGTM Stack (Loki, Grafana, Tempo, Mimir) with OpenTelemetry
+# How to Build a Complete LGTM Stack with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

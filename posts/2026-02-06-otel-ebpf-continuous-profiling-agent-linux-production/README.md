@@ -1,4 +1,4 @@
-# How to Set Up the OpenTelemetry eBPF Continuous Profiling Agent on Linux for Production Workloads
+# How to Set Up the OpenTelemetry eBPF Continuous Profiling Agent
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

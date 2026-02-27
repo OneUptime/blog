@@ -1,4 +1,4 @@
-# How to Troubleshoot BigQuery Storage Write API CommitStream Offset Already Exists Error
+# Troubleshoot BigQuery Storage Write API CommitStream Offset Already Exists Error
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

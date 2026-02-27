@@ -1,4 +1,4 @@
-# How to Tune Persistent Disk IOPS and Throughput by Selecting Correct Disk Type and Size
+# How to Tune Persistent Disk IOPS and Throughput by Selecting Correct Disk Type
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

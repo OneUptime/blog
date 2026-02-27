@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, IPVS, Networking, Load Balancing, Performance
 
-Description: Learn how to configure IPVS scheduling algorithms in Kubernetes for optimized load balancing including round-robin, least connection, and weighted distribution strategies for better service performance.
+Description: Learn how to configure IPVS scheduling algorithms in Kubernetes for optimized load balancing including round-robin, least connection.
 
 ---
 

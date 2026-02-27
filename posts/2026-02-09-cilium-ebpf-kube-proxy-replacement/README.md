@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Cilium, eBPF
 
-Description: Replace kube-proxy with Cilium's eBPF-based implementation to reduce latency, improve throughput, and eliminate iptables complexity in your Kubernetes cluster with practical configuration steps and performance validation.
+Description: Replace kube-proxy with Cilium's eBPF-based implementation to reduce latency, improve throughput.
 
 ---
 

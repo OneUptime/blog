@@ -1,10 +1,10 @@
-# How to Implement Edge Workload Scheduling Based on Node Capabilities in Kubernetes
+# How to Use Edge Workload Scheduling Based on Node Capabilities in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Edge Computing, Scheduling
 
-Description: Learn how to implement intelligent workload scheduling for edge Kubernetes clusters based on node capabilities like GPU presence, storage type, network connectivity, and sensor access, ensuring applications run on suitable hardware.
+Description: Learn how to implement intelligent workload scheduling for edge Kubernetes clusters based on node capabilities like GPU presence, storage type, network connectivity, and sensor access.
 
 ---
 

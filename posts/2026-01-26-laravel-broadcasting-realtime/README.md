@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Laravel, Broadcasting, WebSockets, Real-Time, PHP, Pusher, Laravel Echo, Backend Development
 
-Description: Learn how to build real-time features in Laravel applications using Broadcasting. This guide covers events, channels, Pusher integration, Laravel Echo setup, private channels with authentication, and practical examples for notifications and live updates.
+Description: Learn how to build real-time features in Laravel applications using Broadcasting.
 
 ---
 

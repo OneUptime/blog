@@ -1,4 +1,4 @@
-# How to Implement Data Residency Controls Using OpenTelemetry Collector Routing by Region
+# Use Data Residency Controls Using OpenTelemetry Collector Routing by Region
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

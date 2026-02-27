@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Remote Write, Long-term Storage, Thanos, Cortex, Mimir, Monitoring
 
-Description: A practical guide to configuring Prometheus remote write for long-term metric storage, covering configuration options, performance tuning, and integration with popular backends like Thanos, Cortex, and Mimir.
+Description: A practical guide to configuring Prometheus remote write for long-term metric storage, covering configuration options, performance tuning, and integration with popular backends like Thanos, Cortex.
 
 ---
 

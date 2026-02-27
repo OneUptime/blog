@@ -1,4 +1,4 @@
-# How to Detect and Mitigate Bias in Tabular ML Models with Vertex AI Fairness Evaluation
+# How to Detect and Mitigate Bias in Tabular ML Models
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

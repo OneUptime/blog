@@ -1,4 +1,4 @@
-# How to Roll Back a Bad Collector Configuration Remotely Using OpAMP Without SSH Access
+# How to Roll Back a Bad Collector Configuration Remotely
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

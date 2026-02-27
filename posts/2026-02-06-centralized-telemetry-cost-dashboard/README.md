@@ -1,4 +1,4 @@
-# How to Build a Centralized Telemetry Cost Dashboard That Shows Per-Team, Per-Service Observability Spend
+# How to Build a Centralized Telemetry Cost Dashboard That Shows Per-Team,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

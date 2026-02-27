@@ -1,4 +1,4 @@
-# How to Build a Complete Profiling Pipeline: eBPF Agent to Collector to Pyroscope Backend
+# How to Build a Complete Profiling Pipeline: eBPF Agent to Collector to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

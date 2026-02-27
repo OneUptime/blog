@@ -1,4 +1,4 @@
-# How to Monitor Medical Imaging (DICOM/PACS) Transfer and Rendering Performance with OpenTelemetry
+# How to Monitor Medical Imaging Transfer and Rendering Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

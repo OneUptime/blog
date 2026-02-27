@@ -1,4 +1,4 @@
-# How to Set Up Azure Artifacts Python Feeds with pip and twine for Package Publishing
+# How to Set Up Azure Artifacts Python Feeds with pip and twine
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

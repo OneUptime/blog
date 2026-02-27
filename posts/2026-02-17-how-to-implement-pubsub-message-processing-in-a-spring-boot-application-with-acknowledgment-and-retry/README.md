@@ -1,4 +1,4 @@
-# How to Implement Pub/Sub Message Processing in a Spring Boot Application with Acknowledgment and Retry
+# How to Use Pub/Sub Message Processing in a Spring Boot Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

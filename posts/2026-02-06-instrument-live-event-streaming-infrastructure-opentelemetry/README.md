@@ -1,4 +1,4 @@
-# How to Instrument Live Event Streaming Infrastructure (WebRTC/HLS/DASH) with OpenTelemetry
+# How to Instrument Live Event Streaming Infrastructure with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Supply Chain Demand Forecasting with Vertex AI AutoML Forecasting
+# How to Use Supply Chain Demand Forecasting with Vertex AI AutoML Forecasting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

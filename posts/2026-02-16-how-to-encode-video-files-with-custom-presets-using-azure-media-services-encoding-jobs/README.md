@@ -1,4 +1,4 @@
-# How to Encode Video Files with Custom Presets Using Azure Media Services Encoding Jobs
+# Encode Video Files with Custom Presets Using Azure Media Services Encoding Jobs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

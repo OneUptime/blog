@@ -871,5 +871,5 @@ Start with BACKWARD compatibility (the default), use FULL when you need flexibil
 
 ### See Also
 
-- [Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/) - Understand distributed tracing to debug your Kafka consumers
-- [How to Structure Logs Properly in OpenTelemetry](/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/) - Correlate Kafka processing logs with traces
+- [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Understand distributed tracing to debug your Kafka consumers
+- [How to Structure Logs Properly in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view) - Correlate Kafka processing logs with traces

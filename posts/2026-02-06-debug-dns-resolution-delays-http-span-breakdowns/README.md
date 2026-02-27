@@ -1,4 +1,4 @@
-# How to Debug DNS Resolution Delays Using OpenTelemetry HTTP Client Span Breakdowns
+# Debug DNS Resolution Delays Using OpenTelemetry HTTP Client Span Breakdowns
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

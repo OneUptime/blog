@@ -1,4 +1,4 @@
-# How to Configure Azure Bicep Linting Rules and Custom Settings in bicepconfig.json
+# How to Configure Azure Bicep Linting Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

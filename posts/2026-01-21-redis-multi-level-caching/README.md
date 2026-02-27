@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Caching, Multi-Level Cache, L1 Cache, L2 Cache, Performance, Python, Node.js, Architecture
 
-Description: A comprehensive guide to implementing multi-level caching with Redis as L2 cache and in-memory L1 cache. Learn cache hierarchies, invalidation across levels, and practical implementations for high-performance applications.
+Description: A comprehensive guide to implementing multi-level caching with Redis as L2 cache and in-memory L1 cache.
 
 ---
 

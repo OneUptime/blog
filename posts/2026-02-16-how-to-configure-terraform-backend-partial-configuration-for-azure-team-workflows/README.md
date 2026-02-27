@@ -1,4 +1,4 @@
-# How to Configure Terraform Backend Partial Configuration for Azure Team Workflows
+# How to Configure Terraform Backend Partial Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

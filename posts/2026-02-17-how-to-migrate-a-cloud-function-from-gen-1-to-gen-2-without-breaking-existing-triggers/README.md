@@ -1,4 +1,4 @@
-# How to Migrate a Cloud Function from Gen 1 to Gen 2 Without Breaking Existing Triggers
+# Migrate a Cloud Function from Gen 1 to Gen 2 Without Breaking Existing Triggers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

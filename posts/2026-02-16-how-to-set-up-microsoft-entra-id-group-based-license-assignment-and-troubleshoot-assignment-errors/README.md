@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Entra ID Group-Based License Assignment and Troubleshoot Assignment Errors
+# How to Set Up Microsoft Entra ID Group-Based License Assignment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

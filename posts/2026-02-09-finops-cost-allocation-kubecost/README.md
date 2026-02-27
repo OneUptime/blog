@@ -1,4 +1,4 @@
-# How to Implement FinOps Cost Allocation and Chargeback per Kubernetes Namespace Using Kubecost
+# How to Use FinOps Cost Allocation and Chargeback per Kubernetes Namespace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

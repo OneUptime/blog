@@ -1,4 +1,4 @@
-# How to Build an Automated Container Image Pipeline Using Cloud Build Artifact Registry and Binary Authorization
+# How to Build an Automated Container Image Pipeline Using Cloud Build Artifact
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

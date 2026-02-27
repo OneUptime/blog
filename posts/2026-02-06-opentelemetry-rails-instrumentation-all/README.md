@@ -1,4 +1,4 @@
-# How to Set Up OpenTelemetry in a Rails Application with opentelemetry-instrumentation-all
+# How to Set Up OpenTelemetry in a Rails App with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

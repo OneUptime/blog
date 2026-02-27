@@ -1,4 +1,4 @@
-# How to Filter and Search Errors by Service Version and Time Range in Error Reporting
+# How to Filter and Search Errors by Service Version and Time Range
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

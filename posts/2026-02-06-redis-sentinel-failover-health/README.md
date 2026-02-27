@@ -1,4 +1,4 @@
-# How to Monitor Redis Sentinel Failover Events, Quorum Status, and Health with the Redis Receiver
+# How to Monitor Redis Sentinel Failover Events, Quorum Status, and Health
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

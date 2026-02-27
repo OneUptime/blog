@@ -1580,6 +1580,5 @@ Content-based routing enables you to evolve your message consumers independently
 ### See Also
 
 - [Enterprise Integration Patterns](https://www.enterpriseintegrationpatterns.com/patterns/messaging/ContentBasedRouter.html) - The original pattern definition
-- [Message Queue Fundamentals](/blog/post/message-queue-fundamentals) - Understanding the basics of message-driven architecture
-- [Circuit Breaker Pattern](/blog/post/circuit-breaker-pattern) - Protecting against cascading failures
+- [Circuit Breaker Pattern](https://oneuptime.com/blog/post/2026-01-30-go-retry-circuit-breaker-pattern/view) - Protecting against cascading failures
 

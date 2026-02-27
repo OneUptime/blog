@@ -1,4 +1,4 @@
-# How to Instrument Course Content Delivery and Video Streaming for EdTech Platforms with OpenTelemetry
+# How to Instrument Course Content Delivery and Video Streaming
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

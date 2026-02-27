@@ -1,4 +1,4 @@
-# How to Configure Microsoft Entra Workload Identity Federation for GitHub Actions CI/CD Pipelines
+# How to Configure Microsoft Entra Workload Identity Federation for GitHub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix GKE Pod Stuck in Pending State Due to Insufficient CPU or Memory Resources
+# Fix GKE Pod Stuck in Pending State Due to Insufficient CPU or Memory Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

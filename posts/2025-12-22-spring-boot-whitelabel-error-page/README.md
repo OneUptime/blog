@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Error Handling, Web Development, REST API, Troubleshooting
 
-Description: Learn how to fix the Spring Boot Whitelabel Error Page and create custom error handling. This guide covers configuring error pages, REST API error responses, common causes of errors, and best practices for error handling.
+Description: Learn how to fix the Spring Boot Whitelabel Error Page and create custom error handling.
 
 ---
 

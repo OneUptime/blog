@@ -1,4 +1,4 @@
-# How to Build Capacity Planning Models from OpenTelemetry Historical Resource Utilization Data
+# How to Build Capacity Planning Models from OpenTelemetry Historical Resource
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

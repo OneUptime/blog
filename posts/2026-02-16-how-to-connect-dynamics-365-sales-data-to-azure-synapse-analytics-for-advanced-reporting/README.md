@@ -1,4 +1,4 @@
-# How to Connect Dynamics 365 Sales Data to Azure Synapse Analytics for Advanced Reporting
+# How to Connect Dynamics 365 Sales Data to Azure Synapse Analytics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

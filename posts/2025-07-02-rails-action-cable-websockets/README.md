@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby, Rails, Action Cable, WebSockets, Real-time, Pub/Sub
 
-Description: Learn how to implement real-time features in Ruby on Rails using Action Cable. This guide covers WebSocket connections, channels, broadcasting, authentication, and production deployment best practices.
+Description: Learn how to implement real-time features in Ruby on Rails using Action Cable.
 
 ---
 

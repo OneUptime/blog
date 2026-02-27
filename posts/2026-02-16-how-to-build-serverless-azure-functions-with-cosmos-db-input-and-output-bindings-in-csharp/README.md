@@ -1,4 +1,4 @@
-# How to Build Serverless Azure Functions with Cosmos DB Input and Output Bindings in C#
+# How to Build Serverless Azure Functions with Cosmos DB Input
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

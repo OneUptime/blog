@@ -1,4 +1,4 @@
-# How to Configure Azure Key Vault Soft-Delete and Purge Protection for Data Recovery Compliance
+# How to Configure Azure Key Vault Soft-Delete and Purge Protection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

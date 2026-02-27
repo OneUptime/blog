@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Query Builder, Type Safety, SQL, Database, Design Patterns, SQLAlchemy
 
-Description: Learn how to build a type-safe query builder in Python that catches errors at development time instead of runtime. This guide covers fluent interfaces, generics, and practical patterns for safe SQL construction.
+Description: Learn how to build a type-safe query builder in Python that catches errors at development time instead of runtime.
 
 ---
 

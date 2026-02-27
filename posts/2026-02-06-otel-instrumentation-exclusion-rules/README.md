@@ -1,4 +1,4 @@
-# How to Configure Instrumentation Exclusion Rules (Ignore Health Check Endpoints) via Declarative Configuration
+# How to Configure Instrumentation Exclusion Rules via Declarative Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

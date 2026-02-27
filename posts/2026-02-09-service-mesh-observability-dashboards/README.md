@@ -1,4 +1,4 @@
-# How to Set Up Service Mesh Observability Dashboards Comparing Istio and Linkerd Golden Signals
+# How to Set Up Service Mesh Observability Dashboards Comparing Istio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

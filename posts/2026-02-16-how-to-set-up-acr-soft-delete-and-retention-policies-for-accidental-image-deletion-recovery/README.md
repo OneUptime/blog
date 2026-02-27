@@ -1,4 +1,4 @@
-# How to Set Up ACR Soft Delete and Retention Policies for Accidental Image Deletion Recovery
+# How to Set Up ACR Soft Delete and Retention Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

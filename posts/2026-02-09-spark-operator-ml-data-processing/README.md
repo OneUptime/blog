@@ -1,4 +1,4 @@
-# How to Deploy Apache Spark on Kubernetes Using the Spark Operator for ML Data Processing
+# How to Deploy Apache Spark on Kubernetes Using the Spark Operator
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

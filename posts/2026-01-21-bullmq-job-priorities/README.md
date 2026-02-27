@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Job Priorities, Queue Management, Background Jobs
 
-Description: A comprehensive guide to implementing job priorities in BullMQ, including priority queues, fair scheduling strategies, and practical patterns for handling mixed-priority workloads in production applications.
+Description: A comprehensive guide to implementing job priorities in BullMQ, including priority queues, fair scheduling strategies.
 
 ---
 

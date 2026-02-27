@@ -1,4 +1,4 @@
-# How to Collect Docker Container Logs and Enrich Them with Container Name and Image Metadata in the Collector
+# How to Collect Docker Container Logs and Enrich Them with Container Name
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

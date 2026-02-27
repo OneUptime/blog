@@ -1,4 +1,4 @@
-# How to Create Microsoft Sentinel Custom Connectors Using the Codeless Connector Platform
+# How to Create Microsoft Sentinel Custom Connectors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Skaffold File Sync for Hot Reloading a Node.js Application Running on GKE
+# How to Set Up Skaffold File Sync for Hot Reloading a Node.js Application Running
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

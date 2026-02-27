@@ -1,4 +1,4 @@
-# How to Build Namespace Provisioning Templates with Pre-Configured RBAC and Network Policies
+# How to Build Namespace Provisioning Templates with Pre-Configured RBAC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Authentication, OAuth, LDAP, SSO, Security, Monitoring, Observability
 
-Description: A practical guide to configuring Grafana authentication using OAuth providers like Google, GitHub, and Azure AD, as well as LDAP integration for enterprise directory services. Learn how to secure your Grafana dashboards with proper identity management.
+Description: A practical guide to configuring Grafana authentication using OAuth providers like Google, GitHub, and Azure AD, as well as LDAP integration for enterprise directory services.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: CockroachDB, Go, Golang, Database, Distributed Systems, SQL, PostgreSQL
 
-Description: Learn how to integrate CockroachDB with Go applications. Covers connection setup, CRUD operations, transactions, connection pooling, retry logic for distributed databases, and production best practices.
+Description: Learn how to integrate CockroachDB with Go applications.
 
 ---
 

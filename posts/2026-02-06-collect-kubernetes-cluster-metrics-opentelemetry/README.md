@@ -1,4 +1,4 @@
-# How to Collect Kubernetes Cluster Metrics (Nodes, Pods, Containers) with OpenTelemetry
+# How to Collect Kubernetes Cluster Metrics with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

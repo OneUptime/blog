@@ -1,4 +1,4 @@
-# How to Connect IoT Devices to Google Cloud Pub/Sub Using MQTT Bridge with Third-Party Brokers
+# How to Connect IoT Devices to Google Cloud Pub/Sub Using MQTT Bridge with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use Azure PowerShell to Manage and Automate Azure Active Directory Resources
+# Use Azure PowerShell to Manage and Automate Azure Active Directory Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use Cloud Tasks with App Engine to Process Background Work Without Blocking Requests
+# How to Use Cloud Tasks with App Engine to Process Background Work Without
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

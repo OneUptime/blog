@@ -1,4 +1,4 @@
-# How to Monitor Event Bus Backpressure and Dead Letter Queue Depth with OpenTelemetry Custom Metrics
+# How to Monitor Event Bus Backpressure and Dead Letter Queue Depth
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Real-Time Dashboard Pipeline Using Pub/Sub Dataflow BigQuery and Looker
+# How to Build a Real-Time Dashboard Pipeline Using Pub/Sub Dataflow BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

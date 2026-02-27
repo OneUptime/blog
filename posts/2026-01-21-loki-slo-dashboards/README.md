@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, SLO, SLI, Error Budget, Observability, Site Reliability Engineering, LogQL
 
-Description: A comprehensive guide to building Service Level Objective dashboards using Grafana Loki logs, covering error budget calculation, SLI metrics from logs, burn rate alerting, and practical SLO implementation patterns.
+Description: A comprehensive guide to building Service Level Objective dashboards using Grafana Loki logs, covering error budget calculation, SLI metrics from logs, burn rate alerting.
 
 ---
 

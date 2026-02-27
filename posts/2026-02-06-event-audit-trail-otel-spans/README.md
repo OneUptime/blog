@@ -1,4 +1,4 @@
-# How to Build an Event Audit Trail with OpenTelemetry Spans That Capture Every Event State Transition
+# How to Build an Event Audit Trail with OpenTelemetry Spans That Capture Every
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

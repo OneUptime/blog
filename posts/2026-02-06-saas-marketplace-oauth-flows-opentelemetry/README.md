@@ -1,4 +1,4 @@
-# How to Trace SaaS Marketplace App Installation and OAuth Authorization Flows with OpenTelemetry
+# How to Trace SaaS Marketplace App Installation and OAuth Authorization Flows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

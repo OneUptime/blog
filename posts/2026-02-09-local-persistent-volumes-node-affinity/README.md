@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, LocalVolume, NodeAffinity
 
-Description: Learn how to configure local persistent volumes in Kubernetes with node affinity constraints, leveraging fast local disks like NVMe and SSD for high-performance stateful workloads while managing pod placement correctly.
+Description: Learn how to configure local persistent volumes in Kubernetes with node affinity constraints.
 
 ---
 

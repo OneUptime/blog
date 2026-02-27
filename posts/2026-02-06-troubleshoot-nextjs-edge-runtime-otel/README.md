@@ -1,4 +1,4 @@
-# How to Troubleshoot Missing Spans in Next.js When Edge Runtime Does Not Support OpenTelemetry
+# How to Troubleshoot Missing Spans in Next.js When Edge Runtime Does Not Support
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Cross-Datacenter CockroachDB Replication on Multi-Cluster Kubernetes
+# Configure Cross-Datacenter CockroachDB Replication on Multi-Cluster Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -718,4 +718,4 @@ processor.processStream('iot:stream:sensor-001', async (data) => {
 
 Redis provides an excellent ingestion layer for IoT data. Its Streams data structure offers the perfect balance of performance, reliability, and flexibility for handling high-volume sensor data. Combined with consumer groups for parallel processing and real-time aggregation, Redis enables building scalable IoT pipelines.
 
-For more IoT patterns with Redis, check out our guides on [Device State Management](/blog/redis-device-state-management) and [IoT Metrics Aggregation](/blog/redis-iot-metrics-aggregation).
+For more IoT patterns with Redis, check out our guides on [Device State Management](https://oneuptime.com/blog/post/2026-01-21-redis-device-state-management/view) and [IoT Metrics Aggregation](https://oneuptime.com/blog/post/2026-01-21-redis-iot-metrics-aggregation/view).

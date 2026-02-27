@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, CI/CD, Notifications, Slack, DevOps, Automation, Webhooks
 
-Description: A practical guide to configuring GitHub Actions notifications across multiple channels including Slack, email, Microsoft Teams, and custom webhooks. Learn how to set up targeted alerts, filter noise, and build effective CI/CD communication workflows.
+Description: A practical guide to configuring GitHub Actions notifications across multiple channels including Slack, email, Microsoft Teams, and custom webhooks.
 
 ---
 

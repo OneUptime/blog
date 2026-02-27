@@ -1,4 +1,4 @@
-# How to Create Hierarchical Firewall Policies at the Organization Level on Google Cloud
+# How to Create Hierarchical Firewall Policies at the Organization Level
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

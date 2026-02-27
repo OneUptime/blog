@@ -1,4 +1,4 @@
-# How to Use Google Distroless Base Images to Reduce Container Attack Surface for Node.js Applications on Cloud Run
+# How to Use Google Distroless Base Images to Reduce Container Attack Surface for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

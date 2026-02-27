@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Alerts, Monitoring, Incoming Request, Heartbeat, Status Page, On-call, Incident Management, DevOps, Webhooks, Automation
 
-Description: A comprehensive guide to integrating Grafana alerts with OneUptime's incoming request monitors. Learn how to automatically create incidents, update status pages, and trigger on-call rotations when Grafana detects issues.
+Description: A comprehensive guide to integrating Grafana alerts with OneUptime's incoming request monitors.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Use Generated Columns in Cloud Spanner for Computed Values and Composite Indexes
+# How to Use Generated Columns in Cloud Spanner for Computed Values
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

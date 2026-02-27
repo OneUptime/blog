@@ -1,4 +1,4 @@
-# How to Configure Microsoft Entra ID Multi-Factor Authentication with Number Matching and Additional Context
+# How to Configure Microsoft Entra ID Multi-Factor Auth with Number Matching and
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

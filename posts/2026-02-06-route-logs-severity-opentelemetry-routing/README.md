@@ -1,4 +1,4 @@
-# How to Route Logs to Different Backends Based on Severity Level Using OpenTelemetry Routing
+# How to Route Logs to Different Backends Based on Severity Level
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

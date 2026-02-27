@@ -1,4 +1,4 @@
-# How to Enable Telemetry Sampling in Azure Application Insights to Reduce Data Costs
+# Enable Telemetry Sampling in Azure Application Insights to Reduce Data Costs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

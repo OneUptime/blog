@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Kubernetes, Helm, DevOps, Cloud Native, High Availability, StatefulSet
 
-Description: A comprehensive guide to deploying Redis on Kubernetes using Helm charts, covering standalone and cluster modes, persistence, high availability with Sentinel, production configurations, and monitoring setup.
+Description: A comprehensive guide to deploying Redis on Kubernetes using Helm charts, covering standalone and cluster modes, persistence, high availability with Sentinel, production configurations.
 
 ---
 

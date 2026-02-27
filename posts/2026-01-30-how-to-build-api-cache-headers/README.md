@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: API, Caching, HTTP, Performance, Backend, DevOps
 
-Description: A practical guide to implementing HTTP cache headers in your APIs. Learn how to use Cache-Control, ETag, Last-Modified, and Vary headers to reduce server load, improve response times, and build production-ready caching strategies.
+Description: A practical guide to implementing HTTP cache headers in your APIs.
 
 ---
 

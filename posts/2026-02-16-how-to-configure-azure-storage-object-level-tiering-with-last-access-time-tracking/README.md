@@ -1,4 +1,4 @@
-# How to Configure Azure Storage Object-Level Tiering with Last Access Time Tracking
+# How to Configure Azure Storage Object-Level Tiering
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

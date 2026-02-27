@@ -1,4 +1,4 @@
-# How to Use Pulumi Automation API with OpenTelemetry for Instrumented Infrastructure Provisioning
+# How to Use Pulumi Automation API with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

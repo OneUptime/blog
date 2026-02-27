@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: GraphQL, Query Optimization, Performance Engineering, Query Analysis, Cost Calculation, Middleware, Backend Architecture
 
-Description: A hands-on guide to building GraphQL query optimization infrastructure from scratch, including query complexity analyzers, cost calculators, automatic query rewriting, and performance monitoring middleware for production APIs.
+Description: A hands-on guide to building GraphQL query optimization infrastructure from scratch, including query complexity analyzers, cost calculators, automatic query rewriting.
 
 ---
 

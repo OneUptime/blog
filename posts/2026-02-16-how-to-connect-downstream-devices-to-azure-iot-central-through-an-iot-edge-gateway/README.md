@@ -1,4 +1,4 @@
-# How to Connect Downstream Devices to Azure IoT Central Through an IoT Edge Gateway
+# Connect Downstream Devices to Azure IoT Central Through an IoT Edge Gateway
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Vertex AI Vector Search Indexes for Billion-Scale Similarity Search
+# Configure Vertex AI Vector Search Indexes for Billion-Scale Similarity Search
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

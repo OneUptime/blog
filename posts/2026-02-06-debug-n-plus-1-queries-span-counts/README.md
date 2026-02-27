@@ -1,4 +1,4 @@
-# How to Debug N+1 Database Query Problems Using OpenTelemetry Span Counts per Parent Span
+# How to Debug N+1 Database Query Problems Using OpenTelemetry Span Counts per
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

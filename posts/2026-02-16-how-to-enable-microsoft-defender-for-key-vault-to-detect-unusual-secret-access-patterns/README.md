@@ -1,4 +1,4 @@
-# How to Enable Microsoft Defender for Key Vault to Detect Unusual Secret Access Patterns
+# Enable Microsoft Defender for Key Vault to Detect Unusual Secret Access Patterns
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, InnoDB, Ubuntu, Database Configuration, Performance Tuning, Linux
 
-Description: Learn how to configure MySQL InnoDB settings on Ubuntu for optimal performance. This guide covers buffer pool sizing, redo log configuration, I/O settings, memory allocation, and production-ready configurations with step-by-step instructions.
+Description: Learn how to configure MySQL InnoDB settings on Ubuntu for optimal performance.
 
 ---
 

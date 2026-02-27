@@ -1,4 +1,4 @@
-# How to Use Metric Explorer in Cloud Monitoring to Analyze and Filter Time-Series Data
+# How to Use Metric Explorer in Cloud Monitoring to Analyze
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

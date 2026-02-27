@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Apache Kafka, Kafka Streams, Testing, TopologyTestDriver, Unit Testing, Integration Testing
 
-Description: Learn how to test Kafka Streams applications using TopologyTestDriver for unit tests and embedded Kafka for integration tests, including testing stateful operations, windowed aggregations, and error handling.
+Description: Learn how to test Kafka Streams applications using TopologyTestDriver for unit tests and embedded Kafka for integration tests, including testing stateful operations, windowed aggregations.
 
 ---
 

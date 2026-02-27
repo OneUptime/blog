@@ -1,4 +1,4 @@
-# How to Use Azure Bicep Registry to Share Modules Across Teams Using Azure Container Registry
+# How to Use Azure Bicep Registry to Share Modules Across Teams
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

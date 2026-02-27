@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Cilium, Networking, Bandwidth Management, QoS, EDT, Rate Limiting, DevOps
 
-Description: A practical guide to configuring Cilium bandwidth management in Kubernetes, covering rate limiting, pod bandwidth annotations, EDT-based rate limiting, and monitoring bandwidth usage for optimal cluster performance.
+Description: A practical guide to configuring Cilium bandwidth management in Kubernetes, covering rate limiting, pod bandwidth annotations, EDT-based rate limiting.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Use Istio WasmPlugin to Add Custom Authentication Logic at the Proxy Level
+# Use Istio WasmPlugin to Add Custom Authentication Logic at the Proxy Level
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

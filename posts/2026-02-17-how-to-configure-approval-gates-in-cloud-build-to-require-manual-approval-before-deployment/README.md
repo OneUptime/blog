@@ -1,4 +1,4 @@
-# How to Configure Approval Gates in Cloud Build to Require Manual Approval Before Deployment
+# How to Configure Approval Gates in Cloud Build to Require Manual Approval
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

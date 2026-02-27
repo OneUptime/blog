@@ -1,4 +1,4 @@
-# How to Configure SAP HANA on Bare Metal Solution with High-Memory Server Profiles
+# Configure SAP HANA on Bare Metal Solution with High-Memory Server Profiles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

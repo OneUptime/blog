@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SQS, CloudWatch, Monitoring, Autoscaling, Observability, DevOps, Queue Management
 
-Description: A comprehensive guide to monitoring Amazon SQS queue depth using CloudWatch metrics, setting up alarms, creating custom dashboards, implementing autoscaling based on queue depth, and building effective alerting strategies for reliable message processing.
+Description: A comprehensive guide to monitoring Amazon SQS queue depth using CloudWatch metrics, setting up alarms, creating custom dashboards, implementing autoscaling based on queue depth.
 
 ---
 

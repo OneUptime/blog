@@ -1,4 +1,4 @@
-# How to Correlate Core Web Vitals (LCP, FID, CLS) with Backend OpenTelemetry Traces for Full-Stack Optimization
+# How to Correlate Core Web Vitals with Backend OpenTelemetry Traces for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

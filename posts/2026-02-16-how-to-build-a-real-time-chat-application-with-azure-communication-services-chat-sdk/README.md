@@ -1,4 +1,4 @@
-# How to Build a Real-Time Chat Application with Azure Communication Services Chat SDK
+# Build a Real-Time Chat Application with Azure Communication Services Chat SDK
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

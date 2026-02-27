@@ -1,4 +1,4 @@
-# How to Implement Azure RBAC Custom Roles Scoped to Resource Groups for Development Teams
+# How to Use Azure RBAC Custom Roles Scoped to Resource Groups
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

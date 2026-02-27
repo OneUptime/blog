@@ -1,4 +1,4 @@
-# How to Correlate VPC Flow Logs with Firewall Rules Logging for Security Analysis on Google Cloud
+# How to Correlate VPC Flow Logs with Firewall Rules Logging for Security Analysis
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

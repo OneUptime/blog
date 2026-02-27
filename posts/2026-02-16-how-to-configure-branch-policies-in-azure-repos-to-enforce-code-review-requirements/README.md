@@ -1,4 +1,4 @@
-# How to Configure Branch Policies in Azure Repos to Enforce Code Review Requirements
+# Configure Branch Policies in Azure Repos to Enforce Code Review Requirements
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

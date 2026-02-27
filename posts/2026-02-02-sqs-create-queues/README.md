@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SQS, Message Queue, Cloud, Serverless, Distributed Systems
 
-Description: Learn how to create and configure Amazon SQS queues using the AWS Console, CLI, and SDKs. Covers standard and FIFO queues, dead-letter queues, access policies, and best practices for production deployments.
+Description: Learn how to create and configure Amazon SQS queues using the AWS Console, CLI, and SDKs.
 
 ---
 

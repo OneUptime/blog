@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Elixir, Phoenix, Deployment, Production, DevOps
 
-Description: A comprehensive guide to deploying Phoenix applications to production. Learn about releases, Docker containerization, database migrations, environment configuration, load balancing, and monitoring strategies.
+Description: A comprehensive guide to deploying Phoenix applications to production.
 
 ---
 

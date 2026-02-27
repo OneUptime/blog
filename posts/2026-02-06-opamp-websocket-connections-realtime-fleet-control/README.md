@@ -1,4 +1,4 @@
-# How to Set Up OpAMP Agent-to-Server WebSocket Connections for Real-Time Fleet Control
+# Set Up OpAMP Agent-to-Server WebSocket Connections for Real-Time Fleet Control
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

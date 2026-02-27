@@ -1,4 +1,4 @@
-# How to Implement SOX Compliance Controls for Financial Applications on Google Cloud
+# How to Use SOX Compliance Controls for Financial Applications on Google Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

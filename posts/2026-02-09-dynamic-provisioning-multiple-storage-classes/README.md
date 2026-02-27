@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, DynamicProvisioning, StorageClass
 
-Description: Learn how to configure and manage multiple StorageClasses in Kubernetes for dynamic provisioning, enabling workloads to automatically select appropriate storage based on performance, cost, and reliability requirements.
+Description: Learn how to configure and manage multiple StorageClasses in Kubernetes for dynamic provisioning, enabling workloads to automatically select appropriate storage based on performance, cost.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: LlamaIndex, AI, RAG, LLM, Python, Vector Database, Machine Learning, Data Framework
 
-Description: A comprehensive guide to getting started with LlamaIndex for building AI-powered applications. Learn installation, core concepts, document loading, indexing, querying, and best practices for retrieval-augmented generation (RAG).
+Description: A comprehensive guide to getting started with LlamaIndex for building AI-powered applications.
 
 ---
 

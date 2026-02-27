@@ -1,4 +1,4 @@
-# How to Configure Rate Limiting Rules to Prevent Brute-Force Attacks in Google Cloud Armor
+# How to Configure Rate Limiting Rules to Prevent Brute-Force Attacks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

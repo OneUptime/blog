@@ -1,4 +1,4 @@
-# How to Set Up SMART on FHIR Authentication for Google Cloud Healthcare API Applications
+# Set Up SMART on FHIR Authentication for Google Cloud Healthcare API Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

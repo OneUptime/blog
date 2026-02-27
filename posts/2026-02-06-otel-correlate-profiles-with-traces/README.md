@@ -1,4 +1,4 @@
-# How to Correlate OpenTelemetry Profiles with Traces to Pinpoint Exactly Which Code Caused Latency
+# How to Correlate OpenTelemetry Profiles with Traces to Pinpoint Exactly Which
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

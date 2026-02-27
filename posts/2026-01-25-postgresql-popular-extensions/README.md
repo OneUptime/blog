@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Extensions, PostGIS, pg_stat_statements, TimescaleDB, Performance
 
-Description: Discover the most useful PostgreSQL extensions for production databases. This guide covers essential extensions for monitoring, full-text search, geographic data, time-series, and more with practical examples.
+Description: Discover the most useful PostgreSQL extensions for production databases.
 
 ---
 

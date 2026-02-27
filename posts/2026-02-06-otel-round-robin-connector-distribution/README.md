@@ -1,4 +1,4 @@
-# How to Configure the Round Robin Connector for Even Distribution Across Multiple Export Destinations
+# How to Configure the Round Robin Connector for Even Distribution Across Multi
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

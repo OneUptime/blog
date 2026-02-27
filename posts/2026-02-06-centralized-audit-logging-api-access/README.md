@@ -1,4 +1,4 @@
-# How to Build Centralized Audit Logging for API Access Using OpenTelemetry Trace Data
+# How to Build Centralized Audit Logging for API Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

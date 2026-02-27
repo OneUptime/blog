@@ -1,4 +1,4 @@
-# How to Configure Static IP Addresses for Cloud NAT in GCP for Third-Party API Allowlisting
+# How to Configure Static IP Addresses for Cloud NAT in GCP for Third-Party API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

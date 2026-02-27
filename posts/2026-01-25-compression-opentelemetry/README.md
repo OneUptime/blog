@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Compression, Performance, Network Optimization, gzip, Telemetry Pipeline
 
-Description: Learn how to configure compression in OpenTelemetry to reduce bandwidth usage and improve telemetry export performance. This guide covers SDK and Collector compression settings with benchmarks and best practices.
+Description: Learn how to configure compression in OpenTelemetry to reduce bandwidth usage and improve telemetry export performance.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot Kubernetes Service Endpoints Not Populating for Matching Pods
+# How to Troubleshoot Kubernetes Service Endpoints Not Populating
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

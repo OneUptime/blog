@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Analytics, Real-Time, Dashboard, Architecture, Data Pipeline, Visualization, Performance
 
-Description: An end-to-end guide to building a real-time analytics dashboard with ClickHouse, covering data pipeline architecture, ingestion patterns, query optimization, and frontend integration for sub-second analytics.
+Description: An end-to-end guide to building a real-time analytics dashboard with ClickHouse, covering data pipeline architecture, ingestion patterns, query optimization.
 
 ---
 

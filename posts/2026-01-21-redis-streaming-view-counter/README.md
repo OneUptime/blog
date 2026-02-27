@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Streaming, View Counter, Real-Time, HyperLogLog, Analytics, Live Video, Twitch
 
-Description: A comprehensive guide to building real-time streaming view counters with Redis, covering concurrent viewer tracking, unique viewer counts, engagement metrics, and scalable architectures for live video platforms.
+Description: A comprehensive guide to building real-time streaming view counters with Redis, covering concurrent viewer tracking, unique viewer counts, engagement metrics.
 
 ---
 
@@ -835,4 +835,4 @@ class ShardedViewCounter:
 
 Redis provides an excellent foundation for building streaming view counters. Its combination of sorted sets for active viewers, HyperLogLog for unique counts, and pub/sub for real-time updates makes it ideal for live streaming platforms. The key is choosing the right data structures for each metric and implementing proper cleanup for inactive viewers.
 
-For more real-time patterns with Redis, check out our guides on [Game State Management](/blog/redis-game-state-management) and [Real-Time Notifications](/blog/redis-realtime-notifications).
+For more real-time patterns with Redis, check out our guides on [Game State Management](https://oneuptime.com/blog/post/2026-01-21-redis-game-state-management/view) and Real-Time Notifications.

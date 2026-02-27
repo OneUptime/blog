@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, DAX, Caching, Performance, NoSQL, Database
 
-Description: Learn how to use DynamoDB Accelerator (DAX) to add microsecond read performance to your DynamoDB tables. Covers cluster setup, SDK integration, cache behaviors, write-through strategies, and production best practices.
+Description: Learn how to use DynamoDB Accelerator (DAX) to add microsecond read performance to your DynamoDB tables.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Certificates
 
-Description: Learn how to configure automatic certificate rotation for kubelet client certificates to maintain secure cluster communication without manual intervention, preventing authentication failures from expired certificates.
+Description: Learn how to configure automatic certificate rotation for kubelet client certificates to maintain secure cluster communication without manual intervention.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure Log Rotation Handling in the OpenTelemetry Collector Filelog Receiver
+# Configure Log Rotation Handling in the OpenTelemetry Collector Filelog Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

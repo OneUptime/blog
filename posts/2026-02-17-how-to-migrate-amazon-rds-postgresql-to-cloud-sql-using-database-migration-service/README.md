@@ -1,4 +1,4 @@
-# How to Migrate Amazon RDS PostgreSQL to Cloud SQL Using Database Migration Service
+# How to Migrate Amazon RDS PostgreSQL to Cloud SQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

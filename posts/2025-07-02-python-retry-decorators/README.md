@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Retry, Decorators, API, Resilience, Error Handling
 
-Description: Learn how to implement robust retry decorators for handling flaky API calls in Python. This guide covers custom decorator implementations, exponential backoff strategies, jitter, and production-ready patterns for building resilient applications.
+Description: Learn how to implement robust retry decorators for handling flaky API calls in Python.
 
 ---
 

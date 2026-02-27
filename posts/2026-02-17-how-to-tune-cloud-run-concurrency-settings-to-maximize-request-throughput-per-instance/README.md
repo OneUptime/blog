@@ -1,4 +1,4 @@
-# How to Tune Cloud Run Concurrency Settings to Maximize Request Throughput Per Instance
+# Tune Cloud Run Concurrency Settings to Maximize Request Throughput Per Instance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

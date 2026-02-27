@@ -1,4 +1,4 @@
-# How to Build a Virtual Agent with Dialogflow CX Using Flows and Pages for Conversation Design
+# How to Build a Virtual Agent with Dialogflow CX Using Flows and Pages
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot the OpenTelemetry SDK Silently Capping Metrics at 2000 Cardinality and Losing Data Points
+# How to Troubleshoot the OpenTelemetry SDK Silently Capping Metrics at 2000
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

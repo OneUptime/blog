@@ -1,4 +1,4 @@
-# How to Configure Azure Virtual Network Encryption for Intra-VNet Traffic Protection
+# Configure Azure Virtual Network Encryption for Intra-VNet Traffic Protection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

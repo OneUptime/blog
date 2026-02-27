@@ -1,4 +1,4 @@
-# How to Configure Autoscaling Predictive Policies Based on Historical Metrics on Google Cloud
+# How to Configure Autoscaling Predictive Policies Based on Historical Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

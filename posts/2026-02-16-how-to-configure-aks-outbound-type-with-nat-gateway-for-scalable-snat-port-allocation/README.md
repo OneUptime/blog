@@ -1,4 +1,4 @@
-# How to Configure AKS Outbound Type with NAT Gateway for Scalable SNAT Port Allocation
+# How to Configure AKS Outbound Type with NAT Gateway
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

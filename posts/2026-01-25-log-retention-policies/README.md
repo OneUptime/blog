@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Log Retention, Compliance, Data Management, Storage, GDPR, SOC2, Log Management, DevOps
 
-Description: Learn how to configure log retention policies that balance operational needs, storage costs, and compliance requirements. This guide covers retention strategies, tiered storage, and automated lifecycle management.
+Description: Learn how to configure log retention policies that balance operational needs, storage costs, and compliance requirements.
 
 ---
 

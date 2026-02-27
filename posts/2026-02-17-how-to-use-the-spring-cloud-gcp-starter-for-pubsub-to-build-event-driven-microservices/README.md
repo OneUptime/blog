@@ -1,4 +1,4 @@
-# How to Use the Spring Cloud GCP Starter for Pub/Sub to Build Event-Driven Microservices
+# Use the Spring Cloud GCP Starter for Pub/Sub to Build Event-Driven Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

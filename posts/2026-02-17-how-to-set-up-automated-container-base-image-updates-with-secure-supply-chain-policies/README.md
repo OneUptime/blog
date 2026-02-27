@@ -1,4 +1,4 @@
-# How to Set Up Automated Container Base Image Updates with Secure Supply Chain Policies
+# How to Set Up Automated Container Base Image Updates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Create a CI/CD Pipeline for Machine Learning Models on Google Cloud with Cloud Build
+# How to Create a CI/CD Pipeline for Machine Learning Models on Google Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

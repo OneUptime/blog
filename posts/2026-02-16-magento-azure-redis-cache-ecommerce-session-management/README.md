@@ -1,4 +1,4 @@
-# How to Connect Magento to Azure Redis Cache for High-Performance E-Commerce Session Management
+# How to Connect Magento to Azure Redis Cache for High-Performance E-Commerce
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

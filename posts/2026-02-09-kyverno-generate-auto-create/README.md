@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kyverno, Automation, Resource Generation, DevOps
 
-Description: Learn how to use Kyverno generate policies to automatically create supporting resources like ConfigMaps, Secrets, NetworkPolicies, and RBAC when new namespaces or applications are deployed, reducing manual overhead.
+Description: Learn how to use Kyverno generate policies to automatically create supporting resources like ConfigMaps, Secrets, NetworkPolicies, and RBAC when new namespaces or applications are deployed.
 
 ---
 

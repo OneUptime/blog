@@ -1,4 +1,4 @@
-# How to Connect Kubernetes Clusters to Azure Arc and Manage Them from the Azure Portal
+# How to Connect Kubernetes Clusters to Azure Arc
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

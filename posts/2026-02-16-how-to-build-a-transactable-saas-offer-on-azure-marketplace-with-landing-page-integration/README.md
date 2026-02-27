@@ -1,4 +1,4 @@
-# How to Build a Transactable SaaS Offer on Azure Marketplace with Landing Page Integration
+# How to Build a Transactable SaaS Offer on Azure Marketplace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

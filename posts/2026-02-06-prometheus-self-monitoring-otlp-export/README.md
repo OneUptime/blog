@@ -1,4 +1,4 @@
-# How to Configure the Collector to Scrape Prometheus Self-Monitoring Metrics and Export Them via OTLP
+# How to Configure the Collector to Scrape Prometheus Self-Monitoring Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

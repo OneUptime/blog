@@ -1,10 +1,10 @@
-# Introducing OneUptime MCP Server: Bringing AI-Native Observability to Your Workflow
+# Introducing OneUptime MCP Server: Bringing AI-Native Observability to Your
 
 Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: MCP, AI, Model Context Protocol, Open Source, Observability, Automation
 
-Description: OneUptime now provides a production-ready Model Context Protocol (MCP) server that gives AI assistants direct access to your observability infrastructure. Create incidents, query logs, manage monitors, and automate operations- all through natural language conversations with AI.
+Description: OneUptime now provides a production-ready Model Context Protocol (MCP) server that gives AI assistants direct access to your observability infrastructure.
 
 The future of observability isn't just about dashboards and alerts- it's about **conversational operations**. Today, we're excited to introduce the **OneUptime MCP Server**, a production-ready implementation of the Model Context Protocol that brings AI-native observability to your development workflow.
 

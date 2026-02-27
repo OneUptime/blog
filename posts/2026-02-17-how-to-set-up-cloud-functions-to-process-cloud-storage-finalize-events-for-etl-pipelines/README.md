@@ -1,4 +1,4 @@
-# How to Set Up Cloud Functions to Process Cloud Storage Finalize Events for ETL Pipelines
+# How to Set Up Cloud Functions to Process Cloud Storage Finalize Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

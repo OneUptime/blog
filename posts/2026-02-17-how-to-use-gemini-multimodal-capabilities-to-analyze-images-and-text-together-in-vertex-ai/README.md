@@ -1,4 +1,4 @@
-# How to Use Gemini Multimodal Capabilities to Analyze Images and Text Together in Vertex AI
+# How to Use Gemini Multimodal Capabilities to Analyze Images and Text Together
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Node Feature Discovery, Hardware
 
-Description: Learn how to automatically label Kubernetes nodes based on their hardware capabilities using Node Feature Discovery, enabling intelligent pod scheduling based on CPU features, storage types, and network capabilities.
+Description: Learn how to automatically label Kubernetes nodes based on their hardware capabilities using Node Feature Discovery, enabling intelligent pod scheduling based on CPU features, storage types.
 
 ---
 

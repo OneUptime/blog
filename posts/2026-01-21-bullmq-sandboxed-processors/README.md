@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Sandboxed Processor, Process Isolation, Fault Tolerance, Memory Management
 
-Description: A comprehensive guide to using BullMQ sandboxed processors for isolated job execution, including separate process workers, memory leak prevention, crash isolation, and patterns for running untrusted code safely.
+Description: A comprehensive guide to using BullMQ sandboxed processors for isolated job execution, including separate process workers, memory leak prevention, crash isolation.
 
 ---
 

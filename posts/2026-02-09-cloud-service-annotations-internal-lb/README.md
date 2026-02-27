@@ -1,4 +1,4 @@
-# How to Configure Cloud Provider Service Annotations for Internal Load Balancers on EKS, GKE, and AKS
+# How to Configure Cloud Provider Service Annotations for Internal Load Balancers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

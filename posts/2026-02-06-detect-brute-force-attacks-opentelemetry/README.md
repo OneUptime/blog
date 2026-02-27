@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry to Detect Brute-Force Authentication Attacks in Real Time
+# How to Use OpenTelemetry to Detect Brute-Force Authentication Attacks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

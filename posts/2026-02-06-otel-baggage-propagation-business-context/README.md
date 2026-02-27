@@ -1,4 +1,4 @@
-# How to Use Baggage Propagation to Carry Business Context (User ID, Tenant ID) Across All Three Signals
+# Use Baggage Propagation to Carry Business Context Across All Three Signals
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Python, Observability, Flask, FastAPI, Django, Auto-Instrumentation, Tracing
 
-Description: A comprehensive guide to instrumenting Python applications with OpenTelemetry, covering auto-instrumentation for Flask, FastAPI, and Django, plus manual instrumentation techniques for custom spans and metrics.
+Description: A comprehensive guide to instrumenting Python applications with OpenTelemetry, covering auto-instrumentation for Flask, FastAPI, and Django.
 
 ---
 

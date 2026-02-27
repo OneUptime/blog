@@ -1,4 +1,4 @@
-# How to Grant Granular Encrypt/Decrypt Permissions on Specific Cloud KMS Keys in GCP
+# How to Grant Granular Encrypt/Decrypt Permissions on Specific Cloud KMS Keys
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

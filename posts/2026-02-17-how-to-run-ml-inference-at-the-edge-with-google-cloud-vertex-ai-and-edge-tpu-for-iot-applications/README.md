@@ -1,4 +1,4 @@
-# How to Run ML Inference at the Edge with Google Cloud Vertex AI and Edge TPU for IoT Applications
+# How to Run ML Inference at the Edge with Google Cloud Vertex AI and Edge TPU
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

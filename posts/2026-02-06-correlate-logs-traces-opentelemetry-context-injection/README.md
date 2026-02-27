@@ -1,4 +1,4 @@
-# How to Correlate Logs with Traces Automatically Using OpenTelemetry Trace Context Injection
+# How to Correlate Logs with Traces Automatically
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

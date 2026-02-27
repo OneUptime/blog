@@ -1,4 +1,4 @@
-# How to Implement Change Failure Rate Tracking with OpenTelemetry and DORA Metrics
+# How to Use Change Failure Rate Tracking with OpenTelemetry and DORA Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Envoy Proxy OpenTelemetry Tracing with the envoy.tracers.opentelemetry gRPC Extension
+# How to Configure Envoy Proxy OpenTelemetry Tracing with the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

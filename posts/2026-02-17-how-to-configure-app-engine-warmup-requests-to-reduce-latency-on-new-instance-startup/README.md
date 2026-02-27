@@ -1,4 +1,4 @@
-# How to Configure App Engine Warmup Requests to Reduce Latency on New Instance Startup
+# How to Configure App Engine Warmup Requests to Reduce Latency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

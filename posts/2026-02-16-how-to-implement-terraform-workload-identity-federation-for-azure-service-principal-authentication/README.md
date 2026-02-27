@@ -1,4 +1,4 @@
-# How to Implement Terraform Workload Identity Federation for Azure Service Principal Authentication
+# How to Use Terraform Workload Identity Federation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

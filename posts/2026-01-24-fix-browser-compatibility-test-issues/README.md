@@ -471,5 +471,5 @@ def pytest_runtest_makereport(item, call):
 *Need to monitor your application across browsers and devices? [OneUptime](https://oneuptime.com) provides synthetic monitoring that tests your app from multiple locations and browsers.*
 
 **Related Reading:**
-- [How to Handle Security Testing](/blog/post/2026-01-24-handle-security-testing/view)
-- [How to Fix "Assertion" Failures in Tests](/blog/post/2026-01-24-fix-assertion-failures-tests/view)
+- [How to Handle Security Testing](https://oneuptime.com/blog/post/2026-01-24-handle-security-testing/view)
+- [How to Fix "Assertion" Failures in Tests](https://oneuptime.com/blog/post/2026-01-24-fix-assertion-failures-tests/view)

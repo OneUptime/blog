@@ -1,4 +1,4 @@
-# How to Enable and Configure Vertical Pod Autoscaler in GKE to Right-Size Resource Requests
+# How to Enable and Configure Vertical Pod Autoscaler in GKE to Right-Size
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

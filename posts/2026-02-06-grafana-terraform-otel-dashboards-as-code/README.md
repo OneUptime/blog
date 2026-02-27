@@ -1,4 +1,4 @@
-# How to Build Observability Dashboards as Code with Grafana Terraform Provider and OpenTelemetry Data Sources
+# How to Build Observability Dashboards as Code with Grafana Terraform Provider
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

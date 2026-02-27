@@ -1,4 +1,4 @@
-# How to Configure Cloud Functions to Use a Custom Service Account Instead of the Default
+# Configure Cloud Functions to Use a Custom Service Account Instead of the Default
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

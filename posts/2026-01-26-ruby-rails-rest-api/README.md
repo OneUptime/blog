@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby, Rails, REST API, Backend Development, Web Development, API Design
 
-Description: Learn how to build a production-ready REST API with Ruby on Rails from scratch. This guide covers project setup, model creation, controllers, authentication, serialization, error handling, and testing.
+Description: Learn how to build a production-ready REST API with Ruby on Rails from scratch.
 
 ---
 

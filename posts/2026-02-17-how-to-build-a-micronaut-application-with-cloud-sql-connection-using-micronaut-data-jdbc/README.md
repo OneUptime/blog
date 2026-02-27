@@ -1,4 +1,4 @@
-# How to Build a Micronaut Application with Cloud SQL Connection Using Micronaut Data JDBC
+# How to Build a Micronaut Application with Cloud SQL Connection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure highlight.project_id and highlight.session_id Resource Attributes for the Highlight.io Integration
+# How to Configure highlight.project_id and highlight.session_id Resource
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

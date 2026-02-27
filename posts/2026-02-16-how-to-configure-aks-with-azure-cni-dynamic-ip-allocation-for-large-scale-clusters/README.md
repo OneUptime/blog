@@ -1,4 +1,4 @@
-# How to Configure AKS with Azure CNI Dynamic IP Allocation for Large-Scale Clusters
+# Configure AKS with Azure CNI Dynamic IP Allocation for Large-Scale Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

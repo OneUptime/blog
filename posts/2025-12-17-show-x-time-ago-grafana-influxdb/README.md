@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, InfluxDB, Time, Dashboard, Visualization, Stat Panel, Value Mapping, Monitoring
 
-Description: Learn how to display relative time like '5 minutes ago' or '2 hours ago' in Grafana panels with InfluxDB. This guide covers time calculations, value transformations, and formatting for human-readable timestamps.
+Description: Learn how to display relative time like '5 minutes ago' or '2 hours ago' in Grafana panels with InfluxDB.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, Matrix Builds, CI/CD, Testing, Cross-Platform, Automation
 
-Description: Master matrix builds in GitHub Actions to test across multiple operating systems, language versions, and configurations simultaneously. Learn strategies for efficient parallel testing and how to handle complex matrix scenarios.
+Description: Master matrix builds in GitHub Actions to test across multiple operating systems, language versions, and configurations simultaneously.
 
 ---
 

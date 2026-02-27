@@ -1,4 +1,4 @@
-# How to Troubleshoot Python gRPC Instrumentation Failing Silently with grpcio Version Mismatches
+# How to Troubleshoot Python gRPC Instrumentation Failing Silently
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

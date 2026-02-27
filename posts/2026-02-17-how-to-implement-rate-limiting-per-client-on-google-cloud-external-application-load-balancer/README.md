@@ -1,4 +1,4 @@
-# How to Implement Rate Limiting per Client on Google Cloud External Application Load Balancer
+# Use Rate Limiting per Client on Google Cloud External Application Load Balancer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

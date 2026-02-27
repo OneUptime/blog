@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Networking, Containers, DevOps
 
-Description: A comprehensive guide to Docker networking covering network drivers, container communication, port mapping, DNS resolution, multi-host networking, and production best practices for containerized applications.
+Description: A comprehensive guide to Docker networking covering network drivers, container communication, port mapping, DNS resolution, multi-host networking.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Use Vertex AI Training with Reserved GPU Clusters for Predictable Workloads
+# How to Use Vertex AI Training with Reserved GPU Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

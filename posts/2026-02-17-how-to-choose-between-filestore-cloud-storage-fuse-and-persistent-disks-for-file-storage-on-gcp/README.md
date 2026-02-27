@@ -1,4 +1,4 @@
-# How to Choose Between Filestore Cloud Storage FUSE and Persistent Disks for File Storage on GCP
+# How to Choose Between Filestore Cloud Storage FUSE and Persistent Disks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

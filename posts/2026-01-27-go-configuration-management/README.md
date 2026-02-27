@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Go, Configuration, DevOps, Viper, Environment Variables, YAML, TOML, Best Practices
 
-Description: Learn how to manage configuration in Go applications using Viper, envconfig, and other libraries. Covers environment variables, config files (YAML, JSON, TOML), validation, default values, and production best practices.
+Description: Learn how to manage configuration in Go applications using Viper, envconfig, and other libraries.
 
 ---
 

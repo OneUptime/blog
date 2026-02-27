@@ -1,4 +1,4 @@
-# How to Configure VPN Traffic Selectors for Specific Subnet Routing in GCP Classic VPN
+# How to Configure VPN Traffic Selectors for Specific Subnet Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

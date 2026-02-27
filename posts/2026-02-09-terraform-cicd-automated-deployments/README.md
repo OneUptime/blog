@@ -160,3 +160,4 @@ jobs:
         run: |
           kubectl get deployments -A
           kubectl get services -A
+```

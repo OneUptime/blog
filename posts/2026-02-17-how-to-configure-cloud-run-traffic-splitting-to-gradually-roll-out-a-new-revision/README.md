@@ -1,4 +1,4 @@
-# How to Configure Cloud Run Traffic Splitting to Gradually Roll Out a New Revision
+# Configure Cloud Run Traffic Splitting to Gradually Roll Out a New Revision
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

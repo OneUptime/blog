@@ -1,4 +1,4 @@
-# How to Set Up SAML-Based Single Sign-On for Enterprise Applications in Microsoft Entra ID
+# How to Set Up SAML-Based Single Sign-On for Enterprise Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

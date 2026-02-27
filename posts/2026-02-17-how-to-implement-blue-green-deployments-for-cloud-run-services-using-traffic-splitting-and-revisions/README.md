@@ -1,4 +1,4 @@
-# How to Implement Blue-Green Deployments for Cloud Run Services Using Traffic Splitting and Revisions
+# How to Use Blue-Green Deployments for Cloud Run Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

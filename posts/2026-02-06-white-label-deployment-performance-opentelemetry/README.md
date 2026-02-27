@@ -1,4 +1,4 @@
-# How to Monitor SaaS Platform White-Label Deployment Performance Across Customer Environments with OpenTelemetry
+# How to Monitor SaaS Platform White-Label Deployment Performance Across Customer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

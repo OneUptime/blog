@@ -1,4 +1,4 @@
-# How to Set Up ExternalDNS on GKE to Automatically Manage Cloud DNS Records from Kubernetes Services
+# How to Set Up ExternalDNS on GKE to Auto Manage Cloud DNS Records from K8s
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

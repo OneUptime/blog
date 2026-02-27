@@ -1,4 +1,4 @@
-# How to Configure Dashboard Variables for Dynamic Filtering on Google Cloud Monitoring
+# How to Configure Dashboard Variables for Dynamic Filtering
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

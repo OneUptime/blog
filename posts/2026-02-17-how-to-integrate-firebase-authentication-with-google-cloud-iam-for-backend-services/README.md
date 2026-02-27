@@ -1,4 +1,4 @@
-# How to Integrate Firebase Authentication with Google Cloud IAM for Backend Services
+# How to Integrate Firebase Authentication with Google Cloud IAM
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

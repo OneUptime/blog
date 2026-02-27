@@ -1,4 +1,4 @@
-# How to Use Azure Cosmos DB Change Feed with the Java SDK for Real-Time Processing
+# Use Azure Cosmos DB Change Feed with the Java SDK for Real-Time Processing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

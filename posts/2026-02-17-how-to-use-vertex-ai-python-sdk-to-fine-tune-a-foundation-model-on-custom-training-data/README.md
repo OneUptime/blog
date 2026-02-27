@@ -1,4 +1,4 @@
-# How to Use the Vertex AI Python SDK to Fine-Tune a Foundation Model on Custom Training Data
+# How to Use the Vertex AI Python SDK to Fine-Tune a Foundation Model
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

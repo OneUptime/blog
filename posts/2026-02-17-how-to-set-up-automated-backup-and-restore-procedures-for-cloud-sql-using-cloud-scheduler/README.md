@@ -1,4 +1,4 @@
-# How to Set Up Automated Backup and Restore Procedures for Cloud SQL Using Cloud Scheduler
+# How to Set Up Automated Backup and Restore Procedures for Cloud SQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

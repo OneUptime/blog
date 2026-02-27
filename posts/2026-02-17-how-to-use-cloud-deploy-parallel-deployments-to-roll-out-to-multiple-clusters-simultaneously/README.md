@@ -1,4 +1,4 @@
-# How to Use Cloud Deploy Parallel Deployments to Roll Out to Multiple Clusters Simultaneously
+# How to Use Cloud Deploy Parallel Deployments to Roll Out to Multi Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

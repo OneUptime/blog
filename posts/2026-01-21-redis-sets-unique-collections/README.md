@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Sets, Data Structures, Tags, Unique Collections, SADD, SINTER, Set Operations
 
-Description: A comprehensive guide to using Redis Sets for managing unique collections and tag systems, covering SADD, SMEMBERS, SINTER commands, set operations, and practical examples in Python, Node.js, and Go for tagging, tracking, and recommendation systems.
+Description: A comprehensive guide to using Redis Sets for managing unique collections and tag systems, covering SADD, SMEMBERS, SINTER commands, set operations, and practical examples in Python, Node.
 
 ---
 

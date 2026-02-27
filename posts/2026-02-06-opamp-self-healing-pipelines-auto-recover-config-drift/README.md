@@ -1,4 +1,4 @@
-# How to Set Up OpAMP-Based Self-Healing Pipelines That Auto-Recover from Configuration Drift
+# How to Set Up OpAMP-Based Self-Healing Pipelines That Auto-Recover from Config
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

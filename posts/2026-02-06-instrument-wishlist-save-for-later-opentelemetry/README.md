@@ -1,4 +1,4 @@
-# How to Instrument Wishlist and Save-for-Later Features with OpenTelemetry User Journey Tracking
+# How to Instrument Wishlist and Save-for-Later Features
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

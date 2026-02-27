@@ -1,4 +1,4 @@
-# How to Monitor Customer Review and Rating Submission Pipelines with OpenTelemetry
+# How to Monitor Customer Review and Rating Submission Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

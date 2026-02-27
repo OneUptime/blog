@@ -1,4 +1,4 @@
-# How to Instrument Booking Engine Reservation Flow (Search, Select, Book, Confirm) with OpenTelemetry End-to-End
+# How to Instrument Booking Engine Reservation Flow with OpenTelemetry End-to-End
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

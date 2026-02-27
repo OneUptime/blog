@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Kubernetes, Strimzi, Operators, DevOps, Cloud Native, High Availability
 
-Description: A comprehensive guide to deploying production-ready Apache Kafka clusters on Kubernetes using the Strimzi operator, covering installation, configuration, monitoring, and best practices for enterprise deployments.
+Description: A comprehensive guide to deploying production-ready Apache Kafka clusters on Kubernetes using the Strimzi operator, covering installation, configuration, monitoring.
 
 ---
 

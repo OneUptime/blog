@@ -1,4 +1,4 @@
-# How to Enable and Use Kubernetes Feature Gates on API Server, kubelet, and Controller Manager
+# How to Enable and Use Kubernetes Feature Gates on API Server, kubelet,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

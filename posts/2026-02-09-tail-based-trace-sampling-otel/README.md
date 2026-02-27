@@ -1,4 +1,4 @@
-# How to Implement Tail-Based Trace Sampling Using OpenTelemetry Collector Load Balancing in Kubernetes
+# How to Use Tail-Based Trace Sampling Using OpenTelemetry Collector Load
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

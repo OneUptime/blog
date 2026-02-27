@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PHP, Laravel, Authorization, Policies, Security, Gates
 
-Description: A comprehensive guide to implementing authorization in Laravel using Policies and Gates. Learn how to protect resources, define permissions, and build secure applications with clean, maintainable authorization logic.
+Description: A comprehensive guide to implementing authorization in Laravel using Policies and Gates.
 
 ---
 

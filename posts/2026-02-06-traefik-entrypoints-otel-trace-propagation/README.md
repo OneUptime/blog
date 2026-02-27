@@ -1,4 +1,4 @@
-# How to Configure Traefik EntryPoints and Middleware for OpenTelemetry Trace Propagation and OTLP Export
+# How to Configure Traefik EntryPoints and Middleware for OpenTelemetry Trace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

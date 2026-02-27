@@ -1,4 +1,4 @@
-# How to Configure the Filelog Receiver to Parse PostgreSQL Slow Query Logs with Duration Extraction
+# How to Configure the Filelog Receiver to Parse PostgreSQL Slow Query Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

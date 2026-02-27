@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cloudflare, Open Source, Self-Hosting, Decentralization, Reliability, Security, Cdn, Ddos Protection
 
-Description: Cloudflare powers a troubling percentage of the internet. When they go down, so does everyone else. Here are open source and self-hosted alternatives for CDN, DDoS protection, DNS, and edge services that put you back in control.
+Description: Cloudflare powers a troubling percentage of the internet. When they go down, so does everyone else.
 
 Cloudflare has become the internet's de facto infrastructure layer. They proxy roughly [20% of all websites](https://w3techs.com/technologies/details/cn-cloudflare), provide DNS for millions of domains, and sit between users and origin servers for countless applications. That's a lot of trust placed in a single company.
 

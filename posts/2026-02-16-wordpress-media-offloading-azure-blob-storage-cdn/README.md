@@ -1,4 +1,4 @@
-# How to Implement WordPress Media Offloading to Azure Blob Storage with CDN Integration
+# How to Use WordPress Media Offloading to Azure Blob Storage with CDN Integration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

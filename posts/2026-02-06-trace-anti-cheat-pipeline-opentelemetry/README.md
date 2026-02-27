@@ -1,4 +1,4 @@
-# How to Trace Anti-Cheat Detection Pipeline Processing with OpenTelemetry While Protecting Detection Logic
+# How to Trace Anti-Cheat Detection Pipeline Processing with OpenTelemetry While
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

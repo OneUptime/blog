@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Alerting, Contact Points, Notifications, Monitoring, Observability, Webhooks, Slack
 
-Description: A hands-on guide to building and configuring Grafana alerting contact points. Learn how to set up notification channels for email, Slack, webhooks, PagerDuty, and more to ensure your team gets alerted when things go wrong.
+Description: A hands-on guide to building and configuring Grafana alerting contact points.
 
 ---
 

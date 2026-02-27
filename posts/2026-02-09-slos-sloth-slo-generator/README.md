@@ -1,4 +1,4 @@
-# How to Define and Configure SLOs for Kubernetes Services Using Sloth SLO Generator
+# How to Define and Configure SLOs for Kubernetes Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

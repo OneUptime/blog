@@ -1,4 +1,4 @@
-# How to Build Azure Event Hub Namespace with Capture and Schema Registry in Terraform
+# How to Build Azure Event Hub Namespace with Capture and Schema Registry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

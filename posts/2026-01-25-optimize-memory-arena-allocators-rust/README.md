@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Memory, Arena Allocator, Performance, Optimization
 
-Description: Learn how arena allocators work in Rust and when to use them for significant performance gains. This guide covers practical implementations, benchmarks, and real-world use cases where arena allocation outperforms the default allocator.
+Description: Learn how arena allocators work in Rust and when to use them for significant performance gains.
 
 ---
 

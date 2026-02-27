@@ -1,4 +1,4 @@
-# How to Send Structured Logs from a Python Application to Cloud Logging Using the google-cloud-logging Library
+# How to Send Structured Logs from a Python App to Cloud Logging Using the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

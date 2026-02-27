@@ -1,4 +1,4 @@
-# How to Migrate from Google Cloud IoT Core to a Pub/Sub-Based Device Messaging Architecture
+# How to Migrate from Google Cloud IoT Core to a Pub/Sub-Based Device Messaging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

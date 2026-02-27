@@ -1,4 +1,4 @@
-# How to Set Up CI/CD Pipelines for Azure Marketplace Offer Updates with Azure DevOps
+# How to Set Up CI/CD Pipelines for Azure Marketplace Offer Updates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

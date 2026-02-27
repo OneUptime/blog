@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Ingress, TLS, HTTPS, Security, cert-manager, DevOps
 
-Description: Learn how to configure Kubernetes Ingress with TLS termination for secure HTTPS traffic. This guide covers manual certificate configuration, automated certificates with cert-manager, and production best practices.
+Description: Learn how to configure Kubernetes Ingress with TLS termination for secure HTTPS traffic.
 
 ---
 

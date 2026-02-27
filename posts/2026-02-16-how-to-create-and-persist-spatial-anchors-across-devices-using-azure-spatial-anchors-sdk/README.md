@@ -1,4 +1,4 @@
-# How to Create and Persist Spatial Anchors Across Devices Using Azure Spatial Anchors SDK
+# How to Create and Persist Spatial Anchors Across Devices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Remote Debugging for Java Applications Running in Kubernetes with JVM Attach
+# How to Set Up Remote Debugging for Java Applications Running
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

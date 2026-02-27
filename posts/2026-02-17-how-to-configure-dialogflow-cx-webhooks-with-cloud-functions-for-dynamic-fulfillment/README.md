@@ -1,4 +1,4 @@
-# How to Configure Dialogflow CX Webhooks with Cloud Functions for Dynamic Fulfillment
+# How to Configure Dialogflow CX Webhooks with Cloud Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, Infrastructure as Code, IaC, DevOps, Cloud, AWS, Azure, GCP, Resource Import, Migration
 
-Description: Learn how to import existing cloud resources into Pulumi for Infrastructure as Code management. Covers manual imports, bulk imports, generated code, and best practices for migrating legacy infrastructure.
+Description: Learn how to import existing cloud resources into Pulumi for Infrastructure as Code management.
 
 ---
 

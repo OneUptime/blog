@@ -1,4 +1,4 @@
-# How to Deploy and Configure Azure VMware Solution Private Cloud in Your Azure Subscription
+# How to Deploy and Configure Azure VMware Solution Private Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

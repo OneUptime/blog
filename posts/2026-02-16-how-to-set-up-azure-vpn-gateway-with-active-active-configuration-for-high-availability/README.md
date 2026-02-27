@@ -1,4 +1,4 @@
-# How to Set Up Azure VPN Gateway with Active-Active Configuration for High Availability
+# How to Set Up Azure VPN Gateway with Active-Active Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

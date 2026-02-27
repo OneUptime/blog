@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flutter, Dart, Mobile Development, Custom Widgets, UI Components, Cross-Platform
 
-Description: Learn how to build reusable custom widgets in Flutter from scratch. Covers stateless and stateful widgets, composition patterns, custom painters, and best practices for creating maintainable UI components.
+Description: Learn how to build reusable custom widgets in Flutter from scratch.
 
 ---
 

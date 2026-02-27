@@ -1,4 +1,4 @@
-# How to Implement Directed Reads in Cloud Spanner for Read-Only Workload Optimization
+# How to Use Directed Reads in Cloud Spanner for Read-Only Workload Optimization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

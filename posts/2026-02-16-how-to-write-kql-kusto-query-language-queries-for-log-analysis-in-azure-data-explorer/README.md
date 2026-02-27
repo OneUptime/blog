@@ -1,4 +1,4 @@
-# How to Write KQL (Kusto Query Language) Queries for Log Analysis in Azure Data Explorer
+# How to Write KQL Queries for Log Analysis in Azure Data Explorer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

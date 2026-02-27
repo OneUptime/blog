@@ -1,4 +1,4 @@
-# How to Configure Multi-Step Builds in cloudbuild.yaml with Sequential and Parallel Steps
+# How to Configure Multi-Step Builds in cloudbuild.yaml
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

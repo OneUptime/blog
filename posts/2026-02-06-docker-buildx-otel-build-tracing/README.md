@@ -1,4 +1,4 @@
-# How to Configure Docker Buildx OpenTelemetry Support for Build Stage Performance Tracing and Profiling
+# How to Configure Docker Buildx OpenTelemetry Support for Build Stage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

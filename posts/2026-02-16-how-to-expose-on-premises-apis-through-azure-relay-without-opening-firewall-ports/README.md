@@ -1,4 +1,4 @@
-# How to Expose On-Premises APIs Through Azure Relay Without Opening Firewall Ports
+# Expose On-Premises APIs Through Azure Relay Without Opening Firewall Ports
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

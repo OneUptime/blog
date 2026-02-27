@@ -1,4 +1,4 @@
-# How to Fix the Common Mistake of Forgetting to Close Spans and Leaking Memory in Your Application
+# How to Fix the Common Mistake of Forgetting to Close Spans and Leaking Memory
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

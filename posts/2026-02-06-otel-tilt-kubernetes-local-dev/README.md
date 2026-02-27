@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry with Tilt for Kubernetes Local Development with Live Trace Feedback
+# How to Use OpenTelemetry with Tilt for Kubernetes Local Development
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

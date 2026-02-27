@@ -1,4 +1,4 @@
-# How to Attach and Mount a Persistent Disk to a Running Compute Engine VM Without Downtime
+# How to Attach and Mount a Persistent Disk to a Running Compute Engine VM
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

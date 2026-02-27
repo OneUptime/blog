@@ -1,4 +1,4 @@
-# How to Migrate from Fluentd or Fluent Bit to OpenTelemetry Collector for Log Collection
+# How to Migrate from Fluentd or Fluent Bit to OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use MetricX and COMET Metrics for Translation Model Evaluation on Vertex AI
+# How to Use MetricX and COMET Metrics for Translation Model Evaluation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

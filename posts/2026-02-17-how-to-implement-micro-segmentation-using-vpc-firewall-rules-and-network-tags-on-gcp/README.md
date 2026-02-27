@@ -1,4 +1,4 @@
-# How to Implement Micro-Segmentation Using VPC Firewall Rules and Network Tags on GCP
+# How to Use Micro-Segmentation Using VPC Firewall Rules and Network Tags on GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

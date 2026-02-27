@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Streams, Message Queue, Event Streaming, Offset Tracking, High Throughput, Distributed Systems
 
-Description: A comprehensive guide to building RabbitMQ Stream Queues for high-throughput, replay-capable messaging. Learn the differences between stream and classic queues, offset tracking, large message handling, and consumer patterns.
+Description: A comprehensive guide to building RabbitMQ Stream Queues for high-throughput, replay-capable messaging.
 
 ---
 

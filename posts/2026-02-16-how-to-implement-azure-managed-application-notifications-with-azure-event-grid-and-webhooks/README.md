@@ -1,4 +1,4 @@
-# How to Implement Azure Managed Application Notifications with Azure Event Grid and Webhooks
+# How to Use Azure Managed Application Notifications with Azure Event Grid
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

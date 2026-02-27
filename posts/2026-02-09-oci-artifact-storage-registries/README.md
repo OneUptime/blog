@@ -1,4 +1,4 @@
-# How to Implement OCI Artifact Storage in Container Registries for Helm Charts and Policies
+# How to Use OCI Artifact Storage in Container Registries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

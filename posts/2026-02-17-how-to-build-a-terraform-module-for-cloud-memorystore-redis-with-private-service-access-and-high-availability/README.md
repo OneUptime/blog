@@ -1,4 +1,4 @@
-# How to Build a Terraform Module for Cloud Memorystore Redis with Private Service Access and High Availability
+# How to Build a Terraform Module for Cloud Memorystore Redis with Private
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

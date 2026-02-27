@@ -1,4 +1,4 @@
-# How to implement DaemonSet with multiple containers for complementary node services
+# How to Use DaemonSet with multiple containers for complementary node services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

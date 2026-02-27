@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, RabbitMQ, Messaging, AMQP, Microservices
 
-Description: Learn how to configure RabbitMQ with Spring Boot for reliable message queuing. This guide covers exchange types, queue configuration, message publishing, consuming, error handling, and production best practices.
+Description: Learn how to configure RabbitMQ with Spring Boot for reliable message queuing.
 
 ---
 

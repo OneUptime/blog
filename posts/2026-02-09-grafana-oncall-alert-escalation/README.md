@@ -1,4 +1,4 @@
-# How to Set Up Grafana OnCall for Kubernetes Alert Escalation and Rotation Schedules
+# How to Set Up Grafana OnCall for Kubernetes Alert Escalation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

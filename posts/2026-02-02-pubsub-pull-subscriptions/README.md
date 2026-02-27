@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Pub/Sub, Google Cloud, Messaging, Event-Driven Architecture, Python, Node.js, Java, Backend
 
-Description: A comprehensive guide to implementing pull subscriptions in Google Cloud Pub/Sub. Learn how to create subscriptions, pull messages synchronously and asynchronously, handle acknowledgments, and build resilient message processing pipelines.
+Description: A comprehensive guide to implementing pull subscriptions in Google Cloud Pub/Sub.
 
 ---
 

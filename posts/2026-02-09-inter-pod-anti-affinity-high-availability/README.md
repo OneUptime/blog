@@ -1,4 +1,4 @@
-# How to Implement Inter-Pod Anti-Affinity for High-Availability Deployment Patterns
+# How to Use Inter-Pod Anti-Affinity for High-Availability Deployment Patterns
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

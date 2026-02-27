@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Traces and Metrics to Last9 via OTLP with Native LogMetrics and TraceMetrics
+# How to Send OpenTelemetry Traces and Metrics to Last9 via OTLP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

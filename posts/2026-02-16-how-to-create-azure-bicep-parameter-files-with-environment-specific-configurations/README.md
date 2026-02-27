@@ -1,4 +1,4 @@
-# How to Create Azure Bicep Parameter Files with Environment-Specific Configurations
+# Create Azure Bicep Parameter Files with Environment-Specific Configurations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

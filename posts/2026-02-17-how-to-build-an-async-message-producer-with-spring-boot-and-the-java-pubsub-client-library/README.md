@@ -1,4 +1,4 @@
-# How to Build an Async Message Producer with Spring Boot and the Java Pub/Sub Client Library
+# How to Build an Async Message Producer with Spring Boot
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

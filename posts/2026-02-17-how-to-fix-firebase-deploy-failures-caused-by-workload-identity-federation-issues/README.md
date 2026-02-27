@@ -1,4 +1,4 @@
-# How to Fix Firebase Deploy Failures Caused by Workload Identity Federation Issues
+# Fix Firebase Deploy Failures Caused by Workload Identity Federation Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

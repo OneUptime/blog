@@ -1,4 +1,4 @@
-# How to Trace Error Propagation Chains Across Microservices Using OpenTelemetry Exception Span Events
+# How to Trace Error Propagation Chains Across Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Cloud Run Request Timeout and Retry Policies for Long-Running Tasks
+# How to Configure Cloud Run Request Timeout
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

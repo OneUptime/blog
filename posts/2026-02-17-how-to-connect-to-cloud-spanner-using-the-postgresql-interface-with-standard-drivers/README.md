@@ -1,4 +1,4 @@
-# How to Connect to Cloud Spanner Using the PostgreSQL Interface with Standard Drivers
+# How to Connect to Cloud Spanner Using the PostgreSQL Interface
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

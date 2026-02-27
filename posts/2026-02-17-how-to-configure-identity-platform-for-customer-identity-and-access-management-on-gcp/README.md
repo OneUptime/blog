@@ -1,4 +1,4 @@
-# How to Configure Identity Platform for Customer Identity and Access Management on GCP
+# How to Configure Identity Platform for Customer Identity and Access Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Serverless Real-Time Notification System Using Pub/Sub Cloud Functions and Firebase Cloud Messaging
+# How to Build a Serverless Real-Time Notification System Using Pub/Sub Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AI, MLOps, Anthropic, Claude, API Integration, Python, LLM
 
-Description: Learn how to integrate the Anthropic API into your applications for building AI-powered features with Claude. This guide covers authentication, message handling, streaming responses, and production best practices.
+Description: Learn how to integrate the Anthropic API into your applications for building AI-powered features with Claude.
 
 ---
 

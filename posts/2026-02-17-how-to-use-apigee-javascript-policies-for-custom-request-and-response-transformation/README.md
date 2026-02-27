@@ -1,4 +1,4 @@
-# How to Use Apigee JavaScript Policies for Custom Request and Response Transformation
+# How to Use Apigee JavaScript Policies for Custom Request
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Log Analysis, ECS, Logstash, Kibana, Observability, DevOps, Logging
 
-Description: A comprehensive guide to using Elasticsearch for log analysis, covering index patterns, Elastic Common Schema (ECS), log parsing with Logstash, Kibana visualizations, and best practices for building a scalable logging infrastructure.
+Description: A comprehensive guide to using Elasticsearch for log analysis, covering index patterns, Elastic Common Schema (ECS), log parsing with Logstash, Kibana visualizations.
 
 ---
 

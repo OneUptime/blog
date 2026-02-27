@@ -1,4 +1,4 @@
-# How to Use the OTAP (OTel Arrow Protocol) Phase 2 Rust Libraries for End-to-End Arrow Pipelines
+# How to Use the OTAP Phase 2 Rust Libraries for End-to-End Arrow Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

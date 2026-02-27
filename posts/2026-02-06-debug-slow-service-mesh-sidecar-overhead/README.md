@@ -1,4 +1,4 @@
-# How to Debug Slow Service Mesh Sidecar Overhead by Comparing OpenTelemetry Traces With and Without Proxy
+# How to Debug Slow Service Mesh Sidecar Overhead by Comparing OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

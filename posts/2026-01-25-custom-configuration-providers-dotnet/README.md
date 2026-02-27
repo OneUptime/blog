@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, Configuration, Custom Providers, Dependency Injection
 
-Description: Learn how to build custom configuration providers in .NET to load settings from databases, APIs, or custom file formats. This guide covers the IConfigurationSource and IConfigurationProvider interfaces with practical examples.
+Description: Learn how to build custom configuration providers in .NET to load settings from databases, APIs, or custom file formats.
 
 ---
 

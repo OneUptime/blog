@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Sentinel Playbooks Using Logic Apps for Automated Incident Response
+# How to Set Up Microsoft Sentinel Playbooks Using Logic Apps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

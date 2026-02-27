@@ -1,4 +1,4 @@
-# How to Use Local-First OpenTelemetry Capture for AI Coding Agent Debugging Workflows
+# Use Local-First OpenTelemetry Capture for AI Coding Agent Debugging Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

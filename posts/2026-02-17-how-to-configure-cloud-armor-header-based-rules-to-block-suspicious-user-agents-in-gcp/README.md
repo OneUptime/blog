@@ -1,4 +1,4 @@
-# How to Configure Cloud Armor Header-Based Rules to Block Suspicious User-Agents in GCP
+# How to Configure Cloud Armor Header-Based Rules to Block Suspicious User-Agents
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Detect Insider Threat Patterns Using Google Cloud Audit Logs and Chronicle SIEM
+# How to Detect Insider Threat Patterns Using Google Cloud Audit Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

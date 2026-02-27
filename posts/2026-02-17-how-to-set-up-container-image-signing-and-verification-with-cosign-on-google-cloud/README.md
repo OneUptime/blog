@@ -1,4 +1,4 @@
-# How to Set Up Container Image Signing and Verification with Cosign on Google Cloud
+# How to Set Up Container Image Signing and Verification
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

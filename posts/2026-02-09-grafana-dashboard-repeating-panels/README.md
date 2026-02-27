@@ -1,4 +1,4 @@
-# How to Build Grafana Dashboard Templates with Repeating Panels for Kubernetes Namespaces
+# How to Build Grafana Dashboard Templates with Repeating Panels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

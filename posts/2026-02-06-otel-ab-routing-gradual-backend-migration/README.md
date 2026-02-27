@@ -1,4 +1,4 @@
-# How to Set Up A/B Routing in the Collector for Gradual Backend Migration Without Touching Application Code
+# How to Set Up A/B Routing in the Collector for Gradual Backend Migration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

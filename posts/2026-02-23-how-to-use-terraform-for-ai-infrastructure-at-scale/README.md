@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AI, Machine Learning, GPU, Infrastructure as Code
 
-Description: Learn how to use Terraform to provision and manage AI and machine learning infrastructure at scale, including GPU clusters, training pipelines, model serving endpoints, and data processing infrastructure.
+Description: Learn how to use Terraform to provision and manage AI and machine learning infrastructure at scale, including GPU clusters, training pipelines, model serving endpoints.
 
 ---
 

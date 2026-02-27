@@ -524,4 +524,4 @@ Understanding how Spring finds and creates beans helps you quickly resolve these
 *Need to monitor your Spring Boot application for errors? [OneUptime](https://oneuptime.com) provides comprehensive error tracking and logging for Java applications with instant alerts.*
 
 **Related Reading:**
-- [How to Fix "Unable to find a @SpringBootConfiguration" Errors](/blog/post/2025-12-22-unable-find-springbootconfiguration/view)
+- [How to Fix "Unable to find a @SpringBootConfiguration" Errors](https://oneuptime.com/blog/post/2025-12-22-unable-find-springbootconfiguration/view)

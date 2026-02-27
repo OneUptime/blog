@@ -1,4 +1,4 @@
-# How to Use Azure Pipelines Runtime Parameters to Create Configurable Pipeline Runs
+# Use Azure Pipelines Runtime Parameters to Create Configurable Pipeline Runs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

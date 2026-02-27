@@ -1,4 +1,4 @@
-# How to Enable Azure Information Protection Labels and Classify Sensitive Documents Automatically
+# How to Enable Azure Information Protection Labels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

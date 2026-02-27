@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry Auto-Instrumentation Not Working in Node.js ESM (import) Applications
+# Fix OpenTelemetry Auto-Instrumentation Not Working in Node.js ESM Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

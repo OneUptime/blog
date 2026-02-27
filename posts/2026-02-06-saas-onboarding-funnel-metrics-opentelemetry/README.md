@@ -1,4 +1,4 @@
-# How to Monitor SaaS Onboarding Flow Completion Rates and Bottlenecks with OpenTelemetry Funnel Metrics
+# How to Monitor SaaS Onboarding Flow Completion Rates and Bottlenecks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

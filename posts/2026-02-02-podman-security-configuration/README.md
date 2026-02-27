@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Security, Containers, Rootless, SELinux, DevOps, Linux
 
-Description: A comprehensive guide to securing Podman containers, covering rootless mode, user namespaces, SELinux policies, seccomp profiles, capability management, and network isolation for production environments.
+Description: A comprehensive guide to securing Podman containers, covering rootless mode, user namespaces, SELinux policies, seccomp profiles, capability management.
 
 ---
 

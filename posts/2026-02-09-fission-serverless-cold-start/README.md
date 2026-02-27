@@ -1,4 +1,4 @@
-# How to Deploy Fission Serverless Framework on Kubernetes for Cold-Start Optimized Functions
+# How to Deploy Fission Serverless Framework on K8s for Cold-Start Optimized
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

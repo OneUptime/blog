@@ -1,4 +1,4 @@
-# How to Store and Retrieve Backend Authentication Credentials from HashiCorp Vault for Collector Pipelines
+# How to Store and Retrieve Backend Auth Credentials from HashiCorp Vault for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

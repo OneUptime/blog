@@ -1,4 +1,4 @@
-# How to Set Up Continuous Compliance Validation in GCP CI/CD Pipelines Using Policy Controller
+# How to Set Up Continuous Compliance Validation in GCP CI/CD Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

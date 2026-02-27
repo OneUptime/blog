@@ -1,4 +1,4 @@
-# How to Enable OpenTelemetry Tracing in Caddy Server with the tracing Directive and OTLP gRPC Export
+# How to Enable OpenTelemetry Tracing in Caddy Server with the tracing Directive
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

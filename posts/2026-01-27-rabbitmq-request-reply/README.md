@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RabbitMQ, Message Queue, Request-Reply, RPC, Node.js, TypeScript, Microservices, Distributed Systems
 
-Description: Learn how to implement the request-reply (RPC) pattern in RabbitMQ with correlation IDs, reply-to queues, and timeout handling. Includes complete TypeScript examples for building reliable synchronous-style communication over asynchronous messaging.
+Description: Learn how to implement the request-reply (RPC) pattern in RabbitMQ with correlation IDs, reply-to queues, and timeout handling.
 
 ---
 
@@ -1306,5 +1306,5 @@ For production deployments, instrument your RPC layer with [OpenTelemetry](https
 
 ### See Also
 
-- [What are Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/) - Understand distributed tracing for RPC observability
-- [How to Build a Graceful Shutdown Handler in Node.js](/blog/post/2026-01-06-nodejs-graceful-shutdown-handler/) - Properly shut down RPC servers
+- [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Understand distributed tracing for RPC observability
+- [How to Build a Graceful Shutdown Handler in Node.js](https://oneuptime.com/blog/post/2026-01-06-nodejs-graceful-shutdown-handler/view) - Properly shut down RPC servers

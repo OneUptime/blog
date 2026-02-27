@@ -1,4 +1,4 @@
-# How to Set Up a Dev Container with Pre-Configured OpenTelemetry Collector and Jaeger for Local Development
+# How to Set Up a Dev Container with Pre-Configured OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

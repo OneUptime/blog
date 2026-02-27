@@ -1,4 +1,4 @@
-# How to Optimize BigQuery Query Performance by Eliminating Full Table Scans with Partitioning
+# How to Optimize BigQuery Query Performance by Eliminating Full Table Scans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

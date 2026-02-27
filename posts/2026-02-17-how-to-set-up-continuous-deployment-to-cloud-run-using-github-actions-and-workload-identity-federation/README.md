@@ -1,4 +1,4 @@
-# How to Set Up Continuous Deployment to Cloud Run Using GitHub Actions and Workload Identity Federation
+# How to Set Up Continuous Deployment to Cloud Run Using GitHub Actions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

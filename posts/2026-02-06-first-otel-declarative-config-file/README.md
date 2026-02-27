@@ -1,4 +1,4 @@
-# How to Write Your First OpenTelemetry Declarative Configuration File with Trace, Metric, and Log Pipelines
+# How to Write Your First OpenTelemetry Declarative Config File with Trace,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

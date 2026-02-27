@@ -1769,5 +1769,5 @@ The pattern adds complexity but provides crucial capabilities for collecting and
 ## See Also
 
 - [Enterprise Integration Patterns](https://www.enterpriseintegrationpatterns.com/patterns/messaging/Aggregator.html) - The original pattern documentation
-- [Message Queues and Async Processing](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces) - Understanding distributed system observability
-- [Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry) - Tracing aggregator operations across services
+- [Message Queues and Async Processing](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view) - Understanding distributed system observability
+- [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Tracing aggregator operations across services

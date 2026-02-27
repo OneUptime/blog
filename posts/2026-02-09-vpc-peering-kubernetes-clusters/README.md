@@ -1,4 +1,4 @@
-# How to Set Up VPC Peering Between Kubernetes Clusters on Different Cloud Providers
+# How to Set Up VPC Peering Between Kubernetes Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Cross-Project Audit Log Aggregation with Organization-Level Log Sinks
+# Set Up Cross-Project Audit Log Aggregation with Organization-Level Log Sinks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

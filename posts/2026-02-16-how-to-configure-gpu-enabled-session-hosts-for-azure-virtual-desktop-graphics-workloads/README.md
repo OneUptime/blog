@@ -1,4 +1,4 @@
-# How to Configure GPU-Enabled Session Hosts for Azure Virtual Desktop Graphics Workloads
+# Configure GPU-Enabled Session Hosts for Azure Virtual Desktop Graphics Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

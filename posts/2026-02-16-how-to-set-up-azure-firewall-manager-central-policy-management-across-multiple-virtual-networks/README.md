@@ -1,4 +1,4 @@
-# How to Set Up Azure Firewall Manager Central Policy Management Across Multiple Virtual Networks
+# How to Set Up Azure Firewall Manager Central Policy Mgmt Across Multi Virtual
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

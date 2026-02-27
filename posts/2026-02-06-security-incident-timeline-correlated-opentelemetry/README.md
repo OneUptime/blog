@@ -1,4 +1,4 @@
-# How to Build a Security Incident Timeline from Correlated OpenTelemetry Traces, Logs, and Metrics
+# How to Build a Security Incident Timeline from Correlated OpenTelemetry Traces,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

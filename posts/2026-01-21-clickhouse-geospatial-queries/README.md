@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Geospatial, H3, Location Data, Analytics
 
-Description: A comprehensive guide to performing geospatial queries in ClickHouse, including point-in-polygon tests, distance calculations, H3 hexagonal indexes, and spatial aggregations for location-based analytics.
+Description: A comprehensive guide to performing geospatial queries in ClickHouse, including point-in-polygon tests, distance calculations, H3 hexagonal indexes.
 
 ---
 

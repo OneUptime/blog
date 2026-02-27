@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector to Export Traces to Lightstep with TLS and Retry Policies
+# How to Configure the OpenTelemetry Collector to Export Traces to Lightstep
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

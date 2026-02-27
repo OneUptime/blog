@@ -1,4 +1,4 @@
-# How to Set Up a Google Cloud Workstation Cluster and Configuration for Your Development Team
+# How to Set Up a Google Cloud Workstation Cluster and Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

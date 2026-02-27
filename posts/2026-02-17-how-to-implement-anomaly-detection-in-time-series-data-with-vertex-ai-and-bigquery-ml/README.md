@@ -1,4 +1,4 @@
-# How to Implement Anomaly Detection in Time-Series Data with Vertex AI and BigQuery ML
+# How to Use Anomaly Detection in Time-Series Data with Vertex AI and BigQuery ML
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

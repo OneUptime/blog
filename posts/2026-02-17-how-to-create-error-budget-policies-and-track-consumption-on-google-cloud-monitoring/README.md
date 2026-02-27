@@ -1,4 +1,4 @@
-# How to Create Error Budget Policies and Track Consumption on Google Cloud Monitoring
+# How to Create Error Budget Policies and Track Consumption
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build Azure Notification Hub Namespace with Platform Notification Settings in Terraform
+# How to Build Azure Notification Hub Namespace with Platform Notification
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

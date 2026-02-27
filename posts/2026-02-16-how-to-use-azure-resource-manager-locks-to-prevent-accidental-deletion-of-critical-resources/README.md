@@ -1,4 +1,4 @@
-# How to Use Azure Resource Manager Locks to Prevent Accidental Deletion of Critical Resources
+# How to Use Azure Resource Manager Locks to Prevent Accidental Deletion of
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

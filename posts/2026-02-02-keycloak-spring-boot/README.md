@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Keycloak, Spring Boot, Authentication, Java
 
-Description: A comprehensive guide to integrating Keycloak identity and access management with Spring Boot applications, covering OAuth2/OIDC configuration, role-based access control, custom security filters, and production best practices.
+Description: A comprehensive guide to integrating Keycloak identity and access management with Spring Boot applications, covering OAuth2/OIDC configuration, role-based access control, custom security filters.
 
 ---
 

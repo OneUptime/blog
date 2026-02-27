@@ -1,10 +1,10 @@
-# How to Deploy MySQL Using Percona XtraDB Cluster Operator for Multi-Master Replication
+# Deploy MySQL Using Percona XtraDB Cluster Operator for Multi-Master Replication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Kubernetes, Percona XtraDB, Multi-Master, High Availability
 
-Description: Learn how to deploy MySQL using the Percona XtraDB Cluster Operator for multi-master replication on Kubernetes, enabling synchronous replication, high availability, and active-active database architectures.
+Description: Learn how to deploy MySQL using the Percona XtraDB Cluster Operator for multi-master replication on Kubernetes, enabling synchronous replication, high availability.
 
 ---
 

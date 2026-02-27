@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Capacity Planning, DevOps, Infrastructure, Scaling, Monitoring, SRE, Performance
 
-Description: A practical guide to implementing capacity planning for services, covering resource forecasting, monitoring setup, load testing, and scaling strategies to ensure your systems handle growth without downtime.
+Description: A practical guide to implementing capacity planning for services, covering resource forecasting, monitoring setup, load testing.
 
 ---
 

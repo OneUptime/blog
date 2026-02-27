@@ -1,4 +1,4 @@
-# How to Use Field Transforms in Firestore for Atomic Increments and Array Operations
+# How to Use Field Transforms in Firestore for Atomic Increments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

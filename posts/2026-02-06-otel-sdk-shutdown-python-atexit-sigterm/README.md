@@ -1,4 +1,4 @@
-# How to Handle OpenTelemetry SDK Shutdown in Python with atexit Hooks and SIGTERM Signal Handlers
+# How to Handle OpenTelemetry SDK Shutdown in Python with atexit Hooks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

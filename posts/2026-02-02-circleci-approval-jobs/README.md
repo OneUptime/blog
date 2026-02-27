@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CircleCI, CI/CD, Approval Jobs, DevOps, Workflows, Deployment Safety
 
-Description: A practical guide to implementing CircleCI approval jobs for production deployments. Covers manual approval gates, conditional approvals, multi-stage pipelines, Slack integration, and best practices for safe deployment workflows.
+Description: A practical guide to implementing CircleCI approval jobs for production deployments.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure Kubernetes Pod Topology Spread Constraints for True High Availability
+# How to Configure Kubernetes Pod Topology Spread Constraints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

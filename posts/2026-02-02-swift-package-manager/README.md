@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Swift, SPM, Package Manager, iOS
 
-Description: A comprehensive guide to using Swift Package Manager (SPM) for dependency management in Swift projects. Learn how to create packages, manage dependencies, and implement best practices for iOS and macOS development.
+Description: A comprehensive guide to using Swift Package Manager (SPM) for dependency management in Swift projects.
 
 ---
 

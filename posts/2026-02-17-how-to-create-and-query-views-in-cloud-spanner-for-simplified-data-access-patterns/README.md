@@ -1,4 +1,4 @@
-# How to Create and Query Views in Cloud Spanner for Simplified Data Access Patterns
+# How to Create and Query Views in Cloud Spanner
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Azure Container Storage for AKS with Local NVMe and Azure Disk Backends
+# How to Set Up Azure Container Storage for AKS with Local NVMe
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

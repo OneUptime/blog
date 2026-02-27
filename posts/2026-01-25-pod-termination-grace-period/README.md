@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Pod Lifecycle, Graceful Shutdown, DevOps, Reliability
 
-Description: Learn how to configure pod termination grace periods in Kubernetes for graceful shutdowns. This guide covers setting appropriate timeouts, handling SIGTERM signals, and implementing preStop hooks for zero-downtime deployments.
+Description: Learn how to configure pod termination grace periods in Kubernetes for graceful shutdowns.
 
 ---
 

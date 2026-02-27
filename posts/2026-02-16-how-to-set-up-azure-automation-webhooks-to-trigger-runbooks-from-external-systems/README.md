@@ -1,4 +1,4 @@
-# How to Set Up Azure Automation Webhooks to Trigger Runbooks from External Systems
+# Set Up Azure Automation Webhooks to Trigger Runbooks from External Systems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

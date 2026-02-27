@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elixir, GenServer, Background Processing, OTP, Concurrency, Functional Programming
 
-Description: Learn how to use GenServers in Elixir for background processing. This guide covers GenServer basics, state management, async task processing, supervision trees, and production patterns for building reliable background workers.
+Description: Learn how to use GenServers in Elixir for background processing.
 
 ---
 

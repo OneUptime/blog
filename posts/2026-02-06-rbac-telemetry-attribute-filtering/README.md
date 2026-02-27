@@ -1,4 +1,4 @@
-# How to Set Up Role-Based Access Control for Telemetry Data Using Collector-Level Attribute Filtering
+# How to Set Up Role-Based Access Control for Telemetry Data Using
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

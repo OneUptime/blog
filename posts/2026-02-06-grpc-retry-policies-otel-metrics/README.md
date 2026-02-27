@@ -1,4 +1,4 @@
-# How to Track gRPC Retry Policies and Attempt Counts Using OpenTelemetry Per-Call and Per-Attempt Metrics
+# How to Track gRPC Retry Policies and Attempt Counts Using OpenTelemetry Per-Call
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

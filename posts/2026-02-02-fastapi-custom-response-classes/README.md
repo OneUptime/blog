@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: FastAPI, Python, Response, API, Custom Response, Web Development, REST API
 
-Description: Learn how to implement custom response classes in FastAPI to control response formats, headers, compression, and content types. This guide covers built-in response classes, creating custom responses, streaming, and production patterns.
+Description: Learn how to implement custom response classes in FastAPI to control response formats, headers, compression, and content types.
 
 ---
 

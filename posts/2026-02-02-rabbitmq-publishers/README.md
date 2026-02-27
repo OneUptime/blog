@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RabbitMQ, Message Queue, NodeJS, Python, Distributed Systems, Microservices, Backend
 
-Description: Learn how to build robust RabbitMQ publishers in Node.js and Python. Covers connection management, message persistence, publisher confirms, exchange types, error handling, and production best practices.
+Description: Learn how to build robust RabbitMQ publishers in Node.js and Python.
 
 ---
 

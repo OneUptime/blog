@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Metrics Aggregation at the Source to Reduce Cardinality Costs
+# Use OpenTelemetry Metrics Aggregation at the Source to Reduce Cardinality Costs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

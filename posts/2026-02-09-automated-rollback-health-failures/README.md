@@ -1,4 +1,4 @@
-# How to Build Automated Rollback Procedures Triggered by Kubernetes Health Check Failures
+# How to Build Automated Rollback Procedures Triggered by K8s Health Check
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

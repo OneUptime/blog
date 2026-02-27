@@ -1,4 +1,4 @@
-# How to Set Up Firebase Auth with Custom Claims for Role-Based Access Control in GCP
+# How to Set Up Firebase Auth with Custom Claims for Role-Based Access Control
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

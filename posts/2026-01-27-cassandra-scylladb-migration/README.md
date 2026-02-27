@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cassandra, ScyllaDB, Database Migration, NoSQL, Performance, DevOps
 
-Description: A comprehensive guide to migrating from Apache Cassandra to ScyllaDB, covering planning strategies, data migration with sstableloader, driver compatibility, dual-write patterns, and validation techniques for zero-downtime migrations.
+Description: A comprehensive guide to migrating from Apache Cassandra to ScyllaDB, covering planning strategies, data migration with sstableloader, driver compatibility, dual-write patterns.
 
 ---
 

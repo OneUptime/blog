@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, Kubernetes, Deployment, CI/CD, DevOps, Container Orchestration
 
-Description: Learn how to deploy applications to Kubernetes clusters using GitHub Actions. This guide covers kubectl setup, Helm deployments, rolling updates, environment management, and integration with cloud providers.
+Description: Learn how to deploy applications to Kubernetes clusters using GitHub Actions.
 
 ---
 

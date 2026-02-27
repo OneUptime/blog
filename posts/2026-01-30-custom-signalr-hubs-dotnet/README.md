@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, SignalR, ASP.NET Core, C#, WebSockets, Real-Time, Hub Filters, MessagePack
 
-Description: Learn advanced techniques for building custom SignalR hubs in .NET. This guide covers hub filters, custom protocols, user providers, validation patterns, and production-ready practices for real-time applications.
+Description: Learn advanced techniques for building custom SignalR hubs in .NET.
 
 ---
 

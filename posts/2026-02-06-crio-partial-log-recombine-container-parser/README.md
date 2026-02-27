@@ -1,4 +1,4 @@
-# How to Recombine Partial CRI-O Container Log Lines in the Collector Pipeline Using the Container Parser
+# How to Recombine Partial CRI-O Container Log Lines in the Collector Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

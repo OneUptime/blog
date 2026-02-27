@@ -1,4 +1,4 @@
-# How to Use Firewall Insights to Identify Shadowed and Overly Permissive Firewall Rules
+# How to Use Firewall Insights to Identify Shadowed
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

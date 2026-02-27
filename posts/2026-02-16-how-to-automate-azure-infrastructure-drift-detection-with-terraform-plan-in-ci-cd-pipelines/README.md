@@ -1,4 +1,4 @@
-# How to Automate Azure Infrastructure Drift Detection with Terraform Plan in CI/CD Pipelines
+# How to Automate Azure Infra Drift Detection with Terraform Plan in CI/CD
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

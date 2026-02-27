@@ -1,4 +1,4 @@
-# How to Build a Shopify Backend Integration with Azure Functions for Order Processing and Fulfillment
+# How to Build a Shopify Backend Integration with Azure Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

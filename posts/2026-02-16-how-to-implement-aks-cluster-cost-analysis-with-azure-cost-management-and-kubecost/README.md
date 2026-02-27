@@ -1,4 +1,4 @@
-# How to Implement AKS Cluster Cost Analysis with Azure Cost Management and Kubecost
+# How to Use AKS Cluster Cost Analysis with Azure Cost Management and Kubecost
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

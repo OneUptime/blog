@@ -1,4 +1,4 @@
-# How to Build a Go HTTP Service and Deploy It to Cloud Run with Minimal Docker Image
+# How to Build a Go HTTP Service and Deploy It to Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

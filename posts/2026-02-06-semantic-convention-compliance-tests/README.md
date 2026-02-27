@@ -1,4 +1,4 @@
-# How to Validate Semantic Convention Compliance in Your Spans Using Automated Tests
+# How to Validate Semantic Convention Compliance in Your Spans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

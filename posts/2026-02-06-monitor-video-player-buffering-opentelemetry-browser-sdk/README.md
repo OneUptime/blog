@@ -1,4 +1,4 @@
-# How to Monitor Video Player Buffering, Rebuffering, and Start-Up Time with OpenTelemetry Browser SDK
+# How to Monitor Video Player Buffering, Rebuffering, and Start-Up Time
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

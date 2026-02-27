@@ -1,4 +1,4 @@
-# How to Implement Pulumi Policy Packs for Kubernetes Resource Compliance Enforcement
+# How to Use Pulumi Policy Packs for Kubernetes Resource Compliance Enforcement
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

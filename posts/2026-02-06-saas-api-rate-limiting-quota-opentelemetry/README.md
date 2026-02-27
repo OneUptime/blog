@@ -1,4 +1,4 @@
-# How to Monitor SaaS API Rate Limiting and Quota Enforcement Across Tenants with OpenTelemetry
+# How to Monitor SaaS API Rate Limiting and Quota Enforcement Across Tenants
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

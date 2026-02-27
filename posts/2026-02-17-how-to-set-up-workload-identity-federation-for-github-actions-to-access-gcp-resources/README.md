@@ -1,4 +1,4 @@
-# How to Set Up Workload Identity Federation for GitHub Actions to Access GCP Resources
+# Set Up Workload Identity Federation for GitHub Actions to Access GCP Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

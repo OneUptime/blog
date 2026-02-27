@@ -1,4 +1,4 @@
-# How to Parse NGINX Access Logs into Structured OpenTelemetry Attributes with Custom Regex Patterns
+# How to Parse NGINX Access Logs into Structured OpenTelemetry Attributes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

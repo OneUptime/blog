@@ -1,4 +1,4 @@
-# How to Instrument gRPC Bidirectional Streaming with OpenTelemetry for Per-Message Span Tracking
+# How to Instrument gRPC Bidirectional Streaming with OpenTelemetry for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

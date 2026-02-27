@@ -1,4 +1,4 @@
-# How to Monitor Social Login and OAuth Provider Integration Latency with OpenTelemetry
+# How to Monitor Social Login and OAuth Provider Integration Latency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

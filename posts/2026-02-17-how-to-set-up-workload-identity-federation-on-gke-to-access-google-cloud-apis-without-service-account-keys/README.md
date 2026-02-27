@@ -1,4 +1,4 @@
-# How to Set Up Workload Identity Federation on GKE to Access Google Cloud APIs Without Service Account Keys
+# How to Set Up Workload Identity Federation on GKE to Access Google Cloud APIs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

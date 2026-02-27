@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Performance, Partitioning, Optimization, Big Data
 
-Description: Learn how to handle billion-row tables in PostgreSQL with partitioning, proper indexing, query optimization, and maintenance strategies. This guide covers practical techniques for managing massive datasets efficiently.
+Description: Learn how to handle billion-row tables in PostgreSQL with partitioning, proper indexing, query optimization, and maintenance strategies.
 
 ---
 

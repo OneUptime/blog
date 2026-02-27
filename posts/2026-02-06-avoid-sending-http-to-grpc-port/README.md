@@ -1,4 +1,4 @@
-# How to Avoid the Anti-Pattern of Sending OTLP/HTTP Traffic to the gRPC Port and Getting Protocol Errors
+# How to Avoid the Anti-Pattern of Sending OTLP/HTTP Traffic to the gRPC Port
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

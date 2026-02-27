@@ -1,4 +1,4 @@
-# How to Build an Internal OpenTelemetry Developer Portal with Self-Service Instrumentation Templates
+# How to Build an Internal OpenTelemetry Developer Portal with Self-Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

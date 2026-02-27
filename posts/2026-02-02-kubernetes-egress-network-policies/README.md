@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Network Policies, Egress, Security, Networking, DevOps, Cloud Native
 
-Description: A practical guide to implementing Kubernetes egress network policies for controlling outbound traffic from pods, including CIDR-based rules, DNS-based filtering, namespace isolation, and monitoring strategies.
+Description: A practical guide to implementing Kubernetes egress network policies for controlling outbound traffic from pods, including CIDR-based rules, DNS-based filtering, namespace isolation.
 
 ---
 

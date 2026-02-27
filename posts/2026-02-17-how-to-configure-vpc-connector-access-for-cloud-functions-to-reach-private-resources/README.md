@@ -1,4 +1,4 @@
-# How to Configure VPC Connector Access for Cloud Functions to Reach Private Resources
+# Configure VPC Connector Access for Cloud Functions to Reach Private Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

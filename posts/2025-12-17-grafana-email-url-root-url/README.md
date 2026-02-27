@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Configuration, Email Alerts, Notifications, DevOps
 
-Description: Learn how to properly configure Grafana's root_url setting to ensure email notifications contain correct dashboard links. This guide covers configuration options, reverse proxy setups, and troubleshooting common issues.
+Description: Learn how to properly configure Grafana's root_url setting to ensure email notifications contain correct dashboard links.
 
 ---
 

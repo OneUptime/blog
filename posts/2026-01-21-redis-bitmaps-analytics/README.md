@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Bitmaps, Analytics, Feature Flags, User Activity, Memory Efficient, SETBIT, GETBIT, BITCOUNT
 
-Description: A comprehensive guide to using Redis Bitmaps for analytics and feature flags, covering SETBIT, GETBIT, BITCOUNT, BITOP commands, and practical examples in Python, Node.js, and Go for user activity tracking, feature flags, and real-time analytics.
+Description: A comprehensive guide to using Redis Bitmaps for analytics and feature flags, covering SETBIT, GETBIT, BITCOUNT, BITOP commands, and practical examples in Python, Node.
 
 ---
 

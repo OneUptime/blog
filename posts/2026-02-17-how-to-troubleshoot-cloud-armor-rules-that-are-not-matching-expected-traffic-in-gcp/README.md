@@ -1,4 +1,4 @@
-# How to Troubleshoot Cloud Armor Rules That Are Not Matching Expected Traffic in GCP
+# How to Troubleshoot Cloud Armor Rules That Are Not Matching Expected Traffic
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

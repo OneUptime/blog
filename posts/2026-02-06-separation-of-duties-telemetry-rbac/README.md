@@ -1,4 +1,4 @@
-# How to Implement Separation of Duties for Telemetry Data Access Using OpenTelemetry and RBAC
+# How to Use Separation of Duties for Telemetry Data Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

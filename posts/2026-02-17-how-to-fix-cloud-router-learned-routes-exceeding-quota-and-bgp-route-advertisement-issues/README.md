@@ -1,4 +1,4 @@
-# How to Fix Cloud Router Learned Routes Exceeding Quota and BGP Route Advertisement Issues
+# How to Fix Cloud Router Learned Routes Exceeding Quota
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

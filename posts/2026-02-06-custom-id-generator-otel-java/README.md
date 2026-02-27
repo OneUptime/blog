@@ -1,4 +1,4 @@
-# How to Implement a Custom ID Generator for OpenTelemetry Trace and Span IDs in Java Applications
+# How to Build a Custom ID Generator for OpenTelemetry Trace and Span IDs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

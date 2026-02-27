@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector to Export Metrics and Traces to Observe Inc with Kubernetes Service Discovery
+# How to Configure the OpenTelemetry Collector to Export Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure AKS with Azure Firewall for Egress Traffic Filtering and FQDN Rules
+# How to Configure AKS with Azure Firewall for Egress Traffic Filtering
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

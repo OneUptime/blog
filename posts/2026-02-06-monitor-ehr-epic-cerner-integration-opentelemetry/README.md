@@ -1,4 +1,4 @@
-# How to Monitor EHR System (Epic, Cerner) Integration Performance with OpenTelemetry Custom Receivers
+# How to Monitor EHR System Integration Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot Cloud Run Service-to-Service Authentication Failures with Identity Tokens
+# How to Troubleshoot Cloud Run Service-to-Service Authentication Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

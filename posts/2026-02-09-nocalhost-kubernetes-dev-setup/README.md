@@ -1,4 +1,4 @@
-# How to Configure Nocalhost for One-Click Kubernetes Development Environment Setup
+# Configure Nocalhost for One-Click Kubernetes Development Environment Setup
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

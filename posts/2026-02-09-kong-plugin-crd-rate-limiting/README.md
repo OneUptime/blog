@@ -1,4 +1,4 @@
-# How to Configure Kong KongPlugin CRD for Rate Limiting and Request Transformation
+# How to Configure Kong KongPlugin CRD for Rate Limiting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

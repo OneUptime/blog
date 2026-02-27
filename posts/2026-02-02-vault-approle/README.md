@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HashiCorp Vault, Security, Authentication, Secrets Management, DevOps, Microservices
 
-Description: A comprehensive guide to implementing Vault AppRole authentication for machine-to-machine scenarios. Covers role configuration, secret ID management, token policies, and production best practices for secure secrets retrieval.
+Description: A comprehensive guide to implementing Vault AppRole authentication for machine-to-machine scenarios.
 
 ---
 

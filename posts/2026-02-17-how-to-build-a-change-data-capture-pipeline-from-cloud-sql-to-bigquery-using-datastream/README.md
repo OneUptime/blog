@@ -1,4 +1,4 @@
-# How to Build a Change Data Capture Pipeline from Cloud SQL to BigQuery Using Datastream
+# How to Build a Change Data Capture Pipeline from Cloud SQL to BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

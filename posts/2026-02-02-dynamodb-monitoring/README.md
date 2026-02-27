@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DynamoDB, AWS, Monitoring, Performance, NoSQL, CloudWatch, Observability
 
-Description: Learn how to monitor Amazon DynamoDB performance effectively. This guide covers key metrics, CloudWatch integration, capacity planning, throttling detection, and alerting strategies for production workloads.
+Description: Learn how to monitor Amazon DynamoDB performance effectively.
 
 ---
 

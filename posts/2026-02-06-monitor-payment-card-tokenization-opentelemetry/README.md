@@ -1,4 +1,4 @@
-# How to Monitor Payment Card Tokenization and Detokenization Service Performance with OpenTelemetry
+# How to Monitor Payment Card Tokenization and Detokenization Service Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

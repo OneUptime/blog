@@ -1,4 +1,4 @@
-# How to Use Network Analyzer to Detect VPN Tunnel and Load Balancer Misconfigurations
+# How to Use Network Analyzer to Detect VPN Tunnel
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

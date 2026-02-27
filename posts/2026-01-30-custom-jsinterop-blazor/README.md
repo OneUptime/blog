@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Blazor, JavaScript, JSInterop, C#, .NET, WebAssembly, Web Development
 
-Description: Learn how to build custom JavaScript interoperability in Blazor applications with production-ready patterns including typed wrappers, module isolation, memory management, and bidirectional communication.
+Description: Learn how to build custom JavaScript interoperability in Blazor applications with production-ready patterns including typed wrappers, module isolation, memory management.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, VPA, HPA
 
-Description: Learn how to safely use Vertical Pod Autoscaler and Horizontal Pod Autoscaler together by splitting metrics, using VPA in recommendation mode, and avoiding conflicts between vertical and horizontal scaling.
+Description: Learn how to safely use Vertical Pod Autoscaler and Horizontal Pod Autoscaler together by splitting metrics, using VPA in recommendation mode.
 
 ---
 

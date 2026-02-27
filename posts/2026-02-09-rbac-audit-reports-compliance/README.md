@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, RBAC, Security, Compliance, Audit, Access Control
 
-Description: Generate automated RBAC audit reports for Kubernetes clusters that identify excessive permissions, unused roles, and privilege escalation risks to support periodic compliance reviews and security audits.
+Description: Generate automated RBAC audit reports for Kubernetes clusters that identify excessive permissions, unused roles.
 
 ---
 

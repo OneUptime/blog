@@ -1,4 +1,4 @@
-# How to Implement Row-Level Security Policies in BigQuery with Column-Level Access Controls
+# Use Row-Level Security Policies in BigQuery with Column-Level Access Controls
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

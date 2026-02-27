@@ -1,4 +1,4 @@
-# How to Build a Fan-In Architecture That Aggregates Telemetry from Hundreds of Agent Collectors into Gateway Collectors
+# How to Build a Fan-In Architecture That Aggregates Telemetry from Hundreds of
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

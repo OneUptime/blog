@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Velero, Backup, Disaster Recovery, DR, Migration, S3, Persistent Volumes
 
-Description: Learn how to implement comprehensive backup and disaster recovery for Kubernetes clusters using Velero, covering backing up resources, persistent volumes, scheduled backups, and cross-cluster restores.
+Description: Learn how to implement comprehensive backup and disaster recovery for Kubernetes clusters using Velero, covering backing up resources, persistent volumes, scheduled backups.
 
 ---
 

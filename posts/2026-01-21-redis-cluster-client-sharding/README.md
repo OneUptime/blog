@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Cluster, Sharding, Hash Tags, Distributed Systems, Scalability, Performance
 
-Description: A comprehensive guide to using Redis Cluster with client-side sharding techniques, covering hash tags for co-locating related keys, handling cross-slot operations, implementing sharding strategies, and best practices for distributed data access patterns.
+Description: A comprehensive guide to using Redis Cluster with client-side sharding techniques, covering hash tags for co-locating related keys, handling cross-slot operations, implementing sharding strategies.
 
 ---
 

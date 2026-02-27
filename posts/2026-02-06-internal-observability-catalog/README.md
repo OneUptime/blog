@@ -1,4 +1,4 @@
-# How to Build an Internal Observability Catalog Where Teams Register Their Services and Telemetry Contracts
+# How to Build an Internal Observability Catalog Where Teams Register Their
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

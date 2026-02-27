@@ -1,4 +1,4 @@
-# How to Use the Go Secret Manager Client Library to Load Configuration at Startup in Cloud Run
+# How to Use the Go Secret Manager Client Library to Load Configuration at Startup
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

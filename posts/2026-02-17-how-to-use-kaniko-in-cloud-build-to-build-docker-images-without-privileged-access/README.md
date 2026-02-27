@@ -1,4 +1,4 @@
-# How to Use Kaniko in Cloud Build to Build Docker Images Without Privileged Access
+# Use Kaniko in Cloud Build to Build Docker Images Without Privileged Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

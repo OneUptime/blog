@@ -1,4 +1,4 @@
-# How to Build an Asynchronous FastAPI Service That Reads and Writes to Firestore on Cloud Run
+# How to Build an Asynchronous FastAPI Service That Reads and Writes to Firestore
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

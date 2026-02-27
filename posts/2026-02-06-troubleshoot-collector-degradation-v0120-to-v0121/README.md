@@ -1,4 +1,4 @@
-# How to Troubleshoot Collector Performance Degradation After Upgrading from v0.120 to v0.121 Versions
+# How to Troubleshoot Collector Performance Degradation After Upgrading from
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

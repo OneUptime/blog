@@ -1,4 +1,4 @@
-# How to Monitor API Key Usage and Rotation Events with OpenTelemetry Custom Metrics
+# How to Monitor API Key Usage and Rotation Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

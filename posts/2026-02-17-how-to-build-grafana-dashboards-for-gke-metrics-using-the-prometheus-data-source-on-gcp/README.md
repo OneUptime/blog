@@ -1,4 +1,4 @@
-# How to Build Grafana Dashboards for GKE Metrics Using the Prometheus Data Source on GCP
+# How to Build Grafana Dashboards for GKE Metrics Using the Prometheus Data Source
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

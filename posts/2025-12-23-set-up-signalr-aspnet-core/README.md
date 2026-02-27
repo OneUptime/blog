@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, ASP.NET Core, C#, SignalR, WebSockets, Real-time, Notifications
 
-Description: Learn how to implement real-time functionality in ASP.NET Core applications using SignalR. This guide covers hub creation, client connections, authentication, scaling with Redis, and best practices for building real-time features.
+Description: Learn how to implement real-time functionality in ASP.NET Core applications using SignalR.
 
 SignalR enables real-time, bidirectional communication between servers and clients. This guide shows you how to implement SignalR in ASP.NET Core for features like live notifications, chat, and real-time dashboards.
 

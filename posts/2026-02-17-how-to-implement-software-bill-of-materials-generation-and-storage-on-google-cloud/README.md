@@ -1,4 +1,4 @@
-# How to Implement Software Bill of Materials Generation and Storage on Google Cloud
+# How to Use Software Bill of Materials Generation and Storage on Google Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

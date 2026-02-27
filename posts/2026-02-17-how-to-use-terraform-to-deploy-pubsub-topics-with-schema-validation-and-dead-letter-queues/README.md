@@ -1,4 +1,4 @@
-# How to Use Terraform to Deploy Pub/Sub Topics with Schema Validation and Dead Letter Queues
+# How to Use Terraform to Deploy Pub/Sub Topics with Schema Validation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

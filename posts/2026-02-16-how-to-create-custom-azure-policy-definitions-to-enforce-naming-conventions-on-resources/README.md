@@ -1,4 +1,4 @@
-# How to Create Custom Azure Policy Definitions to Enforce Naming Conventions on Resources
+# How to Create Custom Azure Policy Definitions to Enforce Naming Conventions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Monitor MySQL InnoDB Buffer Pool, Slow Query Rate, and Thread State with the MySQL Receiver
+# How to Monitor MySQL InnoDB Buffer Pool, Slow Query Rate, and Thread State
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

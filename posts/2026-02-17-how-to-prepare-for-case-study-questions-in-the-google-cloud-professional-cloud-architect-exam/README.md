@@ -1,4 +1,4 @@
-# How to Prepare for Case Study Questions in the Google Cloud Professional Cloud Architect Exam
+# How to Prepare for Case Study Questions in the Google Cloud Professional Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

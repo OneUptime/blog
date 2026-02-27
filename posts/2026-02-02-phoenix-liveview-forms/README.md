@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elixir, Phoenix, LiveView, Forms, Validation
 
-Description: Learn how to implement robust form validation in Phoenix LiveView with real-time feedback, changesets, and error handling. This guide covers inline validation, custom validators, and production-ready patterns.
+Description: Learn how to implement robust form validation in Phoenix LiveView with real-time feedback, changesets, and error handling.
 
 ---
 

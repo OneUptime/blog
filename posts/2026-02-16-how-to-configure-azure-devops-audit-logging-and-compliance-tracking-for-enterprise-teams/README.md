@@ -1,4 +1,4 @@
-# How to Configure Azure DevOps Audit Logging and Compliance Tracking for Enterprise Teams
+# How to Configure Azure DevOps Audit Logging and Compliance Tracking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

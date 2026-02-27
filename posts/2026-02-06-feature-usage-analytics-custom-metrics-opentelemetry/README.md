@@ -1,4 +1,4 @@
-# How to Instrument Feature Usage Analytics with OpenTelemetry Custom Metrics for Product-Led Growth
+# How to Instrument Feature Usage Analytics with OpenTelemetry Custom Metrics for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

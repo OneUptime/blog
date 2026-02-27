@@ -1,4 +1,4 @@
-# How to Configure DRM Content Protection with Widevine and PlayReady in Azure Media Services
+# How to Configure DRM Content Protection with Widevine and PlayReady
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

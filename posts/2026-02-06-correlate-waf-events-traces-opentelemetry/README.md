@@ -1,4 +1,4 @@
-# How to Correlate WAF Events with Application Traces Using the OpenTelemetry Collector Syslog Receiver
+# How to Correlate WAF Events with App Traces Using the OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

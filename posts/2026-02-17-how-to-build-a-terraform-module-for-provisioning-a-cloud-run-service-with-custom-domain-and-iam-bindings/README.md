@@ -1,4 +1,4 @@
-# How to Build a Terraform Module for Provisioning a Cloud Run Service with Custom Domain and IAM Bindings
+# How to Build a Terraform Module for Provisioning a Cloud Run Service with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

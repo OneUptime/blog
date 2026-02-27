@@ -1,4 +1,4 @@
-# How to Implement Mutation Testing for OpenTelemetry Instrumentation to Verify Span Coverage
+# Use Mutation Testing for OpenTelemetry Instrumentation to Verify Span Coverage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

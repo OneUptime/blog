@@ -1,4 +1,4 @@
-# How to Achieve Operational Excellence Using Azure Well-Architected Framework Principles
+# Achieve Operational Excellence Using Azure Well-Architected Framework Principles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

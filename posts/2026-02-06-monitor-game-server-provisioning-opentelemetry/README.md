@@ -1,4 +1,4 @@
-# How to Monitor Dedicated Game Server Provisioning Latency (Agones, GameLift) with OpenTelemetry
+# How to Monitor Dedicated Game Server Provisioning Latency with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

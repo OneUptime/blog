@@ -1,4 +1,4 @@
-# How to Fix Context Loss in Python Asyncio Tasks When OpenTelemetry Trace Context Is Not Propagated
+# How to Fix Context Loss in Python Asyncio Tasks When OpenTelemetry Trace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

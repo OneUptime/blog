@@ -1,4 +1,4 @@
-# How to Use Azure Application Insights Application Map to Visualize Microservice Dependencies
+# How to Use Azure App Insights App Map to Visualize Microservice Dependencies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

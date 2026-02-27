@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flux, GitOps, Drift Detection, Configuration Management, Kubernetes
 
-Description: Learn how to use Flux drift detection capabilities to identify when cluster state diverges from Git, automatically remediate unauthorized changes, and maintain strict GitOps compliance across your Kubernetes infrastructure.
+Description: Learn how to use Flux drift detection capabilities to identify when cluster state diverges from Git, automatically remediate unauthorized changes.
 
 ---
 

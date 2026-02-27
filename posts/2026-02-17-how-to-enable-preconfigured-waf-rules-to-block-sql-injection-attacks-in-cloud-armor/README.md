@@ -1,4 +1,4 @@
-# How to Enable Preconfigured WAF Rules to Block SQL Injection Attacks in Cloud Armor
+# How to Enable Preconfigured WAF Rules to Block SQL Injection Attacks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Serverless Scheduled Job System on GCP Using Cloud Scheduler and Cloud Functions
+# How to Build a Serverless Scheduled Job System on GCP Using Cloud Scheduler
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

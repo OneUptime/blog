@@ -1,4 +1,4 @@
-# How to Fix DaemonSet Collector Not Collecting Logs from All Pods Due to Incorrect Filelog Receiver Path Patterns
+# How to Fix DaemonSet Collector Not Collecting Logs from All Pods Due to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

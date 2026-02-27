@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Azure, Key Vault, Encryption, Security, State Management
 
-Description: A step-by-step guide to encrypting Terraform state files using Azure Key Vault and Azure Storage, covering key vault setup, storage account encryption, access policies, and managed identity integration.
+Description: A step-by-step guide to encrypting Terraform state files using Azure Key Vault and Azure Storage, covering key vault setup, storage account encryption, access policies.
 
 ---
 

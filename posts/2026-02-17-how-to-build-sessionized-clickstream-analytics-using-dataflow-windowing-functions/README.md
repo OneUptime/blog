@@ -1,4 +1,4 @@
-# How to Build Sessionized Clickstream Analytics Using Dataflow Windowing Functions
+# How to Build Sessionized Clickstream Analytics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

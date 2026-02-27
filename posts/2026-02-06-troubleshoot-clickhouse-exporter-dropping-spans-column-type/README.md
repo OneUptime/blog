@@ -1,4 +1,4 @@
-# How to Troubleshoot ClickHouse Exporter Dropping Spans Due to Column Type Mismatch After Schema Migration
+# How to Troubleshoot ClickHouse Exporter Dropping Spans Due to Column Type
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

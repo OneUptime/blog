@@ -1,4 +1,4 @@
-# How to Audit Kubernetes RBAC Permissions Using kubectl auth can-i and RBAC Manager
+# How to Audit Kubernetes RBAC Permissions Using kubectl auth can-i
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

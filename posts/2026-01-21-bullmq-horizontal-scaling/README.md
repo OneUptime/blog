@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Horizontal Scaling, Load Balancing, Distributed Systems, Performance
 
-Description: A comprehensive guide to scaling BullMQ workers horizontally across multiple processes and nodes, including multi-process workers, distributed deployment patterns, and strategies for handling high-throughput job processing.
+Description: A comprehensive guide to scaling BullMQ workers horizontally across multiple processes and nodes, including multi-process workers, distributed deployment patterns.
 
 ---
 

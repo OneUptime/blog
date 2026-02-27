@@ -1,4 +1,4 @@
-# How to Set Up Azure Confidential VMs with Customer-Managed Keys for Full Disk Encryption
+# How to Set Up Azure Confidential VMs with Customer-Managed Keys
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

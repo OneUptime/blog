@@ -1,4 +1,4 @@
-# How to Fix Google Cloud Load Balancer 504 Gateway Timeout on Long-Running Requests
+# Fix Google Cloud Load Balancer 504 Gateway Timeout on Long-Running Requests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

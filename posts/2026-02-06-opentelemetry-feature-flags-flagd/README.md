@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Feature Flags (flagd) to Correlate A/B Test Variants with Performance Metrics
+# How to Use OpenTelemetry Feature Flags to Correlate A/B Test Variants
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

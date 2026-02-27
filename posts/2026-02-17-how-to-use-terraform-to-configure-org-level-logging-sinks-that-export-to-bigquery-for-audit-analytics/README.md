@@ -1,4 +1,4 @@
-# How to Use Terraform to Configure Org-Level Logging Sinks That Export to BigQuery for Audit Analytics
+# How to Use Terraform to Configure Org-Level Logging Sinks That Export to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

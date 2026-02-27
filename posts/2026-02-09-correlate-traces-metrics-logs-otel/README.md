@@ -1,4 +1,4 @@
-# How to Correlate Traces Metrics and Logs Using OpenTelemetry Resource Attributes in Kubernetes
+# How to Correlate Traces Metrics and Logs Using OpenTelemetry Resource Attributes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Exporters, File, Storage, Archival, Debugging
 
-Description: A comprehensive guide to configuring the File exporter in OpenTelemetry Collector for writing telemetry to disk, including rotation strategies, compression options, format control, and production patterns for archival and debugging scenarios.
+Description: A comprehensive guide to configuring the File exporter in OpenTelemetry Collector for writing telemetry to disk, including rotation strategies, compression options, format control.
 
 ---
 

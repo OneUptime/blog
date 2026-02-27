@@ -1,4 +1,4 @@
-# How to Simulate Supply Chain Disruption Scenarios with Supply Chain Twin AI Recommendations
+# How to Simulate Supply Chain Disruption Scenarios with Supply Chain Twin AI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement A/B Testing Deployments on Cloud Run Using Traffic Splitting and Cloud Monitoring
+# How to Use A/B Testing Deployments on Cloud Run Using Traffic Splitting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

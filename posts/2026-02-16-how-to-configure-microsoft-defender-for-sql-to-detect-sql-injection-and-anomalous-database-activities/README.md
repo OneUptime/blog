@@ -1,4 +1,4 @@
-# How to Configure Microsoft Defender for SQL to Detect SQL Injection and Anomalous Database Activities
+# How to Configure Microsoft Defender for SQL to Detect SQL Injection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

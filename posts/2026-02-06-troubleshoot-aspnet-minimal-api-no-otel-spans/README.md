@@ -1,4 +1,4 @@
-# How to Troubleshoot ASP.NET Core Minimal API Routes Not Producing OpenTelemetry Spans
+# Troubleshoot ASP.NET Core Minimal API Routes Not Producing OpenTelemetry Spans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

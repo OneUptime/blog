@@ -1,4 +1,4 @@
-# How to Configure Cloud Provider Load Balancer Annotations for TLS and Proxy Protocol
+# How to Configure Cloud Provider Load Balancer Annotations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

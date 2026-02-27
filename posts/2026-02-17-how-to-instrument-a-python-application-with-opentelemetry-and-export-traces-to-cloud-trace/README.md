@@ -1,4 +1,4 @@
-# How to Instrument a Python Application with OpenTelemetry and Export Traces to Cloud Trace
+# How to Instrument a Python Application with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

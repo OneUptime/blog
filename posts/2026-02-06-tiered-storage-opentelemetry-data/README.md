@@ -1,4 +1,4 @@
-# How to Implement Tiered Storage (Hot/Warm/Cold) for OpenTelemetry Data to Cut Storage Costs
+# How to Use Tiered Storage for OpenTelemetry Data to Cut Storage Costs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

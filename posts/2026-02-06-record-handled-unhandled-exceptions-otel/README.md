@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry to Record Both Handled and Unhandled Exceptions with Stack Traces
+# How to Configure OpenTelemetry to Record Both Handled and Unhandled Exceptions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

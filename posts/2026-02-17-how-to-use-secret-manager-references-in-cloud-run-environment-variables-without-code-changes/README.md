@@ -1,4 +1,4 @@
-# How to Use Secret Manager References in Cloud Run Environment Variables Without Code Changes
+# How to Use Secret Manager References in Cloud Run Env Variables Without Code
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

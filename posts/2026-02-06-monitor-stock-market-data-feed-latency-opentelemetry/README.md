@@ -1,4 +1,4 @@
-# How to Monitor Stock Market Data Feed Latency from Exchange to Trading Platform with OpenTelemetry
+# How to Monitor Stock Market Data Feed Latency from Exchange to Trading Platform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

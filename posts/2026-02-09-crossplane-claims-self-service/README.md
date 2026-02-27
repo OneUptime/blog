@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Crossplane, Self-Service
 
-Description: Learn how to use Crossplane Claims to enable self-service infrastructure provisioning, allowing application teams to request resources through simple namespace-scoped APIs without platform team intervention.
+Description: Learn how to use Crossplane Claims to enable self-service infrastructure provisioning.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Build a Shopping Cart Microservice with Azure Container Apps and Azure Cache for Redis
+# How to Build a Shopping Cart Microservice with Azure Container Apps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

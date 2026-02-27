@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ELK Stack, Elasticsearch, Logstash, Kibana, Centralized Logging, Observability, DevOps
 
-Description: A complete guide to setting up centralized logging with the ELK Stack (Elasticsearch, Logstash, Kibana). Learn how to aggregate logs from multiple sources, configure pipelines, and build powerful visualizations for your infrastructure.
+Description: A complete guide to setting up centralized logging with the ELK Stack (Elasticsearch, Logstash, Kibana).
 
 ---
 

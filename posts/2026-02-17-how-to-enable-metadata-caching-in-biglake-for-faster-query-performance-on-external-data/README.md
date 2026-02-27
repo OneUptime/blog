@@ -1,4 +1,4 @@
-# How to Enable Metadata Caching in BigLake for Faster Query Performance on External Data
+# How to Enable Metadata Caching in BigLake for Faster Query Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

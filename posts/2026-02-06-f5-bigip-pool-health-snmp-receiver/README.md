@@ -1,4 +1,4 @@
-# How to Monitor F5 BIG-IP Load Balancer Pool Health and Throughput with the Collector SNMP Receiver
+# How to Monitor F5 BIG-IP Load Balancer Pool Health and Throughput
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

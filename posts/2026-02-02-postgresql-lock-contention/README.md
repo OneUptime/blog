@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Locks, Performance, Database, Concurrency, Transactions
 
-Description: A comprehensive guide to handling lock contention in PostgreSQL. Learn transaction design patterns, lock-free techniques, advisory locks, and architectural strategies to build high-concurrency applications without bottlenecks.
+Description: A comprehensive guide to handling lock contention in PostgreSQL.
 
 ---
 

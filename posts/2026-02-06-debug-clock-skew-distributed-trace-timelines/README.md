@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry to Debug Clock Skew Issues in Distributed Trace Timelines
+# How to Use OpenTelemetry to Debug Clock Skew Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

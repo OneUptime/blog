@@ -1,4 +1,4 @@
-# How to Troubleshoot Compute Engine VM Performance Issues Using Cloud Monitoring Metrics
+# How to Troubleshoot Compute Engine VM Performance Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

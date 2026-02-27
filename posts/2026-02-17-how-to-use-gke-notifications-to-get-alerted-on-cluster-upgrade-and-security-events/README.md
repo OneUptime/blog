@@ -1,4 +1,4 @@
-# How to Use GKE Notifications to Get Alerted on Cluster Upgrade and Security Events
+# How to Use GKE Notifications to Get Alerted on Cluster Upgrade
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

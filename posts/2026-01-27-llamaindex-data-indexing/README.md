@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: LlamaIndex, Data Indexing, AI, LLM, RAG, Vector Database, Python, Machine Learning
 
-Description: A comprehensive guide to using LlamaIndex for efficient data indexing, covering document loaders, node parsers, index types, storage contexts, and best practices for building retrieval-augmented generation (RAG) applications.
+Description: A comprehensive guide to using LlamaIndex for efficient data indexing, covering document loaders, node parsers, index types, storage contexts.
 
 ---
 

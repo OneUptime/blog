@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Retry Logic, Exponential Backoff, Error Handling, Resilience
 
-Description: A comprehensive guide to implementing robust job retry strategies with BullMQ, including exponential backoff, custom retry logic, dead letter queues, and best practices for handling transient failures.
+Description: A comprehensive guide to implementing robust job retry strategies with BullMQ, including exponential backoff, custom retry logic, dead letter queues.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure Azure Key Vault Private Endpoints to Restrict Access to Your Virtual Network
+# How to Configure Azure Key Vault Private Endpoints to Restrict Access to Your
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

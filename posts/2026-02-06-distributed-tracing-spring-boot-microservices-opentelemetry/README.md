@@ -1,4 +1,4 @@
-# How to Set Up Distributed Tracing Across Spring Boot Microservices with OpenTelemetry
+# How to Set Up Distributed Tracing Across Spring Boot Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

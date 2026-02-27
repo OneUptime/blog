@@ -1,4 +1,4 @@
-# How to Configure FSLogix Profile Containers with Azure Files for Azure Virtual Desktop
+# How to Configure FSLogix Profile Containers with Azure Files
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

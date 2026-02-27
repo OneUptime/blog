@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Compression, Performance, Gzip, Brotli, Network Optimization, API, Backend
 
-Description: Learn how to implement data compression strategies to reduce bandwidth and improve transfer speeds. This guide covers HTTP compression, application-level compression, and choosing the right algorithm for your use case.
+Description: Learn how to implement data compression strategies to reduce bandwidth and improve transfer speeds.
 
 ---
 

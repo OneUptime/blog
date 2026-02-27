@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kotlin, Exposed, Database, ORM, SQL, JetBrains, PostgreSQL, MySQL
 
-Description: Learn how to connect Kotlin applications to databases using JetBrains Exposed, a lightweight SQL library that provides both DSL and DAO approaches. This guide covers setup, CRUD operations, transactions, relationships, and production best practices.
+Description: Learn how to connect Kotlin applications to databases using JetBrains Exposed, a lightweight SQL library that provides both DSL and DAO approaches.
 
 ---
 

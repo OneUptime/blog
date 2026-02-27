@@ -1,4 +1,4 @@
-# How to Trace Manufacturing Execution System (MES) Work Order Flows with OpenTelemetry
+# How to Trace Manufacturing Execution System Work Order Flows with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

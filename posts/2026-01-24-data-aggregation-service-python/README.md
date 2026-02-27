@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Data Aggregation, ETL, Async, Redis, Time Series, Analytics, Performance
 
-Description: Learn how to build a data aggregation service in Python that collects metrics from multiple sources, computes rollups, and serves aggregated data efficiently. This guide covers buffering, windowing, and storage patterns.
+Description: Learn how to build a data aggregation service in Python that collects metrics from multiple sources, computes rollups, and serves aggregated data efficiently.
 
 ---
 

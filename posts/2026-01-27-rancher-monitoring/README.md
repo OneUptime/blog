@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Monitoring, Prometheus, Grafana, Alerting, Observability, DevOps
 
-Description: A comprehensive guide to monitoring Kubernetes clusters with Rancher, covering the built-in monitoring stack, Prometheus integration, Grafana dashboards, and alerting configuration for production-ready observability.
+Description: A comprehensive guide to monitoring Kubernetes clusters with Rancher, covering the built-in monitoring stack, Prometheus integration, Grafana dashboards.
 
 ---
 

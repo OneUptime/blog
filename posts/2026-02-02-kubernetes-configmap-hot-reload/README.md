@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ConfigMap, Hot-Reload, DevOps, Cloud Native, Configuration Management
 
-Description: A practical guide to implementing ConfigMap hot-reload in Kubernetes applications. Learn how to automatically detect configuration changes and apply them without restarting pods using file watchers, sidecar containers, and operator patterns.
+Description: A practical guide to implementing ConfigMap hot-reload in Kubernetes applications.
 
 ---
 

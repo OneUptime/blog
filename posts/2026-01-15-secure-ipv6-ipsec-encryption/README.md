@@ -429,7 +429,7 @@ ping6 -c 5 2001:db8:2::20
 For connecting entire networks, use tunnel mode to encrypt all traffic between sites.
 
 ### Network Topology
-mermaid
+```mermaid
 flowchart LR
     subgraph SiteA["Site A"]
         NetA["Internal Net<br/>fd00:a::/64"]

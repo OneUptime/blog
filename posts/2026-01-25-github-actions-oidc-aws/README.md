@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, OIDC, AWS, Security, IAM, Authentication
 
-Description: Learn how to use OpenID Connect (OIDC) to authenticate GitHub Actions with AWS without storing long-lived credentials. This guide covers IAM role configuration, trust policies, and secure deployment patterns.
+Description: Learn how to use OpenID Connect (OIDC) to authenticate GitHub Actions with AWS without storing long-lived credentials.
 
 ---
 

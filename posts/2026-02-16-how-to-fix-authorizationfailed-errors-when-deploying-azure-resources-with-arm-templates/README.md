@@ -1,4 +1,4 @@
-# How to Fix 'AuthorizationFailed' Errors When Deploying Azure Resources with ARM Templates
+# How to Fix 'AuthorizationFailed' Errors When Deploying Azure Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

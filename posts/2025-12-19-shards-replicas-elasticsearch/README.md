@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Shards, Replicas, Scaling, Architecture, Performance
 
-Description: A comprehensive guide to understanding shards and replicas in Elasticsearch. Learn how data is distributed, how to choose the right shard count, and how replicas provide fault tolerance and read scaling.
+Description: A comprehensive guide to understanding shards and replicas in Elasticsearch.
 
 ---
 

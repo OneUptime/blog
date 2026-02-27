@@ -1,4 +1,4 @@
-# How to Integrate Microsoft Teams Approvals with Power Automate and Azure Logic Apps
+# How to Integrate Microsoft Teams Approvals with Power Automate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

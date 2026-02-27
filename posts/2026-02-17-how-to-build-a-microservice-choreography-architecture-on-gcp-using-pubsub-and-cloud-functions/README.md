@@ -1,4 +1,4 @@
-# How to Build a Microservice Choreography Architecture on GCP Using Pub/Sub and Cloud Functions
+# How to Build a Microservice Choreography Architecture on GCP Using Pub/Sub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

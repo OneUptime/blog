@@ -1,4 +1,4 @@
-# How to Monitor Apache Cassandra Cluster Health, Compaction Throughput, and Read/Write Latency with OpenTelemetry
+# How to Monitor Apache Cassandra Cluster Health, Compaction Throughput,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

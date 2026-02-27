@@ -1,4 +1,4 @@
-# How to Audit and Identify the Top 10 Most Expensive Telemetry Sources in Your OpenTelemetry Pipeline
+# How to Audit and Identify the Top 10 Most Expensive Telemetry Sources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

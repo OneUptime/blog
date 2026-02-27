@@ -1,10 +1,10 @@
-# How to Implement FedRAMP Security Controls for Kubernetes Workloads in Government Environments
+# How to Use FedRAMP Security Controls for Kubernetes Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, FedRAMP, Compliance, Government, Security, Cloud
 
-Description: Implement FedRAMP security controls for Kubernetes clusters serving government workloads, covering boundary protection, access enforcement, audit logging, and continuous monitoring requirements for Moderate and High impact levels.
+Description: Implement FedRAMP security controls for Kubernetes clusters serving government workloads, covering boundary protection, access enforcement, audit logging.
 
 ---
 

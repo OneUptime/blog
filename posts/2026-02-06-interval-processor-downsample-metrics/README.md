@@ -1,4 +1,4 @@
-# How to Use the OpenTelemetry Interval Processor to Downsample Metrics and Reduce Costs
+# How to Use the OpenTelemetry Interval Processor to Downsample Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Import Training Data from Cloud Storage to Parallelstore for AI/ML Model Training
+# How to Import Training Data from Cloud Storage to Parallelstore for AI/ML Model
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use the Go Cloud Profiler Agent to Profile a Go Service Running on Cloud Run
+# How to Use the Go Cloud Profiler Agent to Profile a Go Service Running
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

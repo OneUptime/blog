@@ -1,4 +1,4 @@
-# How to Monitor Supply Chain Event Tracking (Shipment, Customs, Delivery) with OpenTelemetry Distributed Tracing
+# How to Monitor Supply Chain Event Tracking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

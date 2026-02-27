@@ -1,10 +1,10 @@
-# How to implement ArgoCD PreSync and PostSync resource hooks for deployment workflows
+# How to Use ArgoCD PreSync and PostSync resource hooks for deployment workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, Kubernetes, GitOps, DevOps, Deployment
 
-Description: Learn how to implement ArgoCD PreSync and PostSync resource hooks to execute tasks before and after deployments, including database migrations, health checks, and cleanup operations in Kubernetes environments.
+Description: Learn how to implement ArgoCD PreSync and PostSync resource hooks to execute tasks before and after deployments, including database migrations, health checks.
 
 ---
 

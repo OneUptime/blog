@@ -1,4 +1,4 @@
-# How to Configure Traffic Director Service Routing Rules for Header-Based Routing on GCP
+# How to Configure Traffic Director Service Routing Rules for Header-Based Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

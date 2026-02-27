@@ -1,4 +1,4 @@
-# How to Build a Telemetry Data Lake with OpenTelemetry, Kafka, and Apache Iceberg for Long-Term Analysis
+# How to Build a Telemetry Data Lake with OpenTelemetry, Kafka,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

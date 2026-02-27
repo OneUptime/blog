@@ -1,4 +1,4 @@
-# How to Troubleshoot Collector CPU Spikes That Cause 100% Utilization and Span Refusal Under Load
+# How to Troubleshoot Collector CPU Spikes That Cause 100% Utilization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

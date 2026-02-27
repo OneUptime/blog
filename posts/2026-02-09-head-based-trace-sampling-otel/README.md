@@ -1,4 +1,4 @@
-# How to Implement Head-Based Trace Sampling Strategies in the OpenTelemetry Collector for Kubernetes
+# How to Use Head-Based Trace Sampling Strategies in the OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

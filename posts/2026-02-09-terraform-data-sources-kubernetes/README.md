@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Data Sources, Kubernetes, Infrastructure as Code, Query
 
-Description: Learn how to use Terraform data sources to query and reference existing Kubernetes resources, enabling cross-team collaboration, dynamic configuration, and integration with externally managed infrastructure.
+Description: Learn how to use Terraform data sources to query and reference existing Kubernetes resources, enabling cross-team collaboration, dynamic configuration.
 
 ---
 

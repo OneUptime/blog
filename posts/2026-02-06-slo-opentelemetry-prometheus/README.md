@@ -1,4 +1,4 @@
-# How to Implement Service Level Objectives (SLOs) with OpenTelemetry and Prometheus Recording Rules
+# How to Use Service Level Objectives with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

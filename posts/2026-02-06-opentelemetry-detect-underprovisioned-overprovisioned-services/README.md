@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Metrics to Detect Underprovisioned and Overprovisioned Services
+# How to Use OpenTelemetry Metrics to Detect Underprovisioned
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

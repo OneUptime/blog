@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, TLS, Security, mTLS, HTTPS, Proxy, Load Balancer, DevOps, Kubernetes
 
-Description: A comprehensive guide to configuring TLS termination in Envoy Proxy, covering certificate management, SDS-based rotation, mTLS authentication, and ALPN protocol negotiation for secure service communication.
+Description: A comprehensive guide to configuring TLS termination in Envoy Proxy, covering certificate management, SDS-based rotation, mTLS authentication.
 
 ---
 

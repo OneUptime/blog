@@ -1,4 +1,4 @@
-# How to Set Up Ops Agent with StatsD and Prometheus Endpoints on GCP Compute Engine
+# How to Set Up Ops Agent with StatsD and Prometheus Endpoints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

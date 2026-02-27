@@ -1,4 +1,4 @@
-# How to Set Up a Skaffold Pipeline for Multi-Service Microservice Development on GKE with Helm
+# How to Set Up a Skaffold Pipeline for Multi-Service Microservice Development
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

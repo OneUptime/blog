@@ -1,4 +1,4 @@
-# How to Build Custom Kubernetes Resource Viewers Using kubectl Tree and Resource Graphs
+# How to Build Custom Kubernetes Resource Viewers Using kubectl Tree
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

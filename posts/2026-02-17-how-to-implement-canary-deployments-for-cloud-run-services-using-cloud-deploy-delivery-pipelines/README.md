@@ -1,4 +1,4 @@
-# How to Implement Canary Deployments for Cloud Run Services Using Cloud Deploy Delivery Pipelines
+# How to Use Canary Deployments for Cloud Run Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

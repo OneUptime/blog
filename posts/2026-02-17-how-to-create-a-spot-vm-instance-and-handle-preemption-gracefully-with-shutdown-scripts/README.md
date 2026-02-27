@@ -1,4 +1,4 @@
-# How to Create a Spot VM Instance and Handle Preemption Gracefully with Shutdown Scripts
+# How to Create a Spot VM Instance and Handle Preemption Gracefully
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

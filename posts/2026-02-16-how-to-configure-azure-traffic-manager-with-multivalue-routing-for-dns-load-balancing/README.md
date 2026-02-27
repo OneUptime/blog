@@ -1,4 +1,4 @@
-# How to Configure Azure Traffic Manager with Multivalue Routing for DNS Load Balancing
+# How to Configure Azure Traffic Manager with Multivalue Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Performance, Backend, Async, Message Queue, Optimization
 
-Description: Learn async processing patterns to handle time-consuming tasks without blocking user requests. This guide covers message queues, background workers, and event-driven architectures with practical code examples.
+Description: Learn async processing patterns to handle time-consuming tasks without blocking user requests.
 
 ---
 

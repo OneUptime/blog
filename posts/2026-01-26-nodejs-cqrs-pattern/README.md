@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Node.js, CQRS, Architecture, Design Patterns, Event-Driven Architecture
 
-Description: A practical guide to implementing the Command Query Responsibility Segregation (CQRS) pattern in Node.js. Learn how to separate read and write operations with working code examples for building scalable, maintainable applications.
+Description: A practical guide to implementing the Command Query Responsibility Segregation (CQRS) pattern in Node.js.
 
 ---
 

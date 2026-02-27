@@ -1,4 +1,4 @@
-# How to Implement Service Discovery for Microservices on Google Kubernetes Engine Using Cloud DNS and Headless Services
+# How to Use Service Discovery for Microservices on Google K8s Engine Using Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

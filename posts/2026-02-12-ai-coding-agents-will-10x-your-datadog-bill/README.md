@@ -90,7 +90,7 @@ If your observability bill already makes your CFO nervous, you have maybe 12 mon
 
 ## What to do right now
 
-**1. Audit your current spend.** Add up every monitoring, logging, alerting, and incident management tool. The total will surprise you. We wrote about this in detail in [Your Monitoring Stack is a $500K/Year Mistake](/blog/your-monitoring-stack-is-a-500k-mistake).
+**1. Audit your current spend.** Add up every monitoring, logging, alerting, and incident management tool. The total will surprise you. We wrote about this in detail in [Your Monitoring Stack is a $500K/Year Mistake](https://oneuptime.com/blog/post/2026-02-11-your-monitoring-stack-is-a-500k-mistake/view).
 
 **2. Adopt OpenTelemetry today.** Vendor-neutral instrumentation means you can switch backends without re-instrumenting your code. This is table stakes. If you're still using proprietary agents, you're locked in.
 

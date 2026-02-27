@@ -1,4 +1,4 @@
-# How to Debug GKE Gateway API Routing Misconfigurations and Traffic Splitting Failures
+# How to Debug GKE Gateway API Routing Misconfigurations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DNS, Networking, Configuration
 
-Description: Learn how to properly configure DNS resolution for pods using hostNetwork by implementing the ClusterFirstWithHostNet DNS policy, ensuring cluster DNS works correctly while maintaining host network access.
+Description: Learn how to properly configure DNS resolution for pods using hostNetwork by implementing the ClusterFirstWithHostNet DNS policy.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Restrict IAP TCP Tunneling to Specific VM Instances and Ports Using IAM Conditions in GCP
+# How to Restrict IAP TCP Tunneling to Specific VM Instances and Ports
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

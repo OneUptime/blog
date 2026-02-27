@@ -1,4 +1,4 @@
-# How to Set Up ACR Token-Based Authentication for Scoped Repository Access Control
+# How to Set Up ACR Token-Based Authentication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Debug SSL/TLS Handshake Failures Using OpenTelemetry HTTP Connection Span Attributes
+# How to Debug SSL/TLS Handshake Failures Using OpenTelemetry HTTP Connection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

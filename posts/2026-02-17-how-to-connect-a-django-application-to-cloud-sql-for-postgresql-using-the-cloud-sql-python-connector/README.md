@@ -1,4 +1,4 @@
-# How to Connect a Django Application to Cloud SQL for PostgreSQL Using the Cloud SQL Python Connector
+# How to Connect a Django App to Cloud SQL for PostgreSQL Using the Cloud SQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

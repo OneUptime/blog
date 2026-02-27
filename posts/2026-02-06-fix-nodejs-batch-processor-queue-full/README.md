@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry Node.js SDK Silently Dropping Spans When the Batch Processor Queue Is Full
+# How to Fix OpenTelemetry Node.js SDK Silently Dropping Spans When the Batch
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

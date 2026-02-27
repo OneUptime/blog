@@ -1,4 +1,4 @@
-# How to Configure Azure DevOps Personal Access Tokens and Manage Token Lifecycle Security
+# How to Configure Azure DevOps Personal Access Tokens
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

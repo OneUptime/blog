@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry Java Agent Layered Configuration for Multiple Environments
+# How to Configure OpenTelemetry Java Agent Layered Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

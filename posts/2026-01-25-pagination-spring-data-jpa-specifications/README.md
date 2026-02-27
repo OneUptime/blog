@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Data JPA, Pagination, Specifications, Query
 
-Description: Learn how to combine Spring Data JPA Specifications with pagination to build flexible, type-safe queries that scale. This guide covers dynamic filtering, sorting, and pagination patterns for real-world applications.
+Description: Learn how to combine Spring Data JPA Specifications with pagination to build flexible, type-safe queries that scale.
 
 ---
 

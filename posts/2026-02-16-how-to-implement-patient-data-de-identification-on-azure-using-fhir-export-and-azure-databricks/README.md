@@ -1,4 +1,4 @@
-# How to Implement Patient Data De-Identification on Azure Using FHIR Export and Azure Databricks
+# How to Use Patient Data De-Identification on Azure Using FHIR Export
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

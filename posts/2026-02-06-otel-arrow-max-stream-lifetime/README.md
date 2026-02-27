@@ -1,4 +1,4 @@
-# How to Configure OTel Arrow max_stream_lifetime for Balancing Compression Ratio and Load Distribution
+# How to Configure OTel Arrow max_stream_lifetime for Balancing Compression Ratio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

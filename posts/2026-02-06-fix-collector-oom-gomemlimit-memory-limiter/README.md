@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry Collector OOM Kills by Configuring GOMEMLIMIT and the memory_limiter Processor
+# How to Fix OpenTelemetry Collector OOM Kills by Configuring GOMEMLIMIT
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

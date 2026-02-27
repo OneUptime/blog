@@ -1,4 +1,4 @@
-# How to Implement Schema Evolution and Backward Compatibility in GCP Data Pipelines Using Avro and Pub/Sub
+# How to Use Schema Evolution and Backward Compatibility in GCP Data Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

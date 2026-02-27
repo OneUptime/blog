@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Request Coalescing, Database, Performance, Async, Caching, Optimization, Scalability
 
-Description: Learn how to implement request coalescing in Python to dramatically reduce database load. When multiple concurrent requests need the same data, coalescing ensures only one database query is made while all requesters share the result.
+Description: Learn how to implement request coalescing in Python to dramatically reduce database load.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Migrate from OpenShift to Vanilla Kubernetes Preserving Application Configurations
+# How to Migrate from OpenShift to Vanilla K8s Preserving App Configurations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

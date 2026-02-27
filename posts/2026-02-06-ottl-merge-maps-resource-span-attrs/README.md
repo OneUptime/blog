@@ -1,4 +1,4 @@
-# How to Use OTTL merge_maps to Combine Resource and Span Attributes in the Transform Processor
+# How to Use OTTL merge_maps to Combine Resource and Span Attributes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

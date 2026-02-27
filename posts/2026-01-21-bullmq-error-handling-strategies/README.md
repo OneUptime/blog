@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Error Handling, Retry Strategies, Fault Tolerance, Resilience
 
-Description: A comprehensive guide to implementing error handling strategies in BullMQ, including retry patterns, error classification, graceful degradation, circuit breakers, and building resilient job processing systems.
+Description: A comprehensive guide to implementing error handling strategies in BullMQ, including retry patterns, error classification, graceful degradation, circuit breakers.
 
 ---
 

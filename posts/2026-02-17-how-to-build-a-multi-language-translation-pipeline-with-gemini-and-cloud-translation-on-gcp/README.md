@@ -1,4 +1,4 @@
-# How to Build a Multi-Language Translation Pipeline with Gemini and Cloud Translation on GCP
+# How to Build a Multi-Language Translation Pipeline with Gemini
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

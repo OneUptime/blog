@@ -1,4 +1,4 @@
-# How to Implement Log Streaming with kubectl logs --follow for Real-Time Debugging
+# How to Use Log Streaming with kubectl logs --follow for Real-Time Debugging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

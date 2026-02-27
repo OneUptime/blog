@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Data Validation, Framework Design, Pydantic, Pandas, ETL, Data Quality
 
-Description: Learn how to build a flexible data validation framework in Python that handles schema validation, business rules, and data quality checks. This guide covers validation pipelines, custom rules, and reporting patterns.
+Description: Learn how to build a flexible data validation framework in Python that handles schema validation, business rules, and data quality checks.
 
 ---
 

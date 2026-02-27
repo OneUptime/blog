@@ -1,4 +1,4 @@
-# How to Build a Multi-Tenant Data Architecture on BigQuery Using Authorized Views and Column-Level Security
+# How to Build a Multi-Tenant Data Architecture on BigQuery Using Authorized Views
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

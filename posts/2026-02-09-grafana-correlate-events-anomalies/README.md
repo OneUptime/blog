@@ -1,4 +1,4 @@
-# How to Build a Grafana Dashboard That Correlates Kubernetes Events with Metric Anomalies
+# How to Build a Grafana Dashboard That Correlates Kubernetes Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TimescaleDB, PostgreSQL, Time-Series, Downsampling, Data Management, Performance
 
-Description: Learn how to implement downsampling in TimescaleDB to reduce storage costs and improve query performance. Covering continuous aggregates, retention policies, manual downsampling techniques, and production best practices.
+Description: Learn how to implement downsampling in TimescaleDB to reduce storage costs and improve query performance.
 
 ---
 

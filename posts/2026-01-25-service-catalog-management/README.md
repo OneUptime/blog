@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Service Catalog, Service Discovery, Microservices, API Management, DevOps, Governance
 
-Description: Learn how to build and maintain a service catalog for your microservices architecture. This guide covers service registration, metadata management, and building a comprehensive view of your service landscape.
+Description: Learn how to build and maintain a service catalog for your microservices architecture.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure the Log Router in Cloud Logging to Route Logs to Multiple Destinations
+# Configure the Log Router in Cloud Logging to Route Logs to Multiple Destinations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

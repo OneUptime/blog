@@ -1,4 +1,4 @@
-# How to Build a Tekton Pipeline That Generates and Publishes SBOMs for Container Images
+# How to Build a Tekton Pipeline That Generates and Publishes SBOMs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

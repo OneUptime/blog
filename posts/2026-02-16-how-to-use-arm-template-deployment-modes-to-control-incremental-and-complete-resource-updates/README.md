@@ -1,4 +1,4 @@
-# How to Use ARM Template Deployment Modes to Control Incremental and Complete Resource Updates
+# How to Use ARM Template Deployment Modes to Control Incremental
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

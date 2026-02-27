@@ -1,4 +1,4 @@
-# How to Set Up VPC Access Connector for App Engine to Communicate with Private Resources
+# How to Set Up VPC Access Connector for App Engine to Communicate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

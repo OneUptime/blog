@@ -1,4 +1,4 @@
-# How to Implement Terraform Test Framework for Validating Azure Bicep-Equivalent Configurations
+# How to Use Terraform Test Framework for Validating Azure Bicep-Equivalent
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

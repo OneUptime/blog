@@ -1,4 +1,4 @@
-# How to Monitor Cold Start Performance Degradation in Serverless Functions with OpenTelemetry Metrics
+# How to Monitor Cold Start Performance Degradation in Serverless Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

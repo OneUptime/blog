@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, Service Mesh
 
-Description: Integrate Kubernetes Gateway API with service meshes like Istio, Linkerd, and Cilium for unified ingress and service-to-service traffic management, combining north-south and east-west routing with mTLS, observability, and advanced traffic control.
+Description: Integrate Kubernetes Gateway API with service meshes like Istio, Linkerd, and Cilium for unified ingress and service-to-service traffic management.
 
 ---
 

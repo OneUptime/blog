@@ -1,4 +1,4 @@
-# How to Right-Size Kubernetes Pod CPU and Memory Requests Using OpenTelemetry Metrics
+# How to Right-Size Kubernetes Pod CPU and Memory Requests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

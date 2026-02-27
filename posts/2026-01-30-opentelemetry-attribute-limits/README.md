@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Configuration, Tracing, Performance
 
-Description: A comprehensive guide to creating OpenTelemetry attribute limits from scratch, covering the architecture, implementation patterns across multiple languages, and strategies for building production-ready telemetry pipelines with robust limit enforcement.
+Description: A comprehensive guide to creating OpenTelemetry attribute limits from scratch, covering the architecture, implementation patterns across multiple languages.
 
 ---
 

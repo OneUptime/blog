@@ -1448,4 +1448,4 @@ Remember: the best backup strategy is one that completes successfully every time
 
 ---
 
-*For more information on monitoring your backup jobs, see our guide on [Monitoring Backup Jobs with OneUptime](/blog/post/2025-09-25-monitoring-backup-jobs-with-oneuptime/view).*
+*For more information on monitoring your backup jobs, see our guide on [Monitoring Backup Jobs with OneUptime](https://oneuptime.com/blog/post/2025-09-25-monitoring-backup-jobs-with-oneuptime/view).*

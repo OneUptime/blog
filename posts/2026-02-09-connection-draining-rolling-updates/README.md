@@ -1,4 +1,4 @@
-# How to Implement Connection Draining for Kubernetes Services During Rolling Updates
+# How to Use Connection Draining for Kubernetes Services During Rolling Updates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

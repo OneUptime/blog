@@ -1,4 +1,4 @@
-# How to Track Resource Utilization Trends and Forecast Capacity with OpenTelemetry Time-Series Data
+# How to Track Resource Utilization Trends and Forecast Capacity with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

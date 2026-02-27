@@ -1,4 +1,4 @@
-# How to Version Control and GitOps Your OpenTelemetry SDK Configuration Using Declarative YAML Files
+# How to Version Control and GitOps Your OpenTelemetry SDK Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

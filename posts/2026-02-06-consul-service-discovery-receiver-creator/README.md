@@ -1,4 +1,4 @@
-# How to Use Consul Service Discovery with the OpenTelemetry Collector Receiver Creator for Dynamic Targets
+# How to Use Consul Service Discovery with the OpenTelemetry Collector Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot Cloud Build Failures Due to Permission and Source Code Errors
+# How to Troubleshoot Cloud Build Failures Due to Permission
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

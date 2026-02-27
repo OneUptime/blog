@@ -1,4 +1,4 @@
-# How to Instrument gRPC Unary and Streaming Calls with OpenTelemetry Interceptors (Go, Java, Python)
+# How to Instrument gRPC Unary and Streaming Calls with OpenTelemetry Interceptors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

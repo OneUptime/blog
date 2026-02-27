@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Node.js, TypeScript, Performance, Database, Caching, Optimization, Backend
 
-Description: Learn how to implement request coalescing in Node.js to reduce database load by combining duplicate concurrent requests. This guide covers basic implementation, cache integration, batch coalescing, and practical patterns for high-traffic applications.
+Description: Learn how to implement request coalescing in Node.js to reduce database load by combining duplicate concurrent requests.
 
 ---
 

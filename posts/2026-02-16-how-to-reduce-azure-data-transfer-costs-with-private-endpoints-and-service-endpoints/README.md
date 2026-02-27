@@ -1,4 +1,4 @@
-# How to Reduce Azure Data Transfer Costs with Private Endpoints and Service Endpoints
+# How to Reduce Azure Data Transfer Costs with Private Endpoints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

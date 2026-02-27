@@ -1,4 +1,4 @@
-# How to Configure VPC Service Controls for Cloud Storage Data Exfiltration Prevention
+# Configure VPC Service Controls for Cloud Storage Data Exfiltration Prevention
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

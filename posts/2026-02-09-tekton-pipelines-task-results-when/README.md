@@ -1,4 +1,4 @@
-# How to Build Tekton Pipelines with Custom Task Results and When Expressions for Conditional Steps
+# How to Build Tekton Pipelines with Custom Task Results and When Expressions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

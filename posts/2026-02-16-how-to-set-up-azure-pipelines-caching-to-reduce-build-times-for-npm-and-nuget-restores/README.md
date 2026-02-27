@@ -1,4 +1,4 @@
-# How to Set Up Azure Pipelines Caching to Reduce Build Times for npm and NuGet Restores
+# How to Set Up Azure Pipelines Caching to Reduce Build Times
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

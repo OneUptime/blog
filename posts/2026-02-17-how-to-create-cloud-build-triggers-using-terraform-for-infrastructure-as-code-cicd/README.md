@@ -1,4 +1,4 @@
-# How to Create Cloud Build Triggers Using Terraform for Infrastructure-as-Code CI/CD
+# Create Cloud Build Triggers Using Terraform for Infrastructure-as-Code CI/CD
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

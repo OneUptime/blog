@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Laravel, PHP, i18n, Internationalization, Localization
 
-Description: A comprehensive guide to implementing internationalization (i18n) in Laravel applications. Learn locale configuration, translation files, pluralization, date and currency formatting, and best practices for building multilingual PHP applications.
+Description: A comprehensive guide to implementing internationalization (i18n) in Laravel applications.
 
 ---
 

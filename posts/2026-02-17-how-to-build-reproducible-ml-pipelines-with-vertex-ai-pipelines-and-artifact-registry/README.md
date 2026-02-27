@@ -1,4 +1,4 @@
-# How to Build Reproducible ML Pipelines with Vertex AI Pipelines and Artifact Registry
+# How to Build Reproducible ML Pipelines with Vertex AI Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

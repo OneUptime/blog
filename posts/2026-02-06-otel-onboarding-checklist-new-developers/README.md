@@ -1,4 +1,4 @@
-# How to Build an OpenTelemetry Onboarding Checklist for New Developers Joining Your Organization
+# How to Build an OpenTelemetry Onboarding Checklist for New Developers Joining
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Access Secret Manager Secrets from Cloud Run as Environment Variables in GCP
+# How to Access Secret Manager Secrets from Cloud Run as Environment Variables
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

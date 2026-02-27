@@ -1,4 +1,4 @@
-# How to Troubleshoot Spring Boot Actuator Metrics Not Appearing When Using OpenTelemetry Instead of Micrometer
+# How to Troubleshoot Spring Boot Actuator Metrics Not Appearing When
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

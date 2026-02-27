@@ -1,4 +1,4 @@
-# How to Configure Minimum Instances on Cloud Run to Eliminate Cold Starts for Production Services
+# How to Configure Minimum Instances on Cloud Run to Eliminate Cold Starts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

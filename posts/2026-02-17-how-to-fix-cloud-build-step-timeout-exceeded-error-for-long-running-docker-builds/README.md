@@ -1,4 +1,4 @@
-# How to Fix Cloud Build Step Timeout Exceeded Error for Long-Running Docker Builds
+# Fix Cloud Build Step Timeout Exceeded Error for Long-Running Docker Builds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

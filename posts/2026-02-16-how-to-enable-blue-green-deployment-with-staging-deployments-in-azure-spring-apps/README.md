@@ -1,4 +1,4 @@
-# How to Enable Blue-Green Deployment with Staging Deployments in Azure Spring Apps
+# How to Enable Blue-Green Deployment with Staging Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

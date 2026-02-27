@@ -1,4 +1,4 @@
-# How to Handle Multiline Java Stack Traces in the Filelog Receiver with multiline.line_start_pattern Config
+# How to Handle Multiline Java Stack Traces in the Filelog Receiver with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

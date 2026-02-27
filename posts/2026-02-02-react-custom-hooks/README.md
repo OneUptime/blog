@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: React, Hooks, Custom Hooks, JavaScript
 
-Description: A comprehensive guide to building custom hooks in React. Learn how to extract reusable logic, create hooks for common patterns like data fetching and forms, handle complex state, and follow best practices for maintainable code.
+Description: A comprehensive guide to building custom hooks in React.
 
 ---
 

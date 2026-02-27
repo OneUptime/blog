@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Fluent Bit, Fluentd, Logging, Kubernetes, Performance
 
-Description: Learn how to deploy Fluent Bit as a resource-efficient log collector and forwarder, including configuration for multiple inputs, filtering, parsing, and output to various destinations with minimal memory footprint.
+Description: Learn how to deploy Fluent Bit as a resource-efficient log collector and forwarder, including configuration for multiple inputs, filtering, parsing.
 
 ---
 

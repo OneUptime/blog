@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Testing, Integration Testing, Redis, Test Containers, End-to-End Testing
 
-Description: A comprehensive guide to integration testing BullMQ queues and workers, including setting up test Redis instances, testing full job lifecycles, handling async operations, and building reliable integration test suites.
+Description: A comprehensive guide to integration testing BullMQ queues and workers, including setting up test Redis instances, testing full job lifecycles, handling async operations.
 
 ---
 

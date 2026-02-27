@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector for Kubernetes Clusters Provisioned by Terraform EKS Module
+# How to Configure the OpenTelemetry Collector for K8s Clusters Provisioned by
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

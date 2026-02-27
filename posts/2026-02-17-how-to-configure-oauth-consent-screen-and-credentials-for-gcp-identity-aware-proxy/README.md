@@ -1,4 +1,4 @@
-# How to Configure OAuth Consent Screen and Credentials for GCP Identity-Aware Proxy
+# Configure OAuth Consent Screen and Credentials for GCP Identity-Aware Proxy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

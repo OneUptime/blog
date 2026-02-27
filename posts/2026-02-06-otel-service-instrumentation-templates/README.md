@@ -1,4 +1,4 @@
-# How to Create Service-Specific Instrumentation Templates That Teams Can Adopt in Minutes
+# How to Create Service-Specific Instrumentation Templates That Teams Can Adopt
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

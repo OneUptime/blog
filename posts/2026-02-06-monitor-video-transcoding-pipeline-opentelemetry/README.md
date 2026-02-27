@@ -1,4 +1,4 @@
-# How to Monitor Video Transcoding Pipeline Performance (FFmpeg, MediaConvert) with OpenTelemetry Custom Metrics
+# How to Monitor Video Transcoding Pipeline Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

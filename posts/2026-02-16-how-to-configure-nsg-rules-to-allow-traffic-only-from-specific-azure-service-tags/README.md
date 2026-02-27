@@ -1,4 +1,4 @@
-# How to Configure NSG Rules to Allow Traffic Only from Specific Azure Service Tags
+# Configure NSG Rules to Allow Traffic Only from Specific Azure Service Tags
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

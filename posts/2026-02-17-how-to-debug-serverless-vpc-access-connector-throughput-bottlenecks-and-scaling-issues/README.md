@@ -1,4 +1,4 @@
-# How to Debug Serverless VPC Access Connector Throughput Bottlenecks and Scaling Issues
+# How to Debug Serverless VPC Access Connector Throughput Bottlenecks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

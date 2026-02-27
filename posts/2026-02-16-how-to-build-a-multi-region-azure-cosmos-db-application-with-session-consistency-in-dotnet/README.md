@@ -1,4 +1,4 @@
-# How to Build a Multi-Region Azure Cosmos DB Application with Session Consistency in .NET
+# How to Build a Multi-Region Azure Cosmos DB App with Session Consistency in .NET
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

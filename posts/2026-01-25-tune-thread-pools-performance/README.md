@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Thread Pools, Performance, Concurrency, Java, Python, Node.js, Backend, Optimization
 
-Description: Learn how to tune thread pools for optimal performance in production applications. This guide covers pool sizing formulas, different pool types, monitoring strategies, and common pitfalls across multiple languages.
+Description: Learn how to tune thread pools for optimal performance in production applications.
 
 ---
 

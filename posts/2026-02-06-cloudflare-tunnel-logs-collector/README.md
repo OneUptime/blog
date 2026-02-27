@@ -1,4 +1,4 @@
-# How to Route Cloudflare Tunnel Access Logs to the OpenTelemetry Collector for Centralized Observability
+# How to Route Cloudflare Tunnel Access Logs to the OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

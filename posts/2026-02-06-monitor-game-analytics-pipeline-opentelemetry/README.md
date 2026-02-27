@@ -1,4 +1,4 @@
-# How to Monitor Game Analytics Event Ingestion Pipeline with OpenTelemetry for Data Completeness
+# How to Monitor Game Analytics Event Ingestion Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Dual-Level Compression (gRPC + Arrow) in the OTel Arrow Exporter
+# How to Configure Dual-Level Compression in the OTel Arrow Exporter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

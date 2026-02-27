@@ -1,4 +1,4 @@
-# How to Configure Azure Files CSI Driver for ReadWriteMany Persistent Volumes on AKS
+# How to Configure Azure Files CSI Driver for ReadWriteMany Persistent Volumes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

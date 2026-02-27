@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Data to Coralogix Using the Coralogix Exporter with Application and Subsystem Labels
+# How to Send OpenTelemetry Data to Coralogix Using the Coralogix Exporter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

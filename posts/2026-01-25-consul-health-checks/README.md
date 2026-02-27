@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Consul, Health Checks, Service Discovery, Monitoring, HashiCorp, DevOps
 
-Description: Learn how to implement comprehensive health checks in Consul to ensure only healthy service instances receive traffic. This guide covers HTTP, TCP, script, and gRPC health checks with practical examples.
+Description: Learn how to implement comprehensive health checks in Consul to ensure only healthy service instances receive traffic.
 
 ---
 

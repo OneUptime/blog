@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, Upgrade, Zero Downtime, Load Balancing
 
-Description: A practical guide to upgrading MetalLB to a new version without disrupting active services. Learn the upgrade process for Helm and manifest-based installations, pre-upgrade checks, and rollback strategies.
+Description: A practical guide to upgrading MetalLB to a new version without disrupting active services.
 
 ---
 

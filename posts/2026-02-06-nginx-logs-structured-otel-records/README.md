@@ -1,4 +1,4 @@
-# How to Parse NGINX Access and Error Logs into Structured OpenTelemetry Log Records with the Collector
+# How to Parse NGINX Access and Error Logs into Structured OpenTelemetry Log
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

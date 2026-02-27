@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, ACL, Access Control, Security, Authentication, Authorization, RBAC
 
-Description: A comprehensive guide to configuring Redis Access Control Lists (ACLs) for fine-grained user permissions, covering command restrictions, key patterns, user management, and role-based access control patterns.
+Description: A comprehensive guide to configuring Redis Access Control Lists (ACLs) for fine-grained user permissions, covering command restrictions, key patterns, user management.
 
 ---
 

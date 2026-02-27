@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Cluster, Sharding, Failover, High Availability, DevOps
 
-Description: Learn how to deploy a production-ready Redis Cluster with automatic sharding across nodes and built-in failover for high availability. This guide covers cluster setup, configuration, and client integration.
+Description: Learn how to deploy a production-ready Redis Cluster with automatic sharding across nodes and built-in failover for high availability.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Prometheus, Azure, Service Discovery, Monitoring
 
-Description: A comprehensive guide to configuring Prometheus Azure Service Discovery to automatically discover and monitor Azure resources including virtual machines, virtual machine scale sets, and Azure Kubernetes Service clusters.
+Description: A comprehensive guide to configuring Prometheus Azure Service Discovery to automatically discover and monitor Azure resources including virtual machines, virtual machine scale sets.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, IAM, Security, Access Control, Serverless, Cloud Infrastructure, Queue
 
-Description: Learn how to configure Amazon SQS access policies to secure your message queues. Covers identity-based policies, resource-based policies, cross-account access, encryption settings, and best practices for production deployments.
+Description: Learn how to configure Amazon SQS access policies to secure your message queues.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, IoT, Metrics, Aggregation, Time Series, Edge Computing, Data Summarization, Analytics
 
-Description: A comprehensive guide to aggregating IoT metrics with Redis, covering edge computing patterns, real-time data summarization, time-windowed aggregations, and efficient storage for high-volume sensor data.
+Description: A comprehensive guide to aggregating IoT metrics with Redis, covering edge computing patterns, real-time data summarization, time-windowed aggregations.
 
 ---
 
@@ -656,4 +656,4 @@ console.log(agg);
 
 Redis provides an excellent foundation for IoT metrics aggregation. Its atomic operations ensure consistent aggregations even under high write loads, while TTLs automatically clean up old data. By pre-computing aggregations at the edge, you can dramatically reduce storage requirements and improve query performance.
 
-For more IoT patterns with Redis, check out our guides on [IoT Data Ingestion](/blog/redis-iot-data-ingestion) and [Device State Management](/blog/redis-device-state-management).
+For more IoT patterns with Redis, check out our guides on [IoT Data Ingestion](https://oneuptime.com/blog/post/2026-01-21-redis-iot-data-ingestion/view) and [Device State Management](https://oneuptime.com/blog/post/2026-01-21-redis-device-state-management/view).

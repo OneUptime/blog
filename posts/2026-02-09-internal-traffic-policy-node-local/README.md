@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Networking, Performance
 
-Description: Configure internalTrafficPolicy to route internal cluster traffic only to pods on the same node, reducing network latency and bandwidth usage while improving application performance in Kubernetes clusters.
+Description: Configure internalTrafficPolicy to route internal cluster traffic only to pods on the same node.
 
 ---
 

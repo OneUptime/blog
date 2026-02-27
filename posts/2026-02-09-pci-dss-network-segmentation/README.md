@@ -1,10 +1,10 @@
-# How to Configure Kubernetes Network Segmentation for PCI-DSS Cardholder Data Isolation
+# Configure Kubernetes Network Segmentation for PCI-DSS Cardholder Data Isolation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, PCI-DSS, Compliance, Network Security, NetworkPolicy, Segmentation
 
-Description: Implement PCI-DSS compliant network segmentation in Kubernetes to isolate cardholder data environments using NetworkPolicies, service mesh controls, and zone-based architectures that meet requirement 1.3.
+Description: Implement PCI-DSS compliant network segmentation in Kubernetes to isolate cardholder data environments using NetworkPolicies, service mesh controls.
 
 ---
 

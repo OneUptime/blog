@@ -1,4 +1,4 @@
-# How to Replace Environment Variables with OpenTelemetry YAML Declarative Configuration for SDK Setup
+# How to Replace Env Variables with OpenTelemetry YAML Declarative Config for SDK
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

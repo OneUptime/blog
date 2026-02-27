@@ -1,4 +1,4 @@
-# How to Choose Between Cloud Storage Classes Standard Nearline Coldline and Archive
+# How to Choose Between Cloud Storage Classes Standard Nearline Coldline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

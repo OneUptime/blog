@@ -1,4 +1,4 @@
-# How to Configure Microsoft Defender for DNS to Detect Communication with Malicious Domains
+# How to Configure Microsoft Defender for DNS to Detect Communication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, TCP, Binary Protocols, Networking, asyncio, Sockets, Protocol Buffers, Performance
 
-Description: Learn how to implement binary protocol handlers over TCP in Python. This guide covers message framing, struct parsing, async servers, and building custom protocol implementations for high-performance networking.
+Description: Learn how to implement binary protocol handlers over TCP in Python.
 
 ---
 

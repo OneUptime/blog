@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, AWS CloudWatch, Comparison, Log Management, Self-Hosted, Managed Service, Cloud Logging
 
-Description: A detailed comparison of Grafana Loki and AWS CloudWatch Logs, covering architecture, pricing models, query capabilities, operational overhead, and guidance on choosing between self-hosted and managed logging solutions.
+Description: A detailed comparison of Grafana Loki and AWS CloudWatch Logs, covering architecture, pricing models, query capabilities, operational overhead.
 
 ---
 

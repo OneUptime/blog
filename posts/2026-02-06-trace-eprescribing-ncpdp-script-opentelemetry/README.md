@@ -1,4 +1,4 @@
-# How to Trace Prescription E-Prescribing Workflows (NCPDP SCRIPT) with OpenTelemetry
+# How to Trace Prescription E-Prescribing Workflows with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

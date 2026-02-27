@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: FastAPI, Strawberry, GraphQL, Python, API, Async, Type Safety, DataLoader
 
-Description: Learn how to build production-ready GraphQL APIs using Strawberry and FastAPI. This comprehensive guide covers project setup, schema design, queries, mutations, subscriptions, authentication, error handling, testing, and deployment best practices.
+Description: Learn how to build production-ready GraphQL APIs using Strawberry and FastAPI.
 
 ---
 

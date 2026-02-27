@@ -1,4 +1,4 @@
-# How to Troubleshoot ASP.NET Core OpenTelemetry Traces Not Appearing Because ActivitySource Name Is Wrong
+# How to Troubleshoot ASP.NET Core OpenTelemetry Traces Not Appearing Because
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

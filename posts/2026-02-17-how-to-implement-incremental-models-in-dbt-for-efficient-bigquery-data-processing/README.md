@@ -1,4 +1,4 @@
-# How to Implement Incremental Models in dbt for Efficient BigQuery Data Processing
+# How to Use Incremental Models in dbt for Efficient BigQuery Data Processing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

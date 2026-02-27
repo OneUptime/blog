@@ -1,4 +1,4 @@
-# How to Implement Priority-Based Routing: Send Critical Service Traces to Fast Storage, Non-Critical to Cold Storage
+# How to Use Priority-Based Routing: Send Critical Service Traces to Fast
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

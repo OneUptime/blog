@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Parent-Child, Join Field, Data Modeling, Relationships
 
-Description: Learn how to model parent-child relationships in Elasticsearch using join fields, with practical examples covering one-to-many relationships, querying related documents, and when to use this pattern over alternatives.
+Description: Learn how to model parent-child relationships in Elasticsearch using join fields, with practical examples covering one-to-many relationships, querying related documents.
 
 ---
 

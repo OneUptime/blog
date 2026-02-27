@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Express.js, Node.js, Backend, Web Development, API
 
-Description: A hands-on guide to building Express.js applications with TypeScript, covering project setup, typed middleware, request and response handling, error management, and patterns for scalable API development.
+Description: A hands-on guide to building Express.js applications with TypeScript, covering project setup, typed middleware, request and response handling, error management.
 
 ---
 

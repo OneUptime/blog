@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, ASP.NET Core, Custom Formatters, Content Negotiation
 
-Description: Learn how to build custom input and output formatters in ASP.NET Core to support formats like CSV, YAML, or Protocol Buffers. This guide covers formatter implementation, content negotiation, and integration with the MVC pipeline.
+Description: Learn how to build custom input and output formatters in ASP.NET Core to support formats like CSV, YAML, or Protocol Buffers.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Distributed Systems, Consistency, Causality, Database
 
-Description: Learn how to implement causal consistency in distributed systems, from understanding happens-before relationships to building vector clocks and session guarantees that keep your data coherent without sacrificing availability.
+Description: Learn how to implement causal consistency in distributed systems, from understanding happens-before relationships to building vector clocks and session guarantees that keep your data coherent without.
 
 ---
 

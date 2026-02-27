@@ -1,4 +1,4 @@
-# How to Implement GitOps for OpenTelemetry Collector Configuration with ArgoCD and Helm Charts
+# How to Use GitOps for OpenTelemetry Collector Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Node.js, Redis, Distributed Systems, Redlock, Concurrency, TypeScript, Backend
 
-Description: Learn how to implement distributed locks in Node.js using the Redlock algorithm. This guide covers lock acquisition, automatic extension, fault tolerance across multiple Redis instances, and practical patterns for preventing race conditions in distributed systems.
+Description: Learn how to implement distributed locks in Node.js using the Redlock algorithm.
 
 ---
 

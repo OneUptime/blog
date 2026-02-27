@@ -1,4 +1,4 @@
-# Setting Up Elasticsearch Snapshot and Restore with S3-Compatible Storage on Kubernetes
+# Setting Up Elasticsearch Snapshot and Restore with S3-Compatible Storage
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

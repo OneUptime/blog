@@ -1,4 +1,4 @@
-# How to Choose Between BatchSpanProcessor and SimpleSpanProcessor for Lambda Functions vs Long-Running Services
+# How to Choose Between BatchSpanProcessor and SimpleSpanProcessor for Lambda
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

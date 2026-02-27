@@ -1113,5 +1113,5 @@ Painless scripts unlock powerful capabilities in Elasticsearch, but remember:
 ### Related Reading
 
 - [Elasticsearch Official Painless Documentation](https://www.elastic.co/guide/en/elasticsearch/painless/current/index.html)
-- [Three Pillars of Observability: Logs, Metrics, Traces](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces)
-- [How to Structure Logs Properly in OpenTelemetry](/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry)
+- [Three Pillars of Observability: Logs, Metrics, Traces](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)
+- [How to Structure Logs Properly in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view)

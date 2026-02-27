@@ -1,4 +1,4 @@
-# How to Create an SLO Status Dashboard with Error Budget Burn Rate Visualization in Grafana
+# How to Create an SLO Status Dashboard with Error Budget Burn Rate Visualization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

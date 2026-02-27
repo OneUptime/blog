@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, Networking
 
-Description: Configure HTTPRoute resources in the Kubernetes Gateway API to implement path-based routing, header matching, query parameter routing, and traffic splitting with practical examples for modern application delivery.
+Description: Configure HTTPRoute resources in the Kubernetes Gateway API to implement path-based routing, header matching, query parameter routing.
 
 ---
 

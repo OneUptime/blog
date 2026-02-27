@@ -1,4 +1,4 @@
-# How to Use Generative AI Agents in Dialogflow CX for Open-Domain Customer Conversations
+# Use Generative AI Agents in Dialogflow CX for Open-Domain Customer Conversations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

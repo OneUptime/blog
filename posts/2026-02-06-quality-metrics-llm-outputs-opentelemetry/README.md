@@ -1,4 +1,4 @@
-# How to Implement Quality Metrics for LLM Outputs Using OpenTelemetry Custom Metrics
+# How to Use Quality Metrics for LLM Outputs Using OpenTelemetry Custom Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Distroless Python Container Image with a Virtual Environment for Cloud Run
+# How to Build a Distroless Python Container Image with a Virtual Environment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

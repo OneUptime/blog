@@ -1,4 +1,4 @@
-# How to Configure App Engine app.yaml Scaling Settings to Control Instance Count and Latency
+# How to Configure App Engine app.yaml Scaling Settings to Control Instance Count
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

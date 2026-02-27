@@ -1,4 +1,4 @@
-# How to Monitor Game Chat and Voice Communication Server Performance with OpenTelemetry
+# How to Monitor Game Chat and Voice Communication Server Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

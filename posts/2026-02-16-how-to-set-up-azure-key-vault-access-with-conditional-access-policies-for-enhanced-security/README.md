@@ -1,4 +1,4 @@
-# How to Set Up Azure Key Vault Access with Conditional Access Policies for Enhanced Security
+# How to Set Up Azure Key Vault Access with Conditional Access Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

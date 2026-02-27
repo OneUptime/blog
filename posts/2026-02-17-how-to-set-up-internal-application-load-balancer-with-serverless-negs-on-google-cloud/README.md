@@ -1,4 +1,4 @@
-# How to Set Up Internal Application Load Balancer with Serverless NEGs on Google Cloud
+# How to Set Up Internal Application Load Balancer with Serverless NEGs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

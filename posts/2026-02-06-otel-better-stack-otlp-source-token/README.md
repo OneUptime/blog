@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Logs and Metrics to Better Stack via Their OTLP-Native Endpoint with Source Token
+# How to Send OpenTelemetry Logs and Metrics to Better Stack via Their
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

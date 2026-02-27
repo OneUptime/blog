@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Pydantic, Validation, Data Models, FastAPI, Type Safety
 
-Description: Learn how to create custom validators in Pydantic v2 to enforce business rules, transform data, and build robust data validation pipelines. This guide covers field validators, model validators, and advanced patterns.
+Description: Learn how to create custom validators in Pydantic v2 to enforce business rules, transform data, and build robust data validation pipelines.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Migrate Petabytes of On-Premises Data to Google Cloud Storage Using Transfer Appliance
+# How to Migrate Petabytes of On-Premises Data to Google Cloud Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

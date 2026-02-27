@@ -1,4 +1,4 @@
-# How to Fix Dataflow Flex Template Build Failing with Container Image Permission Errors
+# How to Fix Dataflow Flex Template Build Failing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

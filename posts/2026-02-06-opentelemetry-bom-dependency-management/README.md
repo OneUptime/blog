@@ -1,4 +1,4 @@
-# How to Understand the OpenTelemetry BOM (Bill of Materials) for Dependency Management
+# How to Understand the OpenTelemetry BOM for Dependency Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

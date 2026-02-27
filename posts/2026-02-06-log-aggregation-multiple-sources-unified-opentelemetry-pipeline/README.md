@@ -1,4 +1,4 @@
-# How to Set Up Log Aggregation from Multiple Sources into a Unified OpenTelemetry Pipeline
+# How to Set Up Log Aggregation from Multi Sources into a Unified OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

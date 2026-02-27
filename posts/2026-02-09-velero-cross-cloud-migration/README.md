@@ -1,4 +1,4 @@
-# How to Migrate Kubernetes Clusters Between Cloud Providers Using Velero Cross-Cloud Backup
+# How to Migrate K8s Clusters Between Cloud Providers Using Velero Cross-Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

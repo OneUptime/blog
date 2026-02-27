@@ -1,4 +1,4 @@
-# How to Use Metadata Server to Pass Configuration Data to Compute Engine Startup Scripts
+# Use Metadata Server to Pass Configuration Data to Compute Engine Startup Scripts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

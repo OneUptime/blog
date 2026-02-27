@@ -1,4 +1,4 @@
-# How to Troubleshoot Slow Spring Boot Startup Caused by OpenTelemetry Java Agent Class Transformation
+# How to Troubleshoot Slow Spring Boot Startup Caused by OpenTelemetry Java Agent
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

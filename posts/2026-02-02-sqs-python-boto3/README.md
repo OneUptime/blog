@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, Python, boto3, Message Queue, Distributed Systems, Cloud
 
-Description: Learn how to use Amazon SQS with Python and boto3. Covers queue creation, sending and receiving messages, dead letter queues, FIFO queues, and production best practices for reliable message processing.
+Description: Learn how to use Amazon SQS with Python and boto3.
 
 ---
 

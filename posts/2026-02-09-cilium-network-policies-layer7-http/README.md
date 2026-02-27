@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Cilium, Security
 
-Description: Implement Layer 7 HTTP filtering in Cilium network policies to control traffic based on HTTP methods, paths, headers, and response codes, providing application-level security beyond standard Kubernetes network policies.
+Description: Implement Layer 7 HTTP filtering in Cilium network policies to control traffic based on HTTP methods, paths, headers, and response codes.
 
 ---
 

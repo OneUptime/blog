@@ -1,4 +1,4 @@
-# How to Fix Baggage Values Not Propagating Across Service Boundaries Because W3CBaggagePropagator Is Not Configured
+# How to Fix Baggage Values Not Propagating Across Service Boundaries Because
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

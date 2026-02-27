@@ -1,4 +1,4 @@
-# How to Convert Span Events into Log Records and Metric Data Points Using Collector Connectors
+# How to Convert Span Events into Log Records and Metric Data Points
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

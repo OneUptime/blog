@@ -1,4 +1,4 @@
-# How to Build a Docker Image for a Next.js Application with Standalone Output and Deploy to Cloud Run
+# How to Build a Docker Image for a Next.js Application with Standalone Output
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

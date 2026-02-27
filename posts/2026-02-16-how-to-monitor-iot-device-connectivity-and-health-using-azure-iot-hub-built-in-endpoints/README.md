@@ -1,4 +1,4 @@
-# How to Monitor IoT Device Connectivity and Health Using Azure IoT Hub Built-In Endpoints
+# How to Monitor IoT Device Connectivity and Health Using Azure IoT Hub Built-In
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

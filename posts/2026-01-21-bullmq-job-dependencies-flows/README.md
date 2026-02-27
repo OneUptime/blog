@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Job Flows, Workflow, DAG, Parent-Child Jobs
 
-Description: A comprehensive guide to implementing job dependencies using BullMQ Flows, including parent-child relationships, complex workflow orchestration, error handling in flows, and patterns for building reliable multi-step job pipelines.
+Description: A comprehensive guide to implementing job dependencies using BullMQ Flows, including parent-child relationships, complex workflow orchestration, error handling in flows.
 
 ---
 

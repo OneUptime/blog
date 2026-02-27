@@ -1,4 +1,4 @@
-# How to Implement Container Image Lazy Pulling with Stargz Snapshotter on Kubernetes
+# How to Use Container Image Lazy Pulling with Stargz Snapshotter on Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

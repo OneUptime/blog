@@ -1,4 +1,4 @@
-# How to Build a Dynamics 365 Customer Service Bot with Azure Bot Framework and QnA Maker
+# How to Build a Dynamics 365 Customer Service Bot with Azure Bot Framework
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

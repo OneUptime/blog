@@ -1,4 +1,4 @@
-# How to Trace CDR (Call Detail Record) Generation and Rating Pipeline with OpenTelemetry
+# How to Trace CDR Generation and Rating Pipeline with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

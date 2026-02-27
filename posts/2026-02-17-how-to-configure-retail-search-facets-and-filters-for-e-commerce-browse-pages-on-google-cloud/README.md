@@ -1,4 +1,4 @@
-# How to Configure Retail Search Facets and Filters for E-Commerce Browse Pages on Google Cloud
+# How to Configure Retail Search Facets and Filters for E-Commerce Browse Pages
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

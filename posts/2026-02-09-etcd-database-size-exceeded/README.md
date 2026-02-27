@@ -1,4 +1,4 @@
-# How to Diagnose Kubernetes etcd Database Size Exceeded Errors and Compact the Database
+# How to Diagnose Kubernetes etcd Database Size Exceeded Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

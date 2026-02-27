@@ -1,4 +1,4 @@
-# How to Generate Supply Chain Attestations for Kubernetes Container Images Using In-Toto
+# Generate Supply Chain Attestations for Kubernetes Container Images Using In-Toto
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

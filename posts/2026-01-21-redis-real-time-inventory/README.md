@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Real-Time, Inventory, E-Commerce, Stock Management, Reservations, High Concurrency
 
-Description: A comprehensive guide to implementing real-time inventory management with Redis, covering stock tracking, reservation systems, overselling prevention, and high-concurrency handling for e-commerce applications.
+Description: A comprehensive guide to implementing real-time inventory management with Redis, covering stock tracking, reservation systems, overselling prevention.
 
 ---
 

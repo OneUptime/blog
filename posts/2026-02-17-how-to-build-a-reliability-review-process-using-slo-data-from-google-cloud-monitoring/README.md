@@ -1,4 +1,4 @@
-# How to Build a Reliability Review Process Using SLO Data from Google Cloud Monitoring
+# Build a Reliability Review Process Using SLO Data from Google Cloud Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

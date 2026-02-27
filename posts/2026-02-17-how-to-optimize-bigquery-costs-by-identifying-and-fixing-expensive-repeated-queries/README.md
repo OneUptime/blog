@@ -1,4 +1,4 @@
-# How to Optimize BigQuery Costs by Identifying and Fixing Expensive Repeated Queries
+# How to Optimize BigQuery Costs by Identifying
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

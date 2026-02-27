@@ -1,4 +1,4 @@
-# How to Implement HIPAA-Compliant Telemetry Pipelines with OpenTelemetry PII Redaction
+# How to Use HIPAA-Compliant Telemetry Pipelines with OpenTelemetry PII Redaction
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

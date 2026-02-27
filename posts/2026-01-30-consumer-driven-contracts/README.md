@@ -811,7 +811,7 @@ Start with one high-risk integration. Prove the value, then expand coverage to o
 
 **Related Reading:**
 
-- [Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Understand how requests flow across your microservices
-- [SRE Best Practices](/blog/post/2025-11-28-sre-best-practices/view) - Build reliability into your deployment pipeline
+- [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Understand how requests flow across your microservices
+- [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view) - Build reliability into your deployment pipeline
 
 *Need visibility into how your microservices communicate? [OneUptime](https://oneuptime.com) provides distributed tracing, monitoring, and alerting to complement your contract testing strategy.*

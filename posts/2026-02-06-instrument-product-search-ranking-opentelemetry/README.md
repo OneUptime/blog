@@ -1,4 +1,4 @@
-# How to Instrument Product Search Ranking Algorithms with OpenTelemetry to Measure Relevance Latency and Result Quality
+# How to Instrument Product Search Ranking Algorithms with OpenTelemetry to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

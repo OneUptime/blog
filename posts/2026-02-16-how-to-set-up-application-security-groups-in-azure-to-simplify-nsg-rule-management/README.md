@@ -1,4 +1,4 @@
-# How to Set Up Application Security Groups in Azure to Simplify NSG Rule Management
+# Set Up Application Security Groups in Azure to Simplify NSG Rule Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

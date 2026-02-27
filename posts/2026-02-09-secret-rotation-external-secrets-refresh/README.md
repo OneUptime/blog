@@ -1,4 +1,4 @@
-# How to Implement Secret Rotation with External Secrets Operator Refresh Intervals
+# How to Use Secret Rotation with External Secrets Operator Refresh Intervals
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

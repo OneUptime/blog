@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Cost Management, Resource Limits, Admission Control, FinOps
 
-Description: Learn how to use admission control policies to enforce cost governance, limit resource consumption, prevent expensive workloads, implement chargeback mechanisms, and optimize cloud spending through policy-based resource management.
+Description: Learn how to use admission control policies to enforce cost governance, limit resource consumption, prevent expensive workloads, implement chargeback mechanisms.
 
 ---
 

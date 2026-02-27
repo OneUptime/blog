@@ -1,4 +1,4 @@
-# How to Configure GKE Gateway Controller for Advanced HTTP Routing and Header-Based Matching
+# How to Configure GKE Gateway Controller for Advanced HTTP Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Spot Node Pools in GKE and Configure Tolerations for Cost-Optimized Workloads
+# How to Set Up Spot Node Pools in GKE and Configure Tolerations for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

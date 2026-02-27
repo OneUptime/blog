@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Connection Pooling, HTTP Keep-Alive, Performance, Python, Node.js, Go, Networking, Backend
 
-Description: Learn how to implement connection reuse patterns to reduce latency and improve throughput. This guide covers HTTP keep-alive, connection pooling, and persistent connections across different languages and protocols.
+Description: Learn how to implement connection reuse patterns to reduce latency and improve throughput.
 
 ---
 

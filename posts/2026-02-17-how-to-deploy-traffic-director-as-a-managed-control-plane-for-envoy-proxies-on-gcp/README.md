@@ -1,4 +1,4 @@
-# How to Deploy Traffic Director as a Managed Control Plane for Envoy Proxies on GCP
+# How to Deploy Traffic Director as a Managed Control Plane
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

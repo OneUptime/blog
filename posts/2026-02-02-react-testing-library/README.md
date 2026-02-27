@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: React, Testing, React Testing Library, JavaScript
 
-Description: A comprehensive guide to testing React applications using React Testing Library. Learn core concepts, query methods, user interactions, async testing, and best practices for writing maintainable tests that focus on user behavior.
+Description: A comprehensive guide to testing React applications using React Testing Library.
 
 ---
 

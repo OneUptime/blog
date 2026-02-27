@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NestJS, GraphQL, TypeScript, API, Type Safety, Node.js, Backend
 
-Description: A practical guide to building type-safe GraphQL APIs with NestJS using the code-first approach. Learn how to leverage TypeScript decorators for automatic schema generation, implement resolvers, and create maintainable GraphQL services.
+Description: A practical guide to building type-safe GraphQL APIs with NestJS using the code-first approach.
 
 ---
 

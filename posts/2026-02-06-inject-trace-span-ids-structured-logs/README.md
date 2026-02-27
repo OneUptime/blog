@@ -1,4 +1,4 @@
-# How to Inject Trace IDs and Span IDs into Structured Logs for Bidirectional Trace-Log Correlation
+# How to Inject Trace IDs and Span IDs into Structured Logs for Bidirectional
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

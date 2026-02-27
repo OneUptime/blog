@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Python, Node.js, Java, Client Libraries, Message Queue, Streaming
 
-Description: A comprehensive guide to connecting to Apache Kafka from Python, Node.js, and Java applications, covering client library selection, configuration, producer and consumer patterns, and best practices for each language.
+Description: A comprehensive guide to connecting to Apache Kafka from Python, Node.
 
 ---
 

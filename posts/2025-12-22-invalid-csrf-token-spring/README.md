@@ -462,4 +462,4 @@ Understanding when CSRF protection applies helps you configure it correctly for 
 *Need to monitor your Spring Boot application security? [OneUptime](https://oneuptime.com) provides security monitoring and alerting for your applications with comprehensive logging and incident management.*
 
 **Related Reading:**
-- [How to Configure CORS in Spring Boot](/blog/post/2025-12-22-configure-cors-spring-boot/view)
+- [How to Configure CORS in Spring Boot](https://oneuptime.com/blog/post/2025-12-22-configure-cors-spring-boot/view)

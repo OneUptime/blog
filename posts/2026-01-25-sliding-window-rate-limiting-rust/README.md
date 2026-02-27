@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Rate Limiting, Sliding Window, API, Performance
 
-Description: Learn how to build a production-ready sliding window rate limiter in Rust. This guide covers the algorithm, thread-safe implementations, and integration with popular web frameworks like Actix and Axum.
+Description: Learn how to build a production-ready sliding window rate limiter in Rust.
 
 ---
 

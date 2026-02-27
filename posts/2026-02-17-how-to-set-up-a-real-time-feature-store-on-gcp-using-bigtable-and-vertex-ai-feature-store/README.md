@@ -1,4 +1,4 @@
-# How to Set Up a Real-Time Feature Store on GCP Using Bigtable and Vertex AI Feature Store
+# How to Set Up a Real-Time Feature Store on GCP Using Bigtable
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

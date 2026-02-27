@@ -1,4 +1,4 @@
-# How to Use Azure CLI Extensions to Manage Preview Features and Additional Services
+# How to Use Azure CLI Extensions to Manage Preview Features
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

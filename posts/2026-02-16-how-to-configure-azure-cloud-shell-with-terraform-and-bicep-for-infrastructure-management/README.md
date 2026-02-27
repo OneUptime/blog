@@ -1,4 +1,4 @@
-# How to Configure Azure Cloud Shell with Terraform and Bicep for Infrastructure Management
+# How to Configure Azure Cloud Shell with Terraform and Bicep
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

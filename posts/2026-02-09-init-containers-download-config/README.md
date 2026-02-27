@@ -1,4 +1,4 @@
-# How to Implement Init Containers That Download Configuration from External Sources
+# How to Use Init Containers That Download Configuration from External Sources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

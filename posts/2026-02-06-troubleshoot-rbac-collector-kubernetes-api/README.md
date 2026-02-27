@@ -1,4 +1,4 @@
-# How to Troubleshoot RBAC Permission Errors When the Collector Cannot Query the Kubernetes API for Metadata
+# How to Troubleshoot RBAC Permission Errors When the Collector Cannot Query the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

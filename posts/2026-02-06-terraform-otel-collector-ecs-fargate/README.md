@@ -1,4 +1,4 @@
-# How to Use Terraform to Deploy and Configure the OpenTelemetry Collector on AWS ECS Fargate Tasks
+# How to Use Terraform to Deploy and Configure the OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

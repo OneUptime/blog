@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Mockito, Unit Testing, JUnit, Testing
 
-Description: Learn how to set up and write effective unit tests in Spring Boot using Mockito for mocking dependencies. This guide covers test configuration, common mocking patterns, and best practices for reliable tests.
+Description: Learn how to set up and write effective unit tests in Spring Boot using Mockito for mocking dependencies.
 
 ---
 
@@ -467,4 +467,4 @@ Effective unit tests give you confidence in your code and catch bugs early in de
 *Need to monitor your Spring Boot application in production? [OneUptime](https://oneuptime.com) provides comprehensive observability for Java applications with tracing, metrics, and alerting.*
 
 **Related Reading:**
-- [How to Set Up Integration Testing in Spring Boot](/blog/post/2025-12-22-integration-testing-spring-boot/view)
+- [How to Set Up Integration Testing in Spring Boot](https://oneuptime.com/blog/post/2025-12-22-integration-testing-spring-boot/view)

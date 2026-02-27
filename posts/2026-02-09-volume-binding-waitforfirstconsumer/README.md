@@ -1,4 +1,4 @@
-# How to Configure Volume Binding Mode WaitForFirstConsumer for Topology-Aware Provisioning
+# How to Configure Volume Binding Mode WaitForFirstConsumer for Topology-Aware
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

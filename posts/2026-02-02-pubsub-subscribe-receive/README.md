@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Pub/Sub, Google Cloud, Messaging, Event-Driven Architecture, Node.js, Python, Distributed Systems
 
-Description: Learn how to subscribe and receive messages from Google Cloud Pub/Sub with practical examples in Node.js and Python. Covers pull and push subscriptions, message acknowledgment, flow control, and best practices for building reliable event-driven systems.
+Description: Learn how to subscribe and receive messages from Google Cloud Pub/Sub with practical examples in Node.js and Python.
 
 ---
 

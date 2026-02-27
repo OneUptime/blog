@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CockroachDB, Distributed Transactions, Database, SQL, Consistency, ACID
 
-Description: Learn how to handle distributed transactions in CockroachDB effectively. Covering transaction isolation levels, conflict handling, retry strategies, and best practices for building reliable distributed applications with strong consistency guarantees.
+Description: Learn how to handle distributed transactions in CockroachDB effectively.
 
 ---
 

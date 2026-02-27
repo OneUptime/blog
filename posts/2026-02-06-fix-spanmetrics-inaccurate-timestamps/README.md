@@ -1,4 +1,4 @@
-# How to Fix the spanmetrics Processor Producing Inaccurate Timestamps on Derived Metrics
+# How to Fix the spanmetrics Processor Producing Inaccurate Timestamps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

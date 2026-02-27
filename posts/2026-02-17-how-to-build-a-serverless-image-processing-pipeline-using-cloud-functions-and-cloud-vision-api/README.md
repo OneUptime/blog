@@ -1,4 +1,4 @@
-# How to Build a Serverless Image Processing Pipeline Using Cloud Functions and Cloud Vision API
+# How to Build a Serverless Image Processing Pipeline Using Cloud Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

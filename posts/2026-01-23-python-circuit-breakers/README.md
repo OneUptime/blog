@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Circuit Breaker, Resilience, Fault Tolerance, Microservices, pybreaker, Distributed Systems, Error Handling
 
-Description: Learn how to implement the circuit breaker pattern in Python to build resilient applications. This guide covers the theory, practical implementation with pybreaker, custom implementations, and integration with web frameworks.
+Description: Learn how to implement the circuit breaker pattern in Python to build resilient applications.
 
 ---
 

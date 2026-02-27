@@ -1,4 +1,4 @@
-# How to Implement Conditional Access Session Controls for Cloud App Security in Microsoft Entra ID
+# How to Use Conditional Access Session Controls for Cloud App Security
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

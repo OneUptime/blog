@@ -1,4 +1,4 @@
-# How to Deploy a FHIR Server Using Azure Health Data Services for Healthcare Interoperability
+# How to Deploy a FHIR Server Using Azure Health Data Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

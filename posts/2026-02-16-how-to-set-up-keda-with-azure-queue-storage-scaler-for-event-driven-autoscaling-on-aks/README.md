@@ -1,4 +1,4 @@
-# How to Set Up KEDA with Azure Queue Storage Scaler for Event-Driven Autoscaling on AKS
+# How to Set Up KEDA with Azure Queue Storage Scaler for Event-Driven Autoscaling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

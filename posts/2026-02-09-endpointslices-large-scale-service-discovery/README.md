@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Networking, Scalability
 
-Description: Configure EndpointSlices to improve service discovery performance in large Kubernetes clusters by distributing endpoint information efficiently across multiple objects, reducing API server load and network traffic overhead.
+Description: Configure EndpointSlices to improve service discovery performance in large Kubernetes clusters by distributing endpoint information efficiently across multiple objects.
 
 ---
 

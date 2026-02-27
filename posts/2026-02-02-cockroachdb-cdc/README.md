@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CockroachDB, Change Data Capture, CDC, Database, Streaming, Kafka, Event-Driven Architecture, PostgreSQL
 
-Description: A comprehensive guide to implementing Change Data Capture (CDC) with CockroachDB using changefeeds. Learn how to stream database changes to Kafka, cloud storage, and webhooks for real-time data pipelines and event-driven architectures.
+Description: A comprehensive guide to implementing Change Data Capture (CDC) with CockroachDB using changefeeds.
 
 ---
 

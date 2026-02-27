@@ -786,5 +786,5 @@ By properly configuring and managing collections, you can build modular, maintai
 *Managing complex infrastructure automation? [OneUptime](https://oneuptime.com) provides monitoring and observability for your Ansible-managed infrastructure.*
 
 **Related Reading:**
-- [How to Handle Ansible Handlers and Notifications](/blog/post/2026-01-24-ansible-handlers-notifications/view)
-- [How to Handle Ansible Block Error Handling](/blog/post/2026-01-24-ansible-block-error-handling/view)
+- [How to Handle Ansible Handlers and Notifications](https://oneuptime.com/blog/post/2026-01-24-ansible-handlers-notifications/view)
+- [How to Handle Ansible Block Error Handling](https://oneuptime.com/blog/post/2026-01-24-ansible-block-error-handling/view)

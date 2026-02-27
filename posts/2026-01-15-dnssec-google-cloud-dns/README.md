@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: DNSSEC, Google Cloud, Cloud DNS, DNS, Security, Cloud
 
-Description: Learn how to enable and configure DNSSEC on Google Cloud DNS to protect your domain from DNS spoofing and cache poisoning attacks with step-by-step instructions using both gcloud CLI and Google Cloud Console.
+Description: Learn how to enable and configure DNSSEC on Google Cloud DNS to protect your domain from DNS spoofing and cache poisoning attacks with step-by-step instructions using both gcloud CLI and Google Cloud.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Build a Retail Price Optimization System with Azure Machine Learning and Power BI
+# How to Build a Retail Price Optimization System with Azure Machine Learning
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Disaster Recovery for Azure VMs to a Secondary Region with Azure Site Recovery
+# How to Set Up Disaster Recovery for Azure VMs to a Secondary Region
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

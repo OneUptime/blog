@@ -1,4 +1,4 @@
-# How to Configure Docker Swarm Mode Service Log Collection with the OpenTelemetry Collector DaemonSet Pattern
+# How to Configure Docker Swarm Mode Service Log Collection with the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

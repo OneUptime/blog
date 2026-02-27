@@ -1,4 +1,4 @@
-# How to Create Alertmanager Silences Programmatically During Kubernetes Maintenance Windows
+# How to Create Alertmanager Silences Programmatically During K8s Maintenance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

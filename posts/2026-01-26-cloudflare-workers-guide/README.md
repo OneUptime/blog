@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cloudflare Workers, Edge Computing, Serverless, JavaScript, TypeScript, Performance
 
-Description: A practical guide to building and deploying applications on Cloudflare Workers. Learn how edge computing works, write your first Worker, handle routing, manage state with KV and Durable Objects, and deploy a production-ready API.
+Description: A practical guide to building and deploying applications on Cloudflare Workers.
 
 Cloudflare Workers let you run JavaScript at the edge - on servers distributed across 300+ cities worldwide. Your code executes within milliseconds of your users, no matter where they are. Unlike traditional serverless platforms where cold starts can take seconds, Workers typically respond in under 50ms.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Rate Limiting, Sliding Window, API Security, Performance, Lua Scripts
 
-Description: Learn how to implement sliding window rate limiting with Redis to protect your APIs from abuse. This guide covers the algorithm, Lua script implementation, and production-ready code examples in Python and Node.js.
+Description: Learn how to implement sliding window rate limiting with Redis to protect your APIs from abuse.
 
 ---
 

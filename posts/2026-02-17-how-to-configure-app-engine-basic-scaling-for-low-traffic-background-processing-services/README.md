@@ -1,4 +1,4 @@
-# How to Configure App Engine Basic Scaling for Low-Traffic Background Processing Services
+# How to Configure App Engine Basic Scaling for Low-Traffic Background Processing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

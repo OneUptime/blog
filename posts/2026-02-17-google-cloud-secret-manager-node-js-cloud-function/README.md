@@ -1,4 +1,4 @@
-# How to Use the google-cloud/secret-manager npm Package to Inject Secrets into a Node.js Cloud Function
+# How to Use the google-cloud/secret-manager npm Package to Inject Secrets into a
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

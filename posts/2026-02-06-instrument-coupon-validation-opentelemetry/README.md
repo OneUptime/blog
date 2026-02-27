@@ -1,4 +1,4 @@
-# How to Instrument Coupon and Discount Code Validation Pipelines with OpenTelemetry Spans and Error Tracking
+# How to Instrument Coupon and Discount Code Validation Pipelines with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

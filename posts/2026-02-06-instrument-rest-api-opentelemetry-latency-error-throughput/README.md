@@ -1,4 +1,4 @@
-# How to Instrument REST API Endpoints with OpenTelemetry for Latency, Error Rate, and Throughput Monitoring
+# How to Instrument REST API Endpoints with OpenTelemetry for Latency, Error Rate,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

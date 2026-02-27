@@ -1,4 +1,4 @@
-# How to Fix cert-manager Not Being Installed Before the OpenTelemetry Operator and Getting Webhook Errors
+# How to Fix cert-manager Not Being Installed Before the OpenTelemetry Operator
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

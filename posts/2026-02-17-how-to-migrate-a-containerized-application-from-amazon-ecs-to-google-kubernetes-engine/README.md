@@ -1,4 +1,4 @@
-# How to Migrate a Containerized Application from Amazon ECS to Google Kubernetes Engine
+# Migrate a Containerized Application from Amazon ECS to Google Kubernetes Engine
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

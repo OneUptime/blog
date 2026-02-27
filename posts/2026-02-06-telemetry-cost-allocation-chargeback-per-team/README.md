@@ -1,4 +1,4 @@
-# How to Implement Telemetry Cost Allocation and Chargeback per Team with OpenTelemetry
+# How to Use Telemetry Cost Allocation and Chargeback per Team with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

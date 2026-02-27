@@ -1,4 +1,4 @@
-# How to Build a Four-Signal Correlation Pipeline (Traces + Metrics + Logs + Profiles) in a Single Collector
+# How to Build a Four-Signal Correlation Pipeline in a Single Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

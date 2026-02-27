@@ -1,4 +1,4 @@
-# How to Redirect gcr.io Requests to Artifact Registry Using Transition Repositories
+# How to Redirect gcr.io Requests to Artifact Registry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

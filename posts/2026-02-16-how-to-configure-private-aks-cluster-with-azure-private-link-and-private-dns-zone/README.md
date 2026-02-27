@@ -1,4 +1,4 @@
-# How to Configure Private AKS Cluster with Azure Private Link and Private DNS Zone
+# How to Configure Private AKS Cluster with Azure Private Link
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

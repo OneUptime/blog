@@ -1,4 +1,4 @@
-# How to Build an Error Impact Score Using OpenTelemetry Metrics (Affected Users, Revenue Impact, Error Frequency)
+# How to Build an Error Impact Score Using OpenTelemetry Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

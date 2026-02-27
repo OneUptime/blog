@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Zookeeper, Distributed Systems, Coordination, Metrics, Observability
 
-Description: Configure the Zookeeper receiver in OpenTelemetry Collector to monitor Apache Zookeeper clusters, track coordination service health, measure latency, and export telemetry for distributed system observability.
+Description: Configure the Zookeeper receiver in OpenTelemetry Collector to monitor Apache Zookeeper clusters, track coordination service health, measure latency.
 
 Apache Zookeeper is a critical coordination service for distributed systems, used by platforms like Kafka, Hadoop, and HBase for configuration management, leader election, and distributed locking. Monitoring Zookeeper is essential because failures in this coordination layer can cascade across your entire distributed infrastructure. The Zookeeper receiver in the OpenTelemetry Collector provides native integration to collect comprehensive metrics from Zookeeper nodes.
 

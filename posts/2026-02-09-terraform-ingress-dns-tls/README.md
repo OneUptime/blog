@@ -1,10 +1,10 @@
-# How to Build Terraform Modules for Kubernetes Ingress with DNS and TLS Automation
+# How to Build Terraform Modules for Kubernetes Ingress
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Kubernetes, Ingress
 
-Description: Learn how to create Terraform modules that provision Kubernetes Ingress resources with automated DNS configuration via Route53 or CloudDNS and TLS certificate management through cert-manager for production-ready HTTPS endpoints.
+Description: Learn how to create Terraform modules that provision Kubernetes Ingress resources with automated DNS configuration via Route53 or CloudDNS and TLS certificate management through cert-manager for.
 
 ---
 

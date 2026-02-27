@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Dashboard, Security, RBAC, Authentication, DevOps
 
-Description: Learn how to deploy the Kubernetes Dashboard securely with proper authentication, RBAC configuration, and access controls. This guide covers installation, creating admin users, and security best practices for production environments.
+Description: Learn how to deploy the Kubernetes Dashboard securely with proper authentication, RBAC configuration, and access controls.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Trace Programmatic Ad Serving and Real-Time Bidding (RTB) Auction Latency with OpenTelemetry
+# How to Trace Programmatic Ad Serving and Real-Time Bidding Auction Latency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

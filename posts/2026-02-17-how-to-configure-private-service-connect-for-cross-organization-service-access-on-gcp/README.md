@@ -1,4 +1,4 @@
-# How to Configure Private Service Connect for Cross-Organization Service Access on GCP
+# How to Configure Private Service Connect for Cross-Organization Service Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

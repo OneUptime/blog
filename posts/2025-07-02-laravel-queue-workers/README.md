@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PHP, Laravel, Queue, Workers, Jobs, Redis
 
-Description: A comprehensive guide to implementing queue workers in Laravel. Learn job creation, queue drivers, worker configuration, retry strategies, and production best practices for reliable background processing.
+Description: A comprehensive guide to implementing queue workers in Laravel.
 
 ---
 

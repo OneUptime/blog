@@ -1,4 +1,4 @@
-# How to Monitor Log Pipeline Throughput and Detect Log Loss Using OpenTelemetry Internal Metrics
+# How to Monitor Log Pipeline Throughput and Detect Log Loss
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

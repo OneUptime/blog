@@ -1,4 +1,4 @@
-# How to Troubleshoot Span Name Cardinality Explosion When URL Path Parameters Are Included in Span Names
+# How to Troubleshoot Span Name Cardinality Explosion When URL Path Parameters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

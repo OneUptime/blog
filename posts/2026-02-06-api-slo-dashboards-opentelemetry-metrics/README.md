@@ -1,4 +1,4 @@
-# How to Build API SLO Dashboards (Availability, Latency P99, Error Budget) from OpenTelemetry Metrics
+# How to Build API SLO Dashboards from OpenTelemetry Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

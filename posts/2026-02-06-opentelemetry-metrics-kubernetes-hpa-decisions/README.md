@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Metrics for Kubernetes Horizontal Pod Autoscaler (HPA) Decisions
+# Use OpenTelemetry Metrics for Kubernetes Horizontal Pod Autoscaler Decisions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

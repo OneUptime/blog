@@ -1,4 +1,4 @@
-# How to Build a Unified Query That Jumps from a Metric Spike to Related Traces to Correlated Logs
+# How to Build a Unified Query That Jumps from a Metric Spike to Related Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use OTTL to Truncate Long Attribute Values and Limit Log Body Size in the Collector Pipeline
+# How to Use OTTL to Truncate Long Attribute Values and Limit Log Body Size
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

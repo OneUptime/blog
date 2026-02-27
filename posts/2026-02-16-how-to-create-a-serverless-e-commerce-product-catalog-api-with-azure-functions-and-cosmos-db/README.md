@@ -1,4 +1,4 @@
-# How to Create a Serverless E-Commerce Product Catalog API with Azure Functions and Cosmos DB
+# How to Create a Serverless E-Commerce Product Catalog API with Azure Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Create a Cron Job in Google Cloud Scheduler Using the Console and gcloud CLI
+# How to Create a Cron Job in Google Cloud Scheduler Using the Console
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

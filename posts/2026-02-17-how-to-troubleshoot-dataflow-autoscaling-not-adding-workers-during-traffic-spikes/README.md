@@ -1,4 +1,4 @@
-# How to Troubleshoot Dataflow Autoscaling Not Adding Workers During Traffic Spikes
+# Troubleshoot Dataflow Autoscaling Not Adding Workers During Traffic Spikes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

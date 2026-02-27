@@ -1,4 +1,4 @@
-# How to Configure Network Security Groups with Application Security Groups for Micro-Segmentation
+# How to Configure Network Security Groups with App Security Groups for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

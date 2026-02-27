@@ -1,4 +1,4 @@
-# How to Choose Between Secret Manager and Cloud KMS for Managing Sensitive Data on GCP
+# How to Choose Between Secret Manager and Cloud KMS for Managing Sensitive Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use Velero Restore Mapping to Change Namespaces and Storage Classes During Recovery
+# How to Use Velero Restore Mapping to Change Namespaces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

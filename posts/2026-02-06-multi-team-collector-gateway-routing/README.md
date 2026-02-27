@@ -1,4 +1,4 @@
-# How to Implement Multi-Team Observability with Per-Team Collector Instances and Centralized Gateway Routing
+# How to Use Multi-Team Observability with Per-Team Collector Instances
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

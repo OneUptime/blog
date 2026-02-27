@@ -1,4 +1,4 @@
-# How to Debug SSL Handshake Failures on Google Cloud Global External Application Load Balancer
+# How to Debug SSL Handshake Failures on Google Cloud Global External App Load
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

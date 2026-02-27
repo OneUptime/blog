@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: LLM, RAG, AI, NLP
 
-Description: A practical guide to building effective context window management systems for LLM applications, covering chunking strategies, sliding windows, and memory architectures that maximize token efficiency while preserving conversation coherence.
+Description: A practical guide to building effective context window management systems for LLM applications, covering chunking strategies, sliding windows.
 
 ---
 

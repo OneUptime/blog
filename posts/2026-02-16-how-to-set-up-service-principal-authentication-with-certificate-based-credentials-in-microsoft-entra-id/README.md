@@ -1,4 +1,4 @@
-# How to Set Up Service Principal Authentication with Certificate-Based Credentials in Microsoft Entra ID
+# How to Set Up Service Principal Auth with Certificate-Based Credentials in
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use the Debug Exporter with Verbosity Levels for Step-by-Step Local Instrumentation Debugging
+# How to Use the Debug Exporter with Verbosity Levels for Step-by-Step Local
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

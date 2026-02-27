@@ -1,4 +1,4 @@
-# How to Troubleshoot the Kubeletstats Receiver Returning Empty Metrics Due to Read-Only Kubelet Port Issues
+# How to Troubleshoot the Kubeletstats Receiver Returning Empty Metrics Due to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Create Azure RBAC Role Assignments Using Terraform with Microsoft Entra ID Service Principals
+# How to Create Azure RBAC Role Assignments Using Terraform with Microsoft Entra
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

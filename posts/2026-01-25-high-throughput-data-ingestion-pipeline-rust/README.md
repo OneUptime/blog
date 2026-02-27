@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Data Ingestion, Pipeline, High Throughput, Streaming
 
-Description: Learn how to build a data ingestion pipeline in Rust that handles millions of events per second. This guide covers async I/O, channel-based architectures, backpressure handling, and batching strategies for production systems.
+Description: Learn how to build a data ingestion pipeline in Rust that handles millions of events per second.
 
 ---
 

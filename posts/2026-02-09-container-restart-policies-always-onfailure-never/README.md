@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Containers, Reliability
 
-Description: Master Kubernetes restart policies to control container restart behavior. Learn when to use Always, OnFailure, and Never policies for deployments, jobs, and cronjobs to ensure appropriate failure handling.
+Description: Master Kubernetes restart policies to control container restart behavior.
 
 ---
 

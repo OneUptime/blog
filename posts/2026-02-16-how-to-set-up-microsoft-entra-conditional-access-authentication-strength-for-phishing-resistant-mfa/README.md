@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Entra Conditional Access Authentication Strength for Phishing-Resistant MFA
+# How to Set Up Microsoft Entra Conditional Access Auth Strength for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

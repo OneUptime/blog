@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Time-Series, Schema Design, Database, MergeTree, Partitioning, Analytics, Performance
 
-Description: A detailed guide to designing optimal ClickHouse table schemas for time-series workloads, covering MergeTree engines, partitioning strategies, ordering keys, and compression techniques for maximum query performance.
+Description: A detailed guide to designing optimal ClickHouse table schemas for time-series workloads, covering MergeTree engines, partitioning strategies, ordering keys.
 
 ---
 

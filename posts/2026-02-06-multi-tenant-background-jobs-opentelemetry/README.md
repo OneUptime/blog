@@ -1,4 +1,4 @@
-# How to Instrument Multi-Tenant Background Job Processing with OpenTelemetry Tenant-Aware Routing
+# How to Instrument Multi-Tenant Background Job Processing with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

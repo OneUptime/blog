@@ -1,4 +1,4 @@
-# How to Build a Heatmap of Customer Locations with Google Maps Platform and BigQuery GIS
+# How to Build a Heatmap of Customer Locations with Google Maps Platform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

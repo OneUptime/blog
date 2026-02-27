@@ -1,4 +1,4 @@
-# How to Configure Environment-Specific OpenTelemetry Settings Using .env Files and OTEL_* Variables
+# How to Configure Environment-Specific OpenTelemetry Settings Using .env Files
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

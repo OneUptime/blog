@@ -1,4 +1,4 @@
-# How to Use Cloud Functions Gen 2 Concurrency to Handle Multiple Requests Per Instance
+# Use Cloud Functions Gen 2 Concurrency to Handle Multiple Requests Per Instance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

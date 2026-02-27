@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Exemplars to Jump from a Metric Anomaly Directly to the Causing Trace
+# How to Use OpenTelemetry Exemplars to Jump from a Metric Anomaly Directly to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Decompose a Monolithic Application into Microservices on Google Kubernetes Engine
+# How to Decompose a Monolithic Application into Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

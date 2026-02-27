@@ -1,4 +1,4 @@
-# How to Correlate Customer Support Tickets with Specific OpenTelemetry Traces Using User ID Attributes
+# How to Correlate Customer Support Tickets with Specific OpenTelemetry Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

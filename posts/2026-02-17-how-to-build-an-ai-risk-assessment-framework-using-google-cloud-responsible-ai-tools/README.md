@@ -1,4 +1,4 @@
-# How to Build an AI Risk Assessment Framework Using Google Cloud Responsible AI Tools
+# Build an AI Risk Assessment Framework Using Google Cloud Responsible AI Tools
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use Azure CLI to Configure Diagnostic Settings and Log Analytics for Azure Resources
+# How to Use Azure CLI to Configure Diagnostic Settings and Log Analytics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

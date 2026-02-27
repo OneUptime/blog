@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Security, TLS, Authentication, RBAC, Network Security, Encryption, Observability
 
-Description: A comprehensive guide to securing your Prometheus deployment. Learn how to enable TLS encryption, configure authentication, implement network policies, and apply security best practices for production environments.
+Description: A comprehensive guide to securing your Prometheus deployment.
 
 ---
 

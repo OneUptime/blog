@@ -1,4 +1,4 @@
-# How to Set Up Alert Deduplication and Grouping for High-Volume OpenTelemetry Metric Alerts
+# How to Set Up Alert Deduplication and Grouping for High-Volume OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

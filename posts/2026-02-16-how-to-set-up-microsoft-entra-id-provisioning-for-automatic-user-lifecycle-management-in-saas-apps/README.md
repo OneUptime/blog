@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Entra ID Provisioning for Automatic User Lifecycle Management in SaaS Apps
+# How to Set Up Microsoft Entra ID Provisioning for Auto User Lifecycle Mgmt in
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

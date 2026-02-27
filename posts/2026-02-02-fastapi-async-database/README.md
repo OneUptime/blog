@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: FastAPI, Python, Async, Database, SQLAlchemy
 
-Description: Learn how to implement async database connections in FastAPI using SQLAlchemy 2.0 and asyncpg. This guide covers connection pooling, session management, transactions, and performance optimization for high-throughput applications.
+Description: Learn how to implement async database connections in FastAPI using SQLAlchemy 2.0 and asyncpg.
 
 ---
 

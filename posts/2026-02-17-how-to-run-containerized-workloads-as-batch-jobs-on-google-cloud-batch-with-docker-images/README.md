@@ -1,4 +1,4 @@
-# How to Run Containerized Workloads as Batch Jobs on Google Cloud Batch with Docker Images
+# How to Run Containerized Workloads as Batch Jobs on Google Cloud Batch
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

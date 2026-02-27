@@ -1,4 +1,4 @@
-# How to Render High-Quality 3D Models in a HoloLens App Using Azure Remote Rendering
+# How to Render High-Quality 3D Models in a HoloLens App
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

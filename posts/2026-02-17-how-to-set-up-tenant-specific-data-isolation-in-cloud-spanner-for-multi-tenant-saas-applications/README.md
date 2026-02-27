@@ -1,4 +1,4 @@
-# How to Set Up Tenant-Specific Data Isolation in Cloud Spanner for Multi-Tenant SaaS Applications
+# How to Set Up Tenant-Specific Data Isolation in Cloud Spanner for Multi-Tenant
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

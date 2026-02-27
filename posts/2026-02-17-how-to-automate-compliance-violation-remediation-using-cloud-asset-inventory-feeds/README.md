@@ -1,4 +1,4 @@
-# How to Automate Compliance Violation Remediation Using Cloud Asset Inventory Feeds
+# How to Automate Compliance Violation Remediation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

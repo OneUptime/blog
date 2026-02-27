@@ -1,4 +1,4 @@
-# How to Trace Deadlocks and Thread Contention Issues Using OpenTelemetry Span Timing Gaps
+# How to Trace Deadlocks and Thread Contention Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

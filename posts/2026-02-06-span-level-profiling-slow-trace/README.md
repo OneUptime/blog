@@ -1,4 +1,4 @@
-# How to Set Up Span-Level Profiling to See Exactly Which Code Executed During a Slow Trace Span
+# How to Set Up Span-Level Profiling to See Exactly Which Code Executed During a
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

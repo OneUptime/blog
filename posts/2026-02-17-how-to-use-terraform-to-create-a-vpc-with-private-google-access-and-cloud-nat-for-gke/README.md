@@ -1,4 +1,4 @@
-# How to Use Terraform to Create a VPC with Private Google Access and Cloud NAT for GKE
+# How to Use Terraform to Create a VPC with Private Google Access and Cloud NAT
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

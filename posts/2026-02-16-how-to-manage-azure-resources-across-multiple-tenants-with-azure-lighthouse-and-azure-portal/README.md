@@ -1,4 +1,4 @@
-# How to Manage Azure Resources Across Multiple Tenants with Azure Lighthouse and Azure Portal
+# How to Manage Azure Resources Across Multiple Tenants with Azure Lighthouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

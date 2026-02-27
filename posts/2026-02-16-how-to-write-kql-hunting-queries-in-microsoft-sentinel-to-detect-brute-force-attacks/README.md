@@ -1,4 +1,4 @@
-# How to Write KQL Hunting Queries in Microsoft Sentinel to Detect Brute Force Attacks
+# Write KQL Hunting Queries in Microsoft Sentinel to Detect Brute Force Attacks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Python, CLI, Zero-Code, Auto-Instrumentation, opentelemetry-instrument
 
-Description: Master the opentelemetry-instrument CLI tool to add comprehensive observability to Python applications without modifying a single line of code, including configuration, best practices, and troubleshooting.
+Description: Master the opentelemetry-instrument CLI tool to add comprehensive observability to Python applications without modifying a single line of code, including configuration, best practices.
 
 The fastest way to add OpenTelemetry to your Python application is to not write any instrumentation code at all. The `opentelemetry-instrument` CLI automatically instruments your application by injecting tracing at runtime, detecting libraries you use, and configuring exporters through environment variables. You can go from zero observability to full distributed tracing in minutes.
 

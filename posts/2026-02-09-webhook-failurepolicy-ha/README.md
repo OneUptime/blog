@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Admission Webhooks, High Availability, Reliability, Operations
 
-Description: Learn how to configure webhook failure policies, implement high availability for admission webhooks, handle webhook failures gracefully, and ensure reliable admission control without blocking cluster operations.
+Description: Learn how to configure webhook failure policies, implement high availability for admission webhooks, handle webhook failures gracefully.
 
 ---
 

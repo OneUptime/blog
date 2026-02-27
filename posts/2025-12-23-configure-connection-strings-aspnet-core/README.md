@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, ASP.NET Core, C#, Configuration, Database, Entity Framework, Best Practices
 
-Description: Learn how to properly configure and manage connection strings in ASP.NET Core applications. This guide covers appsettings.json, environment variables, user secrets, Azure Key Vault, and best practices for secure connection string management.
+Description: Learn how to properly configure and manage connection strings in ASP.NET Core applications. This guide covers appsettings.
 
 Managing connection strings properly is crucial for ASP.NET Core applications. This guide covers everything from basic configuration to advanced patterns for secure, environment-specific connection string management.
 

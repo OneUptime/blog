@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Tekton, Kubernetes, CI/CD, Event Listeners, DevOps, Webhooks, GitOps, Automation
 
-Description: A hands-on guide to implementing Tekton Event Listeners for webhook-driven CI/CD pipelines, covering architecture patterns, security hardening, scaling strategies, and production deployment configurations.
+Description: A hands-on guide to implementing Tekton Event Listeners for webhook-driven CI/CD pipelines, covering architecture patterns, security hardening, scaling strategies.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry Collector to Export Telemetry to Apache Kafka for Replay and Reprocessing
+# How to Configure OpenTelemetry Collector to Export Telemetry to Apache Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

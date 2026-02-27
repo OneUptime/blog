@@ -1,4 +1,4 @@
-# How to Trace Order Fulfillment from Checkout to Warehouse Pick-Pack-Ship with OpenTelemetry Span Links
+# How to Trace Order Fulfillment from Checkout to Warehouse Pick-Pack-Ship
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

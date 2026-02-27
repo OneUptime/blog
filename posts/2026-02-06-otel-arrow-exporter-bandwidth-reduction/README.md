@@ -1,4 +1,4 @@
-# How to Replace OTLP/gRPC with OTel Arrow Exporter for 30-70% Network Bandwidth Reduction
+# How to Replace OTLP/gRPC with OTel Arrow Exporter for 30-70% Network Bandwidth
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

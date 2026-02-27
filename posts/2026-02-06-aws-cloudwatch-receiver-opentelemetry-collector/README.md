@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, AWS, CloudWatch, Metrics, Cloud Monitoring, Observability
 
-Description: Configure the AWS CloudWatch receiver in OpenTelemetry Collector to pull metrics from AWS CloudWatch, monitor AWS services, consolidate cloud telemetry, and export unified observability data to your backend.
+Description: Configure the AWS CloudWatch receiver in OpenTelemetry Collector to pull metrics from AWS CloudWatch, monitor AWS services, consolidate cloud telemetry.
 
 AWS CloudWatch is Amazon's native monitoring and observability service for cloud resources and applications. While CloudWatch provides robust monitoring within the AWS ecosystem, many teams prefer to consolidate telemetry from multiple cloud providers and on-premises infrastructure into a single observability platform. The AWS CloudWatch receiver in the OpenTelemetry Collector enables you to pull CloudWatch metrics and forward them to any OpenTelemetry-compatible backend.
 

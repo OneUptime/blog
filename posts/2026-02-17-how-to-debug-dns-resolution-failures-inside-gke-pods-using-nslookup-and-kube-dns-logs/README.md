@@ -1,4 +1,4 @@
-# How to Debug DNS Resolution Failures Inside GKE Pods Using nslookup and kube-dns Logs
+# How to Debug DNS Resolution Failures Inside GKE Pods Using nslookup
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

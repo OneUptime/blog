@@ -1,4 +1,4 @@
-# How to Optimize Cloud Run Cold Start Latency for Java and Spring Boot Applications
+# How to Optimize Cloud Run Cold Start Latency for Java
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

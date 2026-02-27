@@ -1,4 +1,4 @@
-# How to Deploy Gateway Collectors That Enforce Attribute Policies for Regulatory Compliance
+# How to Deploy Gateway Collectors That Enforce Attribute Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

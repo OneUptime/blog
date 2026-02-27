@@ -1,4 +1,4 @@
-# How to Configure Autoscaling Based on Custom Cloud Monitoring Metrics for Managed Instance Groups
+# How to Configure Autoscaling Based on Custom Cloud Monitoring Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

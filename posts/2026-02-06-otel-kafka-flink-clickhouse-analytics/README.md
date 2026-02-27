@@ -1,4 +1,4 @@
-# How to Build a Real-Time Analytics Pipeline: OpenTelemetry to Kafka to Apache Flink to ClickHouse
+# How to Build a Real-Time Analytics Pipeline: OpenTelemetry to Kafka to Apache
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Avoid the Anti-Pattern of Running the OpenTelemetry Collector Without Resource Limits in Production
+# How to Avoid the Anti-Pattern of Running the OpenTelemetry Collector Without
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

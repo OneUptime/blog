@@ -1,4 +1,4 @@
-# How to Monitor OAuth2 Token Lifecycle Events (Issuance, Refresh, Revocation) with OpenTelemetry
+# How to Monitor OAuth2 Token Lifecycle Events with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

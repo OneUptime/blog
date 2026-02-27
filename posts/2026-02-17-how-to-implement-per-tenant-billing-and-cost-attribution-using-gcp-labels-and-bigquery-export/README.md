@@ -1,4 +1,4 @@
-# How to Implement Per-Tenant Billing and Cost Attribution Using GCP Labels and BigQuery Export
+# How to Use Per-Tenant Billing and Cost Attribution Using GCP Labels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

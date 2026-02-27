@@ -1,4 +1,4 @@
-# How to Implement Image Promotion Workflows Between Development and Production Registries
+# How to Use Image Promotion Workflows Between Development
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

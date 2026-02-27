@@ -1,4 +1,4 @@
-# How to Monitor Airport Flight Information Display System (FIDS) Data Pipeline with OpenTelemetry
+# How to Monitor Airport Flight Information Display System Data Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

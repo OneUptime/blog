@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Semantic Conventions for CloudEvents (cloudevents.event_id, cloudevents.event_source)
+# How to Use OpenTelemetry Semantic Conventions for CloudEvents
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

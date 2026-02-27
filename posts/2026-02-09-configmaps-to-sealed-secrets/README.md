@@ -1,10 +1,10 @@
-# How to Convert Kubernetes ConfigMaps to Sealed Secrets for GitOps Repository Migration
+# How to Convert Kubernetes ConfigMaps to Sealed Secrets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Sealed Secrets, GitOps, Security, Config Management
 
-Description: Learn how to safely migrate sensitive configuration data from ConfigMaps to Sealed Secrets, enabling secure GitOps workflows where encrypted secrets can be stored in version control alongside application code.
+Description: Learn how to safely migrate sensitive configuration data from ConfigMaps to Sealed Secrets.
 
 ---
 

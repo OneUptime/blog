@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DNS, Networking, Services
 
-Description: Learn how to implement Kubernetes headless services for direct pod IP discovery, enabling applications to connect directly to individual pods without load balancing for stateful workloads and custom routing.
+Description: Learn how to implement Kubernetes headless services for direct pod IP discovery, enabling applications to connect directly to individual pods without load balancing for stateful workloads and custom.
 
 ---
 

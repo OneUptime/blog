@@ -1,4 +1,4 @@
-# How to Implement OpenTelemetry Browser Instrumentation for Frontend Observability
+# How to Use OpenTelemetry Browser Instrumentation for Frontend Observability
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

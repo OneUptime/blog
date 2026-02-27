@@ -1,4 +1,4 @@
-# How to Implement Zero-Trust CI/CD by Restricting Pipeline Service Account Permissions in Kubernetes
+# How to Use Zero-Trust CI/CD by Restricting Pipeline Service Account Permissions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

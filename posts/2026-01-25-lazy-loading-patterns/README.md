@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Lazy Loading, Performance, JavaScript, React, Python, Design Patterns, Frontend, Backend
 
-Description: Learn how to implement lazy loading patterns to improve application performance. This guide covers lazy initialization, code splitting, image lazy loading, and database lazy loading with practical examples.
+Description: Learn how to implement lazy loading patterns to improve application performance.
 
 ---
 

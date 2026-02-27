@@ -1,4 +1,4 @@
-# How to Use Azure Pipelines Checkout Step to Work with Multiple Repositories in One Pipeline
+# How to Use Azure Pipelines Checkout Step to Work with Multiple Repositories
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

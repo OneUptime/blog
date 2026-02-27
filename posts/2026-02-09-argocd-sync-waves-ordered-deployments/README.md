@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, Sync Waves, GitOps, Kubernetes, Deployment Ordering
 
-Description: Learn how to use ArgoCD sync waves and hooks to control the order of resource deployment during synchronization, ensuring dependencies are met and complex applications deploy correctly across multiple phases.
+Description: Learn how to use ArgoCD sync waves and hooks to control the order of resource deployment during synchronization.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector to Export to Axiom with Per-Signal Dataset Routing
+# How to Configure the OpenTelemetry Collector to Export to Axiom with Per-Signal
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

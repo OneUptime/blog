@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: PostgreSQL, Migrations, Database, Schema
 
-Description: A comprehensive guide to handling database migrations in PostgreSQL, covering migration strategies, data transformations, version control, rollback procedures, and production-safe techniques for evolving your database.
+Description: A comprehensive guide to handling database migrations in PostgreSQL, covering migration strategies, data transformations, version control, rollback procedures.
 
 ---
 

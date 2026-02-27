@@ -1,4 +1,4 @@
-# How to Set Up VPC Firewall Rules to Allow SSH Access Only from Specific IP Ranges in GCP
+# How to Set Up VPC Firewall Rules to Allow SSH Access Only from Specific IP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

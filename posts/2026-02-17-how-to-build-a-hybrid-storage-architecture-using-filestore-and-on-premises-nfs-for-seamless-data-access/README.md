@@ -1,4 +1,4 @@
-# How to Build a Hybrid Storage Architecture Using Filestore and On-Premises NFS for Seamless Data Access
+# How to Build a Hybrid Storage Architecture Using Filestore and On-Premises NFS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

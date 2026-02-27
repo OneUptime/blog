@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Performance, Load Management, Priority Queue, FastAPI, Scalability, Rate Limiting
 
-Description: Learn how to implement request prioritization in high-load Python services. This guide covers priority queues, admission control, and graceful degradation patterns that keep critical requests flowing under pressure.
+Description: Learn how to implement request prioritization in high-load Python services.
 
 ---
 

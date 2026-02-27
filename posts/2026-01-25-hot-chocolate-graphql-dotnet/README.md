@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, GraphQL, Hot Chocolate, C#, API Development, ASP.NET Core, Query, Mutation
 
-Description: Learn how to build GraphQL APIs in .NET using Hot Chocolate. This guide covers schema design, queries, mutations, subscriptions, filtering, pagination, and DataLoader patterns for efficient data fetching.
+Description: Learn how to build GraphQL APIs in .NET using Hot Chocolate.
 
 ---
 

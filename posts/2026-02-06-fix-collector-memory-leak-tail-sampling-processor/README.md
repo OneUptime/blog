@@ -1,4 +1,4 @@
-# How to Fix the Collector Memory Leak Caused by the Tail Sampling Processor Holding Too Many Traces
+# How to Fix the Collector Memory Leak Caused by the Tail Sampling Processor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Audit, Triggers, Compliance, Security
 
-Description: Learn how to build a complete audit trail system in PostgreSQL using triggers. This guide covers tracking inserts, updates, and deletes with full before/after snapshots, user tracking, and query optimization for audit logs.
+Description: Learn how to build a complete audit trail system in PostgreSQL using triggers.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Use Terraform to Deploy a Multi-Region Cloud Spanner Instance with Fine-Grained Access Control
+# How to Use Terraform to Deploy a Multi-Region Cloud Spanner Instance with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

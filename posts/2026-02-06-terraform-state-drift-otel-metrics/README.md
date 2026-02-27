@@ -1,4 +1,4 @@
-# How to Monitor Terraform State Drift Detection and Plan Execution Duration with OpenTelemetry Metrics
+# How to Monitor Terraform State Drift Detection and Plan Execution Duration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

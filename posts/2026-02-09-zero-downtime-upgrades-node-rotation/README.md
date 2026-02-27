@@ -1,4 +1,4 @@
-# How to Implement Zero-Downtime Kubernetes Version Upgrades with Node Pool Rotation
+# How to Use Zero-Downtime Kubernetes Version Upgrades with Node Pool Rotation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

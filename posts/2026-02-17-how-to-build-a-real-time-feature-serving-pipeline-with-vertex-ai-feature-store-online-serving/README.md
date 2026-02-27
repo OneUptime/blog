@@ -1,4 +1,4 @@
-# How to Build a Real-Time Feature Serving Pipeline with Vertex AI Feature Store Online Serving
+# How to Build a Real-Time Feature Serving Pipeline with Vertex AI Feature Store
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

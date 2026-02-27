@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: React, OpenTelemetry, Observability, Tracing, Frontend, Monitoring
 
-Description: A comprehensive guide to implementing OpenTelemetry in React applications for frontend observability, covering automatic instrumentation, custom spans, trace context propagation, and performance monitoring.
+Description: A comprehensive guide to implementing OpenTelemetry in React applications for frontend observability, covering automatic instrumentation, custom spans, trace context propagation.
 
 ---
 

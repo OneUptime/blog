@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Spring WebFlux, Spring Security, Reactive Programming, Java, Authentication, Authorization, JWT, OAuth2
 
-Description: A comprehensive guide to implementing security in reactive Spring WebFlux applications. Learn how to configure authentication, authorization, JWT tokens, and OAuth2 while maintaining non-blocking behavior throughout your security chain.
+Description: A comprehensive guide to implementing security in reactive Spring WebFlux applications.
 
 ---
 

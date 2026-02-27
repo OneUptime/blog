@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Configuration, Performance, Production, Database, Tuning
 
-Description: A comprehensive guide to configuring PostgreSQL for production environments, covering memory settings, connection management, WAL configuration, checkpoints, and performance tuning for various workloads.
+Description: A comprehensive guide to configuring PostgreSQL for production environments, covering memory settings, connection management, WAL configuration, checkpoints.
 
 ---
 

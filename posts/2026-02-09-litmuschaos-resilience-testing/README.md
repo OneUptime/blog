@@ -1,4 +1,4 @@
-# How to Configure LitmusChaos Workflows for Automated Kubernetes Resilience Testing
+# How to Configure LitmusChaos Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

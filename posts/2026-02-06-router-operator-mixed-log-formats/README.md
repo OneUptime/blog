@@ -1,4 +1,4 @@
-# How to Use the Router Operator to Handle Mixed Log Formats (NGINX, JSON, Syslog) in One Pipeline
+# How to Use the Router Operator to Handle Mixed Log Formats in One Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DynamoDB, AWS, NoSQL, Database, Concurrency, Conditional Writes
 
-Description: Learn how to implement conditional writes in DynamoDB to prevent data races and ensure data integrity. Covers condition expressions, optimistic locking, atomic counters, and transaction patterns with practical code examples.
+Description: Learn how to implement conditional writes in DynamoDB to prevent data races and ensure data integrity.
 
 ---
 

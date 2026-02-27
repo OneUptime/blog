@@ -1,4 +1,4 @@
-# How to Configure Kubernetes Pod Disruption Budgets That Account for Maintenance Windows
+# How to Configure Kubernetes Pod Disruption Budgets That Account
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

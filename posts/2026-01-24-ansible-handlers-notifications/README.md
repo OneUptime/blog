@@ -734,5 +734,5 @@ Mastering handlers will help you write more efficient playbooks that minimize se
 *Looking for comprehensive infrastructure monitoring? [OneUptime](https://oneuptime.com) provides real-time monitoring, alerting, and incident management for your Ansible-managed infrastructure.*
 
 **Related Reading:**
-- [How to Configure Ansible Collections](/blog/post/2026-01-24-ansible-collections-configuration/view)
-- [How to Handle Ansible Block Error Handling](/blog/post/2026-01-24-ansible-block-error-handling/view)
+- [How to Configure Ansible Collections](https://oneuptime.com/blog/post/2026-01-24-ansible-collections-configuration/view)
+- [How to Handle Ansible Block Error Handling](https://oneuptime.com/blog/post/2026-01-24-ansible-block-error-handling/view)

@@ -1,10 +1,10 @@
-# How to Deploy KubeEdge for Managing IoT Devices from a Central Kubernetes Cluster
+# Deploy KubeEdge for Managing IoT Devices from a Central Kubernetes Cluster
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, IoT, Edge Computing
 
-Description: Learn how to deploy KubeEdge to manage IoT devices and edge nodes from a central Kubernetes cluster, enabling cloud-native device management with offline capabilities and efficient resource utilization.
+Description: Learn how to deploy KubeEdge to manage IoT devices and edge nodes from a central Kubernetes cluster.
 
 ---
 

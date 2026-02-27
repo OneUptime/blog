@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Locust, Load Testing, Performance Testing, Stress Testing, API Testing
 
-Description: Learn how to build and run load tests with Locust in Python. This guide covers user behavior simulation, distributed testing, custom metrics, and interpreting results to find performance bottlenecks in your applications.
+Description: Learn how to build and run load tests with Locust in Python.
 
 ---
 

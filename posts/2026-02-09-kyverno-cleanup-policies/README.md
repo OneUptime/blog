@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kyverno, Cleanup Policies, Resource Management, Automation
 
-Description: Learn how to use Kyverno cleanup policies to automatically delete stale resources, clean up completed jobs, remove old ConfigMaps, implement retention policies, and maintain cluster hygiene through automated lifecycle management.
+Description: Learn how to use Kyverno cleanup policies to automatically delete stale resources, clean up completed jobs, remove old ConfigMaps, implement retention policies.
 
 ---
 

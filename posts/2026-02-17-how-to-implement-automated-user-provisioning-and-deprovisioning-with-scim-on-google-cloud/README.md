@@ -1,4 +1,4 @@
-# How to Implement Automated User Provisioning and Deprovisioning with SCIM on Google Cloud
+# How to Use Automated User Provisioning and Deprovisioning
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

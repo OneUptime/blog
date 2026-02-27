@@ -1,4 +1,4 @@
-# How to Use Kubernetes Ingress Path Types: Exact, Prefix, and ImplementationSpecific
+# How to Use Kubernetes Ingress Path Types: Exact, Prefix,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

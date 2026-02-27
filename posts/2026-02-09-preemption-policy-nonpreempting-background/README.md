@@ -1,4 +1,4 @@
-# How to Configure preemptionPolicy to NonPreemptingPriority for Background Workloads
+# How to Configure preemptionPolicy to NonPreemptingPriority
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Distributed Systems, Redis, Redlock, Concurrency, Locking, Distributed Locks
 
-Description: Learn how to implement distributed locks in Python using the Redlock algorithm. This guide covers the theory behind Redlock, practical implementation with redis-py, handling edge cases, and best practices for production systems.
+Description: Learn how to implement distributed locks in Python using the Redlock algorithm.
 
 ---
 

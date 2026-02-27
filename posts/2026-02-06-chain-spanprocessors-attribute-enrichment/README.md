@@ -1,4 +1,4 @@
-# How to Chain Custom SpanProcessors for Attribute Enrichment Before BatchSpanProcessor Export
+# How to Chain Custom SpanProcessors for Attribute Enrichment Before
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

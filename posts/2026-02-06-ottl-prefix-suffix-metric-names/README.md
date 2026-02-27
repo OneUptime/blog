@@ -1,4 +1,4 @@
-# How to Use OTTL to Add Prefix or Suffix to Metric Names and Rename Attributes Across Instruments
+# How to Use OTTL to Add Prefix or Suffix to Metric Names
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Monitor Learning Management System (Canvas, Moodle, Blackboard) API Performance with OpenTelemetry
+# How to Monitor Learning Management System API Performance with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

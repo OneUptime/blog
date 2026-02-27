@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Google Cloud, Pub/Sub, BigQuery, Data Pipeline, Streaming, Event-Driven Architecture, Analytics
 
-Description: Learn how to implement Google Cloud Pub/Sub BigQuery subscriptions for seamless real-time data streaming. Covers setup, schema configuration, dead-letter topics, monitoring, and production best practices.
+Description: Learn how to implement Google Cloud Pub/Sub BigQuery subscriptions for seamless real-time data streaming.
 
 ---
 

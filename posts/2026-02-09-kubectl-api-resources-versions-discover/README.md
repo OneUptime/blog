@@ -1,4 +1,4 @@
-# How to Use kubectl api-resources and api-versions to Discover Cluster Capabilities
+# Use kubectl api-resources and api-versions to Discover Cluster Capabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

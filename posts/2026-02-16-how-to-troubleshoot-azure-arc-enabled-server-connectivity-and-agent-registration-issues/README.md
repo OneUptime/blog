@@ -1,4 +1,4 @@
-# How to Troubleshoot Azure Arc-Enabled Server Connectivity and Agent Registration Issues
+# How to Troubleshoot Azure Arc-Enabled Server Connectivity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

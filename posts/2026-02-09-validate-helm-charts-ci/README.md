@@ -1,4 +1,4 @@
-# How to Validate Helm Charts Using Chart Testing and Schema Validation in CI Pipelines
+# How to Validate Helm Charts Using Chart Testing and Schema Validation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

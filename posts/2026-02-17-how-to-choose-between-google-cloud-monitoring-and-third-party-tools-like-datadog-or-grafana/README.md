@@ -1,4 +1,4 @@
-# How to Choose Between Google Cloud Monitoring and Third-Party Tools Like Datadog or Grafana
+# How to Choose Between Google Cloud Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use the Span Metrics Connector to Generate RED Metrics (Rate, Error, Duration) from Trace Data
+# How to Use the Span Metrics Connector to Generate RED Metrics from Trace Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

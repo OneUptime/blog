@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Python, Node.js, Go, Client Libraries, Connection Pooling, Programming
 
-Description: A comprehensive guide to connecting to Redis from Python, Node.js, and Go applications, covering client library selection, connection pooling, authentication, error handling, and best practices for production deployments.
+Description: A comprehensive guide to connecting to Redis from Python, Node.
 
 ---
 

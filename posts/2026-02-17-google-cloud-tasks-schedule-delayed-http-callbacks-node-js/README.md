@@ -1,4 +1,4 @@
-# How to Use the google-cloud/tasks npm Package to Schedule Delayed HTTP Callbacks from Node.js
+# How to Use the google-cloud/tasks npm Package to Schedule Delayed HTTP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

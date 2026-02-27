@@ -1,4 +1,4 @@
-# How to Set Up Chaos Mesh Experiments for Kubernetes Pod Failure and Network Partition Testing
+# How to Set Up Chaos Mesh Experiments for Kubernetes Pod Failure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

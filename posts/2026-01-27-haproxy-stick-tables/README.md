@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HAProxy, Load Balancing, Session Persistence, Rate Limiting, High Availability, DevOps, Networking
 
-Description: A comprehensive guide to configuring HAProxy stick tables for session persistence, rate limiting, and connection tracking. Learn how to implement stateful load balancing with peer replication for high availability.
+Description: A comprehensive guide to configuring HAProxy stick tables for session persistence, rate limiting, and connection tracking.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Create Custom Container Images for Google Cloud Workstations with Pre-Installed Tools
+# How to Create Custom Container Images for Google Cloud Workstations with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

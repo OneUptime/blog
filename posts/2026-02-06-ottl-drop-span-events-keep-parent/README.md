@@ -1,4 +1,4 @@
-# How to Use OTTL to Drop Specific Span Events While Keeping the Parent Span Intact
+# Use OTTL to Drop Specific Span Events While Keeping the Parent Span Intact
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

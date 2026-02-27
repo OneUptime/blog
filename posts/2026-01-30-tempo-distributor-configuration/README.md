@@ -727,9 +727,9 @@ Start with the full configuration example above and adjust limits based on your 
 
 ## Related Reading
 
-- [Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Understand what traces look like before they hit Tempo
-- [What is OpenTelemetry Collector](/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view) - Configure the collector to send traces to Tempo
-- [How to Reduce Noise in OpenTelemetry](/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view) - Filter traces before ingestion to reduce load
+- [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Understand what traces look like before they hit Tempo
+- [What is OpenTelemetry Collector](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view) - Configure the collector to send traces to Tempo
+- [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view) - Filter traces before ingestion to reduce load
 
 ---
 

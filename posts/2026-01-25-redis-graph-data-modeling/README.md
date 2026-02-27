@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, RedisGraph, Graph Database, Data Modeling, Cypher, NoSQL
 
-Description: Learn how to model and query graph data using RedisGraph. This guide covers node and relationship creation, Cypher query patterns, and practical examples for social networks, recommendation engines, and fraud detection systems.
+Description: Learn how to model and query graph data using RedisGraph.
 
 ---
 

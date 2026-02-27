@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SQLite, Testing, Database, Unit Testing, Integration Testing, Python, Node.js, Jest, pytest
 
-Description: Learn how to leverage SQLite for fast, reliable testing. This guide covers in-memory databases, test isolation, fixtures, transaction rollbacks, and best practices for using SQLite as a test database across different frameworks and languages.
+Description: Learn how to leverage SQLite for fast, reliable testing.
 
 ---
 

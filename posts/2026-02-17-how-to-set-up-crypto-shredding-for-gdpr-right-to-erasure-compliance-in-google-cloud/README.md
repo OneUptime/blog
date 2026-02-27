@@ -1,4 +1,4 @@
-# How to Set Up Crypto-Shredding for GDPR Right-to-Erasure Compliance in Google Cloud
+# How to Set Up Crypto-Shredding for GDPR Right-to-Erasure Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

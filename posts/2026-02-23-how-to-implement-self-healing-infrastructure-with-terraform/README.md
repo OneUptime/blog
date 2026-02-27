@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Self-Healing, Auto-Remediation, Reliability, DevOps
 
-Description: Learn how to implement self-healing infrastructure patterns with Terraform, including drift detection and remediation, auto-scaling, health checks, and automated recovery from common failure scenarios.
+Description: Learn how to implement self-healing infrastructure patterns with Terraform, including drift detection and remediation, auto-scaling, health checks.
 
 ---
 

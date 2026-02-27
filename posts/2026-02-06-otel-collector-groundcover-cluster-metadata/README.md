@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector to Export to Groundcover with Cluster-Level Metadata Enrichment
+# How to Configure the OpenTelemetry Collector to Export to Groundcover with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

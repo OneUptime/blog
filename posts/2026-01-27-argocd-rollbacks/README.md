@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ArgoCD, GitOps, Rollback, DevOps, CI/CD, Deployment, Disaster Recovery
 
-Description: A comprehensive guide to implementing rollbacks in ArgoCD, covering history management, manual and automated rollback procedures, Git revert strategies, and best practices for reliable deployment recovery.
+Description: A comprehensive guide to implementing rollbacks in ArgoCD, covering history management, manual and automated rollback procedures, Git revert strategies.
 
 ---
 

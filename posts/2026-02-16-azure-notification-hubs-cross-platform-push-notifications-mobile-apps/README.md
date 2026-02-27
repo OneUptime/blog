@@ -1,4 +1,4 @@
-# How to Set Up Azure Notification Hubs for Cross-Platform Push Notifications in Mobile Apps
+# How to Set Up Azure Notification Hubs for Cross-Platform Push Notifications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

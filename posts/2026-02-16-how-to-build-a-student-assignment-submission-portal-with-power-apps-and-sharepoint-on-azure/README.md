@@ -1,4 +1,4 @@
-# How to Build a Student Assignment Submission Portal with Power Apps and SharePoint on Azure
+# How to Build a Student Assignment Submission Portal with Power Apps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DNSSEC, DANE, DNS, Security, TLS, Email
 
-Description: A comprehensive guide to implementing DANE with DNSSEC for secure certificate pinning, covering TLSA record configuration, certificate matching types, and practical deployment strategies for web servers and email infrastructure.
+Description: A comprehensive guide to implementing DANE with DNSSEC for secure certificate pinning, covering TLSA record configuration, certificate matching types.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Debug Dataflow Data Skew with Uneven Worker Utilization in GroupByKey Transforms
+# How to Debug Dataflow Data Skew with Uneven Worker Utilization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

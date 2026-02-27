@@ -1,4 +1,4 @@
-# How to Understand OpenTelemetry Instrumentation Libraries vs Native Instrumentation
+# Understand OpenTelemetry Instrumentation Libraries vs Native Instrumentation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

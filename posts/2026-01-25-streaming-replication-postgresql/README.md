@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Replication, High Availability, Streaming Replication, Database, DevOps
 
-Description: Learn how to set up primary-replica streaming replication in PostgreSQL for high availability and read scaling. This guide covers configuration, monitoring, failover procedures, and common troubleshooting scenarios.
+Description: Learn how to set up primary-replica streaming replication in PostgreSQL for high availability and read scaling.
 
 ---
 

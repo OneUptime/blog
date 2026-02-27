@@ -1,4 +1,4 @@
-# How to Contribute a New Instrumentation Library to the OpenTelemetry Contrib Repository
+# Contribute a New Instrumentation Library to the OpenTelemetry Contrib Repository
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

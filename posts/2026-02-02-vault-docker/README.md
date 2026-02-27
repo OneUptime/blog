@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: HashiCorp Vault, Docker, Secrets Management, Security, DevOps, Containers, Infrastructure
 
-Description: Learn how to deploy and configure HashiCorp Vault with Docker for secure secrets management. Covers Vault server setup, secret storage, dynamic secrets, Docker Compose configurations, and production best practices for containerized environments.
+Description: Learn how to deploy and configure HashiCorp Vault with Docker for secure secrets management.
 
 ---
 

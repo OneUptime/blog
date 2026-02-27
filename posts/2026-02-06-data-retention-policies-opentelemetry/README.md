@@ -1,4 +1,4 @@
-# How to Set Up Data Retention Policies for OpenTelemetry Traces, Metrics, and Logs
+# How to Set Up Data Retention Policies for OpenTelemetry Traces, Metrics,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

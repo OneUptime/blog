@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, SLOWLOG, Performance, Latency, Debugging, Monitoring
 
-Description: Learn how to use Redis SLOWLOG to identify and debug slow commands. This guide covers SLOWLOG configuration, analysis techniques, common latency patterns, and automated monitoring for production systems.
+Description: Learn how to use Redis SLOWLOG to identify and debug slow commands.
 
 ---
 

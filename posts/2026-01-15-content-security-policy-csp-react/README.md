@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: React, Security, CSP, Content Security Policy, Frontend, OWASP
 
-Description: A comprehensive guide to implementing Content Security Policy in React applications, covering CSP directives, nonce-based scripts, meta tags, HTTP headers, and handling common React-specific challenges like inline styles and third-party libraries.
+Description: A comprehensive guide to implementing Content Security Policy in React applications, covering CSP directives, nonce-based scripts, meta tags, HTTP headers.
 
 ---
 

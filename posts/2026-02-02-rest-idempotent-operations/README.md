@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: REST API, Idempotency, API Design, HTTP Methods, Distributed Systems, Reliability
 
-Description: Learn how to design idempotent REST API operations that are safe for retries. This guide covers HTTP method semantics, idempotency keys, endpoint design patterns, and best practices for building reliable APIs.
+Description: Learn how to design idempotent REST API operations that are safe for retries.
 
 ---
 

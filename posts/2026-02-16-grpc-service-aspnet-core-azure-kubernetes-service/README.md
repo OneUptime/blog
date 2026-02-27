@@ -1,4 +1,4 @@
-# How to Build a gRPC Service in ASP.NET Core and Deploy It to Azure Kubernetes Service
+# How to Build a gRPC Service in ASP.NET Core
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

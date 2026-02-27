@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Loki, Grafana, Log Aggregation, Promtail, LogQL, Observability, Kubernetes
 
-Description: Learn how to configure Grafana Loki for cost-effective log aggregation. This guide covers installation, Promtail setup, LogQL queries, and production deployment patterns for scalable logging infrastructure.
+Description: Learn how to configure Grafana Loki for cost-effective log aggregation.
 
 ---
 

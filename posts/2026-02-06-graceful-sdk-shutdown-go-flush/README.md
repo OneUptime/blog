@@ -1,4 +1,4 @@
-# How to Implement Graceful SDK Shutdown in Go to Flush All Pending Spans and Metrics Before Process Exit
+# How to Use Graceful SDK Shutdown in Go to Flush All Pending Spans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

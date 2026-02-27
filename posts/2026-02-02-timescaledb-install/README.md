@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, TimescaleDB, Time-Series, Database, Installation, Linux, Docker
 
-Description: A comprehensive guide to installing TimescaleDB on PostgreSQL. Learn how to set up TimescaleDB on Ubuntu, CentOS, macOS, and Docker, configure hypertables, and optimize your time-series database for production workloads.
+Description: A comprehensive guide to installing TimescaleDB on PostgreSQL.
 
 ---
 

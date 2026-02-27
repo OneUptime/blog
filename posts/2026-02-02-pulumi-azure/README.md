@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, Azure, Infrastructure as Code, IaC, Cloud, TypeScript, Python, DevOps, Automation
 
-Description: A comprehensive guide to using Pulumi for Azure infrastructure provisioning. Learn how to set up Pulumi, create and manage Azure resources, implement best practices, and build production-ready infrastructure using your favorite programming languages.
+Description: A comprehensive guide to using Pulumi for Azure infrastructure provisioning.
 
 ---
 

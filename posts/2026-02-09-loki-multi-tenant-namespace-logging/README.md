@@ -1,4 +1,4 @@
-# How to Configure Loki Multi-Tenant Mode for Isolated Kubernetes Namespace Logging
+# How to Configure Loki Multi-Tenant Mode
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

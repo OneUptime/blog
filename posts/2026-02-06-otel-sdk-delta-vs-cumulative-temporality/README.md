@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry SDK to Use Delta vs Cumulative Temporality Per Metric Instrument Type
+# How to Configure the OpenTelemetry SDK to Use Delta vs Cumulative Temporality
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Monitor gRPC Health Checking Service Status Changes with OpenTelemetry Metrics
+# How to Monitor gRPC Health Checking Service Status Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Choose Between App Engine Standard and Flexible Environment for Your Application
+# How to Choose Between App Engine Standard and Flexible Environment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

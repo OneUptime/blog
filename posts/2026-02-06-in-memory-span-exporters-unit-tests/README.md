@@ -1,4 +1,4 @@
-# How to Use In-Memory Span Exporters to Assert Span Creation in Unit Tests (Java, Python, Node.js)
+# How to Use In-Memory Span Exporters to Assert Span Creation in Unit Tests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

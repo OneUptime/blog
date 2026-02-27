@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring WebFlux, Reactive, Non-Blocking, API
 
-Description: A practical guide to building high-performance, non-blocking REST APIs with Spring WebFlux, covering reactive streams, functional endpoints, and real-world patterns for handling concurrent requests efficiently.
+Description: A practical guide to building high-performance, non-blocking REST APIs with Spring WebFlux, covering reactive streams, functional endpoints.
 
 ---
 

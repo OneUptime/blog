@@ -1,4 +1,4 @@
-# How to Connect Spring Boot to Azure Database for MySQL with Azure AD Authentication
+# How to Connect Spring Boot to Azure Database for MySQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

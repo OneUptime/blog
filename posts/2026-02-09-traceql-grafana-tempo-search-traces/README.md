@@ -1,4 +1,4 @@
-# How to Use TraceQL in Grafana Tempo to Search Kubernetes Traces by Attribute Patterns
+# Use TraceQL in Grafana Tempo to Search Kubernetes Traces by Attribute Patterns
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

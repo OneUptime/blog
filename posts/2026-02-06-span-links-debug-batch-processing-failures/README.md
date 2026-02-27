@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Span Links to Debug Batch Processing Failures Back to Originating Requests
+# How to Use OpenTelemetry Span Links to Debug Batch Processing Failures Back to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

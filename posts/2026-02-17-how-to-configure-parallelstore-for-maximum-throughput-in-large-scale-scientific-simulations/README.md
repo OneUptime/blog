@@ -1,4 +1,4 @@
-# How to Configure Parallelstore for Maximum Throughput in Large-Scale Scientific Simulations
+# How to Configure Parallelstore for Maximum Throughput in Large-Scale Scientific
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

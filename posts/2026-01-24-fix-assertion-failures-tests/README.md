@@ -400,5 +400,5 @@ def test_create_user():
 *Need to monitor test failures across your CI/CD pipeline? [OneUptime](https://oneuptime.com) provides comprehensive monitoring with test result tracking and alerting.*
 
 **Related Reading:**
-- [How to Fix "Test Dependency" Issues](/blog/post/2026-01-24-fix-test-dependency-issues/view)
-- [How to Configure pytest for Python Testing](/blog/post/2026-01-24-configure-pytest-python-testing/view)
+- [How to Fix "Test Dependency" Issues](https://oneuptime.com/blog/post/2026-01-24-fix-test-dependency-issues/view)
+- [How to Configure pytest for Python Testing](https://oneuptime.com/blog/post/2026-01-24-configure-pytest-python-testing/view)

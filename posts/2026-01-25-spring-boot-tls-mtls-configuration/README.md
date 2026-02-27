@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Spring Boot, Java, TLS, mTLS, Security, HTTPS, SSL, DevOps
 
-Description: Learn how to configure TLS 1.3 and mutual TLS (mTLS) in Spring Boot applications for secure communication between services, including certificate generation, keystore setup, and production best practices.
+Description: Learn how to configure TLS 1.3 and mutual TLS (mTLS) in Spring Boot applications for secure communication between services, including certificate generation, keystore setup.
 
 ---
 

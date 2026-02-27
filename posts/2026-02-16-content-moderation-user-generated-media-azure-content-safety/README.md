@@ -1,4 +1,4 @@
-# How to Implement Content Moderation for User-Generated Media with Azure Content Safety API
+# How to Use Content Moderation for User-Generated Media
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

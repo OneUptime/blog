@@ -1,4 +1,4 @@
-# How to Test OpenTelemetry Context Propagation Across Service Boundaries in Integration Tests
+# How to Test OpenTelemetry Context Propagation Across Service Boundaries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

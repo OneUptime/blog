@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: C#, Entity Framework Core, PostgreSQL, .NET, Database, ORM, Npgsql, ASP.NET Core
 
-Description: Learn how to connect Entity Framework Core to PostgreSQL with practical examples covering setup, configuration, migrations, CRUD operations, and production-ready patterns for building .NET applications.
+Description: Learn how to connect Entity Framework Core to PostgreSQL with practical examples covering setup, configuration, migrations, CRUD operations, and production-ready patterns for building .
 
 ---
 

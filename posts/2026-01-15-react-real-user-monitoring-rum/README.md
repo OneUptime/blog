@@ -2257,6 +2257,6 @@ Real User Monitoring transforms performance optimization from guesswork into dat
 
 ### See Also
 
-- [What are Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Connect frontend performance with backend distributed tracing
-- [How to Instrument Express.js Applications with OpenTelemetry](/blog/post/2026-01-06-nodejs-express-opentelemetry-instrumentation/view) - Complete backend observability for your Node.js APIs
-- [Three Pillars of Observability: Logs, Metrics, Traces](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view) - Understand the full observability landscape
+- [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Connect frontend performance with backend distributed tracing
+- [How to Instrument Express.js Applications with OpenTelemetry](https://oneuptime.com/blog/post/2026-01-06-nodejs-express-opentelemetry-instrumentation/view) - Complete backend observability for your Node.js APIs
+- [Three Pillars of Observability: Logs, Metrics, Traces](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view) - Understand the full observability landscape

@@ -1,4 +1,4 @@
-# How to Configure Apache Traffic Server (ATS) OpenTelemetry Tracing Plugin for CDN Observability
+# How to Configure Apache Traffic Server OpenTelemetry Tracing Plugin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Cross-Project CI/CD Pipeline on GCP Using Cloud Build Triggers and Service Accounts
+# How to Build a Cross-Project CI/CD Pipeline on GCP Using Cloud Build Triggers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

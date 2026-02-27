@@ -1,4 +1,4 @@
-# How to Build an End-to-End ML Feature Store Pipeline Using BigQuery and Vertex AI Feature Store
+# How to Build an End-to-End ML Feature Store Pipeline Using BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

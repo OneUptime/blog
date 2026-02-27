@@ -1,4 +1,4 @@
-# How to Monitor Vector Database Performance (Pinecone, Qdrant, Weaviate) with OpenTelemetry
+# How to Monitor Vector Database Performance with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

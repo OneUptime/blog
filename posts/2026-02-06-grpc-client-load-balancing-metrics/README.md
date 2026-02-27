@@ -1,4 +1,4 @@
-# How to Monitor gRPC Client-Side Load Balancing Decisions with OpenTelemetry Metrics
+# How to Monitor gRPC Client-Side Load Balancing Decisions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

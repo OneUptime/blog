@@ -1,4 +1,4 @@
-# How to Use Jib to Build Optimized Docker Images for Spring Boot Applications Without a Docker Daemon
+# How to Use Jib to Build Optimized Docker Images for Spring Boot Apps Without a
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

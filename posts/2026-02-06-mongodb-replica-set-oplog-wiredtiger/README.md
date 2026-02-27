@@ -1,4 +1,4 @@
-# How to Monitor MongoDB Replica Set Health, Oplog Window, and WiredTiger Cache with the Collector
+# How to Monitor MongoDB Replica Set Health, Oplog Window, and WiredTiger Cache
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

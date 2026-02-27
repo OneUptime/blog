@@ -1,4 +1,4 @@
-# How to Trace Fleet Vehicle GPS Tracking and Route Optimization Calculations with OpenTelemetry
+# How to Trace Fleet Vehicle GPS Tracking and Route Optimization Calculations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

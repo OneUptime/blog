@@ -1,4 +1,4 @@
-# How to Configure Hybrid Connectivity NEGs to Load Balance On-Premises Backends in GCP
+# How to Configure Hybrid Connectivity NEGs to Load Balance On-Premises Backends
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

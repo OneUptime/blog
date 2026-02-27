@@ -1,4 +1,4 @@
-# How to Deploy Azure Red Hat OpenShift Clusters with Terraform and Custom Node Pools
+# How to Deploy Azure Red Hat OpenShift Clusters with Terraform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

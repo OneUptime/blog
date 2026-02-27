@@ -1,4 +1,4 @@
-# How to Publish and Subscribe to Pub/Sub Messages Using the google-cloud-pubsub Python Library
+# How to Publish and Subscribe to Pub/Sub Messages Using the google-cloud-pubsub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

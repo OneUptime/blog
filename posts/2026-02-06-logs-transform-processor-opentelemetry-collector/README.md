@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processors, Logs, Transformation, OTTL, Data Processing, PII
 
-Description: Learn how to configure the logs transform processor in OpenTelemetry Collector to manipulate log attributes, redact sensitive data, enrich logs with context, parse unstructured logs, and transform log data using the OpenTelemetry Transformation Language.
+Description: Learn how to configure the logs transform processor in OpenTelemetry Collector to manipulate log attributes, redact sensitive data, enrich logs with context, parse unstructured logs.
 
 ---
 

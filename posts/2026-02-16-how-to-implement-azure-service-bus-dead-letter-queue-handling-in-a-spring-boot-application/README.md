@@ -1,4 +1,4 @@
-# How to Implement Azure Service Bus Dead Letter Queue Handling in a Spring Boot Application
+# How to Use Azure Service Bus Dead Letter Queue Handling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

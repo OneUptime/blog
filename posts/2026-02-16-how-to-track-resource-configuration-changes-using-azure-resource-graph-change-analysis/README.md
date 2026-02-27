@@ -1,4 +1,4 @@
-# How to Track Resource Configuration Changes Using Azure Resource Graph Change Analysis
+# Track Resource Configuration Changes Using Azure Resource Graph Change Analysis
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

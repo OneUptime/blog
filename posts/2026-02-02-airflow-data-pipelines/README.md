@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Airflow, Data Engineering, ETL, Orchestration, Python, Data Pipelines, Apache Airflow, Workflow Management
 
-Description: A comprehensive guide to implementing data pipeline orchestration with Apache Airflow, covering DAG design, task dependencies, operators, error handling, and production best practices for building reliable data workflows.
+Description: A comprehensive guide to implementing data pipeline orchestration with Apache Airflow, covering DAG design, task dependencies, operators, error handling.
 
 ---
 

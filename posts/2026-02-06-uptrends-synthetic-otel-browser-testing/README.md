@@ -1,4 +1,4 @@
-# How to Use Uptrends Synthetic Monitoring with OpenTelemetry for Real-Browser Performance Testing
+# How to Use Uptrends Synthetic Monitoring with OpenTelemetry for Real-Browser
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

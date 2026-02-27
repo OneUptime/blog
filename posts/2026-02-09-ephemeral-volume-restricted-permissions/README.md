@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, Ephemeral Volumes, Security, Volume Permissions
 
-Description: Learn how to configure ephemeral volumes with restricted permissions in Kubernetes, implementing secure temporary storage for containers using emptyDir, CSI ephemeral volumes, and proper security context configuration.
+Description: Learn how to configure ephemeral volumes with restricted permissions in Kubernetes, implementing secure temporary storage for containers using emptyDir, CSI ephemeral volumes.
 
 ---
 

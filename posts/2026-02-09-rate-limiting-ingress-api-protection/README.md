@@ -1,4 +1,4 @@
-# How to Implement Rate Limiting at the Kubernetes Ingress Layer for Production API Protection
+# How to Use Rate Limiting at the Kubernetes Ingress Layer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

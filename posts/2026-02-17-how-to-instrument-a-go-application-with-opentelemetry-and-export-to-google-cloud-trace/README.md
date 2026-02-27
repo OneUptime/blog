@@ -1,4 +1,4 @@
-# How to Instrument a Go Application with OpenTelemetry and Export to Google Cloud Trace
+# How to Instrument a Go Application with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

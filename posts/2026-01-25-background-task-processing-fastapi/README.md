@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, FastAPI, Background Tasks, Async, Celery, Redis, Task Queue, Performance
 
-Description: Learn how to implement background task processing in FastAPI using built-in BackgroundTasks, Celery with Redis, and custom task queues. This guide covers practical patterns for offloading work from your API handlers.
+Description: Learn how to implement background task processing in FastAPI using built-in BackgroundTasks, Celery with Redis, and custom task queues.
 
 ---
 

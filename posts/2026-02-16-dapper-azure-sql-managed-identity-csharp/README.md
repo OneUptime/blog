@@ -1,4 +1,4 @@
-# How to Use Dapper with Azure SQL Database and Managed Identity Authentication in C#
+# How to Use Dapper with Azure SQL Database
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

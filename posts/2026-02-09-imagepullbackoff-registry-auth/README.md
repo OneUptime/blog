@@ -1,4 +1,4 @@
-# How to Resolve ImagePullBackOff Errors from Private Registry Authentication Failures
+# Resolve ImagePullBackOff Errors from Private Registry Authentication Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

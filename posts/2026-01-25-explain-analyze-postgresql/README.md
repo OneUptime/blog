@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Query Optimization, EXPLAIN ANALYZE, Performance, Database, SQL
 
-Description: Learn how to use EXPLAIN ANALYZE in PostgreSQL to identify slow queries, understand execution plans, and apply targeted optimizations. This guide covers reading query plans, spotting common bottlenecks, and fixing them with practical examples.
+Description: Learn how to use EXPLAIN ANALYZE in PostgreSQL to identify slow queries, understand execution plans, and apply targeted optimizations.
 
 ---
 

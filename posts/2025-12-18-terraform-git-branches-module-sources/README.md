@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Git, Modules, Version Control, Infrastructure as Code
 
-Description: Learn how to reference Terraform modules from specific Git branches, tags, and commits. This guide covers source syntax, authentication, versioning strategies, and best practices for module management.
+Description: Learn how to reference Terraform modules from specific Git branches, tags, and commits.
 
 Terraform modules can be sourced from various locations including Git repositories. Using Git branches as module sources enables development workflows where teams can test module changes before merging to main. This guide covers the syntax, authentication, and best practices for Git-based module sources.
 

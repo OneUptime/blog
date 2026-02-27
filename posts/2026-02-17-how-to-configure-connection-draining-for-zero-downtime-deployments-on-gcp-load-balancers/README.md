@@ -1,4 +1,4 @@
-# How to Configure Connection Draining for Zero-Downtime Deployments on GCP Load Balancers
+# How to Configure Connection Draining for Zero-Downtime Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Sentinel Workbooks for Security Operations Dashboard Visualization
+# How to Set Up Microsoft Sentinel Workbooks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

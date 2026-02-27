@@ -1,4 +1,4 @@
-# How to Build a Serverless File Processing System Using Cloud Storage Triggers and Cloud Run Jobs
+# How to Build a Serverless File Processing System Using Cloud Storage Triggers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

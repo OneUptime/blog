@@ -1,4 +1,4 @@
-# How to Set Up Automated Database Backups for PostgreSQL on Kubernetes Using WAL-G
+# Set Up Automated Database Backups for PostgreSQL on Kubernetes Using WAL-G
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Data Retention, TTL, Compliance, Automated Cleanup, Data Lifecycle, Policy Management
 
-Description: A comprehensive guide to implementing data retention policies in Redis, covering TTL management, automated cleanup strategies, compliance-driven retention, and best practices for data lifecycle management.
+Description: A comprehensive guide to implementing data retention policies in Redis, covering TTL management, automated cleanup strategies, compliance-driven retention.
 
 ---
 

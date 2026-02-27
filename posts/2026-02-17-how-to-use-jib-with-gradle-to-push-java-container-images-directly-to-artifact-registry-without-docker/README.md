@@ -1,4 +1,4 @@
-# How to Use Jib with Gradle to Push Java Container Images Directly to Artifact Registry Without Docker
+# How to Use Jib with Gradle to Push Java Container Images Directly to Artifact
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Rate Limiting, Bucket4j, API
 
-Description: Learn how to implement robust rate limiting in Spring Boot applications using Bucket4j. This guide covers the token bucket algorithm, in-memory and distributed configurations, and production-ready patterns.
+Description: Learn how to implement robust rate limiting in Spring Boot applications using Bucket4j.
 
 ---
 

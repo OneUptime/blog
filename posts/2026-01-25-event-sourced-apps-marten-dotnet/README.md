@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, Event Sourcing, Marten, PostgreSQL, CQRS
 
-Description: Learn how to build event-sourced applications using Marten and PostgreSQL in .NET. Implement aggregates, projections, and event streams for systems that need complete audit trails and temporal queries.
+Description: Learn how to build event-sourced applications using Marten and PostgreSQL in .NET.
 
 ---
 

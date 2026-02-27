@@ -1,4 +1,4 @@
-# How to Instrument Network Requests in iOS with OpenTelemetry URLSessionInstrumentation
+# How to Instrument Network Requests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

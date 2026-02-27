@@ -1,4 +1,4 @@
-# How to Set Up Azure Pipelines Release Annotations in Azure Monitor Application Insights
+# How to Set Up Azure Pipelines Release Annotations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

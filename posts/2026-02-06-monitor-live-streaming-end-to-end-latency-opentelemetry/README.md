@@ -1,4 +1,4 @@
-# How to Monitor Live Streaming End-to-End Latency (Ingest to Playback) with OpenTelemetry
+# How to Monitor Live Streaming End-to-End Latency with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

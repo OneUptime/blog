@@ -1,4 +1,4 @@
-# How to Manage OpenTelemetry Collector Configuration as Terraform-Managed ConfigMaps in Kubernetes
+# How to Manage OpenTelemetry Collector Config as Terraform-Managed ConfigMaps in
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

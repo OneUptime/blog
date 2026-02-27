@@ -1,4 +1,4 @@
-# How to Fix SQLAlchemy Instrumentation Missing async Engine Spans in Python AsyncIO Applications
+# How to Fix SQLAlchemy Instrumentation Missing async Engine Spans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

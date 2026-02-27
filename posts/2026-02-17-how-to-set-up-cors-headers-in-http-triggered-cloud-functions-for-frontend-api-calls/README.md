@@ -1,4 +1,4 @@
-# How to Set Up CORS Headers in HTTP-Triggered Cloud Functions for Frontend API Calls
+# How to Set Up CORS Headers in HTTP-Triggered Cloud Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

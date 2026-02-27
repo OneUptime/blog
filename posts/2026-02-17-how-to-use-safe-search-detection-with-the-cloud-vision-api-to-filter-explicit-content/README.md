@@ -1,4 +1,4 @@
-# How to Use Safe Search Detection with the Cloud Vision API to Filter Explicit Content
+# Use Safe Search Detection with the Cloud Vision API to Filter Explicit Content
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

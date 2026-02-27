@@ -1,4 +1,4 @@
-# How to Build a Zero Trust Network Monitoring Dashboard with OpenTelemetry and Service Mesh Telemetry
+# How to Build a Zero Trust Network Monitoring Dashboard with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

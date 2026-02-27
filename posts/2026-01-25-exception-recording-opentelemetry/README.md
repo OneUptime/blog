@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Exception Handling, Error Tracking, Tracing, Debugging, Observability
 
-Description: Learn how to implement exception recording in OpenTelemetry to capture and correlate errors with traces. This guide covers recording exceptions, setting span status, and best practices for error observability.
+Description: Learn how to implement exception recording in OpenTelemetry to capture and correlate errors with traces.
 
 ---
 

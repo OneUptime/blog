@@ -1,4 +1,4 @@
-# How to Troubleshoot Context Loss in Node.js Worker Threads When Using OpenTelemetry
+# How to Troubleshoot Context Loss in Node.js Worker Threads When
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

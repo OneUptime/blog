@@ -1,4 +1,4 @@
-# How to Trace Freight Forwarding Quote and Booking Workflows Across Multiple Carriers with OpenTelemetry
+# How to Trace Freight Forwarding Quote and Booking Workflows Across Multi
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

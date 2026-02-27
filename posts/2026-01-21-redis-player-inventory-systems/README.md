@@ -1282,4 +1282,4 @@ await inventory.transferItem('player123', 'player456', 'instance_abc', 1);
 
 Redis provides an excellent foundation for building inventory systems. Its atomic operations, Lua scripting, and hash data structures make it ideal for handling the complex transactional nature of item management. The key is using atomic operations to prevent item duplication or loss, especially during trades and transfers.
 
-For more gaming patterns with Redis, check out our guides on [Achievement Systems](/blog/redis-achievement-systems) and [Game State Management](/blog/redis-game-state-management).
+For more gaming patterns with Redis, check out our guides on [Achievement Systems](https://oneuptime.com/blog/post/2026-01-21-redis-achievement-systems/view) and [Game State Management](https://oneuptime.com/blog/post/2026-01-21-redis-game-state-management/view).

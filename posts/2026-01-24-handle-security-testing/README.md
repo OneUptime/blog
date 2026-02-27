@@ -489,5 +489,5 @@ class TestAuthorizationSecurity:
 *Need to monitor security across your infrastructure? [OneUptime](https://oneuptime.com) provides comprehensive monitoring with security alerting and incident management.*
 
 **Related Reading:**
-- [How to Fix "Browser Compatibility" Test Issues](/blog/post/2026-01-24-fix-browser-compatibility-test-issues/view)
-- [How to Fix "Assertion" Failures in Tests](/blog/post/2026-01-24-fix-assertion-failures-tests/view)
+- [How to Fix "Browser Compatibility" Test Issues](https://oneuptime.com/blog/post/2026-01-24-fix-browser-compatibility-test-issues/view)
+- [How to Fix "Assertion" Failures in Tests](https://oneuptime.com/blog/post/2026-01-24-fix-assertion-failures-tests/view)

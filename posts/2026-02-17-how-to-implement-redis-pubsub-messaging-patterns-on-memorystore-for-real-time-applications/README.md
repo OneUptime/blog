@@ -1,4 +1,4 @@
-# How to Implement Redis Pub/Sub Messaging Patterns on Memorystore for Real-Time Applications
+# Use Redis Pub/Sub Messaging Patterns on Memorystore for Real-Time Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

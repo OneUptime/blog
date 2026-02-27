@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Pod Security Standards, PSA, DevOps
 
-Description: A comprehensive guide to Kubernetes pod security, covering the migration from deprecated PodSecurityPolicies to Pod Security Standards (PSS) and Pod Security Admission (PSA), with practical examples and enforcement strategies.
+Description: A comprehensive guide to Kubernetes pod security, covering the migration from deprecated PodSecurityPolicies to Pod Security Standards (PSS) and Pod Security Admission (PSA).
 
 ---
 

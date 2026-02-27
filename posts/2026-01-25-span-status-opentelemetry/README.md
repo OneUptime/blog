@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Span Status, Error Handling, Tracing, Observability, Debugging
 
-Description: Learn how to properly implement span status in OpenTelemetry to indicate success, errors, and unset states. This guide covers status codes, best practices, and common patterns for accurate error representation.
+Description: Learn how to properly implement span status in OpenTelemetry to indicate success, errors, and unset states.
 
 ---
 

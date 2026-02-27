@@ -1,4 +1,4 @@
-# How to Orchestrate Multi-Step Batch Workflows with Google Cloud Batch and Cloud Workflows
+# How to Orchestrate Multi-Step Batch Workflows with Google Cloud Batch
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

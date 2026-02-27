@@ -1,4 +1,4 @@
-# How to Configure Hybrid Search with Vertex AI Vector Search Combining Dense and Sparse Vectors
+# How to Configure Hybrid Search with Vertex AI Vector Search Combining Dense
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

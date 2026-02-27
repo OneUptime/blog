@@ -1,4 +1,4 @@
-# How to Use ansible-lint Profiles (min, basic, moderate, safety, shared, production)
+# How to Use ansible-lint Profiles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

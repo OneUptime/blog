@@ -1,4 +1,4 @@
-# How to Configure Outlier Detection to Automatically Eject Unhealthy Backends on Google Cloud
+# How to Configure Outlier Detection to Automatically Eject Unhealthy Backends
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

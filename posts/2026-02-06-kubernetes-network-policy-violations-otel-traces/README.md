@@ -1,4 +1,4 @@
-# How to Correlate Kubernetes Network Policy Violations with Application Traces Using OpenTelemetry
+# How to Correlate Kubernetes Network Policy Violations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

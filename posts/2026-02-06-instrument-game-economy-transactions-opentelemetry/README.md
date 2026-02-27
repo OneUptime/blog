@@ -1,4 +1,4 @@
-# How to Instrument In-Game Economy Transaction Systems (Currency, Marketplace, Loot Drops) with OpenTelemetry
+# How to Instrument In-Game Economy Transaction Systems with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

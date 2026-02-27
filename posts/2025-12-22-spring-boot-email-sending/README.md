@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Email, SMTP, JavaMail, Notifications
 
-Description: Learn how to configure and send emails in Spring Boot applications. This guide covers SMTP configuration, HTML templates with Thymeleaf, attachments, async sending, and production best practices for reliable email delivery.
+Description: Learn how to configure and send emails in Spring Boot applications.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, DevOps, Security, Secrets Management
 
-Description: Learn how to display sensitive output variables in Terraform when needed for debugging or initial setup. This guide covers safe practices, the -json flag, terraform console, and alternatives for handling sensitive data.
+Description: Learn how to display sensitive output variables in Terraform when needed for debugging or initial setup.
 
 Terraform marks certain outputs as sensitive to protect secrets like passwords, API keys, and certificates from being displayed in logs or console output. However, there are legitimate scenarios where you need to access these values. Let's explore how to do this safely and understand the security implications.
 

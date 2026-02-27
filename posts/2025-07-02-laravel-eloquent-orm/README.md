@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PHP, Laravel, Eloquent, ORM, Database, ActiveRecord
 
-Description: A comprehensive guide to mastering Laravel's Eloquent ORM. Learn model relationships, query optimization, eager loading, accessors/mutators, and best practices for building performant database-driven applications.
+Description: A comprehensive guide to mastering Laravel's Eloquent ORM.
 
 ---
 

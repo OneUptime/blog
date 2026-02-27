@@ -1,4 +1,4 @@
-# How to Configure Exemplars to Link Prometheus-Style Metrics Directly to OpenTelemetry Trace Spans
+# How to Configure Exemplars to Link Prometheus-Style Metrics Directly to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

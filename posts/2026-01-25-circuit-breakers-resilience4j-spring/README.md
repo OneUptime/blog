@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Resilience4j, Circuit Breaker, Spring Boot, Fault Tolerance
 
-Description: Learn how to implement the circuit breaker pattern in Spring Boot applications using Resilience4j. This guide covers configuration, fallback strategies, and monitoring for building resilient microservices.
+Description: Learn how to implement the circuit breaker pattern in Spring Boot applications using Resilience4j.
 
 ---
 

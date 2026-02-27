@@ -1,4 +1,4 @@
-# How to Set Up KEDA-Based Auto-Scaling with Queue Triggers in Azure Container Apps
+# How to Set Up KEDA-Based Auto-Scaling with Queue Triggers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

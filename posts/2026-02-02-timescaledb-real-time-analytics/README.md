@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: TimescaleDB, PostgreSQL, Real-Time Analytics, Time-Series Data, Database, Performance
 
-Description: Learn how to implement real-time analytics with TimescaleDB, covering hypertable setup, continuous aggregates, real-time data ingestion, and optimized query patterns for building high-performance analytics dashboards.
+Description: Learn how to implement real-time analytics with TimescaleDB, covering hypertable setup, continuous aggregates, real-time data ingestion.
 
 ---
 

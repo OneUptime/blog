@@ -1,4 +1,4 @@
-# How to Build a Go HTTP Proxy on Cloud Run That Authenticates Requests with Identity-Aware Proxy
+# How to Build a Go HTTP Proxy on Cloud Run That Authenticates Requests with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use Multer with Express.js to Upload Files Directly to Cloud Storage on Cloud Run
+# How to Use Multer with Express.js to Upload Files Directly to Cloud Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

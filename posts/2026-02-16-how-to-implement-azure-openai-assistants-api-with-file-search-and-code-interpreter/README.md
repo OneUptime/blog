@@ -1,4 +1,4 @@
-# How to Implement Azure OpenAI Assistants API with File Search and Code Interpreter
+# How to Use Azure OpenAI Assistants API with File Search and Code Interpreter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

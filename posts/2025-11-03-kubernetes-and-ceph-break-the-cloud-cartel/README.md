@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Ceph, Bare Metal, Cloud, Infrastructure, Self-Hosting
 
-Description: Kubernetes gives you portable compute, Ceph gives you portable storage. Together they unlock painless cloud-to-cloud moves, viable on-prem strategies, and a growing declouding movement that weakens the hyperscaler oligopoly.
+Description: Kubernetes gives you portable compute, Ceph gives you portable storage.
 
 > Kubernetes standardizes compute. Ceph standardizes storage. Standardization is how you shrink cloud switching costs to almost zero.
 

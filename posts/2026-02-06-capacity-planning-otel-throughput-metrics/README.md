@@ -1,4 +1,4 @@
-# How to Build a Capacity Planning Model from OpenTelemetry Throughput and Resource Utilization Metrics
+# How to Build a Capacity Planning Model from OpenTelemetry Throughput
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

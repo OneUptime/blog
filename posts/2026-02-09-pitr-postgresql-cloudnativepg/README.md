@@ -1,4 +1,4 @@
-# How to Implement Point-in-Time Recovery for PostgreSQL on Kubernetes with CloudNativePG
+# How to Use Point-in-Time Recovery for PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up a VPC Network with Subnets and Firewall Rules Using Terraform on GCP
+# How to Set Up a VPC Network with Subnets and Firewall Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Azure DDoS Protection Standard and Set Up Alerts for Attack Mitigation
+# How to Configure Azure DDoS Protection Standard and Set Up Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Test Cloud Functions Locally Using the Functions Framework Before Deployment
+# Test Cloud Functions Locally Using the Functions Framework Before Deployment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

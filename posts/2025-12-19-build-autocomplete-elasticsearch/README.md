@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Autocomplete, Search, UX, Completion Suggester, Edge NGram
 
-Description: Learn how to build fast, user-friendly autocomplete functionality with Elasticsearch using completion suggesters, edge ngrams, and search-as-you-type fields. Includes practical code examples and performance tips.
+Description: Learn how to build fast, user-friendly autocomplete functionality with Elasticsearch using completion suggesters, edge ngrams, and search-as-you-type fields.
 
 ---
 

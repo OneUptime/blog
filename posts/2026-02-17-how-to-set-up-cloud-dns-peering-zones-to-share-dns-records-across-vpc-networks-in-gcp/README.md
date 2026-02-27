@@ -1,4 +1,4 @@
-# How to Set Up Cloud DNS Peering Zones to Share DNS Records Across VPC Networks in GCP
+# How to Set Up Cloud DNS Peering Zones to Share DNS Records Across VPC Networks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

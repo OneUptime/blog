@@ -1,4 +1,4 @@
-# How to Fix Exemplars Not Appearing in Prometheus Despite Being Received by the OpenTelemetry Collector
+# How to Fix Exemplars Not Appearing in Prometheus Despite Being Received by the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

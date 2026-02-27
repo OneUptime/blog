@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Prometheus, PromQL, Time Shift, Offset, Queries, Dashboard, Comparison, Monitoring
 
-Description: Learn how to time shift individual queries in Grafana to compare current metrics with historical data. This guide covers the offset modifier, relative time overrides, and building comparison dashboards.
+Description: Learn how to time shift individual queries in Grafana to compare current metrics with historical data.
 
 ---
 

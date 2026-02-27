@@ -1,4 +1,4 @@
-# How to Resolve Cloud Run Deployment Failures Due to Container Health Check Timeouts
+# Resolve Cloud Run Deployment Failures Due to Container Health Check Timeouts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

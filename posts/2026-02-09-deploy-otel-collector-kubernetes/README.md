@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Kubernetes, Observability, Monitoring, Deployment
 
-Description: Deploy OpenTelemetry Collector in Kubernetes with DaemonSet and Deployment patterns including configuration management, resource tuning, high availability setup, and integration with observability backends.
+Description: Deploy OpenTelemetry Collector in Kubernetes with DaemonSet and Deployment patterns including configuration management, resource tuning, high availability setup.
 
 ---
 

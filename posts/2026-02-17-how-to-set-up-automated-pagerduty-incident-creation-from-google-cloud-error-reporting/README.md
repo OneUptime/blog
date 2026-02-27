@@ -1,4 +1,4 @@
-# How to Set Up Automated PagerDuty Incident Creation from Google Cloud Error Reporting
+# Set Up Automated PagerDuty Incident Creation from Google Cloud Error Reporting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

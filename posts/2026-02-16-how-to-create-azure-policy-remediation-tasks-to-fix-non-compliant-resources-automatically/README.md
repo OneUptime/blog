@@ -1,4 +1,4 @@
-# How to Create Azure Policy Remediation Tasks to Fix Non-Compliant Resources Automatically
+# How to Create Azure Policy Remediation Tasks to Fix Non-Compliant Resources Auto
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

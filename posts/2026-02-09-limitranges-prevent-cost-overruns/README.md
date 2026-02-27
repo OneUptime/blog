@@ -1,4 +1,4 @@
-# How to Configure Kubernetes Limit Ranges That Prevent Cost Overruns from Unbounded Resource Requests
+# How to Configure K8s Limit Ranges That Prevent Cost Overruns from Unbounded
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

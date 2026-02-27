@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Compression, Performance, gzip, Brotli, HTTP, Bandwidth Optimization
 
-Description: Learn how to implement network compression to reduce bandwidth usage and improve response times. This guide covers gzip, Brotli, and zstd compression with practical configurations for web servers and applications.
+Description: Learn how to implement network compression to reduce bandwidth usage and improve response times.
 
 ---
 

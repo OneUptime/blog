@@ -1,4 +1,4 @@
-# How to Configure Azure Pipelines to Deploy Infrastructure and Application Code in a Single Pipeline
+# How to Configure Azure Pipelines to Deploy Infrastructure and Application Code
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

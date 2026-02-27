@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: JWT, Revocation, Authentication, Security
 
-Description: A comprehensive guide to handling JWT revocation in your applications. Learn multiple strategies including token blacklisting, short-lived tokens with refresh rotation, and distributed revocation patterns with practical code examples.
+Description: A comprehensive guide to handling JWT revocation in your applications.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, HashiCorp Vault, Secrets Management, Security, Configuration, DevOps, Cloud Native
 
-Description: Learn how to securely manage secrets in Spring Boot applications using HashiCorp Vault. This guide covers Vault integration, dynamic credentials, secret rotation, and best practices for production deployments.
+Description: Learn how to securely manage secrets in Spring Boot applications using HashiCorp Vault.
 
 ---
 

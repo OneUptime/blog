@@ -1,4 +1,4 @@
-# How to Implement OTTL-Based Log Body Parsing That Extracts Structured Fields from Unstructured Text
+# How to Use OTTL-Based Log Body Parsing That Extracts Structured Fields from
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

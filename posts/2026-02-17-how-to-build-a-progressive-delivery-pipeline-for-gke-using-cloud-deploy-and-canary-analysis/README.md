@@ -1,4 +1,4 @@
-# How to Build a Progressive Delivery Pipeline for GKE Using Cloud Deploy and Canary Analysis
+# How to Build a Progressive Delivery Pipeline for GKE Using Cloud Deploy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

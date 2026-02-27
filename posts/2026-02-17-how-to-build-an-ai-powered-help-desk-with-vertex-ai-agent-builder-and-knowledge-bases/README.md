@@ -1,4 +1,4 @@
-# How to Build an AI-Powered Help Desk with Vertex AI Agent Builder and Knowledge Bases
+# How to Build an AI-Powered Help Desk with Vertex AI Agent Builder
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

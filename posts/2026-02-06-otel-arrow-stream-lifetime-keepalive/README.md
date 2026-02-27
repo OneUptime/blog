@@ -1,4 +1,4 @@
-# How to Tune OTel Arrow Stream Lifetime and Keepalive Settings for Optimal Compression and Load Balancing
+# How to Tune OTel Arrow Stream Lifetime and Keepalive Settings for Optimal
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

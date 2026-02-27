@@ -1,4 +1,4 @@
-# How to Build a Product Recommendation Engine with Azure Personalizer for Retail Applications
+# How to Build a Product Recommendation Engine with Azure Personalizer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

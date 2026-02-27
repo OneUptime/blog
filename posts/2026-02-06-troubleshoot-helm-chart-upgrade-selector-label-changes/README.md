@@ -1,4 +1,4 @@
-# How to Troubleshoot Helm Chart Upgrade Failures Due to Selector Label Breaking Changes in v0.110.0
+# How to Troubleshoot Helm Chart Upgrade Failures Due to Selector Label Breaking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

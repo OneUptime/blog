@@ -1,4 +1,4 @@
-# How to Instrument CPE (Customer Premises Equipment) Provisioning Workflows with OpenTelemetry
+# How to Instrument CPE Provisioning Workflows with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

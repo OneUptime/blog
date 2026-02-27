@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry Collector with Vector as a Log Processing and Transformation Layer
+# How to Configure OpenTelemetry Collector with Vector as a Log Processing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

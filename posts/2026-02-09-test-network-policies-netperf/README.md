@@ -1,4 +1,4 @@
-# How to Test Kubernetes Network Policies Using Netperf and Connectivity Matrix Validation
+# How to Test Kubernetes Network Policies Using Netperf
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Store and Query IoT Time-Series Data in Google Cloud Bigtable for High-Throughput Workloads
+# How to Store and Query IoT Time-Series Data in Google Cloud Bigtable for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, EKS, CloudFormation
 
-Description: Learn how to deploy Amazon EKS clusters using CloudFormation templates with custom resources for advanced configuration and built-in add-ons for essential cluster functionality like VPC CNI, CoreDNS, and kube-proxy.
+Description: Learn how to deploy Amazon EKS clusters using CloudFormation templates with custom resources for advanced configuration and built-in add-ons for essential cluster functionality like VPC CNI, CoreDNS.
 
 ---
 

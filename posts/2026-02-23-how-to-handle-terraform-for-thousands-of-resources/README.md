@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Scale, Performance, State Management, DevOps
 
-Description: Learn how to scale Terraform to manage thousands of resources efficiently, covering state splitting, performance optimization, parallelism tuning, and organizational strategies for large-scale infrastructure.
+Description: Learn how to scale Terraform to manage thousands of resources efficiently, covering state splitting, performance optimization, parallelism tuning.
 
 ---
 

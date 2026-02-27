@@ -1,4 +1,4 @@
-# How to Troubleshoot Firewall Rules Blocking OTLP Traffic on Ports 4317 and 4318 in Corporate Networks
+# How to Troubleshoot Firewall Rules Blocking OTLP Traffic on Ports 4317 and 4318
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -597,5 +597,5 @@ Start with a small percentage of traffic on non-critical endpoints. As you build
 
 ### See Also
 
-- [The Five Stages of SRE Maturity](/blog/post/2025-09-01-the-five-stages-of-sre-maturity/) - Understand where traffic mirroring fits in your reliability journey.
-- [SRE Best Practices](/blog/post/2025-11-28-sre-best-practices/) - Learn more deployment strategies for safe production changes.
+- [The Five Stages of SRE Maturity](https://oneuptime.com/blog/post/2025-09-01-the-five-stages-of-sre-maturity/view) - Understand where traffic mirroring fits in your reliability journey.
+- [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view) - Learn more deployment strategies for safe production changes.

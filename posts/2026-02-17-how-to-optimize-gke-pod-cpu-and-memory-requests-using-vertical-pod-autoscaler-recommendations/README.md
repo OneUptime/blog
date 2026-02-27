@@ -1,4 +1,4 @@
-# How to Optimize GKE Pod CPU and Memory Requests Using Vertical Pod Autoscaler Recommendations
+# How to Optimize GKE Pod CPU and Memory Requests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

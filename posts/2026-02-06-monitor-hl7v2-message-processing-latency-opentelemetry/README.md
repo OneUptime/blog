@@ -1,4 +1,4 @@
-# How to Monitor HL7 v2 Message Processing (ADT, ORM, ORU) Latency with OpenTelemetry
+# How to Monitor HL7 v2 Message Processing Latency with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

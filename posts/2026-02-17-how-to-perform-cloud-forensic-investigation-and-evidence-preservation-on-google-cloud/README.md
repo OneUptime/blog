@@ -1,4 +1,4 @@
-# How to Perform Cloud Forensic Investigation and Evidence Preservation on Google Cloud
+# How to Perform Cloud Forensic Investigation and Evidence Preservation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

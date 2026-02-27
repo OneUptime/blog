@@ -1,4 +1,4 @@
-# How to Set Up JetBrains IntelliJ IDEA in Google Cloud Workstations for Java Development
+# How to Set Up JetBrains IntelliJ IDEA in Google Cloud Workstations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

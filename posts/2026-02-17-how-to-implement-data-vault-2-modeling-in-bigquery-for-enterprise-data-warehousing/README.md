@@ -1,4 +1,4 @@
-# How to Implement Data Vault 2.0 Modeling in BigQuery for Enterprise Data Warehousing
+# How to Use Data Vault 2.0 Modeling in BigQuery for Enterprise Data Warehousing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

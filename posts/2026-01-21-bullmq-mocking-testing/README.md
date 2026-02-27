@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Testing, Mocking, Jest, Vitest, Test Doubles, Test Utilities
 
-Description: A comprehensive guide to mocking BullMQ queues, workers, and events for testing, including creating test doubles, simulating job processing, and building reusable mock utilities for reliable test suites.
+Description: A comprehensive guide to mocking BullMQ queues, workers, and events for testing, including creating test doubles, simulating job processing.
 
 ---
 

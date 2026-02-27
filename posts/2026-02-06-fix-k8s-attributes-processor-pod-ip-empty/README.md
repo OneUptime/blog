@@ -1,4 +1,4 @@
-# How to Fix the Kubernetes Attributes Processor Not Enriching Spans Because Pod IP Lookup Returns Empty
+# How to Fix the K8s Attributes Processor Not Enriching Spans Because Pod IP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

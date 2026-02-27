@@ -1,10 +1,10 @@
-# How to Implement Secrets Management in GitOps Using External Secrets Operator with Flux
+# How to Use Secrets Management in GitOps Using External Secrets Operator
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitOps, Secrets Management, External Secrets, Flux, Kubernetes
 
-Description: Learn how to securely manage Kubernetes secrets in GitOps workflows using External Secrets Operator with Flux to sync credentials from HashiCorp Vault, AWS Secrets Manager, and other secret stores without storing sensitive data in Git.
+Description: Learn how to securely manage Kubernetes secrets in GitOps workflows using External Secrets Operator with Flux to sync credentials from HashiCorp Vault, AWS Secrets Manager.
 
 ---
 

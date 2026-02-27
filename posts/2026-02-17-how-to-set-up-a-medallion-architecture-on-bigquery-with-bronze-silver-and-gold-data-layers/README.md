@@ -1,4 +1,4 @@
-# How to Set Up a Medallion Architecture on BigQuery with Bronze Silver and Gold Data Layers
+# How to Set Up a Medallion Architecture on BigQuery with Bronze Silver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Queue Depth and Consumer Lag Dashboard from OpenTelemetry Messaging Metrics
+# How to Build a Queue Depth and Consumer Lag Dashboard from OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

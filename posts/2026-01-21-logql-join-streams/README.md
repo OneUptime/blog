@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, LogQL, Log Correlation, Distributed Tracing, Request Tracking, Microservices
 
-Description: A comprehensive guide to correlating and joining log streams in LogQL, covering request ID tracking, distributed tracing integration, multi-service log correlation, and techniques for following requests across services.
+Description: A comprehensive guide to correlating and joining log streams in LogQL, covering request ID tracking, distributed tracing integration, multi-service log correlation.
 
 ---
 

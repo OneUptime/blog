@@ -1,4 +1,4 @@
-# How to Set Up Grafana to Navigate Seamlessly Between Tempo Traces, Mimir Metrics, Loki Logs, and Pyroscope Profiles
+# How to Set Up Grafana to Navigate Seamlessly Between Tempo Traces, Mimir
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

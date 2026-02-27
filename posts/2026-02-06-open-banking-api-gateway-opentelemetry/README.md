@@ -1,4 +1,4 @@
-# How to Monitor Open Banking API (PSD2/Open Finance) Gateway Performance with OpenTelemetry
+# How to Monitor Open Banking API Gateway Performance with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

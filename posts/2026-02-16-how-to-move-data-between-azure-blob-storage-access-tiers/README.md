@@ -1,4 +1,4 @@
-# How to Move Data Between Azure Blob Storage Access Tiers (Hot, Cool, Cold, Archive)
+# How to Move Data Between Azure Blob Storage Access Tiers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

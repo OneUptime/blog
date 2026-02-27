@@ -1,4 +1,4 @@
-# How to Set Up Autoscaling for Azure Virtual Desktop Session Hosts Based on User Demand
+# How to Set Up Autoscaling for Azure Virtual Desktop Session Hosts Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

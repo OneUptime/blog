@@ -1,4 +1,4 @@
-# How to Automate Incident Remediation with Cloud Functions Triggered by Alerts on GCP
+# How to Automate Incident Remediation with Cloud Functions Triggered by Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

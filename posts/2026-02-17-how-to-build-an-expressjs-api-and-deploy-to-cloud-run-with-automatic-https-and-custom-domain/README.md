@@ -1,4 +1,4 @@
-# How to Build an Express.js API and Deploy It to Cloud Run with Automatic HTTPS and Custom Domain
+# How to Build an Express.js API and Deploy It to Cloud Run with Automatic HTTPS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

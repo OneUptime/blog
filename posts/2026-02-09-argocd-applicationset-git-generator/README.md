@@ -1,10 +1,10 @@
-# How to Create ArgoCD ApplicationSet Git Generator Patterns for Monorepo Deployments
+# How to Create ArgoCD ApplicationSet Git Generator Patterns
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, ApplicationSet, GitOps, Monorepo, Kubernetes
 
-Description: Learn how to use ArgoCD ApplicationSet with Git generators to automatically discover and deploy applications from monorepo directory structures without manually creating Application resources for each service.
+Description: Learn how to use ArgoCD ApplicationSet with Git generators to automatically discover and deploy applications from monorepo directory structures without manually creating Application resources for.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Log Storage, Optimization, Compression, Elasticsearch, Cost Reduction, Performance, Data Management
 
-Description: Learn how to optimize log storage for cost and performance. This guide covers compression techniques, index optimization, tiered storage, deduplication, and strategies to reduce storage costs while maintaining query performance.
+Description: Learn how to optimize log storage for cost and performance.
 
 ---
 

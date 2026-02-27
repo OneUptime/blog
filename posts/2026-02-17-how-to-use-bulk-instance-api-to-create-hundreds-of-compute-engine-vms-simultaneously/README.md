@@ -1,4 +1,4 @@
-# How to Use Bulk Instance API to Create Hundreds of Compute Engine VMs Simultaneously
+# Use Bulk Instance API to Create Hundreds of Compute Engine VMs Simultaneously
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

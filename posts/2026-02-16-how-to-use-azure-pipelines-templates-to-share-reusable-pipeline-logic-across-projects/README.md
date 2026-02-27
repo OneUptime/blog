@@ -1,4 +1,4 @@
-# How to Use Azure Pipelines Templates to Share Reusable Pipeline Logic Across Projects
+# Use Azure Pipelines Templates to Share Reusable Pipeline Logic Across Projects
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure the Google Cloud Monitoring Receiver in the OpenTelemetry Collector
+# How to Configure the Google Cloud Monitoring Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

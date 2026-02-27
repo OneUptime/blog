@@ -1,4 +1,4 @@
-# How to Set Up VNet Peering Between Two Azure Virtual Networks in Different Regions
+# How to Set Up VNet Peering Between Two Azure Virtual Networks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

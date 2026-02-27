@@ -1,4 +1,4 @@
-# How to Create Cloud Monitoring Alerting Policies and Notification Channels with Terraform
+# How to Create Cloud Monitoring Alerting Policies and Notification Channels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kibana, Canvas, Reporting, Dashboards, Visualization
 
-Description: Create custom log reporting dashboards with Kibana Canvas using pixel-perfect layouts, dynamic data elements, custom expressions, and presentation-ready visualizations for executive reporting and stakeholder communication.
+Description: Create custom log reporting dashboards with Kibana Canvas using pixel-perfect layouts, dynamic data elements, custom expressions.
 
 ---
 

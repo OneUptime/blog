@@ -1,4 +1,4 @@
-# How to Build an API Gateway for GCP Microservices Using Apigee and Cloud Endpoints
+# How to Build an API Gateway for GCP Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

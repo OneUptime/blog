@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, SR-IOV, Performance
 
-Description: Configure SR-IOV network device plugin to provide direct hardware access to pod network interfaces, achieving near-native network performance for high-throughput applications like data processing, NFV, and real-time analytics in Kubernetes.
+Description: Configure SR-IOV network device plugin to provide direct hardware access to pod network interfaces, achieving near-native network performance for high-throughput applications like data processing.
 
 ---
 

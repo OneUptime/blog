@@ -1,4 +1,4 @@
-# How to Build a Prometheus Exporter That Scrapes Kubernetes Custom Resource Status Fields
+# How to Build a Prometheus Exporter That Scrapes K8s Custom Resource Status
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

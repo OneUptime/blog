@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: GraphQL, Subscriptions, Real-time, WebSockets
 
-Description: A comprehensive guide to building real-time features using GraphQL subscriptions. Learn WebSocket configuration, PubSub patterns, event filtering, authentication, scaling strategies, and production best practices.
+Description: A comprehensive guide to building real-time features using GraphQL subscriptions.
 
 ---
 

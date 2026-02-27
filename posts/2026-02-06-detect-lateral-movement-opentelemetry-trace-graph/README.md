@@ -1,4 +1,4 @@
-# How to Detect Lateral Movement Between Microservices Using OpenTelemetry Trace Graph Analysis
+# How to Detect Lateral Movement Between Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: K3s, Kubernetes, Container Registry, DevOps, Docker, Private Registry, Edge Computing
 
-Description: A practical guide to configuring the K3s embedded registry for local container image storage. Learn how to set up registry mirrors, configure authentication, optimize caching, and integrate with your CI/CD pipelines for faster deployments.
+Description: A practical guide to configuring the K3s embedded registry for local container image storage.
 
 ---
 

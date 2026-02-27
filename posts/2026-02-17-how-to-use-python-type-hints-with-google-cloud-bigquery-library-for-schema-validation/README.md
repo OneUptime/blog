@@ -1,4 +1,4 @@
-# How to Use Python Type Hints with the google-cloud-bigquery Library for Schema Validation
+# How to Use Python Type Hints with the google-cloud-bigquery Library
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Email, Monitoring, Incoming Email, Alerts, DevOps, Reliability, Uptime Monitoring, Automation
 
-Description: A comprehensive guide to monitoring email-based alerts with OneUptime's Incoming Email Monitor. Learn how to capture alerts from legacy systems, third-party services, and IoT devices that send notifications via email.
+Description: A comprehensive guide to monitoring email-based alerts with OneUptime's Incoming Email Monitor.
 
 ---
 

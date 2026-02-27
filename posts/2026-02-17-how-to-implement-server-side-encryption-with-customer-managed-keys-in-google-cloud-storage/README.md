@@ -1,4 +1,4 @@
-# How to Implement Server-Side Encryption with Customer-Managed Keys in Google Cloud Storage
+# How to Use Server-Side Encryption with Customer-Managed Keys
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TimescaleDB, PostgreSQL, Data Compression, Time-Series, Database Optimization, Storage
 
-Description: Learn how to compress data in TimescaleDB to reduce storage costs and improve query performance. Covers compression policies, segmentBy and orderBy configuration, monitoring compression ratios, and best practices for time-series data management.
+Description: Learn how to compress data in TimescaleDB to reduce storage costs and improve query performance.
 
 ---
 

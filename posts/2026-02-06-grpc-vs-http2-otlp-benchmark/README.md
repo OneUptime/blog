@@ -1,4 +1,4 @@
-# How to Benchmark gRPC vs HTTP/2 Performance for OTLP Export Using OpenTelemetry Collector Internal Metrics
+# How to Benchmark gRPC vs HTTP/2 Performance for OTLP Export
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

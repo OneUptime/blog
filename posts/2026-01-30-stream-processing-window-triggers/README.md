@@ -1093,4 +1093,4 @@ Triggers are the control plane for windowed computations. Master them and you co
 
 - [Apache Flink Window Documentation](https://nightlies.apache.org/flink/flink-docs-stable/docs/dev/datastream/operators/windows/)
 - [Spark Structured Streaming Triggers](https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html#triggers)
-- [The Three Pillars of Observability](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/)
+- [The Three Pillars of Observability](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)

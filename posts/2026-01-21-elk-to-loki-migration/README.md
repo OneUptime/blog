@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, ELK Stack, Elasticsearch, Migration, Log Management, Kibana, Logstash, Cost Optimization
 
-Description: A step-by-step guide to migrating from ELK Stack (Elasticsearch, Logstash, Kibana) to Grafana Loki, covering planning, parallel deployment, query translation, dashboard migration, and validation strategies.
+Description: A step-by-step guide to migrating from ELK Stack (Elasticsearch, Logstash, Kibana) to Grafana Loki, covering planning, parallel deployment, query translation, dashboard migration.
 
 ---
 

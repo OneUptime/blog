@@ -1,4 +1,4 @@
-# How to Configure GKE Release Channels to Manage Automatic Cluster Version Upgrades
+# Configure GKE Release Channels to Manage Automatic Cluster Version Upgrades
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Custom ID Generator in Go That Meets W3C Trace Context Level 2 Randomness Requirements
+# How to Build a Custom ID Generator in Go That Meets W3C Trace Context Level 2
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

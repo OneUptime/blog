@@ -1,4 +1,4 @@
-# How to Monitor Energy Management System (EMS) and Smart Grid Data Flows with OpenTelemetry
+# How to Monitor Energy Management System and Smart Grid Data Flows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Create Custom VS Code Tasks and Launch Configurations for OpenTelemetry-Instrumented Applications
+# How to Create Custom VS Code Tasks and Launch Configurations for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

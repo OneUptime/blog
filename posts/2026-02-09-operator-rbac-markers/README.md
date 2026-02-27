@@ -1,4 +1,4 @@
-# Using RBAC Markers in Kubernetes Operator Development for Fine-Grained Access Control
+# Using RBAC Markers in Kubernetes Operator Dev for Fine-Grained Access Control
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

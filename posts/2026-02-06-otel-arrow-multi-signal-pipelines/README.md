@@ -1,4 +1,4 @@
-# How to Set Up OTel Arrow for Multi-Signal Pipelines (Traces, Metrics, and Logs on a Single Arrow Stream)
+# How to Set Up OTel Arrow for Multi-Signal Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

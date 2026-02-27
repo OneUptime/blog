@@ -1,4 +1,4 @@
-# How to Design an Active-Passive Disaster Recovery Strategy Using Azure Site Recovery
+# How to Design an Active-Passive Disaster Recovery Strategy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

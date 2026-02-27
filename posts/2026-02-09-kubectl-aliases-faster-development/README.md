@@ -1,4 +1,4 @@
-# How to Build Kubectl Aliases and Shell Functions for Faster Kubernetes Development
+# How to Build Kubectl Aliases and Shell Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

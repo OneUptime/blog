@@ -1,4 +1,4 @@
-# How to Set Up Azure Digital Twins 3D Visualization with Azure Digital Twins Explorer
+# How to Set Up Azure Digital Twins 3D Visualization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

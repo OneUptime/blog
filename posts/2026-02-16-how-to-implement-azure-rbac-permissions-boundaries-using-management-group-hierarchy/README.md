@@ -1,4 +1,4 @@
-# How to Implement Azure RBAC Permissions Boundaries Using Management Group Hierarchy
+# How to Use Azure RBAC Permissions Boundaries Using Management Group Hierarchy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement DNS-Based Failover for GCP Services Using Cloud DNS Routing Policies
+# How to Use DNS-Based Failover for GCP Services Using Cloud DNS Routing Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

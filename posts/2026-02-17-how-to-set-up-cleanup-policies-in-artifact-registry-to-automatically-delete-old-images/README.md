@@ -1,4 +1,4 @@
-# How to Set Up Cleanup Policies in Artifact Registry to Automatically Delete Old Images
+# Set Up Cleanup Policies in Artifact Registry to Automatically Delete Old Images
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

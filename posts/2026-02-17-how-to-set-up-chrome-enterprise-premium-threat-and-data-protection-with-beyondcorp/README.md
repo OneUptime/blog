@@ -1,4 +1,4 @@
-# How to Set Up Chrome Enterprise Premium Threat and Data Protection with BeyondCorp
+# How to Set Up Chrome Enterprise Premium Threat and Data Protection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

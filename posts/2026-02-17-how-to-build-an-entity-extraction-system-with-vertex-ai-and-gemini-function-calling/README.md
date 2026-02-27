@@ -1,4 +1,4 @@
-# How to Build an Entity Extraction System with Vertex AI and Gemini Function Calling
+# How to Build an Entity Extraction System with Vertex AI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

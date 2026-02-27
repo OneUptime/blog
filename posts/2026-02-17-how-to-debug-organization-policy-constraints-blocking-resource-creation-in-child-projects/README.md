@@ -1,4 +1,4 @@
-# How to Debug Organization Policy Constraints Blocking Resource Creation in Child Projects
+# How to Debug Organization Policy Constraints Blocking Resource Creation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

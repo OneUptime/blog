@@ -1,4 +1,4 @@
-# How to Set Up Circuit Breaking Thresholds for Backend Services on GCP Load Balancer
+# How to Set Up Circuit Breaking Thresholds for Backend Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

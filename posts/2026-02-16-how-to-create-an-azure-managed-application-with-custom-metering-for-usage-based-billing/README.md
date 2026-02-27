@@ -1,4 +1,4 @@
-# How to Create an Azure Managed Application with Custom Metering for Usage-Based Billing
+# Create an Azure Managed Application with Custom Metering for Usage-Based Billing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

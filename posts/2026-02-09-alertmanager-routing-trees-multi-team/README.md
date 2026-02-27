@@ -1,4 +1,4 @@
-# How to Configure Alertmanager Alert Routing Trees for Multi-Team Kubernetes Environments
+# How to Configure Alertmanager Alert Routing Trees for Multi-Team K8s
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

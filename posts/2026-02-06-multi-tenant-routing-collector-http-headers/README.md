@@ -1,4 +1,4 @@
-# How to Implement Multi-Tenant Routing in the Collector Using the Routing Connector with Tenant ID HTTP Headers
+# How to Use Multi-Tenant Routing in the Collector Using the Routing Connector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

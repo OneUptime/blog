@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Monitoring, RedisInsight, Grafana, Prometheus, Observability, Performance
 
-Description: Learn how to set up comprehensive Redis monitoring using RedisInsight for real-time debugging and Grafana with Prometheus for long-term metrics visualization. This guide covers installation, configuration, and essential dashboards.
+Description: Learn how to set up comprehensive Redis monitoring using RedisInsight for real-time debugging and Grafana with Prometheus for long-term metrics visualization.
 
 ---
 

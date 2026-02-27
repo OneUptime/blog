@@ -1,4 +1,4 @@
-# How to Use Consistent Probability Sampling to Achieve Predictable Observability Spending
+# How to Use Consistent Probability Sampling to Achieve Predictable Observability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

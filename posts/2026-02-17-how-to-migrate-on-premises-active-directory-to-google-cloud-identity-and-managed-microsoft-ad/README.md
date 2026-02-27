@@ -1,4 +1,4 @@
-# How to Migrate On-Premises Active Directory to Google Cloud Identity and Managed Microsoft AD
+# How to Migrate On-Premises Active Directory to Google Cloud Identity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

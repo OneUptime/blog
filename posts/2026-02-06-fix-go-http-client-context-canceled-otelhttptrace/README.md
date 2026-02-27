@@ -1,4 +1,4 @@
-# How to Fix Go HTTP Client Spans Showing 'context canceled' Due to otelhttptrace Timeout Race Conditions
+# How to Fix Go HTTP Client Spans Showing 'context canceled' Due to otelhttptrace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Deploy a Multi-Container Group with a Sidecar in Azure Container Instances
+# How to Deploy a Multi-Container Group with a Sidecar
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

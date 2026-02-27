@@ -1,4 +1,4 @@
-# How to Build Pre-Incident Detection Systems Using OpenTelemetry Anomaly Baselines
+# How to Build Pre-Incident Detection Systems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, AWS, IAM, Policy, Troubleshooting, Security
 
-Description: Learn how to fix the 'MalformedPolicyDocument: Has prohibited field Resource' error in Terraform AWS deployments. This guide explains IAM policy types, trust policies vs permissions policies, and correct policy structures.
+Description: Learn how to fix the 'MalformedPolicyDocument: Has prohibited field Resource' error in Terraform AWS deployments.
 
 The "MalformedPolicyDocument: Has prohibited field Resource" error is a common pitfall when working with AWS IAM in Terraform. This error occurs when you incorrectly include a `Resource` field in an IAM trust policy (assume role policy). Understanding the difference between trust policies and permissions policies is key to fixing this issue.
 

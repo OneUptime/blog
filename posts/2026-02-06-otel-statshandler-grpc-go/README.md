@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry StatsHandler-Based Instrumentation Instead of Deprecated gRPC Interceptors in Go
+# How to Use OpenTelemetry StatsHandler-Based Instrumentation Instead of
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

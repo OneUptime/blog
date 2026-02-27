@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: API Design, REST, HAL, Hypermedia, HATEOAS, Backend Development
 
-Description: Learn how to implement HAL (Hypertext Application Language) format in your REST APIs with practical examples, production-ready code, and best practices for building discoverable, self-documenting APIs.
+Description: Learn how to implement HAL (Hypertext Application Language) format in your REST APIs with practical examples, production-ready code, and best practices for building discoverable.
 
 ---
 

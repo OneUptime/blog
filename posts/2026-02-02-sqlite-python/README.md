@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SQLite, Python, Database, SQL
 
-Description: A comprehensive guide to using SQLite in Python applications. Learn database design, advanced queries, connection pooling, performance optimization, migrations, and production best practices with practical examples.
+Description: A comprehensive guide to using SQLite in Python applications.
 
 ---
 

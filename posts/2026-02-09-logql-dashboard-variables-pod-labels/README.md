@@ -1,4 +1,4 @@
-# How to Build LogQL Dashboard Variables That Dynamically Filter by Kubernetes Pod Labels
+# Build LogQL Dashboard Variables That Dynamically Filter by Kubernetes Pod Labels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

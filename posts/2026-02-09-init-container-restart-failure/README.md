@@ -145,6 +145,7 @@ type: Opaque
 stringData:
   password: "dbpassword123"
   url: "postgresql://app:dbpassword123@postgres.default.svc.cluster.local:5432/production"
+```
 
 Both init containers implement internal retry logic with configurable attempts and delays. This provides finer control than pod-level restarts and makes failures more observable through logs.
 

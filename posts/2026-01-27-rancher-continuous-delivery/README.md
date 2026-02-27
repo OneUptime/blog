@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Fleet, GitOps, Kubernetes, Multi-Cluster, CI/CD, Continuous Delivery, DevOps
 
-Description: A comprehensive guide to using Rancher Continuous Delivery (Fleet) for GitOps-based multi-cluster Kubernetes deployments. Learn Fleet configuration, bundle resources, GitOps workflows, and best practices for managing applications at scale.
+Description: A comprehensive guide to using Rancher Continuous Delivery (Fleet) for GitOps-based multi-cluster Kubernetes deployments.
 
 ---
 

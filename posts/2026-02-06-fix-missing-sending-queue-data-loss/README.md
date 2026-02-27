@@ -1,4 +1,4 @@
-# How to Fix the Mistake of Not Configuring a Sending Queue and Losing Data During Backend Outages
+# How to Fix the Mistake of Not Configuring a Sending Queue
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build Synthetic Transaction Tests with Tracetest Monitors and OpenTelemetry
+# How to Build Synthetic Transaction Tests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

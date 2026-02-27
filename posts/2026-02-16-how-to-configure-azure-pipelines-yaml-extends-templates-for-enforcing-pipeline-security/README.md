@@ -1,4 +1,4 @@
-# How to Configure Azure Pipelines YAML Extends Templates for Enforcing Pipeline Security
+# How to Configure Azure Pipelines YAML Extends Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

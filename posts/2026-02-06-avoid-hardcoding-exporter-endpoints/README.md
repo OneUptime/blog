@@ -1,4 +1,4 @@
-# How to Avoid the Anti-Pattern of Hardcoding Exporter Endpoints Instead of Using OTEL Environment Variables
+# How to Avoid the Anti-Pattern of Hardcoding Exporter Endpoints Instead of
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

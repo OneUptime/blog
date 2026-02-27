@@ -1,10 +1,10 @@
-# How to Configure Jaeger Adaptive Sampling Based on Kubernetes Service Error Rates
+# How to Configure Jaeger Adaptive Sampling Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Jaeger, Distributed Tracing, Sampling, Observability
 
-Description: Learn how to configure Jaeger's adaptive sampling to automatically adjust trace sampling rates based on Kubernetes service error rates, ensuring you capture problematic traces while controlling data volume.
+Description: Learn how to configure Jaeger's adaptive sampling to automatically adjust trace sampling rates based on Kubernetes service error rates.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Implement CEL-Based ValidatingAdmissionPolicy for Kubernetes Native Policies
+# How to Use CEL-Based ValidatingAdmissionPolicy for Kubernetes Native Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CEL, Admission Control, ValidatingAdmissionPolicy, Policy Enforcement
 
-Description: Learn how to use Kubernetes native ValidatingAdmissionPolicy with Common Expression Language (CEL) to enforce policies without external webhooks, improving performance and reducing operational complexity.
+Description: Learn how to use Kubernetes native ValidatingAdmissionPolicy with Common Expression Language (CEL) to enforce policies without external webhooks.
 
 ---
 

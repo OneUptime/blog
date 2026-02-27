@@ -1,4 +1,4 @@
-# How to Configure Cloud Run CPU Allocation to Always-On for Background Processing Workloads
+# How to Configure Cloud Run CPU Allocation to Always-On
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

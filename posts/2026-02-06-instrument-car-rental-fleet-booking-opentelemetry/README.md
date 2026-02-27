@@ -1,4 +1,4 @@
-# How to Instrument Car Rental Fleet Availability and Booking System with OpenTelemetry
+# How to Instrument Car Rental Fleet Availability and Booking System
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Prepare for the Google Cloud Professional Data Engineer Exam BigQuery and Dataflow Topics
+# How to Prepare for the Google Cloud Professional Data Engineer Exam BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

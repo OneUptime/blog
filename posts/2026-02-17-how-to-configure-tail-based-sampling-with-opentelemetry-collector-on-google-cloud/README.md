@@ -1,4 +1,4 @@
-# How to Configure Tail-Based Sampling with OpenTelemetry Collector on Google Cloud
+# How to Configure Tail-Based Sampling with OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

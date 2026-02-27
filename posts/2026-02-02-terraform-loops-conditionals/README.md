@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, DevOps, HCL, Automation, Cloud
 
-Description: Learn how to implement loops and conditionals in Terraform using count, for_each, for expressions, and conditional operators. Covers practical examples for dynamic infrastructure provisioning and resource management.
+Description: Learn how to implement loops and conditionals in Terraform using count, for_each, for expressions, and conditional operators.
 
 ---
 

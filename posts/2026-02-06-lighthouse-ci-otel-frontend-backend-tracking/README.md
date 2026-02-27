@@ -1,4 +1,4 @@
-# How to Integrate Lighthouse CI Scores with OpenTelemetry for Combined Frontend-Backend Performance Tracking
+# How to Integrate Lighthouse CI Scores with OpenTelemetry for Combined
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

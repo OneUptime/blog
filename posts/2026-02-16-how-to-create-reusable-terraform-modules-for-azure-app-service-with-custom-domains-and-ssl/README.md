@@ -1,4 +1,4 @@
-# How to Create Reusable Terraform Modules for Azure App Service with Custom Domains and SSL
+# How to Create Reusable Terraform Modules for Azure App Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

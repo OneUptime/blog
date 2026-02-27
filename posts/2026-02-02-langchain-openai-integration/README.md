@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: LangChain, OpenAI, GPT-4, Python, LLM, AI Integration, Prompt Engineering, ChatGPT API
 
-Description: A comprehensive guide to integrating LangChain with OpenAI's GPT models. Learn how to set up the integration, work with chat completions, handle streaming responses, implement function calling, and build production-ready AI applications.
+Description: A comprehensive guide to integrating LangChain with OpenAI's GPT models.
 
 ---
 

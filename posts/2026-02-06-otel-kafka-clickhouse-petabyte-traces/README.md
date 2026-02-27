@@ -1,4 +1,4 @@
-# How to Build an OpenTelemetry + Kafka + ClickHouse Pipeline for Petabyte-Scale Trace Storage
+# How to Build an OpenTelemetry + Kafka + ClickHouse Pipeline for Petabyte-Scale
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

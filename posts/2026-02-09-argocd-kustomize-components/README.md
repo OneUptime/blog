@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, Kustomize, Kubernetes, GitOps, Configuration
 
-Description: Learn how to use ArgoCD with Kustomize components to create reusable, composable configuration modules that enable dynamic feature toggling and environment-specific customizations in Kubernetes deployments.
+Description: Learn how to use ArgoCD with Kustomize components to create reusable, composable configuration modules that enable dynamic feature toggling and environment-specific customizations in Kubernetes.
 
 ---
 

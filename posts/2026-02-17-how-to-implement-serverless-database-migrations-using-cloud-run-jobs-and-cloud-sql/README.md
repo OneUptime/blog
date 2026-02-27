@@ -1,4 +1,4 @@
-# How to Implement Serverless Database Migrations Using Cloud Run Jobs and Cloud SQL
+# How to Use Serverless Database Migrations Using Cloud Run Jobs and Cloud SQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

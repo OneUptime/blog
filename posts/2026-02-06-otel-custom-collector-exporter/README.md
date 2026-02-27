@@ -1,4 +1,4 @@
-# How to Create a Custom Collector Exporter That Writes to Your Proprietary Backend
+# Create a Custom Collector Exporter That Writes to Your Proprietary Backend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

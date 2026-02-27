@@ -1,4 +1,4 @@
-# How to Build Multi-Stage Docker Images for Python Applications and Deploy Them to Cloud Run via Artifact Registry
+# How to Build Multi-Stage Docker Images for Python Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

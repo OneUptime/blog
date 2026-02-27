@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Laravel, PHP, REST API, Backend Development, Web Development, API Design
 
-Description: Learn how to build a production-ready REST API with Laravel from scratch. This guide covers project setup, database configuration, Eloquent models, API resources, authentication with Sanctum, validation, error handling, and testing.
+Description: Learn how to build a production-ready REST API with Laravel from scratch.
 
 ---
 

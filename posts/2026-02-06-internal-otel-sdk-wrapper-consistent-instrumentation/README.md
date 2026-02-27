@@ -1,4 +1,4 @@
-# How to Create an Internal OpenTelemetry SDK Wrapper for Consistent Instrumentation Across Teams
+# How to Create an Internal OpenTelemetry SDK Wrapper
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

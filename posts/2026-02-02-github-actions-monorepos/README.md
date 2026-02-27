@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, Monorepo, CI/CD, DevOps, Automation, Continuous Integration
 
-Description: A comprehensive guide to configuring GitHub Actions for monorepo projects. Learn path filtering, matrix builds, caching strategies, and workflow optimization techniques to build efficient CI/CD pipelines for multi-package repositories.
+Description: A comprehensive guide to configuring GitHub Actions for monorepo projects.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure Notification Channels for Email Slack and PagerDuty in Cloud Monitoring
+# How to Configure Notification Channels for Email Slack and PagerDuty
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

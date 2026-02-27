@@ -1,4 +1,4 @@
-# How to Diagnose Packet Drops in Google Cloud VPC Using Flow Logs and Packet Mirroring
+# How to Diagnose Packet Drops in Google Cloud VPC Using Flow Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

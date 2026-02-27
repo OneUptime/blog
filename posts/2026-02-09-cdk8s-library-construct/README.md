@@ -1,4 +1,4 @@
-# How to Build a CDK8s Library Construct for Standardized Kubernetes Microservice Patterns
+# How to Build a CDK8s Library Construct
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure High Availability for Azure Database for PostgreSQL Flexible Server
+# How to Configure High Availability for Azure Database
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

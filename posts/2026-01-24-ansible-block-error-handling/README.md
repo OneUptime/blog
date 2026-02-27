@@ -901,5 +901,5 @@ By implementing proper block error handling, you can build resilient playbooks t
 *Need visibility into your Ansible automation health? [OneUptime](https://oneuptime.com) provides monitoring and alerting for your infrastructure, ensuring your automated deployments succeed.*
 
 **Related Reading:**
-- [How to Handle Ansible Handlers and Notifications](/blog/post/2026-01-24-ansible-handlers-notifications/view)
-- [How to Configure Ansible Collections](/blog/post/2026-01-24-ansible-collections-configuration/view)
+- [How to Handle Ansible Handlers and Notifications](https://oneuptime.com/blog/post/2026-01-24-ansible-handlers-notifications/view)
+- [How to Configure Ansible Collections](https://oneuptime.com/blog/post/2026-01-24-ansible-collections-configuration/view)

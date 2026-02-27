@@ -1,4 +1,4 @@
-# How to Debug Data Inconsistencies in Event-Driven Systems Using OpenTelemetry Trace Correlation Across Queues
+# How to Debug Data Inconsistencies in Event-Driven Systems Using OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: K3s, Kubernetes, Load Balancer, ServiceLB, Klipper, Networking, DevOps
 
-Description: A practical guide to configuring the built-in K3s Service Load Balancer (formerly Klipper). Covers setup, configuration options, multi-node deployments, and when to use external load balancers instead.
+Description: A practical guide to configuring the built-in K3s Service Load Balancer (formerly Klipper).
 
 ---
 

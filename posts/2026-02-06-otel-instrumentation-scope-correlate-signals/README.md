@@ -1,4 +1,4 @@
-# How to Use Instrumentation Scope to Group and Correlate Telemetry by Library and Version Across Signals
+# How to Use Instrumentation Scope to Group and Correlate Telemetry by Library
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

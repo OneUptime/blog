@@ -1,4 +1,4 @@
-# How to Configure Azure Key Vault Firewall Rules and Virtual Network Service Endpoints
+# How to Configure Azure Key Vault Firewall Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

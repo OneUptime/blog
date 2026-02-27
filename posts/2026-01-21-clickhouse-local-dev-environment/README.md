@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Development, Docker, Local Setup, Testing, IDE Integration
 
-Description: A comprehensive guide to setting up a local ClickHouse development environment using Docker Compose, with test data generation, IDE integration, and debugging tools for efficient development workflows.
+Description: A comprehensive guide to setting up a local ClickHouse development environment using Docker Compose, with test data generation, IDE integration.
 
 ---
 

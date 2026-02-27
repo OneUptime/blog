@@ -1,4 +1,4 @@
-# How to Monitor Connection Pool Statistics (Idle, Active, Wait) with OpenTelemetry
+# How to Monitor Connection Pool Statistics with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

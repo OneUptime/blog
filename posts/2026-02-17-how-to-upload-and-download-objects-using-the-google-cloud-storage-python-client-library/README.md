@@ -1,4 +1,4 @@
-# How to Upload and Download Objects Using the Google Cloud Storage Python Client Library
+# Upload and Download Objects Using the Google Cloud Storage Python Client Library
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

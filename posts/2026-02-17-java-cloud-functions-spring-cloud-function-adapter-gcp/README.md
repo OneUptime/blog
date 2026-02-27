@@ -1,4 +1,4 @@
-# How to Write Java Cloud Functions Using the Spring Cloud Function Adapter for GCP
+# How to Write Java Cloud Functions Using the Spring Cloud Function Adapter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

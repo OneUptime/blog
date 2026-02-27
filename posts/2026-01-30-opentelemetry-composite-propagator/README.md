@@ -784,6 +784,6 @@ The Composite Propagator is essential for maintaining trace continuity across he
 
 ### See Also
 
-- [What are Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Understand the fundamentals of distributed tracing.
-- [How to Instrument Express.js Applications with OpenTelemetry](/blog/post/2026-01-06-nodejs-express-opentelemetry-instrumentation/view) - Apply these concepts to Express.js applications.
-- [How to Structure Logs Properly in OpenTelemetry](/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view) - Correlate logs with your distributed traces.
+- [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Understand the fundamentals of distributed tracing.
+- [How to Instrument Express.js Applications with OpenTelemetry](https://oneuptime.com/blog/post/2026-01-06-nodejs-express-opentelemetry-instrumentation/view) - Apply these concepts to Express.js applications.
+- [How to Structure Logs Properly in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view) - Correlate logs with your distributed traces.

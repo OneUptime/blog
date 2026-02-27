@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: DNSSEC, DNS, Security, Automation, Infrastructure, DevOps
 
-Description: A comprehensive guide to automating DNSSEC key rollovers, including ZSK and KSK procedures, automation scripts, monitoring strategies, and best practices for maintaining DNS security without service disruption.
+Description: A comprehensive guide to automating DNSSEC key rollovers, including ZSK and KSK procedures, automation scripts, monitoring strategies.
 
 ---
 

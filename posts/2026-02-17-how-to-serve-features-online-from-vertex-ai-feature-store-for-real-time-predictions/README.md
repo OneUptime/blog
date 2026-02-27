@@ -1,4 +1,4 @@
-# How to Serve Features Online from Vertex AI Feature Store for Real-Time Predictions
+# Serve Features Online from Vertex AI Feature Store for Real-Time Predictions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

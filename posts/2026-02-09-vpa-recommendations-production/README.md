@@ -1,4 +1,4 @@
-# How to Implement Kubernetes Vertical Pod Autoscaler Recommendations in Production Safely
+# How to Use Kubernetes Vertical Pod Autoscaler Recommendations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

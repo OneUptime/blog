@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Prometheus, Consul, Service Discovery, Monitoring
 
-Description: Learn how to build and configure Prometheus Consul Service Discovery to automatically discover and monitor services in dynamic environments. This guide covers configuration, relabeling, health filtering, and production best practices.
+Description: Learn how to build and configure Prometheus Consul Service Discovery to automatically discover and monitor services in dynamic environments.
 
 ---
 

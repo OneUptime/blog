@@ -1,4 +1,4 @@
-# How to Implement AutoML Entity Extraction for Custom Named Entity Recognition on Vertex AI
+# How to Use AutoML Entity Extraction for Custom Named Entity Recognition
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

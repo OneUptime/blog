@@ -1272,4 +1272,4 @@ Start with your most critical systems, establish reliable backup patterns, and e
 
 ---
 
-*For more information on backup monitoring, see our guide on [Monitoring Backup Jobs with OneUptime](/blog/post/2025-09-25-monitoring-backup-jobs-with-oneuptime/view).*
+*For more information on backup monitoring, see our guide on [Monitoring Backup Jobs with OneUptime](https://oneuptime.com/blog/post/2025-09-25-monitoring-backup-jobs-with-oneuptime/view).*

@@ -573,5 +573,5 @@ Event joining requires balancing correctness, latency, and resource usage. Start
 
 ### Related Reading
 
-- [How to Implement Event Timestamps](/blog/post/2026-01-30-event-timestamps/) - Foundation for time-based event joining
-- [What are Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/) - Correlating events across distributed services
+- [How to Implement Event Timestamps](https://oneuptime.com/blog/post/2026-01-30-event-timestamps/view) - Foundation for time-based event joining
+- [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Correlating events across distributed services

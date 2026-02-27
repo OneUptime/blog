@@ -1,4 +1,4 @@
-# How to Deploy a Python Cloud Function with Custom pip Dependencies and Private Packages
+# How to Deploy a Python Cloud Function with Custom pip Dependencies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

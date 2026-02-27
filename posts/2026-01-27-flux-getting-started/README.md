@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, GitOps, Flux, CD, DevOps, Automation, Helm, Kustomize
 
-Description: A complete guide to getting started with Flux for GitOps, covering installation, bootstrapping, GitRepository and Kustomization resources, HelmRelease deployments, and best practices for continuous delivery in Kubernetes.
+Description: A complete guide to getting started with Flux for GitOps, covering installation, bootstrapping, GitRepository and Kustomization resources, HelmRelease deployments.
 
 ---
 

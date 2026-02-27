@@ -1,4 +1,4 @@
-# How to Set Up an ELK Stack (Elasticsearch + Logstash + Kibana) with Docker Compose
+# How to Set Up an ELK Stack with Docker Compose
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

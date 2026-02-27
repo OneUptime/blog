@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Docker Compose, DevOps, Configuration, AI
 
-Description: Docker Compose adds a `models` top-level section that lets you pull OCI-hosted AI models, run them alongside your services, and inject stable endpoints automatically. Here's why it matters and how to use it without creating fragile glue code.
+Description: Docker Compose adds a `models` top-level section that lets you pull OCI-hosted AI models, run them alongside your services, and inject stable endpoints automatically.
 
 > Compose finally treats AI models as first-class citizens: declare them once, grant access explicitly, and keep your inference endpoints versioned right next to your application stack.
 

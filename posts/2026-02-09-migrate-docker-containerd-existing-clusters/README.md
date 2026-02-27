@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, containerd, Migration
 
-Description: Learn how to migrate Kubernetes clusters from Docker to containerd runtime, including pre-migration validation, node-by-node migration procedure, troubleshooting, and post-migration verification for production environments.
+Description: Learn how to migrate Kubernetes clusters from Docker to containerd runtime, including pre-migration validation, node-by-node migration procedure, troubleshooting.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure Microsoft Entra Privileged Identity Management for Just-in-Time Admin Access
+# How to Configure Microsoft Entra Privileged Identity Mgmt for Just-in-Time
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

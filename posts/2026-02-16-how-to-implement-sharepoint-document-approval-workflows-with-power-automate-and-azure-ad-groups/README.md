@@ -1,4 +1,4 @@
-# How to Implement SharePoint Document Approval Workflows with Power Automate and Azure AD Groups
+# How to Use SharePoint Document Approval Workflows with Power Automate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

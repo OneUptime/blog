@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: IPv6, Tunneling, Networking, Linux, Infrastructure, DevOps
 
-Description: Learn how to set up and configure an IPv6 tunnel broker to enable IPv6 connectivity over existing IPv4 infrastructure, including step-by-step configuration, security best practices, and troubleshooting tips.
+Description: Learn how to set up and configure an IPv6 tunnel broker to enable IPv6 connectivity over existing IPv4 infrastructure, including step-by-step configuration, security best practices.
 
 ---
 

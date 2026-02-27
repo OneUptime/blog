@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, PostgreSQL, Connection Pooling, Database, psycopg2, asyncpg, Performance, Reliability
 
-Description: Learn how to implement efficient database connection pooling in Python using psycopg2 and asyncpg. This guide covers pool configuration, connection management, and best practices for high-performance PostgreSQL access.
+Description: Learn how to implement efficient database connection pooling in Python using psycopg2 and asyncpg.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Load Shedding, Reliability, Performance, Resilience, Backend, Kubernetes, Rate Limiting
 
-Description: Learn how to implement load shedding to protect your services from overload. This guide covers request prioritization, graceful degradation, and automatic load shedding strategies with practical examples.
+Description: Learn how to implement load shedding to protect your services from overload.
 
 ---
 

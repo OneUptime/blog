@@ -1,4 +1,4 @@
-# How to Set Up Conditional Access Policies in Microsoft Entra ID to Block Legacy Authentication
+# How to Set Up Conditional Access Policies in Microsoft Entra ID to Block Legacy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

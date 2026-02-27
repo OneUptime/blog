@@ -1,4 +1,4 @@
-# How to Instrument RabbitMQ with OpenTelemetry for Complete Message Flow Visibility
+# How to Instrument RabbitMQ with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use the Kafka Exporter and Kafka Receiver in the Collector for Buffered Telemetry Delivery
+# How to Use the Kafka Exporter and Kafka Receiver in the Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

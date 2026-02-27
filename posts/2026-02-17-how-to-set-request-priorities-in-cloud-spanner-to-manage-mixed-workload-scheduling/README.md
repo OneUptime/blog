@@ -1,4 +1,4 @@
-# How to Set Request Priorities in Cloud Spanner to Manage Mixed Workload Scheduling
+# Set Request Priorities in Cloud Spanner to Manage Mixed Workload Scheduling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

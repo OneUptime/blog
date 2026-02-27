@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, Polly, HTTP Client, Retry, Resilience, Circuit Breaker, API
 
-Description: Learn how to build resilient HTTP clients in .NET using Polly for retry policies, circuit breakers, and timeout handling. This guide covers practical patterns for handling transient failures in microservices.
+Description: Learn how to build resilient HTTP clients in .NET using Polly for retry policies, circuit breakers, and timeout handling.
 
 ---
 

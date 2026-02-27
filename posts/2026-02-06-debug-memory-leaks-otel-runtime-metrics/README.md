@@ -1,4 +1,4 @@
-# How to Debug Memory Leaks in Production Using OpenTelemetry Runtime Metrics and Heap Profiling Correlation
+# How to Debug Memory Leaks in Production Using OpenTelemetry Runtime Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

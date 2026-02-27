@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, DevOps, Performance Optimization, State Management, Parallelism
 
-Description: Learn how to optimize Terraform performance for faster plan and apply operations. Covers state management strategies, parallelism tuning, module optimization, provider configuration, and caching techniques for large-scale infrastructure deployments.
+Description: Learn how to optimize Terraform performance for faster plan and apply operations.
 
 ---
 

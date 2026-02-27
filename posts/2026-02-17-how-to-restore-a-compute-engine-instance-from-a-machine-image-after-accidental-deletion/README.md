@@ -1,4 +1,4 @@
-# How to Restore a Compute Engine Instance from a Machine Image After Accidental Deletion
+# Restore a Compute Engine Instance from a Machine Image After Accidental Deletion
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

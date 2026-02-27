@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: .NET, C#, gRPC, Interceptors, Middleware, Logging, Authentication, Observability
 
-Description: Learn how to build production-ready gRPC interceptors in .NET for logging, authentication, metrics, error handling, and request validation. This guide covers both server-side and client-side interceptors with practical examples.
+Description: Learn how to build production-ready gRPC interceptors in .NET for logging, authentication, metrics, error handling, and request validation.
 
 ---
 

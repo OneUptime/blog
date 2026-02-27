@@ -1,4 +1,4 @@
-# How to Monitor GraphQL Resolver Performance and N+1 Query Detection with OpenTelemetry Tracing
+# How to Monitor GraphQL Resolver Performance and N+1 Query Detection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

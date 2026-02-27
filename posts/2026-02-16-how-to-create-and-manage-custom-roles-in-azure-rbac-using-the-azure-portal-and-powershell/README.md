@@ -1,4 +1,4 @@
-# How to Create and Manage Custom Roles in Azure RBAC Using the Azure Portal and PowerShell
+# How to Manage Custom Roles in Azure RBAC Using the Azure Portal and PowerShell
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

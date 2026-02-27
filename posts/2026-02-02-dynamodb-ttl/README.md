@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DynamoDB, AWS, TTL, NoSQL, Database, Data Management, Serverless
 
-Description: Learn how to implement Time to Live (TTL) in Amazon DynamoDB to automatically expire and delete items. Covers configuration, best practices, use cases, and monitoring strategies for efficient data lifecycle management.
+Description: Learn how to implement Time to Live (TTL) in Amazon DynamoDB to automatically expire and delete items.
 
 ---
 

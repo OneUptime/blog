@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Dataclasses, Data Models, Type Hints, OOP, Clean Code
 
-Description: Learn how to use Python dataclasses to create clean, maintainable data models. This guide covers dataclass basics, field customization, inheritance, immutability, and integration with validation libraries.
+Description: Learn how to use Python dataclasses to create clean, maintainable data models.
 
 ---
 

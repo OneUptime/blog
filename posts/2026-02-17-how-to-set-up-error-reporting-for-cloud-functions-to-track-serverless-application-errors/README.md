@@ -1,4 +1,4 @@
-# How to Set Up Error Reporting for Cloud Functions to Track Serverless Application Errors
+# How to Set Up Error Reporting for Cloud Functions to Track Serverless App Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

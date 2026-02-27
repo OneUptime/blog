@@ -1,4 +1,4 @@
-# How to Configure CMEK with Cloud External Key Manager for Hardware Security Module Integration
+# How to Configure CMEK with Cloud External Key Manager
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

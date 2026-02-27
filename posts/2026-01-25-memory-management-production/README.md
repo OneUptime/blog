@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Memory Management, Performance, Production, JVM, Node.js, Python, Linux, Kubernetes
 
-Description: Learn how to configure memory management for production applications. This guide covers memory limits, garbage collection tuning, memory leak detection, and monitoring across different runtime environments.
+Description: Learn how to configure memory management for production applications.
 
 ---
 

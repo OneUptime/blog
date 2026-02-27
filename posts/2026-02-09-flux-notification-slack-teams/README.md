@@ -1,10 +1,10 @@
-# How to Configure Flux Notification Controller for Slack and Teams Deployment Alerts
+# How to Configure Flux Notification Controller for Slack
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flux, Notifications, Slack, Microsoft Teams, GitOps
 
-Description: Learn how to set up Flux notification controller to send deployment alerts, reconciliation failures, and drift detection events to Slack, Microsoft Teams, and other communication platforms for real-time GitOps monitoring.
+Description: Learn how to set up Flux notification controller to send deployment alerts, reconciliation failures, and drift detection events to Slack, Microsoft Teams.
 
 ---
 

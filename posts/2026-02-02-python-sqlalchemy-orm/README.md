@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, SQLAlchemy, Database, ORM
 
-Description: A comprehensive guide to using SQLAlchemy ORM for database operations in Python. Learn model definitions, relationships, CRUD operations, advanced queries, connection pooling, migrations, and production best practices.
+Description: A comprehensive guide to using SQLAlchemy ORM for database operations in Python.
 
 ---
 

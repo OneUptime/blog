@@ -1,4 +1,4 @@
-# How to Trace Online Exam Proctoring System Workflows (Identity Verification, Session Monitoring) with OpenTelemetry
+# How to Trace Online Exam Proctoring System Workflows with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

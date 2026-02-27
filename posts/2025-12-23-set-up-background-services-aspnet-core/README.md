@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, ASP.NET Core, C#, Background Services, IHostedService, Scheduling, Workers
 
-Description: Learn how to implement background services in ASP.NET Core using IHostedService and BackgroundService. This guide covers scheduled tasks, queue processing, long-running operations, and best practices for reliable background processing.
+Description: Learn how to implement background services in ASP.NET Core using IHostedService and BackgroundService.
 
 Background services are essential for running tasks outside the request/response cycle in ASP.NET Core applications. This guide covers everything from simple periodic tasks to robust queue-based processing systems.
 

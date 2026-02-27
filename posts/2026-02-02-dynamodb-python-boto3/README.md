@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DynamoDB, Python, boto3, AWS, NoSQL, Database, Serverless
 
-Description: Learn how to use Amazon DynamoDB with Python using the boto3 library. Covers table creation, CRUD operations, querying, scanning, batch operations, and best practices for building scalable applications.
+Description: Learn how to use Amazon DynamoDB with Python using the boto3 library.
 
 ---
 

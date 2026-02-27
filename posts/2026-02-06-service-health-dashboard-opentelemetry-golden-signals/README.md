@@ -1,4 +1,4 @@
-# How to Build a Service Health Overview Dashboard from OpenTelemetry Golden Signals
+# Build a Service Health Overview Dashboard from OpenTelemetry Golden Signals
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

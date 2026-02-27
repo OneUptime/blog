@@ -1,4 +1,4 @@
-# How to Set Up Google Cloud Supply Chain Twin for End-to-End Supply Chain Visibility
+# Set Up Google Cloud Supply Chain Twin for End-to-End Supply Chain Visibility
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

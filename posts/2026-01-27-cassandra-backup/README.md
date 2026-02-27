@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cassandra, Database, Backup, Disaster Recovery, NoSQL, DevOps, Data Protection
 
-Description: A comprehensive guide to backing up Apache Cassandra databases, covering snapshot-based backups, incremental backups, nodetool operations, restore procedures, and automation strategies for production environments.
+Description: A comprehensive guide to backing up Apache Cassandra databases, covering snapshot-based backups, incremental backups, nodetool operations, restore procedures.
 
 ---
 

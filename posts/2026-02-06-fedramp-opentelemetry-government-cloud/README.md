@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry for FedRAMP-Compliant Government Cloud Environments
+# Configure OpenTelemetry for FedRAMP-Compliant Government Cloud Environments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

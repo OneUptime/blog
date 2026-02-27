@@ -1,10 +1,10 @@
-# How to Build a Pulumi Component Resource for Standardized Kubernetes Namespace Provisioning
+# How to Build a Pulumi Component Resource
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, Kubernetes, Infrastructure-as-Code
 
-Description: Learn how to create reusable Pulumi component resources that provision Kubernetes namespaces with standardized quotas, network policies, RBAC rules, and monitoring configuration for consistent multi-tenant cluster management.
+Description: Learn how to create reusable Pulumi component resources that provision Kubernetes namespaces with standardized quotas, network policies, RBAC rules.
 
 ---
 

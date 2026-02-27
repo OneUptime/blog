@@ -1,4 +1,4 @@
-# How to Configure Azure Artifacts Maven Feeds for Java Project Dependency Management
+# How to Configure Azure Artifacts Maven Feeds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

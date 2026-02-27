@@ -1,4 +1,4 @@
-# How to Set Up a Hub-and-Spoke Network Topology Using Network Connectivity Center in GCP
+# How to Set Up a Hub-and-Spoke Network Topology Using Network Connectivity Center
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Instrument Product Availability and Back-in-Stock Notification Systems with OpenTelemetry
+# How to Instrument Product Availability and Back-in-Stock Notification Systems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

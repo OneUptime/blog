@@ -1,4 +1,4 @@
-# How to Configure F5 BIG-IP iRules to Inject W3C traceparent Headers for OpenTelemetry Distributed Tracing
+# How to Configure F5 BIG-IP iRules to Inject W3C traceparent Headers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

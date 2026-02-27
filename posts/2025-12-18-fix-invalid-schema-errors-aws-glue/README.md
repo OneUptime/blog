@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Glue, Terraform, Infrastructure as Code, Data Engineering
 
-Description: Learn how to diagnose and fix invalid schema errors in AWS Glue when managing your data catalog with Terraform. This guide covers common causes, debugging strategies, and Terraform configurations for reliable Glue deployments.
+Description: Learn how to diagnose and fix invalid schema errors in AWS Glue when managing your data catalog with Terraform.
 
 AWS Glue is a powerful serverless data integration service, but invalid schema errors can be frustrating when deploying through Terraform. These errors typically occur when the schema definition in your Terraform configuration doesn't match what Glue expects, or when there's a mismatch between your actual data and the defined schema. Let's explore common causes and their solutions.
 

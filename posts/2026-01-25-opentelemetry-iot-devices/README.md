@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, IoT, Embedded Systems, Telemetry, Observability, Resource Constraints, Edge Devices
 
-Description: Learn how to configure OpenTelemetry for IoT devices with limited resources. This guide covers lightweight instrumentation, efficient batching, and offline-capable telemetry for embedded and constrained devices.
+Description: Learn how to configure OpenTelemetry for IoT devices with limited resources.
 
 ---
 

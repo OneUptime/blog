@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Networking, QoS, Traffic Control, Performance
 
-Description: Master Linux traffic control (tc) for Kubernetes network QoS including bandwidth limiting, packet prioritization, traffic shaping, and integration with CNI plugins for fine-grained network performance management.
+Description: Master Linux traffic control (tc) for Kubernetes network QoS including bandwidth limiting, packet prioritization, traffic shaping.
 
 ---
 

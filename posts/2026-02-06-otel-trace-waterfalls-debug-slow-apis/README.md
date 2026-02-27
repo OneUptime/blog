@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Trace Waterfalls to Debug Slow API Responses in Production
+# How to Use OpenTelemetry Trace Waterfalls to Debug Slow API Responses
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

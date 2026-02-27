@@ -1,4 +1,4 @@
-# How to Implement Serverless Cron Jobs with Error Handling Using Cloud Scheduler and Cloud Tasks
+# How to Use Serverless Cron Jobs with Error Handling Using Cloud Scheduler
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

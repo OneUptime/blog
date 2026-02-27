@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, Security
 
-Description: Configure ReferenceGrant resources to enable secure cross-namespace references in the Gateway API, allowing routes to reference services and gateways in different namespaces while maintaining proper security boundaries and tenant isolation.
+Description: Configure ReferenceGrant resources to enable secure cross-namespace references in the Gateway API.
 
 ---
 

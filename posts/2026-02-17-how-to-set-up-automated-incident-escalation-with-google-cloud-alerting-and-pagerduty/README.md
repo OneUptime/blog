@@ -1,4 +1,4 @@
-# How to Set Up Automated Incident Escalation with Google Cloud Alerting and PagerDuty
+# How to Set Up Automated Incident Escalation with Google Cloud Alerting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

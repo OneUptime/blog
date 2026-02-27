@@ -1,4 +1,4 @@
-# How to Monitor Unified Communications Platform (UCaaS) Call Quality Metrics with OpenTelemetry
+# How to Monitor Unified Communications Platform Call Quality Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

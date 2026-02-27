@@ -1,4 +1,4 @@
-# How to Automate Compute Engine Instance Creation with gcloud CLI and Shell Scripts
+# How to Automate Compute Engine Instance Creation with gcloud CLI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

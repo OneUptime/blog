@@ -1,4 +1,4 @@
-# How to Analyze Heap Allocation Profiles in Cloud Profiler to Optimize Memory Usage
+# Analyze Heap Allocation Profiles in Cloud Profiler to Optimize Memory Usage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

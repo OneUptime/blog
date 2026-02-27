@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CockroachDB, Database, Schema Design, Distributed Systems, SQL, PostgreSQL
 
-Description: Learn how to design effective schemas for CockroachDB. From primary key selection to data locality, secondary indexes to schema migrations, discover practical patterns that leverage CockroachDB's distributed architecture for performance and scalability.
+Description: Learn how to design effective schemas for CockroachDB.
 
 ---
 

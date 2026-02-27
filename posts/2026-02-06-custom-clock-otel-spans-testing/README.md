@@ -1,4 +1,4 @@
-# How to Implement a Custom Clock for OpenTelemetry Spans in Unit Test and Integration Test Environments
+# How to Build a Custom Clock for OpenTelemetry Spans in Unit Test
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

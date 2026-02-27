@@ -1,4 +1,4 @@
-# How to Monitor 5G Core Network Function (AMF, SMF, UPF) Performance with OpenTelemetry and NWDAF Integration
+# How to Monitor 5G Core Network Function Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

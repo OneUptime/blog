@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Entra External Identities Self-Service Sign-Up Flows with API Connectors
+# How to Set Up Microsoft Entra External Identities Self-Service Sign-Up Flows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

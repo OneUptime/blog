@@ -1437,6 +1437,6 @@ Build these capabilities incrementally. Start with user impact and duration trac
 
 **Related Reading:**
 
-- [Effective Incident Postmortem Templates](/blog/post/2025-09-09-effective-incident-postmortem-templates-ready-to-use-examples/view)
-- [SRE Metrics Worth Tracking](/blog/post/2025-11-28-sre-metrics-to-track/view)
-- [What is MTTR, MTTD, MTBF and More](/blog/post/2025-09-04-what-is-mttr-mttd-mtbf-and-more/view)
+- [Effective Incident Postmortem Templates](https://oneuptime.com/blog/post/2025-09-09-effective-incident-postmortem-templates-ready-to-use-examples/view)
+- [SRE Metrics Worth Tracking](https://oneuptime.com/blog/post/2025-11-28-sre-metrics-to-track/view)
+- [What is MTTR, MTTD, MTBF and More](https://oneuptime.com/blog/post/2025-09-04-what-is-mttr-mttd-mtbf-and-more/view)

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Step Functions, Terraform, Infrastructure as Code, Serverless, JSON
 
-Description: Learn how to diagnose and fix JSON parsing errors in AWS Step Functions when deploying with Terraform. This guide covers common syntax issues, proper escaping, using jsonencode, and best practices for state machine definitions.
+Description: Learn how to diagnose and fix JSON parsing errors in AWS Step Functions when deploying with Terraform.
 
 AWS Step Functions use Amazon States Language (ASL), which is JSON-based. When defining Step Functions in Terraform, JSON parsing errors are common due to escaping issues, syntax problems, or type mismatches. Let's explore how to identify and fix these errors effectively.
 

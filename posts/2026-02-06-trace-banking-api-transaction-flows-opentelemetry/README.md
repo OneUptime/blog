@@ -1,4 +1,4 @@
-# How to Trace Banking API Transaction Flows (Account Lookup, Balance Check, Transfer, Confirmation) with OpenTelemetry
+# How to Trace Banking API Transaction Flows with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

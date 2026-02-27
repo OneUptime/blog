@@ -1,4 +1,4 @@
-# How to Troubleshoot Azure AD Connect Synchronization Errors for User and Group Objects
+# How to Troubleshoot Azure AD Connect Synchronization Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Deploy a Serverless Web Application Using Cloud Run Firebase Hosting and Cloud CDN
+# How to Deploy a Serverless Web Application Using Cloud Run Firebase Hosting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

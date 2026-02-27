@@ -1,4 +1,4 @@
-# How to Configure Knative Eventing with Dead Letter Sinks for Failed Event Delivery
+# How to Configure Knative Eventing with Dead Letter Sinks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Django, Django REST Framework, API Versioning, Python, REST API, Backend Development
 
-Description: Learn how to implement API versioning in Django REST Framework using URL path, query parameter, header, and namespace approaches. This guide covers versioning strategies, configuration, version-specific views, and best practices for maintaining backward compatibility.
+Description: Learn how to implement API versioning in Django REST Framework using URL path, query parameter, header, and namespace approaches.
 
 ---
 

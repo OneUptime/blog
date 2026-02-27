@@ -1,4 +1,4 @@
-# How to Use Config Sync to Implement GitOps for GKE Cluster Configuration Management
+# How to Use Config Sync to Implement GitOps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

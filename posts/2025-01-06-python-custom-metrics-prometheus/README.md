@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Prometheus, Metrics, Observability, Monitoring, FastAPI, Flask, Performance
 
-Description: Learn how to add custom metrics to Python applications using the prometheus_client library. This guide covers counters, gauges, histograms, and summaries with practical examples for Flask and FastAPI applications.
+Description: Learn how to add custom metrics to Python applications using the prometheus_client library.
 
 ---
 

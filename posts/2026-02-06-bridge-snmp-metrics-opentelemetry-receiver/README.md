@@ -1,4 +1,4 @@
-# How to Bridge SNMP Network Equipment Metrics into OpenTelemetry Using the SNMP Receiver
+# How to Bridge SNMP Network Equipment Metrics into OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Access Control, Multi-Tenancy, Security, Authorization, RBAC
 
-Description: A comprehensive guide to implementing log access control in Grafana Loki, covering multi-tenancy, label-based authorization, proxy-based access control, and integration with identity providers for fine-grained log access.
+Description: A comprehensive guide to implementing log access control in Grafana Loki, covering multi-tenancy, label-based authorization, proxy-based access control.
 
 ---
 

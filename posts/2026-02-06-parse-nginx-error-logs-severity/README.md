@@ -1,4 +1,4 @@
-# How to Parse NGINX Error Logs with Severity Level Extraction Using the Filelog Receiver Operators
+# How to Parse NGINX Error Logs with Severity Level Extraction
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

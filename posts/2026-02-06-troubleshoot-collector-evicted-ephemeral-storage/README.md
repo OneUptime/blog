@@ -1,4 +1,4 @@
-# How to Troubleshoot Collector Pods Being Evicted Due to Ephemeral Storage Limits from Persistent Queue Usage
+# How to Troubleshoot Collector Pods Being Evicted Due to Ephemeral Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

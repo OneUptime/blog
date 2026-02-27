@@ -1,4 +1,4 @@
-# How to Trace Flight Search and Fare Calculation Across GDS (Amadeus, Sabre, Travelport) Systems with OpenTelemetry
+# How to Trace Flight Search and Fare Calculation Across GDS Systems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

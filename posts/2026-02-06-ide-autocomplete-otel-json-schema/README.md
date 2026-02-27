@@ -1,4 +1,4 @@
-# How to Use IDE Auto-Completion and Validation with the OpenTelemetry Configuration JSON Schema
+# How to Use IDE Auto-Completion and Validation with the OpenTelemetry Config
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

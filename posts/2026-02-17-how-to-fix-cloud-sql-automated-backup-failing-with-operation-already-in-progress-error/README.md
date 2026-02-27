@@ -1,4 +1,4 @@
-# How to Fix Cloud SQL Automated Backup Failing with Operation Already in Progress Error
+# How to Fix Cloud SQL Automated Backup Failing with Operation Already
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

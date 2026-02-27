@@ -1,4 +1,4 @@
-# How to Configure Flask Session Management Using Firestore as a Session Backend on Cloud Run
+# How to Configure Flask Session Management Using Firestore as a Session Backend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

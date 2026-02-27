@@ -1,4 +1,4 @@
-# How to Configure Bugsnag Alongside OpenTelemetry for Dual Error Tracking and Trace Collection
+# How to Configure Bugsnag Alongside OpenTelemetry for Dual Error Tracking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

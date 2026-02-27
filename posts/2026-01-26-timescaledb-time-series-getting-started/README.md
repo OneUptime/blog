@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TimescaleDB, Time-Series, PostgreSQL, Database, Monitoring, Metrics, Tutorial
 
-Description: A practical guide to getting started with TimescaleDB for time-series data. Learn how to install, configure, and use TimescaleDB for metrics, IoT data, and application monitoring with real-world examples.
+Description: A practical guide to getting started with TimescaleDB for time-series data.
 
 ---
 

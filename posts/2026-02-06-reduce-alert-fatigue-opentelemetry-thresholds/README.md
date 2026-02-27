@@ -1,4 +1,4 @@
-# How to Reduce Alert Fatigue by Tuning Alert Thresholds with OpenTelemetry Historical Data
+# How to Reduce Alert Fatigue by Tuning Alert Thresholds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

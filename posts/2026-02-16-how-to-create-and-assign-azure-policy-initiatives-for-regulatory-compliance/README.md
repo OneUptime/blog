@@ -1,4 +1,4 @@
-# How to Create and Assign Azure Policy Initiatives for Regulatory Compliance (CIS, NIST, PCI-DSS)
+# How to Create and Assign Azure Policy Initiatives for Regulatory Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

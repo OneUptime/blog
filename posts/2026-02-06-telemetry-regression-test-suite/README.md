@@ -1,4 +1,4 @@
-# How to Build a Telemetry Regression Test Suite That Validates Span Names, Attributes, and Status Codes
+# How to Build a Telemetry Regression Test Suite That Validates Span Names,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

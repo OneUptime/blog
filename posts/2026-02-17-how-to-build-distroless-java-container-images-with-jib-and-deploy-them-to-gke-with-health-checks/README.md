@@ -1,4 +1,4 @@
-# How to Build Distroless Java Container Images with Jib and Deploy Them to GKE with Health Checks
+# How to Build Distroless Java Container Images with Jib and Deploy Them to GKE
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

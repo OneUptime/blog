@@ -1,4 +1,4 @@
-# How to Configure Azure Bicep CI/CD Pipelines in GitHub Actions with What-If Validation
+# Configure Azure Bicep CI/CD Pipelines in GitHub Actions with What-If Validation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Distributed Tracing in a NestJS Application on Cloud Run Using OpenTelemetry and Cloud Trace
+# How to Use Distributed Tracing in a NestJS Application on Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

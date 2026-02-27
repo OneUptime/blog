@@ -1,4 +1,4 @@
-# How to Write Assertion Rules on Span Attributes and Timing Using Tracetest Test Definitions
+# How to Write Assertion Rules on Span Attributes and Timing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Logging, Trace Correlation, Observability, Distributed Systems, Debugging
 
-Description: Learn how to implement log correlation in OpenTelemetry to connect logs with traces and spans. This guide covers trace context injection, structured logging patterns, and practical examples for Node.js and Python.
+Description: Learn how to implement log correlation in OpenTelemetry to connect logs with traces and spans. This guide covers trace context injection, structured logging patterns, and practical examples for Node.
 
 ---
 

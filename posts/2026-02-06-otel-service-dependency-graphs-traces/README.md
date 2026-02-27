@@ -1,4 +1,4 @@
-# How to Build Service Dependency Graphs from OpenTelemetry Traces Using the Service Graph Connector
+# How to Build Service Dependency Graphs from OpenTelemetry Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

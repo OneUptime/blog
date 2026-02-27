@@ -1,4 +1,4 @@
-# How to Avoid the Anti-Pattern of Creating One Giant Span Instead of Breaking Work into Child Spans
+# How to Avoid the Anti-Pattern of Creating One Giant Span Instead of Breaking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

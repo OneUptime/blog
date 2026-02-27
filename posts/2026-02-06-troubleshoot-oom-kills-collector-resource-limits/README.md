@@ -1,4 +1,4 @@
-# How to Troubleshoot OOM Kills on Collector Pods When Resource Limits Are Set Too Low for Production Traffic
+# How to Troubleshoot OOM Kills on Collector Pods When Resource Limits Are Set
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

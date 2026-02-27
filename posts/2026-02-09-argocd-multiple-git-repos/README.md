@@ -1,4 +1,4 @@
-# How to implement ArgoCD with multiple Git repositories using repository credentials
+# How to Use ArgoCD with multiple Git repositories using repository credentials
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

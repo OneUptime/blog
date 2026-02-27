@@ -1,4 +1,4 @@
-# How to Build a Real-Time Mobile Notification System with Azure SignalR Service and Notification Hubs
+# How to Build a Real-Time Mobile Notification System with Azure SignalR Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

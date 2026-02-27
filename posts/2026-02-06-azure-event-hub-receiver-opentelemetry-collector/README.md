@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Azure, Event Hub, Streaming, Observability, Cloud
 
-Description: Configure the Azure Event Hub Receiver in OpenTelemetry Collector to ingest streaming telemetry data from Azure Event Hubs with complete YAML examples, authentication patterns, and production configurations.
+Description: Configure the Azure Event Hub Receiver in OpenTelemetry Collector to ingest streaming telemetry data from Azure Event Hubs with complete YAML examples, authentication patterns.
 
 ---
 

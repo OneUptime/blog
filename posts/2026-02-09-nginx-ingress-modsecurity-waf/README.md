@@ -1,4 +1,4 @@
-# How to Configure NGINX Ingress ModSecurity WAF Rules for Web Application Protection
+# How to Configure NGINX Ingress ModSecurity WAF Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

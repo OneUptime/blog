@@ -720,5 +720,5 @@ By understanding these common errors and their solutions, you can write more rob
 *Need visibility into your Ansible automation? [OneUptime](https://oneuptime.com) provides monitoring and alerting for your infrastructure, ensuring your automated deployments succeed.*
 
 **Related Reading:**
-- [How to Fix "Template Module" Rendering Errors](/blog/post/2026-01-24-ansible-template-module-errors/view)
-- [How to Handle Ansible Block Error Handling](/blog/post/2026-01-24-ansible-block-error-handling/view)
+- [How to Fix "Template Module" Rendering Errors](https://oneuptime.com/blog/post/2026-01-24-ansible-template-module-errors/view)
+- [How to Handle Ansible Block Error Handling](https://oneuptime.com/blog/post/2026-01-24-ansible-block-error-handling/view)

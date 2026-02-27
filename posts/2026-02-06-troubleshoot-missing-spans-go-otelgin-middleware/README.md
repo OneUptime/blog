@@ -1,4 +1,4 @@
-# How to Troubleshoot Missing Spans in Go When Using otelgin and the Request Is Handled by Middleware Before the Route
+# How to Troubleshoot Missing Spans in Go When Using otelgin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

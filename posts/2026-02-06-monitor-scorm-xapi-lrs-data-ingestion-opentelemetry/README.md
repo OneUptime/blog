@@ -1,4 +1,4 @@
-# How to Monitor SCORM/xAPI Learning Record Store (LRS) Data Ingestion with OpenTelemetry
+# How to Monitor SCORM/xAPI Learning Record Store Data Ingestion
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

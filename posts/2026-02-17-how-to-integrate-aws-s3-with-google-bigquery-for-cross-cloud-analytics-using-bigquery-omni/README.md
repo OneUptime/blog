@@ -1,4 +1,4 @@
-# How to Integrate AWS S3 with Google BigQuery for Cross-Cloud Analytics Using BigQuery Omni
+# How to Integrate AWS S3 with Google BigQuery for Cross-Cloud Analytics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

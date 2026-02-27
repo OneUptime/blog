@@ -1,4 +1,4 @@
-# How to Monitor Restaurant Reservation Platform (OpenTable-Style) Performance with OpenTelemetry
+# How to Monitor Restaurant Reservation Platform Performance with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

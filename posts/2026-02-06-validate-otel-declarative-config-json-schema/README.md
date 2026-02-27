@@ -1,4 +1,4 @@
-# How to Validate OpenTelemetry Declarative Configuration Files Against the JSON Schema Before Deployment
+# How to Validate OpenTelemetry Declarative Config Files Against the JSON Schema
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

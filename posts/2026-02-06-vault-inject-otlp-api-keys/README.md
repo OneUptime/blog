@@ -1,4 +1,4 @@
-# How to Use HashiCorp Vault to Inject OTLP Exporter API Keys and Tokens into Collector Configuration
+# How to Use HashiCorp Vault to Inject OTLP Exporter API Keys
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

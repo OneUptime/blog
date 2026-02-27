@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SQS, Go, Golang, Message Queue, Distributed Systems, Cloud, Microservices
 
-Description: Learn how to integrate Amazon SQS with Go applications for reliable message processing. Covers queue operations, message handling, batch processing, dead-letter queues, FIFO queues, and production best practices.
+Description: Learn how to integrate Amazon SQS with Go applications for reliable message processing.
 
 ---
 

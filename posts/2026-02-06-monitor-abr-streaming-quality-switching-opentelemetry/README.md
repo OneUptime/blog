@@ -1,4 +1,4 @@
-# How to Monitor Adaptive Bitrate (ABR) Streaming Quality Switching Events with OpenTelemetry Metrics
+# How to Monitor Adaptive Bitrate Streaming Quality Switching Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

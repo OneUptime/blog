@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, ASP.NET Core, Rate Limiting, C#, API Security, Performance, Middleware
 
-Description: Learn how to implement rate limiting in ASP.NET Core 8 using the built-in rate limiting middleware. This guide covers fixed window, sliding window, token bucket, and concurrency limiters with practical examples.
+Description: Learn how to implement rate limiting in ASP.NET Core 8 using the built-in rate limiting middleware.
 
 ---
 

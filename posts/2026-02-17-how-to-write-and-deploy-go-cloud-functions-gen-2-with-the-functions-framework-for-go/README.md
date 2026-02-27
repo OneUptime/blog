@@ -1,4 +1,4 @@
-# How to Write and Deploy Go Cloud Functions Gen 2 with the Functions Framework for Go
+# How to Write and Deploy Go Cloud Functions Gen 2 with the Functions Framework
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

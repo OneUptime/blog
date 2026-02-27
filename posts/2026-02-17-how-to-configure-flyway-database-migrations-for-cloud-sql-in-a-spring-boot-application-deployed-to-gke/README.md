@@ -1,4 +1,4 @@
-# How to Configure Flyway Database Migrations for Cloud SQL in a Spring Boot Application Deployed to GKE
+# How to Configure Flyway Database Migrations for Cloud SQL in a Spring Boot App
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

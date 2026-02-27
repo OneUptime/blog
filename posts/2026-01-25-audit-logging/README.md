@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Audit Logging, Compliance, Security, SOC2, GDPR, HIPAA, Log Management, Governance
 
-Description: Learn how to implement comprehensive audit logging for compliance and security requirements. This guide covers what to log, how to structure audit events, tamper protection, and meeting regulatory requirements.
+Description: Learn how to implement comprehensive audit logging for compliance and security requirements.
 
 ---
 

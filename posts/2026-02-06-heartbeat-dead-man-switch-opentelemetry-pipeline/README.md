@@ -1,4 +1,4 @@
-# How to Set Up Heartbeat and Dead Man's Switch Alerts for OpenTelemetry Pipeline Health
+# How to Set Up Heartbeat and Dead Man's Switch Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

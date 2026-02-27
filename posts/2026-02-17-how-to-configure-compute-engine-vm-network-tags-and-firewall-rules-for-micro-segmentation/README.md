@@ -1,4 +1,4 @@
-# How to Configure Compute Engine VM Network Tags and Firewall Rules for Micro-Segmentation
+# How to Configure Compute Engine VM Network Tags
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use Azure Bicep Parameters and Parameter Files for Environment-Specific Deployments
+# How to Use Azure Bicep Parameters and Parameter Files for Env-Specific
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

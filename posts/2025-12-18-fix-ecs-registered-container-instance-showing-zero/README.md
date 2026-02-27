@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, ECS, Terraform, Infrastructure as Code, Containers, Troubleshooting
 
-Description: Learn how to diagnose and fix the common ECS issue where registered container instances show as 0. This guide covers IAM roles, ECS agent configuration, networking, and Terraform configurations for reliable ECS clusters.
+Description: Learn how to diagnose and fix the common ECS issue where registered container instances show as 0.
 
 One of the most frustrating issues when setting up Amazon ECS is seeing your cluster with "0 Registered Container Instances" even after launching EC2 instances. This typically indicates that your instances aren't properly registering with the ECS cluster. Let's walk through the common causes and their Terraform-based solutions.
 

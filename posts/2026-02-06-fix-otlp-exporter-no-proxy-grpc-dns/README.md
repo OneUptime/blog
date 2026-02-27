@@ -1,4 +1,4 @@
-# How to Fix the OTLP Exporter Not Respecting NO_PROXY Configuration Due to gRPC DNS Resolver Behavior
+# How to Fix the OTLP Exporter Not Respecting NO_PROXY Config Due to gRPC DNS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

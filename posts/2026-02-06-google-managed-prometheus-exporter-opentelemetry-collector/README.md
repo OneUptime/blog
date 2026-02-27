@@ -1,4 +1,4 @@
-# How to Configure the Google Managed Prometheus Exporter in the OpenTelemetry Collector
+# How to Configure the Google Managed Prometheus Exporter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

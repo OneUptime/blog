@@ -1,4 +1,4 @@
-# How to Use OTTL replace_match and replace_all_matches for Pattern-Based Attribute Value Rewriting in Spans
+# How to Use OTTL replace_match and replace_all_matches for Pattern-Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

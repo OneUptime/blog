@@ -1,4 +1,4 @@
-# How to Configure Safety Settings and Content Filtering for Gemini Models on Vertex AI
+# How to Configure Safety Settings and Content Filtering for Gemini Models
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

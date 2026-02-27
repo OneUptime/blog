@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, Feature Toggles, Feature Flags, Configuration
 
-Description: Learn how to implement feature toggles in .NET applications using Microsoft.FeatureManagement. This guide covers basic toggles, percentage rollouts, time-based windows, and custom filters for controlled feature releases.
+Description: Learn how to implement feature toggles in .NET applications using Microsoft.FeatureManagement.
 
 ---
 

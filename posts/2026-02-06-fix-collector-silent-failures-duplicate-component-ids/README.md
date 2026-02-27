@@ -1,4 +1,4 @@
-# How to Fix Collector Silent Failures When Duplicate Component IDs Exist in Pipeline Configuration
+# How to Fix Collector Silent Failures When Duplicate Component IDs Exist
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

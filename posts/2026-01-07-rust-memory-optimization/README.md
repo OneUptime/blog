@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Memory, Performance, Optimization, Allocator, Zero-Copy, Arena
 
-Description: Learn how to optimize memory usage in Rust applications. This guide covers heap allocation analysis, arena allocators, zero-copy patterns, and techniques to reduce memory pressure in high-performance systems.
+Description: Learn how to optimize memory usage in Rust applications.
 
 ---
 

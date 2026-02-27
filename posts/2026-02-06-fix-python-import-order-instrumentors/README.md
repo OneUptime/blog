@@ -1,4 +1,4 @@
-# How to Fix the Import Order Problem Where Python Instrumentors Must Be Applied Before Library Imports
+# How to Fix the Import Order Problem Where Python Instrumentors Must Be Applied
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

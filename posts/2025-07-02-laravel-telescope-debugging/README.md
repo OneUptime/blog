@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PHP, Laravel, Telescope, Debugging, Monitoring, Development
 
-Description: A comprehensive guide to using Laravel Telescope for debugging and monitoring your Laravel applications. Learn how to install, configure, and use Telescope to inspect requests, exceptions, database queries, and more in development and production environments.
+Description: A comprehensive guide to using Laravel Telescope for debugging and monitoring your Laravel applications.
 
 ---
 

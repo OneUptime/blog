@@ -1,4 +1,4 @@
-# How to Set Up Trunk-Based Development with Cloud Build Triggers and Automated Testing on GCP
+# How to Set Up Trunk-Based Development with Cloud Build Triggers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

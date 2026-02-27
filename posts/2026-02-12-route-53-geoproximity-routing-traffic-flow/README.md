@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Route 53, DNS, Networking
 
-Description: Learn how to use Route 53 geoproximity routing with Traffic Flow to route users based on geographic proximity with adjustable bias, enabling fine-grained control over traffic distribution across regions.
+Description: Learn how to use Route 53 geoproximity routing with Traffic Flow to route users based on geographic proximity with adjustable bias.
 
 ---
 

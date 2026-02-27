@@ -1,4 +1,4 @@
-# How to Set Up a Cloud Run Service with Binary Authorization to Only Allow Signed Container Images
+# How to Set Up a Cloud Run Service with Binary AuthZ to Only Allow Signed
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

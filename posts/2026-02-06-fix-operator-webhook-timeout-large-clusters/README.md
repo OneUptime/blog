@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry Operator Webhook Timeout Errors in Large Clusters with Slow API Servers
+# How to Fix OpenTelemetry Operator Webhook Timeout Errors in Large Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Create a Compute Engine VM from a Snapshot of Another Instance in a Different Project
+# How to Create a Compute Engine VM from a Snapshot of Another Instance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

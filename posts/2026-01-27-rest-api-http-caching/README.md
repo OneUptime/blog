@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: REST API, HTTP Caching, Cache-Control, ETag, Performance, Web Development, Backend, DevOps
 
-Description: A comprehensive guide to implementing HTTP caching headers in REST APIs. Learn how to use Cache-Control, ETag, Last-Modified, and Vary headers to improve API performance, reduce server load, and deliver faster responses to clients.
+Description: A comprehensive guide to implementing HTTP caching headers in REST APIs.
 
 ---
 

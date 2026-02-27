@@ -1,4 +1,4 @@
-# How to Use Ops Agent to Collect Custom Application Metrics from Compute Engine VMs
+# Use Ops Agent to Collect Custom Application Metrics from Compute Engine VMs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Terraform Cloud Workspaces for Azure Multi-Subscription Deployments
+# Configure Terraform Cloud Workspaces for Azure Multi-Subscription Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

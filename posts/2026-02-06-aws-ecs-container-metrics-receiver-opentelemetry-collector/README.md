@@ -1,10 +1,10 @@
-# How to Configure the AWS ECS Container Metrics Receiver in the OpenTelemetry Collector
+# How to Configure the AWS ECS Container Metrics Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, AWS, ECS, Container Metrics, Observability, Docker
 
-Description: Learn how to configure the AWS ECS Container Metrics Receiver in OpenTelemetry Collector to collect CPU, memory, network, and disk metrics from your ECS tasks with practical YAML examples and deployment patterns.
+Description: Learn how to configure the AWS ECS Container Metrics Receiver in OpenTelemetry Collector to collect CPU, memory, network.
 
 ---
 

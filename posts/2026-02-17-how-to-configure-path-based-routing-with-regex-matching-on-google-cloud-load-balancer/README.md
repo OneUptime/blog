@@ -1,4 +1,4 @@
-# How to Configure Path-Based Routing with Regex Matching on Google Cloud Load Balancer
+# How to Configure Path-Based Routing with Regex Matching
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: React, SSE, Server-Sent Events, Real-Time, Streaming, Frontend
 
-Description: A comprehensive guide to implementing Server-Sent Events in React applications for real-time data streaming, including EventSource usage, reconnection handling, error recovery, and production best practices.
+Description: A comprehensive guide to implementing Server-Sent Events in React applications for real-time data streaming, including EventSource usage, reconnection handling, error recovery.
 
 ---
 
@@ -1943,6 +1943,6 @@ For unidirectional streaming use cases like live dashboards, notification feeds,
 
 ### Related Reading
 
-- [How to Implement WebSocket Connections in Node.js with Socket.io](/blog/post/2026-01-06-nodejs-websocket-socketio-scaling/)
-- [Node.js Health Checks for Kubernetes](/blog/post/2026-01-06-nodejs-health-checks-kubernetes/)
-- [Express OpenTelemetry Instrumentation](/blog/post/2026-01-06-nodejs-express-opentelemetry-instrumentation/)
+- [How to Implement WebSocket Connections in Node.js with Socket.io](https://oneuptime.com/blog/post/2026-01-06-nodejs-websocket-socketio-scaling/view)
+- [Node.js Health Checks for Kubernetes](https://oneuptime.com/blog/post/2026-01-06-nodejs-health-checks-kubernetes/view)
+- [Express OpenTelemetry Instrumentation](https://oneuptime.com/blog/post/2026-01-06-nodejs-express-opentelemetry-instrumentation/view)

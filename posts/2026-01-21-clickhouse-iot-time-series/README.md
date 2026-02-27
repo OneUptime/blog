@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, IoT, Time-Series, Sensor Data, Downsampling, High-Frequency Data
 
-Description: A comprehensive guide to setting up ClickHouse for IoT time-series data, covering high-frequency sensor data ingestion, efficient schema design, downsampling strategies, and query optimization for industrial and consumer IoT applications.
+Description: A comprehensive guide to setting up ClickHouse for IoT time-series data, covering high-frequency sensor data ingestion, efficient schema design, downsampling strategies.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ASP.NET Core, Minimal APIs, C#, .NET 8, Web Development, REST API, Backend Development, OpenAPI
 
-Description: A comprehensive guide to building lightweight, high-performance REST APIs using ASP.NET Core 8 Minimal APIs, covering route handlers, dependency injection, validation, OpenAPI integration, and production best practices.
+Description: A comprehensive guide to building lightweight, high-performance REST APIs using ASP.
 
 ---
 

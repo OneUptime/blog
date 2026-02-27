@@ -1,4 +1,4 @@
-# How to Fix Incorrect Span Timestamps Caused by Clock Skew Between Containers in a Kubernetes Cluster
+# How to Fix Incorrect Span Timestamps Caused by Clock Skew Between Containers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

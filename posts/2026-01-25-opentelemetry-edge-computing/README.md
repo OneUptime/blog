@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Edge Computing, IoT, Distributed Systems, Telemetry, Observability, Low Bandwidth
 
-Description: Learn how to configure OpenTelemetry for edge computing environments with limited bandwidth and resources. This guide covers lightweight collection, batching strategies, and offline-capable telemetry pipelines.
+Description: Learn how to configure OpenTelemetry for edge computing environments with limited bandwidth and resources.
 
 ---
 

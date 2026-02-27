@@ -1,4 +1,4 @@
-# How to Standardize Telemetry Instrumentation Across 50+ Microservices with OpenTelemetry
+# How to Standardize Telemetry Instrumentation Across 50+ Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

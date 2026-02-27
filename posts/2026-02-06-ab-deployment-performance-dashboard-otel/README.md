@@ -1,4 +1,4 @@
-# How to Build a Performance Comparison Dashboard for A/B Deployments Using OpenTelemetry Metrics
+# How to Build a Performance Comparison Dashboard for A/B Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

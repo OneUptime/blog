@@ -1,10 +1,10 @@
-# How to Build a Kubernetes Cluster Health Dashboard for Production Operations Teams
+# How to Build a Kubernetes Cluster Health Dashboard
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Monitoring, Dashboards, Operations
 
-Description: Build comprehensive cluster health dashboards that provide operations teams with real-time visibility into Kubernetes cluster status, resource utilization, and application health for effective production management.
+Description: Build comprehensive cluster health dashboards that provide operations teams with real-time visibility into Kubernetes cluster status, resource utilization.
 
 ---
 

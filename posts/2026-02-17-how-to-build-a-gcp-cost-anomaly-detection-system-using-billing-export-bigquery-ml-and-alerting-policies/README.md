@@ -1,4 +1,4 @@
-# How to Build a GCP Cost Anomaly Detection System Using Billing Export BigQuery ML and Alerting Policies
+# How to Build a GCP Cost Anomaly Detection System Using Billing Export BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

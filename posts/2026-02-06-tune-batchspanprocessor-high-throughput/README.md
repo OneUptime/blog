@@ -1,4 +1,4 @@
-# How to Tune BatchSpanProcessor maxQueueSize, scheduledDelayMillis, and maxExportBatchSize for High-Throughput Services
+# How to Tune BatchSpanProcessor maxQueueSize, scheduledDelayMillis,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

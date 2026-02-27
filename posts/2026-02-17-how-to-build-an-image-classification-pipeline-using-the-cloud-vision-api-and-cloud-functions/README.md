@@ -1,4 +1,4 @@
-# How to Build an Image Classification Pipeline Using the Cloud Vision API and Cloud Functions
+# How to Build an Image Classification Pipeline Using the Cloud Vision API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

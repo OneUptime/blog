@@ -1,4 +1,4 @@
-# How to Implement Policy-as-Code for Terraform Kubernetes Plans Using Sentinel and OPA
+# How to Use Policy-as-Code for Terraform Kubernetes Plans Using Sentinel and OPA
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

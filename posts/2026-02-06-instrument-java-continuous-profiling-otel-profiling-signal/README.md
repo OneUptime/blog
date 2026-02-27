@@ -1,4 +1,4 @@
-# How to Instrument Java Applications for Continuous Profiling with the OpenTelemetry Profiling Signal
+# How to Instrument Java Applications for Continuous Profiling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

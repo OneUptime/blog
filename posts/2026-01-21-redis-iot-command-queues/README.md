@@ -723,4 +723,4 @@ console.log('Command acknowledged:', ack);
 
 Redis provides excellent primitives for building IoT command queues. Sorted sets enable priority-based delivery, Streams provide reliable messaging with acknowledgment, and pub/sub enables real-time command status updates. The key is implementing proper acknowledgment patterns to ensure commands are reliably delivered and executed.
 
-For more IoT patterns with Redis, check out our guides on [Device State Management](/blog/redis-device-state-management) and [IoT Metrics Aggregation](/blog/redis-iot-metrics-aggregation).
+For more IoT patterns with Redis, check out our guides on [Device State Management](https://oneuptime.com/blog/post/2026-01-21-redis-device-state-management/view) and [IoT Metrics Aggregation](https://oneuptime.com/blog/post/2026-01-21-redis-iot-metrics-aggregation/view).

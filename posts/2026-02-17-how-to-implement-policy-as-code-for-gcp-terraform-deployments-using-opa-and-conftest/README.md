@@ -1,4 +1,4 @@
-# How to Implement Policy-as-Code for GCP Terraform Deployments Using OPA and Conftest
+# How to Use Policy-as-Code for GCP Terraform Deployments Using OPA and Conftest
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AI Agents, LLM, Planning, AI
 
-Description: A practical guide to implementing planning capabilities in AI agents, covering goal decomposition, action sequencing, and adaptive replanning strategies that enable agents to solve complex multi-step tasks.
+Description: A practical guide to implementing planning capabilities in AI agents, covering goal decomposition, action sequencing.
 
 ---
 

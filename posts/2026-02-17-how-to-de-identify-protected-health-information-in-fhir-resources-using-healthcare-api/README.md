@@ -1,4 +1,4 @@
-# How to De-Identify Protected Health Information in FHIR Resources Using Healthcare API
+# How to De-Identify Protected Health Information in FHIR Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenAPI, REST API, Documentation, Swagger, API Design, Code Generation
 
-Description: Learn how to document REST APIs using the OpenAPI 3.0 specification. This guide covers schema definitions, endpoint documentation, request/response examples, Swagger UI integration, and automated code generation.
+Description: Learn how to document REST APIs using the OpenAPI 3.0 specification.
 
 ---
 

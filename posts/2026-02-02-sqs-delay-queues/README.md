@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SQS, Message Queue, Delay Queue, Serverless, Node.js, Python, Event-Driven Architecture
 
-Description: Learn how to implement delay queues in Amazon SQS for scheduled message processing. Covers queue-level delays, per-message delays, visibility timeout patterns, and production best practices for building reliable delayed processing systems.
+Description: Learn how to implement delay queues in Amazon SQS for scheduled message processing.
 
 ---
 

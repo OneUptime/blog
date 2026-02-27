@@ -1,4 +1,4 @@
-# How to Modernize Monolithic Applications into Kubernetes Microservices with Strangler Fig Pattern
+# How to Modernize Monolithic Applications into Kubernetes Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

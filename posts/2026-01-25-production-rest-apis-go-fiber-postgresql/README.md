@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Fiber, PostgreSQL, REST API, Backend
 
-Description: A practical guide to building production-ready REST APIs using Go Fiber and PostgreSQL, covering project structure, database connections, CRUD operations, middleware, error handling, and deployment best practices.
+Description: A practical guide to building production-ready REST APIs using Go Fiber and PostgreSQL, covering project structure, database connections, CRUD operations, middleware, error handling.
 
 ---
 

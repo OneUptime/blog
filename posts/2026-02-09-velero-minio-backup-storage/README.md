@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Velero, MinIO, Self-Hosted Storage
 
-Description: Learn how to configure Velero with MinIO as an S3-compatible backup storage backend, enabling self-hosted, cost-effective backup storage for Kubernetes disaster recovery without cloud provider dependencies.
+Description: Learn how to configure Velero with MinIO as an S3-compatible backup storage backend, enabling self-hosted.
 
 ---
 

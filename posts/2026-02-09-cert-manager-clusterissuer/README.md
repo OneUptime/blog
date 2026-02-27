@@ -1,4 +1,4 @@
-# How to Configure cert-manager ClusterIssuer for Cluster-Wide Certificate Authority
+# Configure cert-manager ClusterIssuer for Cluster-Wide Certificate Authority
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

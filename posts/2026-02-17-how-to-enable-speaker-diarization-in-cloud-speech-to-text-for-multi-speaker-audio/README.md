@@ -1,4 +1,4 @@
-# How to Enable Speaker Diarization in Cloud Speech-to-Text for Multi-Speaker Audio
+# Enable Speaker Diarization in Cloud Speech-to-Text for Multi-Speaker Audio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

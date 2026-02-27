@@ -1,4 +1,4 @@
-# How to Set Up Multi-Cluster Trace Collection with OpenTelemetry Collector Federation
+# How to Set Up Multi-Cluster Trace Collection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot Kubernetes Init Container Failures Blocking Main Container Startup
+# Troubleshoot Kubernetes Init Container Failures Blocking Main Container Startup
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

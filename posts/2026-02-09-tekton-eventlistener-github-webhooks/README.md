@@ -1,4 +1,4 @@
-# How to Create a Tekton EventListener That Triggers Pipelines from GitHub Webhooks
+# Create a Tekton EventListener That Triggers Pipelines from GitHub Webhooks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

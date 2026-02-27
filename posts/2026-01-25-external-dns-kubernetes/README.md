@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, External DNS, DNS, Ingress, DevOps, Automation
 
-Description: Learn how to set up ExternalDNS in Kubernetes to automatically manage DNS records for your services and ingresses. This guide covers installation, configuration with various DNS providers, and production best practices.
+Description: Learn how to set up ExternalDNS in Kubernetes to automatically manage DNS records for your services and ingresses.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kibana, Multi-Tenancy, Security, Elasticsearch, Access Control
 
-Description: Implement Kibana Spaces to create isolated environments for different teams or customers, including space configuration, role-based access control, index pattern restrictions, and dashboard sharing strategies.
+Description: Implement Kibana Spaces to create isolated environments for different teams or customers, including space configuration, role-based access control, index pattern restrictions.
 
 ---
 

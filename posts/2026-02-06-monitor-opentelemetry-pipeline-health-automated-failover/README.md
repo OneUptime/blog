@@ -1,4 +1,4 @@
-# How to Monitor OpenTelemetry Pipeline Health and Trigger Automated Failover on Degradation
+# How to Monitor OpenTelemetry Pipeline Health and Trigger Automated Failover
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

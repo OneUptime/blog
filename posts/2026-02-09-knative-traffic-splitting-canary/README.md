@@ -1,4 +1,4 @@
-# How to Configure Knative Serving Traffic Splitting for Serverless Canary Deployments
+# How to Configure Knative Serving Traffic Splitting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

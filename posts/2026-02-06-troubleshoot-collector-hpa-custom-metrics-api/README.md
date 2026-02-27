@@ -1,4 +1,4 @@
-# How to Troubleshoot Collector HPA Not Scaling Because the Custom Metrics API Server Is Not Registered
+# How to Troubleshoot Collector HPA Not Scaling Because the Custom Metrics API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

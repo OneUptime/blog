@@ -1,4 +1,4 @@
-# How to Set Up Kubernetes Cost Anomaly Detection Alerts Using Kubecost and Prometheus
+# How to Set Up Kubernetes Cost Anomaly Detection Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

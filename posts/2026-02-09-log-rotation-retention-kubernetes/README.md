@@ -1,4 +1,4 @@
-# How to Set Up Automatic Log Rotation and Retention Policies for Kubernetes Container Logs
+# How to Set Up Automatic Log Rotation and Retention Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use Azure Blob Storage SDK for Java to Manage Files in a Spring Boot Application
+# How to Use Azure Blob Storage SDK for Java to Manage Files
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

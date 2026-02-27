@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Graceful Shutdown, SIGTERM, Process Management, Production
 
-Description: A comprehensive guide to implementing graceful shutdown for BullMQ workers, including handling SIGTERM signals, completing in-flight jobs, timeout strategies, and ensuring reliable deployments with zero job loss.
+Description: A comprehensive guide to implementing graceful shutdown for BullMQ workers, including handling SIGTERM signals, completing in-flight jobs, timeout strategies.
 
 ---
 

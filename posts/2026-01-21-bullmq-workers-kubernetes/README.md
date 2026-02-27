@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Kubernetes, Node.js, Redis, HPA, Autoscaling, DevOps, Cloud Native
 
-Description: A comprehensive guide to deploying BullMQ workers on Kubernetes with horizontal pod autoscaling, graceful shutdown, health probes, and production-ready configurations for reliable job processing at scale.
+Description: A comprehensive guide to deploying BullMQ workers on Kubernetes with horizontal pod autoscaling, graceful shutdown, health probes.
 
 ---
 

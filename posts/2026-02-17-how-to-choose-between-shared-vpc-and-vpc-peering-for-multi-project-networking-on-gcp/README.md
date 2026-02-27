@@ -1,4 +1,4 @@
-# How to Choose Between Shared VPC and VPC Peering for Multi-Project Networking on GCP
+# How to Choose Between Shared VPC and VPC Peering for Multi-Project Networking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

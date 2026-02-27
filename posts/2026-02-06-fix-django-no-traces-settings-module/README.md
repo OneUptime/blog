@@ -1,4 +1,4 @@
-# How to Fix Django Instrumentation Producing No Traces Because DJANGO_SETTINGS_MODULE Is Not Set
+# How to Fix Django Instrumentation Producing No Traces Because
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

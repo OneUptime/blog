@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Consumer, Seek, Replay, Offset Management, Data Reprocessing, Java, Python
 
-Description: A comprehensive guide to implementing seek and replay functionality in Kafka consumers, covering offset manipulation, time-based seeking, partition-specific operations, and strategies for reprocessing historical data.
+Description: A comprehensive guide to implementing seek and replay functionality in Kafka consumers, covering offset manipulation, time-based seeking, partition-specific operations.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Implement Microsoft Entra ID Protection Policies for Risky Users and Sign-Ins
+# How to Use Microsoft Entra ID Protection Policies for Risky Users and Sign-Ins
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

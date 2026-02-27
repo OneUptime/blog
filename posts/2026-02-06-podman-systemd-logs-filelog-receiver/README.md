@@ -1,4 +1,4 @@
-# How to Configure Podman systemd Container Services to Export Structured Logs to the Collector Filelog Receiver
+# How to Configure Podman systemd Container Services to Export Structured Logs to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

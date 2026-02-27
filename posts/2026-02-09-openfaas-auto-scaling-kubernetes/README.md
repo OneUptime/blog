@@ -1,4 +1,4 @@
-# How to Deploy OpenFaaS on Kubernetes with Auto-Scaling and Async Function Invocation
+# How to Deploy OpenFaaS on Kubernetes with Auto-Scaling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

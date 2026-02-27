@@ -1,4 +1,4 @@
-# How to Configure Staging Environments and Preview Branches in Azure Static Web Apps
+# How to Configure Staging Environments and Preview Branches
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

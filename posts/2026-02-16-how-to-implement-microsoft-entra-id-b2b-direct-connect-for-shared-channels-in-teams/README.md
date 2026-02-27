@@ -1,4 +1,4 @@
-# How to Implement Microsoft Entra ID B2B Direct Connect for Shared Channels in Teams
+# How to Use Microsoft Entra ID B2B Direct Connect for Shared Channels in Teams
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

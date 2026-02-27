@@ -1,4 +1,4 @@
-# How to Build Kubernetes Resources Using Pulumi with TypeScript for Type-Safe Infrastructure
+# How to Build K8s Resources Using Pulumi with TypeScript for Type-Safe Infra
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

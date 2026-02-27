@@ -1,4 +1,4 @@
-# How to Build a Security Anomaly Detection Pipeline Using OpenTelemetry Metrics and Traces
+# How to Build a Security Anomaly Detection Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

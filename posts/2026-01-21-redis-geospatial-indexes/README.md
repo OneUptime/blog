@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Geospatial, Location, GEO, GEOADD, GEORADIUS, Maps, Location-Based Services
 
-Description: A comprehensive guide to using Redis Geospatial indexes for location-based queries, covering GEOADD, GEORADIUS, GEODIST commands, and practical examples in Python, Node.js, and Go for building location-aware applications, store finders, and proximity searches.
+Description: A comprehensive guide to using Redis Geospatial indexes for location-based queries, covering GEOADD, GEORADIUS, GEODIST commands, and practical examples in Python, Node.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure Liveness and Readiness Checks for App Engine Flexible Environment
+# How to Configure Liveness and Readiness Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

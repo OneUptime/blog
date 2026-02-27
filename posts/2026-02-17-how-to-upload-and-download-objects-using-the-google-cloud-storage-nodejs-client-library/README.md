@@ -1,4 +1,4 @@
-# How to Upload and Download Objects Using the Google Cloud Storage Node.js Client Library
+# How to Upload and Download Objects Using the Google Cloud Storage Node.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

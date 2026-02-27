@@ -1,4 +1,4 @@
-# How to Configure DaemonSet Resource Limits for Preventing Node Resource Exhaustion
+# How to Configure DaemonSet Resource Limits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

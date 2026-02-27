@@ -1,4 +1,4 @@
-# How to Monitor Inventory Levels Across Warehouses Using Supply Chain Twin and BigQuery
+# How to Monitor Inventory Levels Across Warehouses Using Supply Chain Twin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

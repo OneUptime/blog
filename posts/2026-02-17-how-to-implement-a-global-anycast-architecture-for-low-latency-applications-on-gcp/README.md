@@ -1,4 +1,4 @@
-# How to Implement a Global Anycast Architecture for Low-Latency Applications on GCP
+# How to Build a Global Anycast Architecture for Low-Latency Applications on GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

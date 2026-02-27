@@ -1,4 +1,4 @@
-# How to Build Real-Time Dashboards in Looker Studio Connected to BigQuery Streaming Tables
+# How to Build Real-Time Dashboards in Looker Studio Connected to BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

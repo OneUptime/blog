@@ -1,4 +1,4 @@
-# How to Troubleshoot Missing Spans When the OpenTelemetry Java Agent Cannot Instrument Shaded Libraries
+# How to Troubleshoot Missing Spans When the OpenTelemetry Java Agent Cannot
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

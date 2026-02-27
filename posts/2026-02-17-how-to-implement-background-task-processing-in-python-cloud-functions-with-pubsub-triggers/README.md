@@ -1,4 +1,4 @@
-# How to Implement Background Task Processing in Python Cloud Functions with Pub/Sub Triggers
+# Use Background Task Processing in Python Cloud Functions with Pub/Sub Triggers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

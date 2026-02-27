@@ -1,4 +1,4 @@
-# How to Configure Azure Pipelines Secure Files for Certificate and Key Management in Builds
+# How to Configure Azure Pipelines Secure Files for Certificate and Key Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

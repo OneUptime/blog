@@ -1,4 +1,4 @@
-# How to Recombine Partial CRI-O and containerd Container Logs Using the Recombine Operator
+# How to Recombine Partial CRI-O and containerd Container Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

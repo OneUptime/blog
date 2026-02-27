@@ -1,4 +1,4 @@
-# How to Configure KServe InferenceService with Custom Transformer and Predictor Containers
+# How to Configure KServe InferenceService with Custom Transformer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

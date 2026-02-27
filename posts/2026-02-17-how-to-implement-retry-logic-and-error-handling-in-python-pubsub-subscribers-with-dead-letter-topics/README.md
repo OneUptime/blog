@@ -1,4 +1,4 @@
-# How to Implement Retry Logic and Error Handling in Python Pub/Sub Subscribers with Dead Letter Topics
+# How to Use Retry Logic and Error Handling in Python Pub/Sub Subscribers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

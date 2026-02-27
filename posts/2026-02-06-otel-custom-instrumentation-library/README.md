@@ -1,4 +1,4 @@
-# How to Build a Custom OpenTelemetry Instrumentation Library for Your Internal Framework
+# How to Build a Custom OpenTelemetry Instrumentation Library
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

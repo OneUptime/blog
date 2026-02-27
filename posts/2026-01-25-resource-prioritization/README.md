@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Resource Prioritization, Performance, Quality of Service, Backend, Kubernetes, Rate Limiting
 
-Description: Learn how to implement resource prioritization to ensure critical requests get served during high load. This guide covers priority queues, request classification, and resource allocation strategies with practical examples.
+Description: Learn how to implement resource prioritization to ensure critical requests get served during high load.
 
 ---
 

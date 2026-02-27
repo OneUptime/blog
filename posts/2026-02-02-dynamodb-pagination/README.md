@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DynamoDB, AWS, Pagination, NoSQL, Database, Node.js, Python, boto3, Serverless
 
-Description: Learn how to implement efficient pagination in Amazon DynamoDB. This guide covers Query and Scan operations, exclusive start keys, cursor-based pagination, handling large datasets, and best practices for production applications.
+Description: Learn how to implement efficient pagination in Amazon DynamoDB.
 
 ---
 

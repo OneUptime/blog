@@ -1,4 +1,4 @@
-# How to Configure GKE Cluster Autoscaler with Scale-Down Delays to Prevent Flapping
+# Configure GKE Cluster Autoscaler with Scale-Down Delays to Prevent Flapping
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

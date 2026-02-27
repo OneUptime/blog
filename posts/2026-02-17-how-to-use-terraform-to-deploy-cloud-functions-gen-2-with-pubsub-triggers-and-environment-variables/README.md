@@ -1,4 +1,4 @@
-# How to Use Terraform to Deploy Cloud Functions Gen 2 with Pub/Sub Triggers and Environment Variables
+# How to Use Terraform to Deploy Cloud Functions Gen 2 with Pub/Sub Triggers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

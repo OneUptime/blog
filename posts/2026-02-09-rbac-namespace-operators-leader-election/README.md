@@ -1,4 +1,4 @@
-# How to Build RBAC Roles for Namespace-Scoped Operators with Leader Election Permissions
+# How to Build RBAC Roles for Namespace-Scoped Operators
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

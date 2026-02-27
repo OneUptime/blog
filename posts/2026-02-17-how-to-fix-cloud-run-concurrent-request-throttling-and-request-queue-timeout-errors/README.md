@@ -1,4 +1,4 @@
-# How to Fix Cloud Run Concurrent Request Throttling and Request Queue Timeout Errors
+# How to Fix Cloud Run Concurrent Request Throttling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

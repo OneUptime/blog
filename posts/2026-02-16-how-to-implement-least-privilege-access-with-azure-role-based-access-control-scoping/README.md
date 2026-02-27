@@ -1,4 +1,4 @@
-# How to Implement Least Privilege Access with Azure Role-Based Access Control Scoping
+# How to Use Least Privilege Access with Azure Role-Based Access Control Scoping
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Kafka, Prometheus, Monitoring, Metrics, Data Source, Exporter
 
-Description: Learn how to set up Kafka Exporter to collect Kafka metrics and add them as a data source in Grafana. This guide covers exporter deployment, Prometheus configuration, and building effective Kafka monitoring dashboards.
+Description: Learn how to set up Kafka Exporter to collect Kafka metrics and add them as a data source in Grafana.
 
 Monitoring Apache Kafka is essential for maintaining reliable event streaming infrastructure. The Kafka Exporter exposes Kafka metrics in Prometheus format, which can then be visualized in Grafana. This guide walks you through the complete setup process from deploying the exporter to creating monitoring dashboards.
 

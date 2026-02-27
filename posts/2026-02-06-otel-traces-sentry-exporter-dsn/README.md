@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Traces to Sentry via the Sentry Exporter with DSN Configuration
+# How to Send OpenTelemetry Traces to Sentry via the Sentry Exporter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

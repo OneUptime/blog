@@ -1,4 +1,4 @@
-# How to Monitor Webhook Delivery Reliability (Success Rates, Retries, Latency) with OpenTelemetry Metrics
+# How to Monitor Webhook Delivery Reliability with OpenTelemetry Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

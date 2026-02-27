@@ -1,4 +1,4 @@
-# How to Troubleshoot Microsoft Entra Conditional Access Policy Conflicts Using the What If Tool
+# How to Troubleshoot Microsoft Entra Conditional Access Policy Conflicts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

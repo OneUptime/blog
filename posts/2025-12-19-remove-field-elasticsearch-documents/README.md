@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Data Management, Update API, Scripting, Index Operations
 
-Description: Learn multiple methods to remove fields from Elasticsearch documents including update API, update by query, painless scripts, and reindexing strategies with practical examples and performance considerations.
+Description: Learn multiple methods to remove fields from Elasticsearch documents including update API, update by query, painless scripts.
 
 Removing fields from Elasticsearch documents is a common maintenance task, whether you're cleaning up deprecated data, removing sensitive information, or restructuring your documents. This guide covers multiple approaches with their trade-offs.
 

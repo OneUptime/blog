@@ -1,4 +1,4 @@
-# How to Build a Tekton Pipeline That Runs Integration Tests Against Ephemeral Kubernetes Namespaces
+# How to Build a Tekton Pipeline That Runs Integration Tests Against Ephemeral
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

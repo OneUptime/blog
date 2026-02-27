@@ -1,4 +1,4 @@
-# How to Configure Forced Tunneling with Azure Firewall for Outbound Traffic Inspection
+# How to Configure Forced Tunneling with Azure Firewall
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

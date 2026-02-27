@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry Java Agent Properties via YAML Declarative Configuration
+# Configure OpenTelemetry Java Agent Properties via YAML Declarative Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

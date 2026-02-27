@@ -1,4 +1,4 @@
-# How to Migrate from Docker Swarm Stacks to Kubernetes Deployments with Helm Charts
+# How to Migrate from Docker Swarm Stacks to Kubernetes Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

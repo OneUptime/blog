@@ -1,4 +1,4 @@
-# How to Troubleshoot Node Affinity Rules Preventing Collector DaemonSet from Running on Specific Node Pools
+# How to Troubleshoot Node Affinity Rules Preventing Collector DaemonSet from
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

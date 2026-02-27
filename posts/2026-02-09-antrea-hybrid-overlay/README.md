@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Antrea, Networking, CNI, Overlay
 
-Description: Configure Antrea CNI for hybrid overlay and no-encapsulation modes in Kubernetes including setup, traffic mode selection, performance optimization, and integration with network policies for flexible deployment options.
+Description: Configure Antrea CNI for hybrid overlay and no-encapsulation modes in Kubernetes including setup, traffic mode selection, performance optimization.
 
 ---
 

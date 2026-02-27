@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, Architecture
 
-Description: Implement Gateway API policy attachment pattern to extend gateway functionality with custom policies for rate limiting, authentication, observability, and traffic management without modifying core Gateway or HTTPRoute resources.
+Description: Implement Gateway API policy attachment pattern to extend gateway functionality with custom policies for rate limiting, authentication, observability.
 
 ---
 

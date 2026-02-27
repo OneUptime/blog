@@ -1,4 +1,4 @@
-# How to Build a Telemetry Deduplication Pipeline Using the Log Dedup Processor for High-Availability Collector Pairs
+# How to Build a Telemetry Deduplication Pipeline Using the Log Dedup Processor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

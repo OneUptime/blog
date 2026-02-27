@@ -1,4 +1,4 @@
-# How to Implement Pod Disruption Budgets on AKS for High Availability During Upgrades
+# How to Use Pod Disruption Budgets on AKS for High Availability During Upgrades
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

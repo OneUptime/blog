@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Indexes, B-Tree, GIN, BRIN, Performance, Database Optimization
 
-Description: Learn when to use B-Tree, GIN, and BRIN indexes in PostgreSQL. This guide covers the internals of each index type, their ideal use cases, and practical examples to help you choose the right index for your queries.
+Description: Learn when to use B-Tree, GIN, and BRIN indexes in PostgreSQL.
 
 ---
 

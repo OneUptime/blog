@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CockroachDB, Database, Distributed Systems, Kubernetes, High Availability, PostgreSQL
 
-Description: A comprehensive guide to deploying a production-ready CockroachDB cluster. Learn how to set up multi-node clusters on bare metal, Docker, and Kubernetes, configure replication, secure your deployment, and monitor cluster health.
+Description: A comprehensive guide to deploying a production-ready CockroachDB cluster.
 
 ---
 

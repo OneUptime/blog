@@ -1,4 +1,4 @@
-# How to Configure Azure Monitor VM Insights for Virtual Machine Performance Monitoring
+# How to Configure Azure Monitor VM Insights
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

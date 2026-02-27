@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RabbitMQ, Virtual Hosts, Multi-Tenancy, Messaging
 
-Description: Learn how to implement RabbitMQ virtual host management for multi-tenant applications. This guide covers vhost creation, user permissions, resource isolation, and best practices for production environments.
+Description: Learn how to implement RabbitMQ virtual host management for multi-tenant applications.
 
 ---
 

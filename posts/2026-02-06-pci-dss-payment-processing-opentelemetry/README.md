@@ -1,4 +1,4 @@
-# How to Instrument PCI DSS-Compliant Payment Processing with OpenTelemetry While Redacting Cardholder Data
+# How to Instrument PCI DSS-Compliant Payment Processing with OpenTelemetry While
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Observability-as-Code with OpenTelemetry Collector Configuration in Git
+# How to Use Observability-as-Code with OpenTelemetry Collector Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

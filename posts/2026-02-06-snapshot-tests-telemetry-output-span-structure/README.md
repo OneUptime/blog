@@ -1,4 +1,4 @@
-# How to Build Snapshot Tests for Telemetry Output to Catch Unexpected Span Structure Changes
+# How to Build Snapshot Tests for Telemetry Output to Catch Unexpected Span
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

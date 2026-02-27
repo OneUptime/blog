@@ -1,4 +1,4 @@
-# How to Implement Alert Suppression Windows and Maintenance Schedules for OpenTelemetry Alerts
+# How to Use Alert Suppression Windows and Maintenance Schedules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

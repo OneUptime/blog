@@ -1,4 +1,4 @@
-# How to Set Up Feature Flags for GCP Applications Using Firebase Remote Config and Cloud Run
+# How to Set Up Feature Flags for GCP Applications Using Firebase Remote Config
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

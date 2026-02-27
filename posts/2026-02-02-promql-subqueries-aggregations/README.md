@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PromQL, Prometheus, Monitoring, Observability, Metrics, Time Series, Aggregations
 
-Description: A comprehensive guide to mastering PromQL subqueries and aggregation operators. Learn how to write complex queries for analyzing metrics over time, combining multiple data sources, and building powerful monitoring dashboards.
+Description: A comprehensive guide to mastering PromQL subqueries and aggregation operators.
 
 ---
 

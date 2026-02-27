@@ -1,4 +1,4 @@
-# How to Fix the Common Mistake of Using the Wrong OTLP Port (4317 for gRPC vs 4318 for HTTP)
+# How to Fix the Common Mistake of Using the Wrong OTLP Port
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

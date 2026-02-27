@@ -1,4 +1,4 @@
-# How to Build a Kubernetes Change Management Process with Automated Validation Gates
+# How to Build a Kubernetes Change Management Process
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

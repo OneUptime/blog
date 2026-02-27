@@ -1,4 +1,4 @@
-# OneUptime Now Speaks Syslog Natively: Bring Legacy Logs into Modern Observability
+# OneUptime Now Speaks Syslog Natively: Bring Legacy Logs into Modern
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

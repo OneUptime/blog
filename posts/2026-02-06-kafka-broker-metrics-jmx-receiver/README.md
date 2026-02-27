@@ -1,4 +1,4 @@
-# How to Monitor Kafka Broker Metrics (Under-Replicated Partitions, ISR Shrink, Active Controllers) with the JMX Receiver
+# How to Monitor Kafka Broker Metrics with the JMX Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Kubernetes Resource Requests for Consistent Pod Scheduling in Production
+# How to Configure Kubernetes Resource Requests for Consistent Pod Scheduling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

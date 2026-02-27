@@ -1,4 +1,4 @@
-# How to Implement SRE Golden Signals (Latency, Traffic, Errors, Saturation) with OpenTelemetry
+# How to Use SRE Golden Signals with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

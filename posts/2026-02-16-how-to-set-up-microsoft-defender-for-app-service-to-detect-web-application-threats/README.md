@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Defender for App Service to Detect Web Application Threats
+# Set Up Microsoft Defender for App Service to Detect Web Application Threats
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

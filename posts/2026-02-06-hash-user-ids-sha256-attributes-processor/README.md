@@ -1,4 +1,4 @@
-# How to Configure the Attributes Processor to Hash Sensitive User IDs with SHA-256 Before Export
+# How to Configure the Attributes Processor to Hash Sensitive User IDs with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

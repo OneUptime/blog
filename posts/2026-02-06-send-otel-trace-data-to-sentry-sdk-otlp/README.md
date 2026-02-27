@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Trace Data to Sentry Using the Sentry SDK OTLPIntegration
+# How to Send OpenTelemetry Trace Data to Sentry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

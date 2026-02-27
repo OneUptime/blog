@@ -1,4 +1,4 @@
-# How to Implement Attribute-Based Access Control with IAM Conditions in Google Cloud
+# How to Use Attribute-Based Access Control with IAM Conditions in Google Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Microservices, FastAPI, Architecture, Docker, Kubernetes
 
-Description: A comprehensive guide to building production-ready microservices architecture in Python. Learn service design, inter-service communication, API gateways, service discovery, and deployment patterns with FastAPI, Docker, and Kubernetes.
+Description: A comprehensive guide to building production-ready microservices architecture in Python.
 
 ---
 

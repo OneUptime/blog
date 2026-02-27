@@ -1,4 +1,4 @@
-# How to Implement RBAC Policies That Prevent Privilege Escalation via Role Editing
+# How to Use RBAC Policies That Prevent Privilege Escalation via Role Editing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

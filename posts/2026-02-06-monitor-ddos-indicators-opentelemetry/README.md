@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry to Monitor DDoS Attack Indicators (Request Spikes, GeoIP Anomalies, Connection Floods)
+# How to Use OpenTelemetry to Monitor DDoS Attack Indicators
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

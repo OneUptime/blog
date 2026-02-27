@@ -1,4 +1,4 @@
-# How to Connect AKS Pods to Azure Cosmos DB Using Workload Identity Authentication
+# How to Connect AKS Pods to Azure Cosmos DB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

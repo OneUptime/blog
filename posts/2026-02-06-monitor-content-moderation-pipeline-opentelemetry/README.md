@@ -1,4 +1,4 @@
-# How to Monitor Content Moderation Pipeline (AI Classification, Policy Check, Human Review) Latency with OpenTelemetry
+# How to Monitor Content Moderation Pipeline Latency with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

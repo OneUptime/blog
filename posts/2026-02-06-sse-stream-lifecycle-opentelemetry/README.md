@@ -1,4 +1,4 @@
-# How to Monitor Server-Sent Events (SSE) Stream Lifecycle and Delivery Latency with OpenTelemetry
+# How to Monitor Server-Sent Events Stream Lifecycle and Delivery Latency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

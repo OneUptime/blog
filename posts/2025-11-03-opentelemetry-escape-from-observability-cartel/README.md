@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Observability, Open Source, Vendor Lock-in, Telemetry Pipeline
 
-Description: OpenTelemetry standardizes instrumentation and pipelines so you can swap observability vendors, mix open source with commercial tools, and run hybrid data stacks without rewriting code or paying exit taxes.
+Description: OpenTelemetry standardizes instrumentation and pipelines so you can swap observability vendors, mix open source with commercial tools.
 
 > Instrument once, observe anywhere. OpenTelemetry turns observability back into your choice, not your vendor's revenue strategy.
 

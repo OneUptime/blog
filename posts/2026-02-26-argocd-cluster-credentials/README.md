@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Security, Authentication
 
-Description: Learn how to configure and manage cluster credentials in ArgoCD, covering bearer tokens, client certificates, exec-based authentication, and credential rotation strategies for secure multi-cluster management.
+Description: Learn how to configure and manage cluster credentials in ArgoCD, covering bearer tokens, client certificates, exec-based authentication.
 
 ---
 

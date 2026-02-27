@@ -1,4 +1,4 @@
-# How to Configure Cron Jobs in App Engine Using cron.yaml for Scheduled Background Tasks
+# How to Configure Cron Jobs in App Engine Using cron.yaml
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

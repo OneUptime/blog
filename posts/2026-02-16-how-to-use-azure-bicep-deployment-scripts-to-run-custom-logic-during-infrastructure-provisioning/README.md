@@ -1,4 +1,4 @@
-# How to Use Azure Bicep Deployment Scripts to Run Custom Logic During Infrastructure Provisioning
+# How to Use Azure Bicep Deployment Scripts to Run Custom Logic During Infra
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

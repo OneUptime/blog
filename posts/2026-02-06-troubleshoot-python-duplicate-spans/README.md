@@ -1,4 +1,4 @@
-# How to Troubleshoot Python OpenTelemetry Producing Duplicate Spans on Every Request
+# How to Troubleshoot Python OpenTelemetry Producing Duplicate Spans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

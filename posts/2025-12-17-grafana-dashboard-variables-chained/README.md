@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Dashboard, Variables, Prometheus, Monitoring, PromQL
 
-Description: Learn how to create chained and dependent dashboard variables in Grafana where one variable's options are filtered based on another variable's selection. This guide covers cascading dropdowns, dynamic filtering, and best practices for interactive dashboards.
+Description: Learn how to create chained and dependent dashboard variables in Grafana where one variable's options are filtered based on another variable's selection.
 
 Interactive dashboards in Grafana become significantly more powerful when variables depend on each other. Instead of showing every possible option, you can create cascading dropdowns where selecting a namespace filters the available pods, or selecting a region filters available services. This guide shows you how to build these dependent variable relationships.
 

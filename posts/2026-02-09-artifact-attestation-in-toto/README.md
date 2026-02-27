@@ -1,4 +1,4 @@
-# How to Set Up Artifact Attestation with In-Toto for Kubernetes Supply Chain Security
+# How to Set Up Artifact Attestation with In-Toto
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

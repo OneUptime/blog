@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Scala, Cats, Cats Effect, Functional Programming
 
-Description: A comprehensive guide to functional programming in Scala using Cats and Cats Effect. Learn type classes, monads, concurrent programming with IO, resource management, and best practices for building robust applications.
+Description: A comprehensive guide to functional programming in Scala using Cats and Cats Effect.
 
 ---
 

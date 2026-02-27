@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector for Chronosphere Ingestion with Service Account Authentication and Endpoint Routing
+# How to Configure the OpenTelemetry Collector for Chronosphere Ingestion with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

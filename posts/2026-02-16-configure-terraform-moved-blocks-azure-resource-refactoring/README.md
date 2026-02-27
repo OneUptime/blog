@@ -1,4 +1,4 @@
-# How to Configure Terraform Moved Blocks for Azure Resource Refactoring Without Downtime
+# Configure Terraform Moved Blocks for Azure Resource Refactoring Without Downtime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

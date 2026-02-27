@@ -1,4 +1,4 @@
-# How to Run the OpenTelemetry Collector as a Podman Container with Config Mount and Podman API Socket Access
+# How to Run the OpenTelemetry Collector as a Podman Container with Config Mount
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot GKE Autopilot Workload Rejected Due to Resource Constraint Violations
+# How to Troubleshoot GKE Autopilot Workload Rejected Due to Resource Constraint
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

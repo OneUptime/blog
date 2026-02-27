@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Policy Reports, Compliance, Dashboards, Monitoring
 
-Description: Learn how to use Policy Report CRDs to aggregate policy violations, integrate with compliance dashboards, track policy adherence over time, and build comprehensive security and governance reporting for Kubernetes clusters.
+Description: Learn how to use Policy Report CRDs to aggregate policy violations, integrate with compliance dashboards, track policy adherence over time.
 
 ---
 

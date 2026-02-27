@@ -1,4 +1,4 @@
-# How to Query Azure Resource Graph Across Multiple Subscriptions and Management Groups
+# How to Query Azure Resource Graph Across Multiple Subscriptions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

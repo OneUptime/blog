@@ -1,4 +1,4 @@
-# How to Set Up an Internal TCP Load Balancer for a Managed Instance Group on Compute Engine
+# How to Set Up an Internal TCP Load Balancer for a Managed Instance Group
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

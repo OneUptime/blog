@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, FastAPI, Dependency Injection, Clean Architecture, Testing, Design Patterns
 
-Description: Learn how to use dependency injection in FastAPI to build maintainable, testable applications. This guide covers the Depends system, creating injectable services, and patterns for real-world applications.
+Description: Learn how to use dependency injection in FastAPI to build maintainable, testable applications.
 
 ---
 

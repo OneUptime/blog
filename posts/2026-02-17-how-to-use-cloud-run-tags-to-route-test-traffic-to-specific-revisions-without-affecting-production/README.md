@@ -1,4 +1,4 @@
-# How to Use Cloud Run Tags to Route Test Traffic to Specific Revisions Without Affecting Production
+# How to Use Cloud Run Tags to Route Test Traffic to Specific Revisions Without
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

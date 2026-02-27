@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry SDK Shutdown Timeout and ForceFlush in Java Spring Boot Applications
+# How to Configure OpenTelemetry SDK Shutdown Timeout and ForceFlush
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

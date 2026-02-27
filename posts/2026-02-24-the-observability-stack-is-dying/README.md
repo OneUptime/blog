@@ -4,7 +4,7 @@ Author: [mallersjamie](https://www.github.com/mallersjamie)
 
 Tags: Observability, Open Source, DevOps, SRE
 
-Description: The traditional three pillars of observability - metrics, logs, and traces - were never the end goal. They were a workaround. Here's why the next generation of observability looks completely different.
+Description: The traditional three pillars of observability - metrics, logs, and traces - were never the end goal. They were a workaround.
 
 For the last decade, the observability industry has been selling you the same pitch: collect metrics, aggregate logs, trace requests. The "three pillars" became gospel. Every vendor built their platform around this model, and engineering teams dutifully adopted it.
 

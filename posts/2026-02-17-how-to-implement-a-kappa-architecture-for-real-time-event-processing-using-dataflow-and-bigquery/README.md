@@ -1,4 +1,4 @@
-# How to Implement a Kappa Architecture for Real-Time Event Processing Using Dataflow and BigQuery
+# How to Build a Kappa Architecture for Real-Time Event Processing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Custom Learning Management System with Azure App Service and Teams Integration
+# How to Build a Custom Learning Management System with Azure App Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

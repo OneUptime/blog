@@ -1,4 +1,4 @@
-# How to Create and Publish Universal Packages in Azure Artifacts for Binary Distribution
+# How to Create and Publish Universal Packages in Azure Artifacts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

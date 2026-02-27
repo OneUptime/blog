@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby on Rails, Sidekiq, Background Jobs, Redis, Performance, Ruby
 
-Description: A practical guide to implementing background jobs with Sidekiq in Rails applications. Learn how to set up Redis, create workers, handle retries, schedule jobs, and monitor your background processing in production.
+Description: A practical guide to implementing background jobs with Sidekiq in Rails applications.
 
 ---
 

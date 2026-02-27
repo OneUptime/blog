@@ -1,4 +1,4 @@
-# How to Configure Azure Diagnostic Settings for All Resources Using Terraform for_each
+# How to Configure Azure Diagnostic Settings for All Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

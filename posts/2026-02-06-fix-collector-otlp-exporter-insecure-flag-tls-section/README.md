@@ -1,4 +1,4 @@
-# How to Fix Collector Config Errors When the OTLP Exporter insecure Flag Moved Under the tls Section
+# How to Fix Collector Config Errors When the OTLP Exporter insecure Flag Moved
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

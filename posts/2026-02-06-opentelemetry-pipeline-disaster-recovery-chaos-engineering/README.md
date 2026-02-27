@@ -1,4 +1,4 @@
-# How to Test Your OpenTelemetry Pipeline Disaster Recovery Plan with Chaos Engineering
+# How to Test Your OpenTelemetry Pipeline Disaster Recovery Plan
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

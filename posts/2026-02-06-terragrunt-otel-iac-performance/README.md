@@ -1,4 +1,4 @@
-# How to Instrument Terragrunt Runs with OpenTelemetry for IaC Performance Analysis
+# How to Instrument Terragrunt Runs with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

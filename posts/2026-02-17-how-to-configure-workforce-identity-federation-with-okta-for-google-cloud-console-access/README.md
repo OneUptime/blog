@@ -1,4 +1,4 @@
-# How to Configure Workforce Identity Federation with Okta for Google Cloud Console Access
+# How to Configure Workforce Identity Federation with Okta
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

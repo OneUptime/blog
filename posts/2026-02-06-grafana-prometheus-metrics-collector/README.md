@@ -1,4 +1,4 @@
-# How to Monitor Grafana Itself by Scraping Its Built-In Prometheus Metrics Endpoint with the Collector
+# How to Monitor Grafana Itself by Scraping Its Built-In Prometheus Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

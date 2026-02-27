@@ -1,4 +1,4 @@
-# How to Configure Idle Timeout and Auto-Stop Policies to Reduce Google Cloud Workstation Costs
+# How to Configure Idle Timeout and Auto-Stop Policies to Reduce Google Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

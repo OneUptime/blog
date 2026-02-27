@@ -1,4 +1,4 @@
-# How to Set Up Azure Front Door with Private Link Origin for Secure Backend Access
+# How to Set Up Azure Front Door with Private Link Origin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

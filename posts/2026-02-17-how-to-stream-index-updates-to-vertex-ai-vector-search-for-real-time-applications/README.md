@@ -1,4 +1,4 @@
-# How to Stream Index Updates to Vertex AI Vector Search for Real-Time Applications
+# Stream Index Updates to Vertex AI Vector Search for Real-Time Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

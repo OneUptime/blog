@@ -1,4 +1,4 @@
-# How to Trace Risk Calculation Pipelines (Credit Scoring, Market Risk, Liquidity Risk) with OpenTelemetry Span Attributes
+# How to Trace Risk Calculation Pipelines with OpenTelemetry Span Attributes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

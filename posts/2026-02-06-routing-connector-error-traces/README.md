@@ -1,4 +1,4 @@
-# How to Use the Routing Connector to Send Error Traces to One Backend and Normal Traces to Another
+# How to Use the Routing Connector to Send Error Traces to One Backend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

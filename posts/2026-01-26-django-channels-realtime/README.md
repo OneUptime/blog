@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Django, Channels, WebSocket, Real-time, Python, ASGI
 
-Description: Learn how to build real-time features in Django using Django Channels. This guide covers WebSocket consumers, channel layers, group broadcasting, and production deployment with practical code examples.
+Description: Learn how to build real-time features in Django using Django Channels.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring, Hibernate Envers, Audit, Data History
 
-Description: Learn how to automatically track and audit entity changes in your Spring application using Hibernate Envers. This guide covers setup, configuration, and querying historical data with practical examples.
+Description: Learn how to automatically track and audit entity changes in your Spring application using Hibernate Envers.
 
 ---
 

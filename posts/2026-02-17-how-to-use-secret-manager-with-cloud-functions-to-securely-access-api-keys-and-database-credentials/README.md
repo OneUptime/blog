@@ -1,4 +1,4 @@
-# How to Use Secret Manager with Cloud Functions to Securely Access API Keys and Database Credentials
+# How to Use Secret Manager with Cloud Functions to Securely Access API Keys
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

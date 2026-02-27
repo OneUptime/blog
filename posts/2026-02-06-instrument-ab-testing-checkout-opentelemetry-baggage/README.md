@@ -1,4 +1,4 @@
-# How to Instrument A/B Testing of Checkout Flows with OpenTelemetry Baggage for Variant Tracking
+# How to Instrument A/B Testing of Checkout Flows with OpenTelemetry Baggage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Build Azure AKS Clusters with Bicep Templates and Managed Identity Integration
+# How to Build Azure AKS Clusters with Bicep Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, AKS, Bicep
 
-Description: Learn how to deploy Azure Kubernetes Service clusters using Bicep templates with managed identities for secure authentication, eliminating the need for service principals and simplifying cluster operations.
+Description: Learn how to deploy Azure Kubernetes Service clusters using Bicep templates with managed identities for secure authentication.
 
 ---
 

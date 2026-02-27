@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, FastAPI, MongoDB, Motor, Database, Async, Pydantic, ODM
 
-Description: Learn how to integrate MongoDB with FastAPI using Motor for async operations. This comprehensive guide covers connection management, CRUD operations, data validation with Pydantic, indexing strategies, and production best practices.
+Description: Learn how to integrate MongoDB with FastAPI using Motor for async operations.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Instrument OpenAPI/Swagger Validated Requests with OpenTelemetry for Schema Violation Tracking
+# How to Instrument OpenAPI/Swagger Validated Requests with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

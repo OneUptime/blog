@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, NUMA, Topology Manager
 
-Description: Configure Kubernetes Topology Manager to coordinate CPU, memory, and device allocations on the same NUMA node, eliminating cross-NUMA traffic and maximizing performance for latency-sensitive workloads.
+Description: Configure Kubernetes Topology Manager to coordinate CPU, memory, and device allocations on the same NUMA node.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Log Sampling, High Volume Logging, Observability, Performance, Cost Optimization, Distributed Systems
 
-Description: Learn how to implement log sampling strategies for high-volume systems. This guide covers probabilistic sampling, head-based and tail-based sampling, adaptive algorithms, and techniques to reduce logging costs while maintaining visibility.
+Description: Learn how to implement log sampling strategies for high-volume systems.
 
 ---
 

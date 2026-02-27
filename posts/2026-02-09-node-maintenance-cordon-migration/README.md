@@ -1,4 +1,4 @@
-# How to Configure Kubernetes Node Maintenance with Cordoning and Graceful Pod Migration
+# How to Configure Kubernetes Node Maintenance with Cordoning
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

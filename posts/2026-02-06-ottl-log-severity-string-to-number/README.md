@@ -1,4 +1,4 @@
-# How to Implement OTTL Transformations That Convert Log Severity Strings to OpenTelemetry Severity Numbers
+# How to Use OTTL Transformations That Convert Log Severity Strings to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

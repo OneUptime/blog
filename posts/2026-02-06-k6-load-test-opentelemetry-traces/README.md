@@ -1,4 +1,4 @@
-# How to Correlate k6 Load Test Results with OpenTelemetry Traces for Performance Root Cause Analysis
+# How to Correlate k6 Load Test Results with OpenTelemetry Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Compare Self-Hosted OpenTelemetry Backend Costs vs SaaS Vendor Pricing at Scale
+# Compare Self-Hosted OpenTelemetry Backend Costs vs SaaS Vendor Pricing at Scale
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

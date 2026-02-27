@@ -1,4 +1,4 @@
-# How to Monitor Warehouse Management System (WMS) Pick, Pack, and Ship Operations with OpenTelemetry
+# How to Monitor Warehouse Management System Pick, Pack, and Ship Operations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Azure Private Endpoint DNS Zones for Hybrid Network Name Resolution
+# How to Configure Azure Private Endpoint DNS Zones
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

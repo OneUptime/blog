@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, Monorepo, CI/CD, DevOps, Path Filters, Automation
 
-Description: Learn how to configure GitHub Actions path filters for monorepos to run workflows only when relevant files change. This guide covers path filtering patterns, conditional jobs, and optimization strategies.
+Description: Learn how to configure GitHub Actions path filters for monorepos to run workflows only when relevant files change.
 
 ---
 

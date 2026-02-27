@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Autocomplete, Completion Suggester, Edge N-grams, Search, UX
 
-Description: A comprehensive guide to implementing autocomplete functionality with Elasticsearch, covering completion suggesters, edge n-grams, and practical patterns for building responsive search-as-you-type experiences.
+Description: A comprehensive guide to implementing autocomplete functionality with Elasticsearch, covering completion suggesters, edge n-grams.
 
 ---
 

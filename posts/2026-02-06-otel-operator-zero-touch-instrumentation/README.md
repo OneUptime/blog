@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Operator for Zero-Touch Instrumentation in Your Platform
+# How to Use OpenTelemetry Operator for Zero-Touch Instrumentation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

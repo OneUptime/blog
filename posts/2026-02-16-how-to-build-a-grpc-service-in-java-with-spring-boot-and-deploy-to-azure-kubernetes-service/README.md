@@ -1,4 +1,4 @@
-# How to Build a gRPC Service in Java with Spring Boot and Deploy to Azure Kubernetes Service
+# How to Build a gRPC Service in Java with Spring Boot
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

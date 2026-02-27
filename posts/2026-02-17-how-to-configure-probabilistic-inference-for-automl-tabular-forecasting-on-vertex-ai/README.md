@@ -1,4 +1,4 @@
-# How to Configure Probabilistic Inference for AutoML Tabular Forecasting on Vertex AI
+# How to Configure Probabilistic Inference for AutoML Tabular Forecasting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

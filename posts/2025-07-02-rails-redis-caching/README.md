@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby, Rails, Redis, Caching, Performance, Session Store
 
-Description: A comprehensive guide to using Redis for caching in Ruby on Rails applications. Learn how to configure Redis as your cache store, implement various caching patterns, use Redis for session storage, and deploy production-ready caching solutions.
+Description: A comprehensive guide to using Redis for caching in Ruby on Rails applications.
 
 ---
 

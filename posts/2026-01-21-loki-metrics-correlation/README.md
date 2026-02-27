@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Prometheus, Metrics Correlation, Observability, LogQL, PromQL, Grafana
 
-Description: A comprehensive guide to correlating logs and metrics in Grafana using Loki and Prometheus, enabling unified observability dashboards that link metric anomalies to relevant log entries for faster root cause analysis.
+Description: A comprehensive guide to correlating logs and metrics in Grafana using Loki and Prometheus.
 
 ---
 

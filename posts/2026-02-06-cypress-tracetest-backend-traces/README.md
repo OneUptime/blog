@@ -1,4 +1,4 @@
-# How to Use Cypress with Tracetest to Verify Backend Trace Behavior from Frontend Test Suites
+# How to Use Cypress with Tracetest to Verify Backend Trace Behavior from
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

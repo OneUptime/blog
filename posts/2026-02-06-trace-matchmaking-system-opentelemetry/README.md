@@ -1,4 +1,4 @@
-# How to Trace Matchmaking System Performance (Queue Time, Skill Rating Calculation, Lobby Creation) with OpenTelemetry
+# How to Trace Matchmaking System Performance with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

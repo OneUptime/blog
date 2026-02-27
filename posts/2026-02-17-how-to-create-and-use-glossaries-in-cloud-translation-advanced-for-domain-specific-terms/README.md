@@ -1,4 +1,4 @@
-# How to Create and Use Glossaries in Cloud Translation Advanced for Domain-Specific Terms
+# How to Create and Use Glossaries in Cloud Translation Advanced for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

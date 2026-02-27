@@ -1,4 +1,4 @@
-# How to Set Up Incremental Data Loading Patterns for BigQuery Using Scheduled Queries and Partitions
+# How to Set Up Incremental Data Loading Patterns for BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

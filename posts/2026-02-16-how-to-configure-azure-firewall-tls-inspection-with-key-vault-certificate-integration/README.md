@@ -1,4 +1,4 @@
-# How to Configure Azure Firewall TLS Inspection with Key Vault Certificate Integration
+# How to Configure Azure Firewall TLS Inspection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

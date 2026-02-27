@@ -1,4 +1,4 @@
-# How to Configure OTel Arrow Memory Limits to Prevent OOM in High-Throughput Collector Deployments
+# How to Configure OTel Arrow Memory Limits to Prevent OOM in High-Throughput
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

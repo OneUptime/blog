@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, Docker, Container Registry, CI/CD, BuildKit, Multi-Architecture
 
-Description: Learn how to build, tag, and push Docker images with GitHub Actions. This guide covers BuildKit, multi-architecture builds, layer caching, security scanning, and publishing to GitHub Container Registry.
+Description: Learn how to build, tag, and push Docker images with GitHub Actions.
 
 ---
 

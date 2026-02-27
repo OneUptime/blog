@@ -1,4 +1,4 @@
-# How to Deploy an Angular Application to Azure Static Web Apps with Azure Functions API
+# How to Deploy an Angular Application to Azure Static Web Apps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

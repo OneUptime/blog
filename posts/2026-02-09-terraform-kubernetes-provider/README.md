@@ -1,4 +1,4 @@
-# How to Set Up Terraform Kubernetes Provider for Managing Resources Inside Running Clusters
+# How to Set Up Terraform K8s Provider for Managing Resources Inside Running
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

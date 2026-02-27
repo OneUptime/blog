@@ -1,4 +1,4 @@
-# How to Run the OpenTelemetry Demo Application in GitHub Codespaces for Hands-On Learning
+# How to Run the OpenTelemetry Demo App in GitHub Codespaces for Hands-On Learning
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

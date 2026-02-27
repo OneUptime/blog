@@ -1,4 +1,4 @@
-# How to Set Up Azure Pipelines to Run Infrastructure Compliance Tests with Pester and Azure Policy
+# How to Set Up Azure Pipelines to Run Infrastructure Compliance Tests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

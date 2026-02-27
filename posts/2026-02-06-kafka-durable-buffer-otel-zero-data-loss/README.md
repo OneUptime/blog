@@ -1,4 +1,4 @@
-# How to Use Kafka as a Durable Buffer Between OpenTelemetry Collector Tiers for Zero Data Loss
+# How to Use Kafka as a Durable Buffer Between OpenTelemetry Collector Tiers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up SSH Tunneling Through IAP to Reach Compute Engine VMs Without Public IPs
+# Set Up SSH Tunneling Through IAP to Reach Compute Engine VMs Without Public IPs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

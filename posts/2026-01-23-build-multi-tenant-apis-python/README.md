@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Multi-tenancy, FastAPI, API Design, SaaS, Database, Architecture
 
-Description: Learn how to build multi-tenant APIs in Python using FastAPI. This guide covers tenant isolation strategies, database patterns, middleware implementation, and security best practices for SaaS applications.
+Description: Learn how to build multi-tenant APIs in Python using FastAPI.
 
 ---
 

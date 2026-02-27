@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Caching, Cache-Aside, Performance, Database, Python, Node.js, Go
 
-Description: A comprehensive guide to implementing the cache-aside pattern with Redis for read-through caching of database queries. Learn best practices, code examples in multiple languages, and strategies for cache invalidation.
+Description: A comprehensive guide to implementing the cache-aside pattern with Redis for read-through caching of database queries.
 
 ---
 

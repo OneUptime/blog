@@ -1,4 +1,4 @@
-# How to Set Up OpenTelemetry Tracing in Rust with tracing and opentelemetry Crates
+# How to Set Up OpenTelemetry Tracing in Rust
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

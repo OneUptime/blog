@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Configuration Management, Hot Reload, Consul, etcd, Microservices, DevOps
 
-Description: Learn how to implement configuration hot-reload in your applications so they can pick up changes without restarts. This guide covers watch-based approaches, signal handling, and integration with Consul and etcd.
+Description: Learn how to implement configuration hot-reload in your applications so they can pick up changes without restarts.
 
 ---
 

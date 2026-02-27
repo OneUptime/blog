@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Virtualization, Resources
 
-Description: Learn how to configure Pod Overhead in Kubernetes for VM-based container runtimes like Kata Containers and gVisor to accurately account for additional resource consumption beyond application containers.
+Description: Learn how to configure Pod Overhead in Kubernetes for VM-based container runtimes like Kata Containers and gVisor to accurately account for additional resource consumption beyond application.
 
 ---
 

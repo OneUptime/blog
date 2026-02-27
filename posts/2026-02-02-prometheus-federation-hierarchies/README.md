@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Federation, Monitoring, Hierarchical Architecture, Metrics Aggregation, Multi-Cluster, Observability, DevOps
 
-Description: A deep dive into designing and implementing Prometheus federation hierarchies for enterprise-scale monitoring. Learn how to build multi-tier aggregation layers, optimize metric flow between tiers, and maintain observability across thousands of targets.
+Description: A deep dive into designing and implementing Prometheus federation hierarchies for enterprise-scale monitoring.
 
 ---
 

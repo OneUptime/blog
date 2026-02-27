@@ -1,4 +1,4 @@
-# How to Optimize Docker Image Size for a NestJS Application Using Multi-Stage Builds and Alpine Base Images for GKE
+# How to Optimize Docker Image Size for a NestJS App Using Multi-Stage Builds and
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

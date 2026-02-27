@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, MirrorMaker, Replication, Data Streaming, Disaster Recovery, High Availability, Event Streaming, DevOps
 
-Description: A comprehensive guide to setting up Kafka MirrorMaker 2.0 for cross-cluster replication, covering active-passive and active-active configurations, topic filtering, transformation, and monitoring strategies.
+Description: A comprehensive guide to setting up Kafka MirrorMaker 2.
 
 ---
 

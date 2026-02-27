@@ -1,4 +1,4 @@
-# How to Implement Developer Experience (DevEx) Metrics Using OpenTelemetry Custom Instrumentation
+# How to Use Developer Experience Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

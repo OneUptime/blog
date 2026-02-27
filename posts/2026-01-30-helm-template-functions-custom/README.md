@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Helm, Kubernetes, Templates, Functions
 
-Description: Learn how to create custom Helm template functions to simplify Kubernetes deployments. This guide covers defining reusable templates, named templates, helper functions, and best practices for maintainable Helm charts.
+Description: Learn how to create custom Helm template functions to simplify Kubernetes deployments.
 
 ---
 

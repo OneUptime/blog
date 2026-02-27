@@ -1,4 +1,4 @@
-# How to Build a Custom Sampler in OpenTelemetry That Samples Based on Business Rules (Revenue, User Tier)
+# How to Build a Custom Sampler in OpenTelemetry That Samples Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

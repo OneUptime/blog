@@ -1,4 +1,4 @@
-# How to Instrument Content Moderation Pipeline (AI Classification, Human Review Queue) with OpenTelemetry
+# How to Instrument Content Moderation Pipeline with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

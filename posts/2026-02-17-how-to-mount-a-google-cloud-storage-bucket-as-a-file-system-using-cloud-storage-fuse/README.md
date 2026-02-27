@@ -1,4 +1,4 @@
-# How to Mount a Google Cloud Storage Bucket as a File System Using Cloud Storage FUSE
+# How to Mount a Google Cloud Storage Bucket as a File System
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

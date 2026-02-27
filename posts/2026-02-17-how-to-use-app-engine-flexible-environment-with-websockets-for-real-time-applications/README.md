@@ -1,4 +1,4 @@
-# How to Use App Engine Flexible Environment with WebSockets for Real-Time Applications
+# Use App Engine Flexible Environment with WebSockets for Real-Time Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

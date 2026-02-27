@@ -1,4 +1,4 @@
-# How to Fix Missing Trace Propagation Across Go Goroutines That Were Spawned Without context.Context
+# How to Fix Missing Trace Propagation Across Go Goroutines That Were Spawned
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

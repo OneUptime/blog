@@ -1,4 +1,4 @@
-# How to Create Azure CLI Scripts for Automated Subscription and Management Group Setup
+# How to Create Azure CLI Scripts for Automated Subscription
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

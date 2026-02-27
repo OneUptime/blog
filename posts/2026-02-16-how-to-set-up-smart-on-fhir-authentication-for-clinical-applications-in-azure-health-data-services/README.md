@@ -1,4 +1,4 @@
-# How to Set Up SMART on FHIR Authentication for Clinical Applications in Azure Health Data Services
+# How to Set Up SMART on FHIR Authentication for Clinical Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

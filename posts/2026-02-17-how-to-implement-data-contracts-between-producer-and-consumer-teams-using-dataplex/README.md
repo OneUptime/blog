@@ -1,4 +1,4 @@
-# How to Implement Data Contracts Between Producer and Consumer Teams Using Dataplex
+# How to Use Data Contracts Between Producer and Consumer Teams Using Dataplex
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

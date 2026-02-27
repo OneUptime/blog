@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Migration, AWS, Azure, GCP, Cloud, DevOps, Database Migration
 
-Description: A comprehensive guide to migrating from self-hosted Redis to managed Redis services, covering migration strategies, data transfer methods, application updates, and best practices for zero-downtime migrations.
+Description: A comprehensive guide to migrating from self-hosted Redis to managed Redis services, covering migration strategies, data transfer methods, application updates.
 
 ---
 

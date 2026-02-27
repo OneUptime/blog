@@ -1,4 +1,4 @@
-# How to Monitor and Audit Authentication Events Across a Google Cloud Organization
+# Monitor and Audit Authentication Events Across a Google Cloud Organization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

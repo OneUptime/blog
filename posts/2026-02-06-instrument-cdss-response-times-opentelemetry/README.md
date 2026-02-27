@@ -1,4 +1,4 @@
-# How to Instrument Clinical Decision Support System (CDSS) Response Times with OpenTelemetry
+# How to Instrument Clinical Decision Support System Response Times
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

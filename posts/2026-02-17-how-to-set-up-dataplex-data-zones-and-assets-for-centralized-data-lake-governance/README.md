@@ -1,4 +1,4 @@
-# How to Set Up Dataplex Data Zones and Assets for Centralized Data Lake Governance
+# How to Set Up Dataplex Data Zones and Assets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

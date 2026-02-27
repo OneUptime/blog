@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Site Search, Website Search, Content Search, Full-Text Search, Implementation
 
-Description: A comprehensive guide to implementing site search with Elasticsearch for websites and content management systems, covering content indexing, search features, relevance, and user experience optimization.
+Description: A comprehensive guide to implementing site search with Elasticsearch for websites and content management systems, covering content indexing, search features, relevance.
 
 ---
 

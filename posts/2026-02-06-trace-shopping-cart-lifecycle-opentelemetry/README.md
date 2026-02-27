@@ -1,4 +1,4 @@
-# How to Trace a Complete Shopping Cart Lifecycle (Add, Update, Remove, Abandon) with OpenTelemetry Custom Spans
+# How to Trace a Complete Shopping Cart Lifecycle with OpenTelemetry Custom Spans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

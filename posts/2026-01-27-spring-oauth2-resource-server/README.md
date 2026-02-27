@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Spring Boot, OAuth2, Security, JWT, Authorization, Java, API Security
 
-Description: A comprehensive guide to implementing OAuth2 Resource Server in Spring Boot, covering JWT token validation, scope-based authorization, custom claim validation, and integration with authorization servers like Keycloak and Auth0.
+Description: A comprehensive guide to implementing OAuth2 Resource Server in Spring Boot, covering JWT token validation, scope-based authorization, custom claim validation.
 
 ---
 

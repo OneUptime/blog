@@ -1,4 +1,4 @@
-# How to Avoid the Anti-Pattern of Using the Debug Exporter in Production and Crashing Your Collector
+# How to Avoid the Anti-Pattern of Using the Debug Exporter in Production
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

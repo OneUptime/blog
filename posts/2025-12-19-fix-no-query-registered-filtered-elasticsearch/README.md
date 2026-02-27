@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Error Handling, Query DSL, Migration, Troubleshooting
 
-Description: Learn how to fix the 'no [query] registered for [filtered]' error in Elasticsearch. This error occurs when using deprecated filtered query syntax from older versions. Includes migration guide and examples.
+Description: Learn how to fix the 'no [query] registered for [filtered]' error in Elasticsearch. This error occurs when using deprecated filtered query syntax from older versions.
 
 ---
 

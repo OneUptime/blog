@@ -1,4 +1,4 @@
-# How to Implement Azure Queue Storage Message Processing with Azure Functions in TypeScript
+# How to Use Azure Queue Storage Message Processing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

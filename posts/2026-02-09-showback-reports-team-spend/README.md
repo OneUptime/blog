@@ -1,4 +1,4 @@
-# How to Configure Showback Reports for Kubernetes Team-Level Cloud Spend Attribution
+# Configure Showback Reports for Kubernetes Team-Level Cloud Spend Attribution
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

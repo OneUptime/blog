@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, rayon, tokio, Worker Threads, CPU, Parallel Processing, Concurrency, Performance
 
-Description: Learn how to use worker threads in Rust for CPU-intensive tasks using rayon and tokio::task::spawn_blocking. This guide covers parallel processing patterns, work stealing, and proper integration with async code.
+Description: Learn how to use worker threads in Rust for CPU-intensive tasks using rayon and tokio::task::spawn_blocking.
 
 ---
 

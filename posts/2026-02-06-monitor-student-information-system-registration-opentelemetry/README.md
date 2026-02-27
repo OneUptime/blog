@@ -1,4 +1,4 @@
-# How to Monitor University Student Information System (SIS) Registration Flows with OpenTelemetry
+# How to Monitor University Student Information System Registration Flows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

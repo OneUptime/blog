@@ -1,4 +1,4 @@
-# How to Implement the Strangler Fig Pattern to Migrate Monoliths to Microservices on GKE
+# How to Use the Strangler Fig Pattern to Migrate Monoliths to Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

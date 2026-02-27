@@ -1,10 +1,10 @@
-# How to Build a Kubernetes-Native ML Feature Pipeline with Argo Workflows and Feast
+# How to Build a Kubernetes-Native ML Feature Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Machine Learning, Data Engineering
 
-Description: Learn how to build a production-grade ML feature engineering pipeline on Kubernetes using Argo Workflows for orchestration and Feast for feature storage, enabling consistent features across training and inference.
+Description: Learn how to build a production-grade ML feature engineering pipeline on Kubernetes using Argo Workflows for orchestration and Feast for feature storage.
 
 ---
 

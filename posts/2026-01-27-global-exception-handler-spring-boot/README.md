@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Exception Handling, REST API, Error Handling
 
-Description: Learn how to build a centralized global exception handler in Spring Boot using @ControllerAdvice. This guide covers error response formatting, logging, validation errors, and best practices for clean API error handling.
+Description: Learn how to build a centralized global exception handler in Spring Boot using @ControllerAdvice.
 
 ---
 

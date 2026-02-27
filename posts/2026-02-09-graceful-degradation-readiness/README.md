@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Graceful Degradation, Readiness Probes, Resilience, High Availability
 
-Description: Learn how to implement graceful degradation strategies that work with Kubernetes readiness probes, allowing your applications to continue serving traffic with reduced functionality when dependencies fail.
+Description: Learn how to implement graceful degradation strategies that work with Kubernetes readiness probes.
 
 ---
 

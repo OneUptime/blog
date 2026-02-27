@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, Networking
 
-Description: Configure TCPRoute and UDPRoute resources in the Kubernetes Gateway API to route raw TCP and UDP traffic for databases, game servers, DNS, and other non-HTTP protocols with port-based routing and traffic splitting.
+Description: Configure TCPRoute and UDPRoute resources in the Kubernetes Gateway API to route raw TCP and UDP traffic for databases, game servers, DNS.
 
 ---
 

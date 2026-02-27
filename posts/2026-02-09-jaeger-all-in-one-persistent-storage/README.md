@@ -1,4 +1,4 @@
-# How to Configure Jaeger All-In-One with Persistent Storage for Kubernetes Development
+# How to Configure Jaeger All-In-One with Persistent Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

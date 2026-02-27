@@ -1,4 +1,4 @@
-# How to Build a Custom Collector Processor That Transforms Telemetry with Your Domain Logic
+# How to Build a Custom Collector Processor That Transforms Telemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

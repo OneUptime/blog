@@ -1,4 +1,4 @@
-# How to Integrate OpenTelemetry Trace Links into Your Pull Request Review Workflow
+# Integrate OpenTelemetry Trace Links into Your Pull Request Review Workflow
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

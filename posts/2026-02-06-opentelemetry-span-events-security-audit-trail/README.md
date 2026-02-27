@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Span Events to Record Security Audit Trail Entries for Compliance
+# How to Use OpenTelemetry Span Events to Record Security Audit Trail Entries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

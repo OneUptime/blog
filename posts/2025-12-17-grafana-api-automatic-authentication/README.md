@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, API, Authentication, Security, Automation, Service Accounts, Tokens
 
-Description: Learn how to configure automatic authentication with the Grafana API using API keys, service accounts, and OAuth tokens. This guide covers best practices for securing programmatic access to Grafana for automation, CI/CD pipelines, and integrations.
+Description: Learn how to configure automatic authentication with the Grafana API using API keys, service accounts, and OAuth tokens.
 
 Automating Grafana operations requires secure, programmatic access to its API. Whether you are provisioning dashboards, managing alerts, or integrating with CI/CD pipelines, proper authentication configuration is essential. This guide covers all authentication methods and best practices for automated Grafana API access.
 

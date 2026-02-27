@@ -1,4 +1,4 @@
-# How to Fix TLS Handshake Failures When Certificate SANs Do Not Match the Collector Endpoint Hostname
+# How to Fix TLS Handshake Failures When Certificate SANs Do Not Match the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

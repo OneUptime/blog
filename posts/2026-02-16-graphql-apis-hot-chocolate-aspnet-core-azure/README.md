@@ -1,4 +1,4 @@
-# How to Implement GraphQL APIs with Hot Chocolate in ASP.NET Core on Azure App Service
+# How to Use GraphQL APIs with Hot Chocolate in ASP.NET Core on Azure App Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

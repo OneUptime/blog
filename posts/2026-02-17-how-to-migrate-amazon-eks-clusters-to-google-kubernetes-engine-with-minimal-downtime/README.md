@@ -1,4 +1,4 @@
-# How to Migrate Amazon EKS Clusters to Google Kubernetes Engine with Minimal Downtime
+# How to Migrate Amazon EKS Clusters to Google Kubernetes Engine
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

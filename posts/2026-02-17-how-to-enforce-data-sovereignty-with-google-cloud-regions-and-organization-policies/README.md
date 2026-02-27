@@ -1,4 +1,4 @@
-# How to Enforce Data Sovereignty with Google Cloud Regions and Organization Policies
+# How to Enforce Data Sovereignty with Google Cloud Regions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

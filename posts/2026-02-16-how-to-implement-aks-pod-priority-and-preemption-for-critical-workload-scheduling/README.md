@@ -1,4 +1,4 @@
-# How to Implement AKS Pod Priority and Preemption for Critical Workload Scheduling
+# How to Use AKS Pod Priority and Preemption for Critical Workload Scheduling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

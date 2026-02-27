@@ -1,4 +1,4 @@
-# How to Implement Credit Risk Analysis Models with Azure Machine Learning and Power BI
+# How to Use Credit Risk Analysis Models with Azure Machine Learning and Power BI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

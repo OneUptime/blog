@@ -591,4 +591,4 @@ With proper scheduling, you can automate background operations reliably.
 *Need to monitor your scheduled tasks? [OneUptime](https://oneuptime.com) provides task monitoring with execution tracking, failure alerts, and performance metrics.*
 
 **Related Reading:**
-- [How to Set Up Caching in Spring Boot](/blog/post/2025-12-22-setup-caching-spring-boot/view)
+- [How to Set Up Caching in Spring Boot](https://oneuptime.com/blog/post/2025-12-22-setup-caching-spring-boot/view)

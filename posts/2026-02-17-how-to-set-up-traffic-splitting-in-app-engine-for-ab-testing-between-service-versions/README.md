@@ -1,4 +1,4 @@
-# How to Set Up Traffic Splitting in App Engine for A/B Testing Between Service Versions
+# Set Up Traffic Splitting in App Engine for A/B Testing Between Service Versions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

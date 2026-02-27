@@ -1,4 +1,4 @@
-# How to Troubleshoot FastAPI Instrumentation Failing with uvicorn --reload and --workers Flags
+# How to Troubleshoot FastAPI Instrumentation Failing with uvicorn --reload
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

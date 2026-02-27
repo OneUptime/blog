@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Alembic, Database, Migrations, SQLAlchemy, PostgreSQL
 
-Description: Learn how to handle database migrations in Python applications using Alembic. This guide covers migration generation, version control, rollbacks, and production deployment strategies for SQLAlchemy applications.
+Description: Learn how to handle database migrations in Python applications using Alembic.
 
 ---
 

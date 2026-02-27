@@ -1,4 +1,4 @@
-# How to Troubleshoot Metrics Showing Wrong Values After Switching Between Delta and Cumulative Temporality
+# How to Troubleshoot Metrics Showing Wrong Values After Switching Between Delta
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

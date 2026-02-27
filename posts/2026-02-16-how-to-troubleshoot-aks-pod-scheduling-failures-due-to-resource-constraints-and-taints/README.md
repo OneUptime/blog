@@ -1,4 +1,4 @@
-# How to Troubleshoot AKS Pod Scheduling Failures Due to Resource Constraints and Taints
+# How to Troubleshoot AKS Pod Scheduling Failures Due to Resource Constraints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

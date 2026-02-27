@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Google Cloud, Pub/Sub, Messaging, Event-Driven Architecture, Message Ordering, Distributed Systems
 
-Description: Learn how to implement ordering keys in Google Cloud Pub/Sub to guarantee message sequencing. Covers configuration, best practices, error handling, and production patterns for maintaining message order in distributed systems.
+Description: Learn how to implement ordering keys in Google Cloud Pub/Sub to guarantee message sequencing.
 
 ---
 

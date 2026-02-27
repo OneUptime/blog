@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Modules, Environments, Best Practices, DRY, Infrastructure as Code
 
-Description: Learn how to structure Terraform modules for multi-environment deployments, including directory organization, environment-specific configurations, and patterns for development, staging, and production.
+Description: Learn how to structure Terraform modules for multi-environment deployments, including directory organization, environment-specific configurations, and patterns for development, staging.
 
 Managing infrastructure across multiple environments (development, staging, production) is a fundamental challenge in Terraform. This guide covers proven patterns for organizing modules to maximize code reuse while maintaining environment-specific flexibility.
 

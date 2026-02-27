@@ -1,4 +1,4 @@
-# How to Build a Capacity Planning Report from OpenTelemetry Data for Executive Reviews
+# How to Build a Capacity Planning Report from OpenTelemetry Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

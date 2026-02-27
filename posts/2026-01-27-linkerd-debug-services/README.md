@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Linkerd, Service Mesh, Kubernetes, Debugging, Observability, Microservices, DevOps, SRE
 
-Description: A comprehensive guide to debugging services in Kubernetes using Linkerd's powerful diagnostic tools. Learn to use tap, stat, profile analysis, and CLI commands to identify and resolve service mesh issues quickly.
+Description: A comprehensive guide to debugging services in Kubernetes using Linkerd's powerful diagnostic tools.
 
 ---
 
@@ -699,6 +699,6 @@ Remember: start broad with aggregate metrics, then narrow down to specific reque
 
 ### See Also
 
-- [Kubernetes Network Policies for Zero Trust Security](/blog/post/2026-01-06-kubernetes-network-policies-zero-trust/)
-- [Cilium Service Mesh Implementation Guide](/blog/post/2026-01-27-cilium-service-mesh/)
-- [The Three Pillars of Observability](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/)
+- [Kubernetes Network Policies for Zero Trust Security](https://oneuptime.com/blog/post/2026-01-06-kubernetes-network-policies-zero-trust/view)
+- [Cilium Service Mesh Implementation Guide](https://oneuptime.com/blog/post/2026-01-27-cilium-service-mesh/view)
+- [The Three Pillars of Observability](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)

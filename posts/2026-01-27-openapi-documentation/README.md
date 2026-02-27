@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenAPI, REST API, API Documentation, Swagger, API Design, Developer Experience
 
-Description: A comprehensive guide to documenting REST APIs using OpenAPI 3.0, covering specification structure, paths, schemas, authentication, and best practices for creating developer-friendly API documentation.
+Description: A comprehensive guide to documenting REST APIs using OpenAPI 3.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, DevOps, Networking, Security
 
-Description: Learn how to identify the public IP address of your Terraform execution environment. This guide covers using external data sources, HTTP providers, and practical use cases like dynamic security group rules.
+Description: Learn how to identify the public IP address of your Terraform execution environment.
 
 When running Terraform, you often need to know the public IP address of the machine executing the commands. This is useful for creating security group rules that allow access from your CI/CD system, whitelisting IPs for database access, or debugging network connectivity issues.
 

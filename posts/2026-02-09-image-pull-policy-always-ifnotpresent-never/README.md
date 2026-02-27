@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Containers, Images
 
-Description: Master Kubernetes imagePullPolicy settings with Always, IfNotPresent, and Never strategies to control when container images are pulled, optimize startup time, and manage registry bandwidth effectively.
+Description: Master Kubernetes imagePullPolicy settings with Always, IfNotPresent, and Never strategies to control when container images are pulled, optimize startup time.
 
 ---
 

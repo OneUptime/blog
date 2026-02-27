@@ -1,4 +1,4 @@
-# How to Build a Compliance Dashboard That Tracks PII Redaction Effectiveness in OpenTelemetry
+# How to Build a Compliance Dashboard That Tracks PII Redaction Effectiveness
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

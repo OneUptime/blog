@@ -204,7 +204,11 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc" {
 
 ### 6. Invalid Environment Variable Names
 
-Lambda environment variable names must match the pattern `[a-zA-Z]([a-zA-Z0-9_])+`:
+Lambda environment variable names must match the pattern shown below:
+
+```
+[a-zA-Z]([a-zA-Z0-9_])+
+```
 
 ```hcl
 # WRONG

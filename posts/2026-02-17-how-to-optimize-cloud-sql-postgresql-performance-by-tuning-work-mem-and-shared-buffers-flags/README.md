@@ -1,4 +1,4 @@
-# How to Optimize Cloud SQL PostgreSQL Performance by Tuning work_mem and shared_buffers Flags
+# How to Optimize Cloud SQL PostgreSQL Performance by Tuning work_mem
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

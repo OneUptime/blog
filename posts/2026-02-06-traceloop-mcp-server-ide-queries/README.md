@@ -1,4 +1,4 @@
-# How to Use the Traceloop MCP Server to Query Production Traces from Your IDE (Cursor, VS Code, Claude)
+# How to Use the Traceloop MCP Server to Query Production Traces from Your IDE
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

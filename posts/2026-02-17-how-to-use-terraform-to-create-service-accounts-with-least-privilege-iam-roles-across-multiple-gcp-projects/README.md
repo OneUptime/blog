@@ -1,4 +1,4 @@
-# How to Use Terraform to Create Service Accounts with Least-Privilege IAM Roles Across Multiple GCP Projects
+# How to Use Terraform to Create Service Accounts with Least-Privilege IAM Roles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Azure AD Connect Cloud Sync for Hybrid Identity with Password Hash Synchronization
+# How to Set Up Azure AD Connect Cloud Sync for Hybrid Identity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

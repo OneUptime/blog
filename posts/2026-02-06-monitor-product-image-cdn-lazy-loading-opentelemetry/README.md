@@ -1,4 +1,4 @@
-# How to Monitor Product Image CDN Performance and Lazy Loading with OpenTelemetry Browser SDK Metrics
+# How to Monitor Product Image CDN Performance and Lazy Loading
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

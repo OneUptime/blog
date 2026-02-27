@@ -1,4 +1,4 @@
-# How to Monitor Travel Aggregator API Response Times Across Multiple Supplier Backends with OpenTelemetry
+# How to Monitor Travel Aggregator API Response Times Across Multi Supplier
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

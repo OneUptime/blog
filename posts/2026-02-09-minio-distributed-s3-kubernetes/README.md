@@ -1,4 +1,4 @@
-# How to Deploy MinIO Distributed Mode on Kubernetes for S3-Compatible Object Storage
+# Deploy MinIO Distributed Mode on Kubernetes for S3-Compatible Object Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Combine Metrics and Logs in a Single Azure Workbook for Unified Dashboards
+# How to Combine Metrics and Logs in a Single Azure Workbook
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

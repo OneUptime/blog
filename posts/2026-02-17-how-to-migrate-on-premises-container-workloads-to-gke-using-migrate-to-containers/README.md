@@ -1,4 +1,4 @@
-# How to Migrate On-Premises Container Workloads to GKE Using Migrate to Containers
+# How to Migrate On-Premises Container Workloads to GKE
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

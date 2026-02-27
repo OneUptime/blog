@@ -1,4 +1,4 @@
-# How to Configure Kubernetes Pod Anti-Affinity to Spread Replicas Across Failure Domains
+# Configure Kubernetes Pod Anti-Affinity to Spread Replicas Across Failure Domains
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

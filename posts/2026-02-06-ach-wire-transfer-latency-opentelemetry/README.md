@@ -1,4 +1,4 @@
-# How to Monitor ACH and Wire Transfer Processing Latency Across Banking Middleware with OpenTelemetry
+# How to Monitor ACH and Wire Transfer Processing Latency Across Banking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

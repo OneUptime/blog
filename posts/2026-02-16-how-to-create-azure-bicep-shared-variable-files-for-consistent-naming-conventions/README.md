@@ -1,4 +1,4 @@
-# How to Create Azure Bicep Shared Variable Files for Consistent Naming Conventions
+# How to Create Azure Bicep Shared Variable Files
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

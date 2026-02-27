@@ -1,4 +1,4 @@
-# How to Compare gRPC vs REST vs GraphQL Performance Using OpenTelemetry Benchmark Traces
+# How to Compare gRPC vs REST vs GraphQL Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

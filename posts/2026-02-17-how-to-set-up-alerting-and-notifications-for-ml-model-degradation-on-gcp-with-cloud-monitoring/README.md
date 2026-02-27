@@ -1,4 +1,4 @@
-# How to Set Up Alerting and Notifications for ML Model Degradation on GCP with Cloud Monitoring
+# How to Set Up Alerting and Notifications for ML Model Degradation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

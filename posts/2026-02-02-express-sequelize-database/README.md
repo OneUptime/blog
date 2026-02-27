@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Express.js, Node.js, Sequelize, Database, ORM
 
-Description: A comprehensive guide to building robust database-driven Express.js applications with Sequelize ORM, covering project structure, models, migrations, API routes, error handling, and production best practices.
+Description: A comprehensive guide to building robust database-driven Express.
 
 ---
 

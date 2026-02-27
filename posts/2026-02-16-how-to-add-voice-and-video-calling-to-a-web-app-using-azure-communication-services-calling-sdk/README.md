@@ -1,4 +1,4 @@
-# How to Add Voice and Video Calling to a Web App Using Azure Communication Services Calling SDK
+# How to Add Voice and Video Calling to a Web App Using Azure Communication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

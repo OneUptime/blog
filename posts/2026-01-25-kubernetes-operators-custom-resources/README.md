@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Operators, Custom Resources, CRD, Controllers, DevOps
 
-Description: Learn how to set up and use Kubernetes Operators for managing custom resources. This guide covers understanding the operator pattern, installing community operators, and creating your own operator with practical examples.
+Description: Learn how to set up and use Kubernetes Operators for managing custom resources.
 
 ---
 

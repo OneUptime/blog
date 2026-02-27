@@ -1,4 +1,4 @@
-# How to Set Up Cross-Service Distributed Tracing in Cloud Trace for Microservices on GKE
+# How to Set Up Cross-Service Distributed Tracing in Cloud Trace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

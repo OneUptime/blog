@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Memberlist, Gossip Protocol, Service Discovery, Distributed Systems, High Availability
 
-Description: A comprehensive guide to configuring Grafana Loki with memberlist for gossip-based cluster coordination, covering ring configuration, network settings, troubleshooting, and production deployment patterns.
+Description: A comprehensive guide to configuring Grafana Loki with memberlist for gossip-based cluster coordination, covering ring configuration, network settings, troubleshooting.
 
 ---
 

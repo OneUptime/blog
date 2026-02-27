@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Stateful Applications, Databases, Storage, Infrastructure as Code
 
-Description: Learn how to manage stateful application infrastructure with Terraform, including databases, persistent volumes, message queues, and caches, with strategies for protecting data during infrastructure changes.
+Description: Learn how to manage stateful application infrastructure with Terraform, including databases, persistent volumes, message queues, and caches.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Create Custom Classifications and Classification Rules in Microsoft Purview
+# How to Create Custom Classifications and Classification Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

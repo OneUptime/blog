@@ -1,4 +1,4 @@
-# How to Implement CDK8s Pipelines That Generate and Apply Kubernetes Manifests in CI/CD
+# How to Use CDK8s Pipelines That Generate and Apply Kubernetes Manifests in CI/CD
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

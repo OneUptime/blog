@@ -1,4 +1,4 @@
-# How to Troubleshoot OpenTelemetry Metrics Not Exporting in .NET Because the MeterProvider Was Not Built
+# How to Troubleshoot OpenTelemetry Metrics Not Exporting in .NET Because the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

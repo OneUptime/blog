@@ -1,4 +1,4 @@
-# How to Install Docker Desktop Alternatives (Colima, Rancher Desktop, Podman Desktop)
+# How to Install Docker Desktop Alternatives
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

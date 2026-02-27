@@ -1,4 +1,4 @@
-# How to Troubleshoot Kubernetes RBAC Permission Denied Errors for Service Accounts
+# How to Troubleshoot Kubernetes RBAC Permission Denied Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

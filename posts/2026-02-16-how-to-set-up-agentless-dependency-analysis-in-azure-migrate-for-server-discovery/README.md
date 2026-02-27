@@ -1,4 +1,4 @@
-# How to Set Up Agentless Dependency Analysis in Azure Migrate for Server Discovery
+# How to Set Up Agentless Dependency Analysis in Azure Migrate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

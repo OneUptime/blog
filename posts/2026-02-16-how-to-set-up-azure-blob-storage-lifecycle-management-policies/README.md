@@ -1,4 +1,4 @@
-# How to Set Up Azure Blob Storage Lifecycle Management Policies to Automatically Tier and Delete Data
+# How to Set Up Azure Blob Storage Lifecycle Mgmt Policies to Auto Tier and
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Batch Job Notifications Using Pub/Sub and Cloud Functions on Google Cloud
+# How to Set Up Batch Job Notifications Using Pub/Sub and Cloud Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1807,5 +1807,5 @@ Embeddings are the foundation of semantic search in RAG systems. With proper imp
 
 ### See Also
 
-- [What is OpenTelemetry Collector and Why Use One](/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/) - Instrument your RAG pipeline with OpenTelemetry
-- [How to Structure Logs Properly in OpenTelemetry](/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/) - Structure logs for debugging embedding pipelines
+- [What is OpenTelemetry Collector and Why Use One](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view) - Instrument your RAG pipeline with OpenTelemetry
+- [How to Structure Logs Properly in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view) - Structure logs for debugging embedding pipelines

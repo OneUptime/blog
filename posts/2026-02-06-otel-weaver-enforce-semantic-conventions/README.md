@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Weaver to Enforce Semantic Convention Consistency Across Teams
+# Use OpenTelemetry Weaver to Enforce Semantic Convention Consistency Across Teams
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

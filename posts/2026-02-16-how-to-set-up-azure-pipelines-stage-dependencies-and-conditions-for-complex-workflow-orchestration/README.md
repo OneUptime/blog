@@ -1,4 +1,4 @@
-# How to Set Up Azure Pipelines Stage Dependencies and Conditions for Complex Workflow Orchestration
+# How to Set Up Azure Pipelines Stage Dependencies and Conditions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

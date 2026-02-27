@@ -1,4 +1,4 @@
-# How to Implement Custom Prediction Routines with Pre-Processing and Post-Processing on Vertex AI
+# How to Use Custom Prediction Routines with Pre-Processing and Post-Processing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

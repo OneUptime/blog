@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Vault, Secrets, KV, Security
 
-Description: A comprehensive guide to using the HashiCorp Vault KV (Key-Value) Secrets Engine for storing, managing, and retrieving secrets. Learn about KV v1 vs v2, CLI and API operations, programmatic access, and production best practices.
+Description: A comprehensive guide to using the HashiCorp Vault KV (Key-Value) Secrets Engine for storing, managing, and retrieving secrets.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Use Resource Attributes Consistently Across Traces, Metrics, and Logs for Exact Signal Correlation
+# How to Use Resource Attributes Consistently Across Traces, Metrics, and Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

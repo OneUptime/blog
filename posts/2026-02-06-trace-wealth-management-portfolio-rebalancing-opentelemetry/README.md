@@ -1,4 +1,4 @@
-# How to Trace Wealth Management Portfolio Rebalancing Calculations with OpenTelemetry
+# How to Trace Wealth Management Portfolio Rebalancing Calculations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

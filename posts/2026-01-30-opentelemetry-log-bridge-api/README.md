@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Logging, Observability, APM
 
-Description: Learn how to implement the OpenTelemetry Log Bridge API to connect your existing logging frameworks with OpenTelemetry, enabling unified observability with correlated logs, traces, and metrics across your distributed systems.
+Description: Learn how to implement the OpenTelemetry Log Bridge API to connect your existing logging frameworks with OpenTelemetry, enabling unified observability with correlated logs, traces.
 
 ---
 
@@ -1277,6 +1277,6 @@ The OpenTelemetry Log Bridge API provides a powerful way to integrate your exist
 
 ### See Also
 
-- [How to Structure Logs Properly in OpenTelemetry](/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view) - Learn best practices for structuring your log messages
-- [What are Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Understand distributed tracing to complement your logging
-- [What is OpenTelemetry Collector and Why Use One](/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view) - Learn about the OpenTelemetry Collector for processing telemetry data
+- [How to Structure Logs Properly in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view) - Learn best practices for structuring your log messages
+- [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Understand distributed tracing to complement your logging
+- [What is OpenTelemetry Collector and Why Use One](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view) - Learn about the OpenTelemetry Collector for processing telemetry data

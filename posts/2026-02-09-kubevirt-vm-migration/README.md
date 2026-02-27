@@ -1,4 +1,4 @@
-# How to Migrate VM-Based Applications to Kubernetes Using KubeVirt for Hybrid Workloads
+# How to Migrate VM-Based Applications to Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

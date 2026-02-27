@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, API Server, Performance
 
-Description: Learn how to configure Kubernetes API server request throttling and rate limits using APF (API Priority and Fairness) to protect your control plane from overload while ensuring fair resource allocation.
+Description: Learn how to configure Kubernetes API server request throttling and rate limits using APF (API Priority and Fairness) to protect your control plane from overload while ensuring fair resource.
 
 ---
 

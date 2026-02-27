@@ -1,4 +1,4 @@
-# How to Configure AKS with Azure Virtual Network Peering for Cross-VNet Pod Communication
+# How to Configure AKS with Azure Virtual Network Peering for Cross-VNet Pod
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

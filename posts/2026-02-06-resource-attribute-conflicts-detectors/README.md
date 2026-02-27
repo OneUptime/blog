@@ -1,4 +1,4 @@
-# How to Handle Resource Attribute Conflicts When Multiple Detectors Report Different Values for the Same Key
+# How to Handle Resource Attribute Conflicts When Multi Detectors Report
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

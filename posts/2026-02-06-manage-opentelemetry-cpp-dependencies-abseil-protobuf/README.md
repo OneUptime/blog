@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, C++, Dependencies, Abseil, Protobuf, gRPC
 
-Description: A comprehensive guide to managing OpenTelemetry C++ SDK dependencies including Abseil, Protobuf, and gRPC, covering version compatibility, build configurations, and troubleshooting common dependency conflicts.
+Description: A comprehensive guide to managing OpenTelemetry C++ SDK dependencies including Abseil, Protobuf, and gRPC, covering version compatibility, build configurations.
 
 Managing dependencies is one of the most challenging aspects of working with OpenTelemetry C++. The SDK relies on several complex libraries, and version mismatches can lead to difficult-to-debug compilation or runtime errors.
 

@@ -1,4 +1,4 @@
-# How to Build Helm Charts That Generate Kubernetes ValidatingWebhookConfiguration Resources
+# How to Build Helm Charts That Generate K8s ValidatingWebhookConfiguration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

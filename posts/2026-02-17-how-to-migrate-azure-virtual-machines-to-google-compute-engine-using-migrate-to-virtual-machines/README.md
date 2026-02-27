@@ -1,4 +1,4 @@
-# How to Migrate Azure Virtual Machines to Google Compute Engine Using Migrate to Virtual Machines
+# How to Migrate Azure Virtual Machines to Google Compute Engine
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

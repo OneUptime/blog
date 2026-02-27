@@ -1,4 +1,4 @@
-# How to Configure Tenant Isolation with Separate Pipelines and Dedicated Exporters per Tenant in the Collector
+# How to Configure Tenant Isolation with Separate Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AI, Open Source, Software Development, Customization, Machine Learning, Developer Productivity, Automation
 
-Description: How AI coding agents are transforming open source software by enabling anyone to customize, modify, and extend codebases to their exact needs - and why this creates an insurmountable advantage over closed-source alternatives.
+Description: How AI coding agents are transforming open source software by enabling anyone to customize, modify.
 
 ---
 

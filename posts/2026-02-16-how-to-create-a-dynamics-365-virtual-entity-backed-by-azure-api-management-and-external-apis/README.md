@@ -1,4 +1,4 @@
-# How to Create a Dynamics 365 Virtual Entity Backed by Azure API Management and External APIs
+# How to Create a Dynamics 365 Virtual Entity Backed by Azure API Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

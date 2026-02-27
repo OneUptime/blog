@@ -1,4 +1,4 @@
-# How to Use Terratest to Write Automated Infrastructure Tests for Kubernetes Resources
+# How to Use Terratest to Write Automated Infrastructure Tests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

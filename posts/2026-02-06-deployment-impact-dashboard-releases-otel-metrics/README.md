@@ -1,4 +1,4 @@
-# How to Build a Deployment Impact Dashboard That Overlays Releases on OpenTelemetry Metrics
+# How to Build a Deployment Impact Dashboard That Overlays Releases
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DNS, Load Balancing, Networking, High Availability, Infrastructure, Traffic Management, BIND
 
-Description: Learn how to implement DNS-based load balancing to distribute traffic across multiple servers. This guide covers round-robin, weighted, and health-check-aware DNS configurations with practical examples.
+Description: Learn how to implement DNS-based load balancing to distribute traffic across multiple servers.
 
 ---
 

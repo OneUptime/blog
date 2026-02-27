@@ -1,4 +1,4 @@
-# How to Configure Debug Containers with Privileged Security Context for System Access
+# How to Configure Debug Containers with Privileged Security Context
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

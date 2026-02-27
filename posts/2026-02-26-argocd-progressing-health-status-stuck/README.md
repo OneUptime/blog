@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting
 
-Description: Learn how to diagnose and fix ArgoCD applications stuck in Progressing health status, including common causes like image pull failures, resource limits, pending volumes, and misconfigured health checks.
+Description: Learn how to diagnose and fix ArgoCD applications stuck in Progressing health status, including common causes like image pull failures, resource limits, pending volumes.
 
 ---
 

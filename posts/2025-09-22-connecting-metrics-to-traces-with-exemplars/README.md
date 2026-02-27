@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Metrics, Traces, Exemplars, Correlation, Histograms, Performance
 
-Description: A hands-on guide to exemplars, how they connect metric points to the exact trace that caused them, why they matter for faster debugging and cost efficiency, and how to enable them end‑to‑end with OpenTelemetry (apps → collector → backend (like oneuptime)).
+Description: A hands-on guide to exemplars, how they connect metric points to the exact trace that caused them, why they matter for faster debugging and cost efficiency.
 
 ---
 

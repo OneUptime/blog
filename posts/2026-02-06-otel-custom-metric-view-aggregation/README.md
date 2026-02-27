@@ -1,4 +1,4 @@
-# How to Write a Custom Metric View That Controls Aggregation Boundaries for Your Business Metrics
+# How to Write a Custom Metric View That Controls Aggregation Boundaries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

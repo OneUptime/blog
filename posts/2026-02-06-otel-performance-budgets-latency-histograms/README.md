@@ -1,4 +1,4 @@
-# How to Define and Enforce Performance Budgets Using OpenTelemetry P50/P95/P99 Latency Histograms
+# How to Define and Enforce Performance Budgets Using OpenTelemetry P50/P95/P99
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

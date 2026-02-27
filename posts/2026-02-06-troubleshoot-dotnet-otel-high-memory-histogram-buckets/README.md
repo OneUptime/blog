@@ -1,4 +1,4 @@
-# How to Troubleshoot High Memory Usage in .NET OpenTelemetry When Histogram Buckets Explode Cardinality
+# How to Troubleshoot High Memory Usage in .NET OpenTelemetry When Histogram
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

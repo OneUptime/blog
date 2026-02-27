@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, Lambda, Serverless, Event-Driven Architecture, Message Queues, Node.js, Python
 
-Description: A comprehensive guide to integrating Amazon SQS with AWS Lambda, covering event source mapping, batch processing, error handling with dead-letter queues, and concurrency control for building reliable, scalable serverless applications.
+Description: A comprehensive guide to integrating Amazon SQS with AWS Lambda, covering event source mapping, batch processing, error handling with dead-letter queues, and concurrency control for building reliable.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Implement Customer-Managed Encryption Keys Across All Google Cloud Services
+# How to Use Customer-Managed Encryption Keys Across All Google Cloud Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

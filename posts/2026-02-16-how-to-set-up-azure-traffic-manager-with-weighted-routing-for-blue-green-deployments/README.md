@@ -1,4 +1,4 @@
-# How to Set Up Azure Traffic Manager with Weighted Routing for Blue-Green Deployments
+# Set Up Azure Traffic Manager with Weighted Routing for Blue-Green Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

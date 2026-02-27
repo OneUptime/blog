@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Syslog, rsyslog, syslog-ng, Centralized Logging, Linux, Network Devices, Log Management
 
-Description: Learn how to configure syslog for centralized log collection from servers, network devices, and applications. This guide covers rsyslog and syslog-ng configuration, secure transport, and integration with modern log aggregators.
+Description: Learn how to configure syslog for centralized log collection from servers, network devices, and applications.
 
 ---
 

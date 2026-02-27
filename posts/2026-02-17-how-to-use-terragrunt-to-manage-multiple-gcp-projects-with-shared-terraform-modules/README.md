@@ -1,4 +1,4 @@
-# How to Use Terragrunt to Manage Multiple GCP Projects with Shared Terraform Modules
+# How to Use Terragrunt to Manage Multiple GCP Projects
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Eureka, Service Discovery, Microservices, Netflix OSS, Spring Cloud, Load Balancing
 
-Description: Learn how to build a service registry with Netflix Eureka in Spring Boot. This guide covers server setup, client registration, service discovery, and high availability configurations for microservices.
+Description: Learn how to build a service registry with Netflix Eureka in Spring Boot.
 
 ---
 

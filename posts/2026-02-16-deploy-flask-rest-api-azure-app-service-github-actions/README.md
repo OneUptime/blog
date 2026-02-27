@@ -1,4 +1,4 @@
-# How to Deploy a Flask REST API to Azure App Service with CI/CD from GitHub Actions
+# Deploy a Flask REST API to Azure App Service with CI/CD from GitHub Actions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

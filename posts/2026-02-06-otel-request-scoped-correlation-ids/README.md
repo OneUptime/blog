@@ -1,4 +1,4 @@
-# How to Implement Request-Scoped Correlation IDs That Unify Traces, Logs, and Custom Business Metrics
+# How to Use Request-Scoped Correlation IDs That Unify Traces, Logs,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

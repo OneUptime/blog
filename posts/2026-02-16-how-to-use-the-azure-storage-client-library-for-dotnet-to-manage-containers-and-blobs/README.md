@@ -1,4 +1,4 @@
-# How to Use the Azure Storage Client Library for .NET to Manage Containers and Blobs
+# How to Use the Azure Storage Client Library for .NET to Manage Containers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

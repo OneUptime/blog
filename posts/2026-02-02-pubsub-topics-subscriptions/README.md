@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Google Cloud, Pub/Sub, Messaging, Event-Driven Architecture, Cloud, Node.js, Python
 
-Description: Learn how to create and manage topics and subscriptions in Google Cloud Pub/Sub. Covers topic creation, subscription types, message publishing, consuming patterns, dead letter queues, and production best practices.
+Description: Learn how to create and manage topics and subscriptions in Google Cloud Pub/Sub.
 
 ---
 

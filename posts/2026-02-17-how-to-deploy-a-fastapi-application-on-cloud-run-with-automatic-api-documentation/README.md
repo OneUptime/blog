@@ -1,4 +1,4 @@
-# How to Deploy a FastAPI Application on Cloud Run with Automatic API Documentation
+# How to Deploy a FastAPI Application on Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

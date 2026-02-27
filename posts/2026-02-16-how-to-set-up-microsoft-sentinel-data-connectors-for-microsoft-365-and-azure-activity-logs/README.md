@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Sentinel Data Connectors for Microsoft 365 and Azure Activity Logs
+# How to Set Up Microsoft Sentinel Data Connectors for Microsoft 365
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

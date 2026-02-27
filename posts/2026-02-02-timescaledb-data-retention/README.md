@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: TimescaleDB, PostgreSQL, Data Retention, Time-Series, Database
 
-Description: Learn how to configure data retention policies in TimescaleDB to automatically manage time-series data lifecycle, optimize storage costs, and maintain query performance with practical examples and best practices.
+Description: Learn how to configure data retention policies in TimescaleDB to automatically manage time-series data lifecycle, optimize storage costs.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Use Azure Bicep Conditional Deployments to Handle Environment-Specific Resources
+# Use Azure Bicep Conditional Deployments to Handle Environment-Specific Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

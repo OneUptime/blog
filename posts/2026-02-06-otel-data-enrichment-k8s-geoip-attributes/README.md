@@ -1,4 +1,4 @@
-# How to Build a Data Enrichment Pipeline That Adds Kubernetes Metadata, GeoIP, and Custom Attributes
+# How to Build a Data Enrichment Pipeline That Adds Kubernetes Metadata, GeoIP,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

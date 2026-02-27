@@ -1,4 +1,4 @@
-# How to Build a LlamaIndex RAG Pipeline with Vertex AI Embeddings and Cloud Storage
+# How to Build a LlamaIndex RAG Pipeline with Vertex AI Embeddings
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

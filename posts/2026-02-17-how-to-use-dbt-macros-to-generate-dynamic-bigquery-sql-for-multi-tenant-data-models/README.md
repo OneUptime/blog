@@ -1,4 +1,4 @@
-# How to Use dbt Macros to Generate Dynamic BigQuery SQL for Multi-Tenant Data Models
+# Use dbt Macros to Generate Dynamic BigQuery SQL for Multi-Tenant Data Models
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

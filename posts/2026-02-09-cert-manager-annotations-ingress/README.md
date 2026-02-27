@@ -1,4 +1,4 @@
-# How to Use cert-manager Annotations to Request Certificates for Ingress Resources
+# How to Use cert-manager Annotations to Request Certificates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Performance, Write Optimization, Pipelining, Batching, Persistence, High Throughput
 
-Description: A comprehensive guide to optimizing Redis for write-heavy workloads, covering pipelining for batch operations, async writes, persistence tuning, memory optimization, and configuration strategies for maximum write throughput.
+Description: A comprehensive guide to optimizing Redis for write-heavy workloads, covering pipelining for batch operations, async writes, persistence tuning, memory optimization.
 
 ---
 

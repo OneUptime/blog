@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenEBS, Kubernetes, Storage, Jiva
 
-Description: A comprehensive guide to building and managing OpenEBS Jiva volumes in Kubernetes. Learn the architecture, installation, configuration, and best practices for running replicated block storage with Jiva.
+Description: A comprehensive guide to building and managing OpenEBS Jiva volumes in Kubernetes.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Exporters, Kafka, Streaming, Message Queue, Event-Driven
 
-Description: A detailed guide to configuring the Kafka exporter in OpenTelemetry Collector for streaming telemetry data to Apache Kafka topics, including authentication, partitioning strategies, serialization formats, and production-ready configurations for event-driven architectures.
+Description: A detailed guide to configuring the Kafka exporter in OpenTelemetry Collector for streaming telemetry data to Apache Kafka topics, including authentication, partitioning strategies.
 
 ---
 

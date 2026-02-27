@@ -1,4 +1,4 @@
-# How to Configure Backpressure-Aware Pipelines with Sending Queues, Retry Logic, and Memory Limiters
+# How to Configure Backpressure-Aware Pipelines with Sending Queues, Retry Logic,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Run Connectivity Tests Between VM Instances Using Network Intelligence Center
+# How to Run Connectivity Tests Between VM Instances
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

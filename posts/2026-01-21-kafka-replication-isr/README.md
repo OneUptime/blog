@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Replication, ISR, High Availability, Durability, Fault Tolerance
 
-Description: A comprehensive guide to Kafka replication and In-Sync Replicas (ISR), covering configuration options, durability guarantees, leader election, and best practices for building highly available Kafka clusters.
+Description: A comprehensive guide to Kafka replication and In-Sync Replicas (ISR), covering configuration options, durability guarantees, leader election.
 
 ---
 

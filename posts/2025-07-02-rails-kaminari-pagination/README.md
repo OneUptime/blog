@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby, Rails, Kaminari, Pagination, Performance, UI
 
-Description: Learn how to implement efficient pagination in Ruby on Rails applications using Kaminari. This guide covers installation, configuration, custom scopes, AJAX pagination, API pagination, and performance optimization techniques.
+Description: Learn how to implement efficient pagination in Ruby on Rails applications using Kaminari.
 
 ---
 

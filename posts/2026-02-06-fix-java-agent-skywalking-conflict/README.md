@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry Java Agent Conflicts with SkyWalking or Other Bytecode Instrumentation Agents
+# How to Fix OpenTelemetry Java Agent Conflicts with SkyWalking or Other Bytecode
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

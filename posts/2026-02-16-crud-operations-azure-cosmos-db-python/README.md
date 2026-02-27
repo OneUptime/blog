@@ -1,4 +1,4 @@
-# How to Perform CRUD Operations on Azure Cosmos DB Using azure-cosmos SDK in Python
+# How to Perform CRUD Operations on Azure Cosmos DB Using azure-cosmos SDK
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

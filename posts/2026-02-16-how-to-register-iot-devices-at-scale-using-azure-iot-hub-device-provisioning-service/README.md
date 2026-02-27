@@ -1,4 +1,4 @@
-# How to Register IoT Devices at Scale Using Azure IoT Hub Device Provisioning Service
+# Register IoT Devices at Scale Using Azure IoT Hub Device Provisioning Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

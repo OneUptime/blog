@@ -1,4 +1,4 @@
-# How to Build Latency-Based Alerts Using OpenTelemetry Histogram Percentiles (P50, P95, P99)
+# How to Build Latency-Based Alerts Using OpenTelemetry Histogram Percentiles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

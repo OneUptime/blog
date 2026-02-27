@@ -1,4 +1,4 @@
-# How to Set Up Automated Secret Rotation with Google Cloud Secret Manager and Cloud Functions
+# How to Set Up Automated Secret Rotation with Google Cloud Secret Manager
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

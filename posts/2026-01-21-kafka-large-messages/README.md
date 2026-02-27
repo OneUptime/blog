@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Large Messages, Chunking, Compression, Claim Check Pattern, Java, Python
 
-Description: A comprehensive guide to handling large messages in Kafka, covering configuration changes, compression strategies, message chunking, the claim check pattern, and best practices for efficient large payload processing.
+Description: A comprehensive guide to handling large messages in Kafka, covering configuration changes, compression strategies, message chunking, the claim check pattern.
 
 ---
 

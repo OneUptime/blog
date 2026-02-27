@@ -1,4 +1,4 @@
-# How to Migrate Amazon SNS Notification Topics to Google Cloud Pub/Sub Push Subscriptions
+# How to Migrate Amazon SNS Notification Topics to Google Cloud Pub/Sub Push
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

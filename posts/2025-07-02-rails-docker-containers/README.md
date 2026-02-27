@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby, Rails, Docker, Containers, DevOps, Deployment
 
-Description: A comprehensive guide to containerizing Ruby on Rails applications with Docker. Learn Dockerfile best practices, multi-stage builds, Docker Compose for development, production optimization, and deployment strategies.
+Description: A comprehensive guide to containerizing Ruby on Rails applications with Docker.
 
 ---
 

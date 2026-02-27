@@ -1,4 +1,4 @@
-# How to Use Logs-to-Metrics Pipelines in the OpenTelemetry Collector to Generate Alert-Ready Metrics
+# How to Use Logs-to-Metrics Pipelines in the OpenTelemetry Collector to Generate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

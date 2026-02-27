@@ -1,4 +1,4 @@
-# How to Run BigQuery Parameterized Queries from Node.js Using the google-cloud/bigquery Library
+# How to Run BigQuery Parameterized Queries from Node.js Using the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

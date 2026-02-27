@@ -1,4 +1,4 @@
-# How to Set Up Ingestion Keys and Hostname Configuration for the Mezmo OpenTelemetry Exporter
+# How to Set Up Ingestion Keys and Hostname Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement RBAC RoleBindings That Reference ServiceAccounts Across Namespaces
+# How to Use RBAC RoleBindings That Reference ServiceAccounts Across Namespaces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Retry-Aware Error Tracking with OpenTelemetry (Distinguishing Transient from Permanent Failures)
+# How to Use Retry-Aware Error Tracking with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

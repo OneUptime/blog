@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: CockroachDB, Node.js, Database, SQL, Distributed Database, PostgreSQL, Backend
 
-Description: Learn how to integrate CockroachDB with Node.js applications. A comprehensive guide covering connection setup, CRUD operations, transactions, connection pooling, and best practices for building scalable distributed applications.
+Description: Learn how to integrate CockroachDB with Node.js applications.
 
 ---
 

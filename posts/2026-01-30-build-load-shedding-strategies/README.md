@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Load Shedding, Reliability Engineering, System Design, Resilience Patterns, Backend Architecture, SRE
 
-Description: Learn how to design and build comprehensive load shedding strategies from the ground up. This guide covers strategy selection frameworks, pattern combinations, testing methodologies, and production deployment techniques with real-world examples.
+Description: Learn how to design and build comprehensive load shedding strategies from the ground up.
 
 ---
 

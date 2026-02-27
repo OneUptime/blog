@@ -1,4 +1,4 @@
-# How to Deploy a Music Streaming Backend with Azure Blob Storage and Azure Front Door
+# How to Deploy a Music Streaming Backend with Azure Blob Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NestJS, Node.js, Validation, class-validator, TypeScript, DTO, Backend, API
 
-Description: Learn how to implement robust input validation in NestJS using class-validator. This comprehensive guide covers decorators, custom validators, nested object validation, conditional validation, and production-ready patterns.
+Description: Learn how to implement robust input validation in NestJS using class-validator.
 
 ---
 

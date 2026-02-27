@@ -1,4 +1,4 @@
-# How to Use Cloud Functions with BigQuery to Run Scheduled Data Transformation Queries
+# Use Cloud Functions with BigQuery to Run Scheduled Data Transformation Queries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

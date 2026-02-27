@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ASP.NET Core, JWT, OAuth2, Authentication, Authorization, Security, .NET, C#
 
-Description: Learn how to implement JWT authentication and OAuth2 in ASP.NET Core. This guide covers token generation, validation, refresh tokens, and integration with external OAuth2 providers like Google and GitHub.
+Description: Learn how to implement JWT authentication and OAuth2 in ASP.NET Core.
 
 ---
 

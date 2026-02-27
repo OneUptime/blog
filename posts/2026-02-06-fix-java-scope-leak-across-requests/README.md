@@ -1,4 +1,4 @@
-# How to Fix the OpenTelemetry Java Scope Not Being Closed Properly and Leaking Context Across Requests
+# How to Fix the OpenTelemetry Java Scope Not Being Closed Properly
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

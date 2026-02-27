@@ -1,4 +1,4 @@
-# How to Perform Capacity Planning for Kubernetes Clusters Using Historical Resource Metrics
+# How to Perform Capacity Planning for Kubernetes Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

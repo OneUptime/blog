@@ -1,4 +1,4 @@
-# How to Build Azure Cost Management Reports for Chargeback and Showback Across Departments
+# How to Build Azure Cost Management Reports for Chargeback
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

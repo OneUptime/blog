@@ -1,4 +1,4 @@
-# How to Implement Automated Performance Gate Checks in GitHub Actions Using OpenTelemetry Metric Thresholds
+# How to Use Automated Performance Gate Checks in GitHub Actions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

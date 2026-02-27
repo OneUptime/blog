@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry to Correlate Deployments with Production Incidents Automatically
+# How to Use OpenTelemetry to Correlate Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

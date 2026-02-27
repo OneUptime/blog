@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, REST API, HTTP Methods, Error Handling, Spring MVC
 
-Description: Learn how to diagnose and fix 'Request method X not supported' errors in Spring Boot. This guide covers identifying mismatched HTTP methods, proper request mapping, and implementing helpful error responses.
+Description: Learn how to diagnose and fix 'Request method X not supported' errors in Spring Boot.
 
 ---
 
@@ -488,4 +488,4 @@ Understanding REST conventions and proper request mapping prevents these errors.
 *Need to monitor your API endpoints for errors? [OneUptime](https://oneuptime.com) provides comprehensive API monitoring with method-level tracking and instant alerts.*
 
 **Related Reading:**
-- [How to Handle "Method not allowed" Errors in Spring MVC](/blog/post/2025-12-22-method-not-allowed-spring-mvc/view)
+- [How to Handle "Method not allowed" Errors in Spring MVC](https://oneuptime.com/blog/post/2025-12-22-method-not-allowed-spring-mvc/view)

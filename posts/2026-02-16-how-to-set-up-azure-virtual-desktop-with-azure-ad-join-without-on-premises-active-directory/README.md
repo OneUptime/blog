@@ -1,4 +1,4 @@
-# How to Set Up Azure Virtual Desktop with Azure AD Join Without On-Premises Active Directory
+# How to Set Up Azure Virtual Desktop with Azure AD Join Without On-Premises
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Create an AI-Powered Video Indexing Solution with Azure Video Indexer and Cognitive Search
+# How to Create an AI-Powered Video Indexing Solution with Azure Video Indexer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

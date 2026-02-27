@@ -1,4 +1,4 @@
-# How to Perform Read-Write Transactions on Cloud Spanner from a Spring Boot Application Using Spring Data
+# How to Perform Read-Write Transactions on Cloud Spanner from a Spring Boot App
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

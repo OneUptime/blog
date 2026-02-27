@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Dictionaries, Database, Performance, SQL, Data Engineering, Analytics, Observability
 
-Description: A comprehensive guide to implementing ClickHouse dictionaries for fast key-value lookups, covering external dictionary sources, memory layouts, refresh strategies, and real-world query optimization patterns.
+Description: A comprehensive guide to implementing ClickHouse dictionaries for fast key-value lookups, covering external dictionary sources, memory layouts, refresh strategies.
 
 ---
 

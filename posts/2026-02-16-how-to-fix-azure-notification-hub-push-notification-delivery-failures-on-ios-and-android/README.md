@@ -1,4 +1,4 @@
-# How to Fix Azure Notification Hub Push Notification Delivery Failures on iOS and Android
+# How to Fix Azure Notification Hub Push Notification Delivery Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

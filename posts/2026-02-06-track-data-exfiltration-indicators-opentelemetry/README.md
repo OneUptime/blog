@@ -1,4 +1,4 @@
-# How to Track Data Exfiltration Indicators (Unusual Payload Sizes, Off-Hours Access) with OpenTelemetry
+# How to Track Data Exfiltration Indicators with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

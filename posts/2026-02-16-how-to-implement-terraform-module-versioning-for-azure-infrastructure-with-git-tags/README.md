@@ -1,4 +1,4 @@
-# How to Implement Terraform Module Versioning for Azure Infrastructure with Git Tags
+# How to Use Terraform Module Versioning for Azure Infrastructure with Git Tags
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

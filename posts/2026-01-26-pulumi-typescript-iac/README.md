@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, TypeScript, IaC, Infrastructure as Code, DevOps, AWS, Cloud, Automation
 
-Description: A practical guide to building and managing cloud infrastructure using Pulumi with TypeScript. Learn how to set up projects, create resources, manage state, and implement best practices for type-safe infrastructure as code.
+Description: A practical guide to building and managing cloud infrastructure using Pulumi with TypeScript.
 
 ---
 

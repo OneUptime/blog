@@ -1,4 +1,4 @@
-# How to Troubleshoot 403 Forbidden Errors When Accessing IAP-Protected Applications in GCP
+# How to Troubleshoot 403 Forbidden Errors When Accessing IAP-Protected Apps in
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

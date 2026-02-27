@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Traces and Logs to Axiom via the OTLP HTTP Exporter with Dataset and API Token Headers
+# How to Send OpenTelemetry Traces and Logs to Axiom via the OTLP HTTP Exporter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

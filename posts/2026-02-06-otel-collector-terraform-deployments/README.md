@@ -1,4 +1,4 @@
-# How to Define OpenTelemetry Collector Deployments in Terraform for Reproducible Infrastructure
+# How to Define OpenTelemetry Collector Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

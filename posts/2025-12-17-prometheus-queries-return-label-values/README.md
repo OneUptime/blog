@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, PromQL, Labels, Queries, Monitoring, Metrics
 
-Description: Learn how to write Prometheus queries that extract and return label values. This guide covers label_values(), label_replace(), label_join(), and advanced techniques for working with labels in PromQL queries.
+Description: Learn how to write Prometheus queries that extract and return label values.
 
 Prometheus labels provide dimensional metadata for metrics, and often you need to extract, transform, or query based on label values. While PromQL is designed for numeric time series, several functions and techniques allow you to work with label values directly. This guide covers all the methods for extracting and manipulating labels in Prometheus.
 

@@ -1,4 +1,4 @@
-# How to Use the Java Cloud Storage Client Library to Implement Resumable Uploads for Large Files
+# How to Use the Java Cloud Storage Client Library to Implement Resumable Uploads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

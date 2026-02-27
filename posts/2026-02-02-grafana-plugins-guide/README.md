@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Grafana, Plugins, Monitoring, Data Visualization, Observability, Dashboard, Panel Plugins, Data Source Plugins
 
-Description: A practical guide to discovering, installing, configuring, and managing Grafana plugins. Learn how to extend Grafana's capabilities with community and enterprise plugins for data sources, panels, and applications.
+Description: A practical guide to discovering, installing, configuring, and managing Grafana plugins.
 
 ---
 

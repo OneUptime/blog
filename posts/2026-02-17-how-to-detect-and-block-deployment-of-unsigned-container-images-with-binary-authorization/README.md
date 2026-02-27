@@ -1,4 +1,4 @@
-# How to Detect and Block Deployment of Unsigned Container Images with Binary Authorization
+# How to Detect and Block Deployment of Unsigned Container Images
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

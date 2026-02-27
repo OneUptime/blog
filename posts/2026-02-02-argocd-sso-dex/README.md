@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, Dex, SSO, Kubernetes, GitOps, Authentication, OIDC, LDAP, OAuth2
 
-Description: Learn how to implement Single Sign-On (SSO) for ArgoCD using Dex as an identity broker. Covers integration with GitHub, LDAP, SAML, and other identity providers with step-by-step configuration examples.
+Description: Learn how to implement Single Sign-On (SSO) for ArgoCD using Dex as an identity broker.
 
 ---
 

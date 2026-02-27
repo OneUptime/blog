@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Query Builder, Type Safety, Database, SQL, ORM, Design Patterns
 
-Description: Learn how to build a type-safe query builder in TypeScript that catches SQL errors at compile time. This guide covers fluent interfaces, conditional types, and mapped types for building robust database queries.
+Description: Learn how to build a type-safe query builder in TypeScript that catches SQL errors at compile time.
 
 ---
 

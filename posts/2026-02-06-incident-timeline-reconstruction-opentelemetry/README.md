@@ -1,4 +1,4 @@
-# How to Build Incident Timeline Reconstruction from OpenTelemetry Traces, Logs, and Metrics
+# How to Build Incident Timeline Reconstruction from OpenTelemetry Traces, Logs,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

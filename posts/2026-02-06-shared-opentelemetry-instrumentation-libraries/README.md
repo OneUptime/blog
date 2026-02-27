@@ -1,4 +1,4 @@
-# How to Create OpenTelemetry Instrumentation Libraries Shared Across Your Platform
+# Create OpenTelemetry Instrumentation Libraries Shared Across Your Platform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

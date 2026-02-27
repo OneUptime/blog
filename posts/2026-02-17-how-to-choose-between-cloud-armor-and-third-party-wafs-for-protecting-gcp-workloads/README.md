@@ -1,4 +1,4 @@
-# How to Choose Between Cloud Armor and Third-Party WAFs for Protecting GCP Workloads
+# How to Choose Between Cloud Armor and Third-Party WAFs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Publish and Receive Pub/Sub Messages in a Go Application with Concurrency Controls
+# How to Publish and Receive Pub/Sub Messages in a Go Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

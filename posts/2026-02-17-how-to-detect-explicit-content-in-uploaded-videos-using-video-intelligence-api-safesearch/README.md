@@ -1,4 +1,4 @@
-# How to Detect Explicit Content in Uploaded Videos Using Video Intelligence API SafeSearch
+# How to Detect Explicit Content in Uploaded Videos
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build an Error Triage Dashboard from OpenTelemetry Span Events and Exception Stack Traces
+# How to Build an Error Triage Dashboard from OpenTelemetry Span Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

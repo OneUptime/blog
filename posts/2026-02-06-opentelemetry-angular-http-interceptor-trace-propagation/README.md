@@ -1,4 +1,4 @@
-# How to Use the OpenTelemetry Angular HTTP Interceptor for Automatic Trace Propagation
+# How to Use the OpenTelemetry Angular HTTP Interceptor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

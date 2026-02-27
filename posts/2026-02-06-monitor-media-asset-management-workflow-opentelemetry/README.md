@@ -1,4 +1,4 @@
-# How to Monitor Media Asset Management (MAM/DAM) Workflow Performance with OpenTelemetry
+# How to Monitor Media Asset Management Workflow Performance with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

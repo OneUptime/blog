@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, API-Server, Compatibility
 
-Description: Manage Kubernetes API server request compatibility during rolling upgrades with version skew policies, backward compatibility strategies, and techniques for handling mixed-version control planes safely.
+Description: Manage Kubernetes API server request compatibility during rolling upgrades with version skew policies, backward compatibility strategies.
 
 ---
 

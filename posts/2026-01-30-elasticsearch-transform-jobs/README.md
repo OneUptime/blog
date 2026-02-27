@@ -756,5 +756,5 @@ Transforms turn Elasticsearch from a search engine into an analytics engine. Des
 **Related Reading:**
 
 - [Elasticsearch Documentation: Transforms](https://www.elastic.co/guide/en/elasticsearch/reference/current/transforms.html)
-- [How to Reduce Noise in OpenTelemetry](/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry)
-- [What are Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry)
+- [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view)
+- [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)

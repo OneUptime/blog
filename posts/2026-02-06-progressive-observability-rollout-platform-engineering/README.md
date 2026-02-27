@@ -1,4 +1,4 @@
-# How to Implement Progressive Observability Rollout for Platform Engineering Teams
+# How to Use Progressive Observability Rollout for Platform Engineering Teams
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

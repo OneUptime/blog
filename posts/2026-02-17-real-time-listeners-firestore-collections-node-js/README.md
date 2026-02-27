@@ -1,4 +1,4 @@
-# How to Perform Real-Time Listeners on Firestore Collections Using the google-cloud/firestore Node.js Library
+# How to Perform Real-Time Listeners on Firestore Collections Using the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

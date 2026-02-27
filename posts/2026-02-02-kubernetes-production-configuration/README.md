@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Production, DevOps, Infrastructure, Security, High Availability, Scaling, Monitoring
 
-Description: A comprehensive guide to configuring Kubernetes clusters for production workloads, covering security hardening, resource management, high availability, networking, storage, and observability best practices.
+Description: A comprehensive guide to configuring Kubernetes clusters for production workloads, covering security hardening, resource management, high availability, networking, storage.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry to Monitor Container Runtime Security Events (Falco and Sysdig Integration)
+# How to Use OpenTelemetry to Monitor Container Runtime Security Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

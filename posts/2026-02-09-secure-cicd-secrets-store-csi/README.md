@@ -1,10 +1,10 @@
-# How to Build a Secure CI/CD Pipeline That Uses Kubernetes Secrets Store CSI for Build Credentials
+# How to Build a Secure CI/CD Pipeline That Uses Kubernetes Secrets Store CSI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Secrets Management, CI/CD, CSI Driver
 
-Description: Implement secure CI/CD pipelines using Kubernetes Secrets Store CSI Driver to fetch build credentials from external secret management systems like Vault, AWS Secrets Manager, or Azure Key Vault without storing secrets in the cluster.
+Description: Implement secure CI/CD pipelines using Kubernetes Secrets Store CSI Driver to fetch build credentials from external secret management systems like Vault, AWS Secrets Manager.
 
 ---
 

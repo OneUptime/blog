@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Log Search, Log Analysis, Elasticsearch, Query Optimization, Full-Text Search, Analytics, Observability
 
-Description: Learn how to implement effective log search and analysis capabilities. This guide covers search query optimization, aggregations, pattern detection, and building powerful analysis workflows for troubleshooting and insights.
+Description: Learn how to implement effective log search and analysis capabilities.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Trace Cross-Docking and Hub-Spoke Distribution Center Operations with OpenTelemetry
+# How to Trace Cross-Docking and Hub-Spoke Distribution Center Operations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Parse Docker JSON Container Log Files with the Container Log Parser Operator in the Collector
+# How to Parse Docker JSON Container Log Files with the Container Log Parser
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

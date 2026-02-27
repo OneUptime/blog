@@ -1,4 +1,4 @@
-# How to Fix Memory Leaks in the OpenTelemetry Java Agent Caused by Instrumentation Holding Object References
+# How to Fix Memory Leaks in the OpenTelemetry Java Agent Caused by
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

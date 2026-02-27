@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: REST API, File Upload, API Design, HTTP, Multipart
 
-Description: Learn how to design and implement file uploads in REST APIs. This guide covers multipart form data, base64 encoding, chunked uploads, presigned URLs, and best practices for building scalable upload endpoints.
+Description: Learn how to design and implement file uploads in REST APIs.
 
 ---
 

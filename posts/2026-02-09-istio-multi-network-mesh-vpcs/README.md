@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Istio, Multi-Network, VPC, Kubernetes, Service Mesh
 
-Description: Learn how to configure Istio multi-network service mesh across Kubernetes clusters running in different VPCs or networks with isolated address spaces, enabling secure cross-network service communication.
+Description: Learn how to configure Istio multi-network service mesh across Kubernetes clusters running in different VPCs or networks with isolated address spaces.
 
 ---
 

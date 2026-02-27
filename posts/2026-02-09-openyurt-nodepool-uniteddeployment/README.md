@@ -1,10 +1,10 @@
-# How to Set Up OpenYurt NodePool and UnitedDeployment for Edge Node Group Management
+# How to Set Up OpenYurt NodePool and UnitedDeployment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, OpenYurt, Edge Computing
 
-Description: Learn how to use OpenYurt's NodePool and UnitedDeployment resources to manage groups of edge nodes by location, enabling application distribution across multiple sites with location-specific configurations.
+Description: Learn how to use OpenYurt's NodePool and UnitedDeployment resources to manage groups of edge nodes by location.
 
 ---
 

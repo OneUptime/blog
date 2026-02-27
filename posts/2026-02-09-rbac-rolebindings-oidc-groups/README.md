@@ -1,4 +1,4 @@
-# How to Implement RBAC RoleBindings with Group-Based Authentication from OIDC Providers
+# How to Use RBAC RoleBindings with Group-Based Authentication from OIDC Providers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

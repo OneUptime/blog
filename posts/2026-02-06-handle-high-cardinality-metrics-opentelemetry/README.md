@@ -1,4 +1,4 @@
-# How to Handle High-Cardinality Metrics in OpenTelemetry Without Blowing Your Budget
+# Handle High-Cardinality Metrics in OpenTelemetry Without Blowing Your Budget
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

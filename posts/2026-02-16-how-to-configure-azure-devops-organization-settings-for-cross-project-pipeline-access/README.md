@@ -1,4 +1,4 @@
-# How to Configure Azure DevOps Organization Settings for Cross-Project Pipeline Access
+# Configure Azure DevOps Organization Settings for Cross-Project Pipeline Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

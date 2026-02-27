@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: K3s, Kubernetes, etcd, External Cluster, High Availability, DevOps, Infrastructure
 
-Description: A comprehensive guide to configuring K3s with an external etcd cluster for production deployments, covering etcd cluster setup, TLS configuration, K3s integration, failover testing, and operational best practices.
+Description: A comprehensive guide to configuring K3s with an external etcd cluster for production deployments, covering etcd cluster setup, TLS configuration, K3s integration, failover testing.
 
 ---
 

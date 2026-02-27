@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: etcd, Distributed Systems, Configuration Management, Kubernetes, Key-Value Store, DevOps
 
-Description: Learn how to set up and use etcd as a distributed key-value store for configuration management. This guide covers installation, clustering, and practical examples for storing and watching configuration data.
+Description: Learn how to set up and use etcd as a distributed key-value store for configuration management.
 
 ---
 

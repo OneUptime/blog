@@ -1,4 +1,4 @@
-# How to Update Kubernetes Deployments to Pull Images from Artifact Registry Instead of gcr.io
+# How to Update K8s Deployments to Pull Images from Artifact Registry Instead of
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

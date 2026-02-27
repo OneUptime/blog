@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Hot Keys, Performance, Scalability, Caching, Load Distribution, High Traffic
 
-Description: A comprehensive guide to detecting and mitigating hot keys in Redis, covering identification techniques, local caching strategies, key splitting, read replicas, and architectural patterns for handling high-traffic keys.
+Description: A comprehensive guide to detecting and mitigating hot keys in Redis, covering identification techniques, local caching strategies, key splitting, read replicas.
 
 ---
 

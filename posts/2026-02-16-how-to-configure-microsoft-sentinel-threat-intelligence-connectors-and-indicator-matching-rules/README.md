@@ -1,4 +1,4 @@
-# How to Configure Microsoft Sentinel Threat Intelligence Connectors and Indicator Matching Rules
+# How to Configure Microsoft Sentinel Threat Intelligence Connectors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Deploy a Cloud Function with a Pub/Sub Trigger for Event-Driven Processing
+# Deploy a Cloud Function with a Pub/Sub Trigger for Event-Driven Processing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

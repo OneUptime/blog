@@ -1,4 +1,4 @@
-# How to Build a SharePoint Framework Web Part That Reads Data from Azure Cosmos DB
+# Build a SharePoint Framework Web Part That Reads Data from Azure Cosmos DB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

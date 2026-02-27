@@ -1,4 +1,4 @@
-# How to Use ARM Template Specs to Version and Share Infrastructure Templates Across Subscriptions
+# How to Use ARM Template Specs to Version and Share Infra Templates Across
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: NATS, Messaging, Microservices, Pub/Sub, Event-Driven
 
-Description: Learn how to implement wildcard subscriptions in NATS messaging system. Covers single-level and multi-level wildcards, practical patterns for event routing, and best practices for building scalable event-driven architectures.
+Description: Learn how to implement wildcard subscriptions in NATS messaging system.
 
 ---
 

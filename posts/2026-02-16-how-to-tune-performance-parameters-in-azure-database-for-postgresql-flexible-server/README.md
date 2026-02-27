@@ -1,4 +1,4 @@
-# How to Tune Performance Parameters in Azure Database for PostgreSQL Flexible Server
+# How to Tune Performance Parameters in Azure Database
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

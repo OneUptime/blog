@@ -1,4 +1,4 @@
-# How to Set Up Hybrid Connectivity Between On-Premises Data Centers and GCP Using Cloud Interconnect
+# How to Set Up Hybrid Connectivity Between On-Premises Data Centers and GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

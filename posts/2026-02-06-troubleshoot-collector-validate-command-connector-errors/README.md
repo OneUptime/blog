@@ -1,4 +1,4 @@
-# How to Troubleshoot the Collector validate Command Missing Pipeline Wiring Errors for Connectors
+# How to Troubleshoot the Collector validate Command Missing Pipeline Wiring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

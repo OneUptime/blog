@@ -1,4 +1,4 @@
-# How to Troubleshoot Dropped Packets and OUT_OF_RESOURCES Errors on Cloud NAT in GCP
+# How to Troubleshoot Dropped Packets and OUT_OF_RESOURCES Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

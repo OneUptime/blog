@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Batch Processing, Performance, Database, Python, Java, Backend, Optimization, ETL
 
-Description: Learn how to implement batch processing patterns to dramatically improve application performance. This guide covers database batch operations, message batching, file processing, and monitoring strategies with practical examples.
+Description: Learn how to implement batch processing patterns to dramatically improve application performance.
 
 ---
 

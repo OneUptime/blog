@@ -1,4 +1,4 @@
-# How to Monitor Quality Control Inspection Pipeline (Vision AI, Sensor Check) with OpenTelemetry
+# How to Monitor Quality Control Inspection Pipeline with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

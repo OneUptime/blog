@@ -1,4 +1,4 @@
-# How to Store and Retrieve Secrets from Azure Key Vault Using azure-keyvault-secrets in Python
+# How to Store and Retrieve Secrets from Azure Key Vault Using
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Grant Fine-Grained Access Control to Individual Secrets in GCP Secret Manager
+# How to Grant Fine-Grained Access Control to Individual Secrets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

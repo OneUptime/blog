@@ -1,4 +1,4 @@
-# How to Implement Real-Time Inventory Management with Azure IoT Hub and Azure Digital Twins
+# How to Use Real-Time Inventory Management with Azure IoT Hub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

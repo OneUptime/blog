@@ -1,4 +1,4 @@
-# How to Connect OpenTelemetry Profiles to Traces for Code-Level Latency Root Cause Analysis
+# How to Connect OpenTelemetry Profiles to Traces for Code-Level Latency Root
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement W3C Trace Context Propagation for Polyglot Kubernetes Applications
+# How to Use W3C Trace Context Propagation for Polyglot Kubernetes Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

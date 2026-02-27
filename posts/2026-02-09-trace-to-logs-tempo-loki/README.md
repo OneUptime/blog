@@ -1,4 +1,4 @@
-# How to Set Up Trace-to-Logs Linking Between Grafana Tempo and Loki for Kubernetes
+# How to Set Up Trace-to-Logs Linking Between Grafana Tempo and Loki
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

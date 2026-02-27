@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DynamoDB, AWS, NoSQL, Data Modeling, Many-to-Many, Database Design, Adjacency List, Serverless
 
-Description: A comprehensive guide to modeling many-to-many relationships in DynamoDB using adjacency lists, GSIs, and composite keys. Learn practical patterns for users and groups, products and categories, and students and courses.
+Description: A comprehensive guide to modeling many-to-many relationships in DynamoDB using adjacency lists, GSIs, and composite keys.
 
 ---
 
@@ -1251,8 +1251,8 @@ The patterns shown here work for users and groups, products and categories, stud
 
 - [DynamoDB Best Practices](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/best-practices.html)
 - [Adjacency List Design Pattern](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-adjacency-graphs.html)
-- [DynamoDB Single-Table Design](/blog/2026-01-26-dynamodb-single-table-design)
-- [DynamoDB Global Secondary Indexes](/blog/2026-01-26-dynamodb-global-secondary-indexes)
+- [DynamoDB Single-Table Design](https://oneuptime.com/blog/post/2026-01-26-dynamodb-single-table-design/view)
+- [DynamoDB Global Secondary Indexes](https://oneuptime.com/blog/post/2026-01-26-dynamodb-global-secondary-indexes/view)
 
 ---
 

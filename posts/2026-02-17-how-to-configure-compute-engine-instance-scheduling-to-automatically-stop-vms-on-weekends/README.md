@@ -1,4 +1,4 @@
-# How to Configure Compute Engine Instance Scheduling to Automatically Stop VMs on Weekends
+# How to Configure Compute Engine Instance Scheduling to Automatically Stop VMs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

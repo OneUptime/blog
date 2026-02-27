@@ -1,4 +1,4 @@
-# How to Build Custom gRPC OpenTelemetry Interceptors for Business-Specific Span Attributes and Filtering
+# How to Build Custom gRPC OpenTelemetry Interceptors for Business-Specific Span
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

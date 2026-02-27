@@ -1,4 +1,4 @@
-# How to Implement the Principle of Least Privilege with Predefined IAM Roles in GCP
+# How to Use the Principle of Least Privilege with Predefined IAM Roles in GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

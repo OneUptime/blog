@@ -1,4 +1,4 @@
-# How to Implement Event Filtering and Transformation with Knative Eventing Triggers
+# How to Use Event Filtering and Transformation with Knative Eventing Triggers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

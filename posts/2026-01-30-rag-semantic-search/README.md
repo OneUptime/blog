@@ -2379,6 +2379,6 @@ Start simple with basic semantic search, measure quality with evaluation metrics
 
 ## Related Reading
 
-- [What is OpenTelemetry Collector and Why Use One](/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one) - Monitor your RAG system with distributed tracing
-- [Basics of Profiling](/blog/post/2025-09-09-basics-of-profiling) - Profile embedding generation and search performance
-- [Python Health Checks for Kubernetes](/blog/post/2025-01-06-python-health-checks-kubernetes) - Production deployment patterns for Python services
+- [What is OpenTelemetry Collector and Why Use One](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view) - Monitor your RAG system with distributed tracing
+- [Basics of Profiling](https://oneuptime.com/blog/post/2025-09-09-basics-of-profiling/view) - Profile embedding generation and search performance
+- [Python Health Checks for Kubernetes](https://oneuptime.com/blog/post/2025-01-06-python-health-checks-kubernetes/view) - Production deployment patterns for Python services

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, FastAPI, Production, API Development, Backend, Async, Testing, DevOps
 
-Description: A comprehensive guide to building production-ready FastAPI applications covering project structure, configuration management, error handling, database integration, testing strategies, and deployment best practices.
+Description: A comprehensive guide to building production-ready FastAPI applications covering project structure, configuration management, error handling, database integration, testing strategies.
 
 ---
 

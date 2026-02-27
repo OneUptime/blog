@@ -1,4 +1,4 @@
-# How to Monitor Healthcare Appointment Scheduling System Performance with OpenTelemetry Tracing
+# How to Monitor Healthcare Appointment Scheduling System Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

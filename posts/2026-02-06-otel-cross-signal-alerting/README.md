@@ -1,4 +1,4 @@
-# How to Set Up Cross-Signal Alerting: Trigger Alerts When Metric Anomalies Correlate with Error Traces
+# How to Set Up Cross-Signal Alerting: Trigger Alerts When Metric Anomalies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up a Cloud Function to Forward Pub/Sub Messages to a Third-Party Webhook
+# Set Up a Cloud Function to Forward Pub/Sub Messages to a Third-Party Webhook
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

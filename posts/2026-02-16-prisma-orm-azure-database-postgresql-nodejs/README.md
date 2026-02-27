@@ -1,4 +1,4 @@
-# How to Use Prisma ORM with Azure Database for PostgreSQL in a Node.js Application
+# Use Prisma ORM with Azure Database for PostgreSQL in a Node.js Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix the Confusion Between .NET System.Diagnostics.Activity and OpenTelemetry Span Concepts
+# How to Fix the Confusion Between .NET System.Diagnostics.Activity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

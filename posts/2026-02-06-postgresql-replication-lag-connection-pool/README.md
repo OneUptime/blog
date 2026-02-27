@@ -1,4 +1,4 @@
-# How to Monitor PostgreSQL Replication Lag, Connection Pool Stats, and Lock Contention with OpenTelemetry
+# How to Monitor PostgreSQL Replication Lag, Connection Pool Stats,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

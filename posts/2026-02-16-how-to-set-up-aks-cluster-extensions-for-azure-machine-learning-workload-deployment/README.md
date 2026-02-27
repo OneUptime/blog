@@ -1,4 +1,4 @@
-# How to Set Up AKS Cluster Extensions for Azure Machine Learning Workload Deployment
+# Set Up AKS Cluster Extensions for Azure Machine Learning Workload Deployment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

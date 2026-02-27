@@ -1,10 +1,10 @@
-# How to Set Up Kubernetes Audit Logging with Structured Output for Production Compliance
+# How to Set Up Kubernetes Audit Logging with Structured Output
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Audit Logging, Compliance, Security
 
-Description: Configure comprehensive Kubernetes audit logging with structured output that meets compliance requirements, enabling security investigations and regulatory audits through detailed API activity tracking.
+Description: Configure comprehensive Kubernetes audit logging with structured output that meets compliance requirements.
 
 ---
 

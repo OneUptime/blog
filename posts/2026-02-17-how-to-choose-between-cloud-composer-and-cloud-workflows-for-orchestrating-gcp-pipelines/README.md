@@ -1,4 +1,4 @@
-# How to Choose Between Cloud Composer and Cloud Workflows for Orchestrating GCP Pipelines
+# How to Choose Between Cloud Composer and Cloud Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

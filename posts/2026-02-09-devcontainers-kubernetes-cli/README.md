@@ -1,4 +1,4 @@
-# How to Build Devcontainers with Kubernetes CLI Tools and Cluster Access Pre-Configured
+# How to Build Devcontainers with Kubernetes CLI Tools
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

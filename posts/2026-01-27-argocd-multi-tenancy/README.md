@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Kubernetes, ArgoCD, Multi-Tenancy, GitOps, RBAC, DevOps, Security, Namespace Isolation
 
-Description: A comprehensive guide to implementing multi-tenancy in ArgoCD, covering AppProjects for team isolation, RBAC configuration, namespace-based tenancy, cluster-level permissions, and security best practices for enterprise deployments.
+Description: A comprehensive guide to implementing multi-tenancy in ArgoCD, covering AppProjects for team isolation, RBAC configuration, namespace-based tenancy, cluster-level permissions.
 
 ---
 

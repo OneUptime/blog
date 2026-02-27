@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Multi-Tenancy, SaaS, Database Design, Architecture
 
-Description: Learn the three main approaches to multi-tenant database design in PostgreSQL - shared tables, separate schemas, and separate databases - with practical implementation patterns and trade-offs for each approach.
+Description: Learn the three main approaches to multi-tenant database design in PostgreSQL - shared tables, separate schemas.
 
 ---
 

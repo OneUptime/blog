@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Traces and Logs to Highlight.io via Their OTLP Collector Endpoints at otel.highlight.io
+# How to Send OpenTelemetry Traces and Logs to Highlight.io via Their OTLP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

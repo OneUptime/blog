@@ -1,4 +1,4 @@
-# How to Manage Kubernetes Cluster Infrastructure with Terraform Modules for EKS, GKE, and AKS
+# How to Manage K8s Cluster Infra with Terraform Modules for EKS, GKE, and AKS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up AKS with WebAssembly (WASM) Workloads Using Spin and WASI Node Pools
+# How to Set Up AKS with WebAssembly Workloads Using Spin and WASI Node Pools
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

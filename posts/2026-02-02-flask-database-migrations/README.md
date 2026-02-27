@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flask, Python, Database, Migrations, Flask-Migrate, Alembic, SQLAlchemy
 
-Description: Learn how to handle database migrations in Flask applications using Flask-Migrate and Alembic. This comprehensive guide covers migration setup, creating and managing migrations, data migrations, team workflows, production deployment strategies, and troubleshooting common issues.
+Description: Learn how to handle database migrations in Flask applications using Flask-Migrate and Alembic.
 
 ---
 
@@ -1651,5 +1651,5 @@ By following these practices, you can evolve your database schema safely and con
 *Managing database migrations in production requires robust monitoring to detect issues early. [OneUptime](https://oneuptime.com) provides comprehensive monitoring for Flask applications, including database health checks, migration tracking, and instant alerts when something goes wrong. Set up proactive monitoring to ensure your database migrations succeed every time.*
 
 **Related Reading:**
-- [How to Use Flask with SQLAlchemy](/blog/post/2026-01-26-flask-sqlalchemy/view)
-- [How to Use Celery with Flask for Background Tasks](/blog/post/2026-02-02-flask-celery-background-tasks/view)
+- [How to Use Flask with SQLAlchemy](https://oneuptime.com/blog/post/2026-01-26-flask-sqlalchemy/view)
+- [How to Use Celery with Flask for Background Tasks](https://oneuptime.com/blog/post/2026-02-02-flask-celery-background-tasks/view)

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, CI/CD, GitHub Actions, GitLab CI, Containers, DevOps, Docker Alternative
 
-Description: A comprehensive guide to configuring Podman for CI/CD pipelines, covering GitHub Actions, GitLab CI integration, registry authentication, and caching strategies for faster, more secure container builds.
+Description: A comprehensive guide to configuring Podman for CI/CD pipelines, covering GitHub Actions, GitLab CI integration, registry authentication, and caching strategies for faster.
 
 ---
 

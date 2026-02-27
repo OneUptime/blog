@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RabbitMQ, Delayed Messages, Message Queues, Scheduling, Distributed Systems, Node.js, Retries
 
-Description: A comprehensive guide to implementing delayed message delivery in RabbitMQ using the delayed message exchange plugin. Learn how to schedule messages, implement retry patterns, set up reminder systems, and understand the limitations and alternatives.
+Description: A comprehensive guide to implementing delayed message delivery in RabbitMQ using the delayed message exchange plugin.
 
 ---
 
@@ -1293,5 +1293,5 @@ The RabbitMQ delayed message exchange plugin is a powerful tool for implementing
 
 ### Related Reading
 
-- [RabbitMQ Lazy Queues for Large Messages](/blog/post/2026-01-27-rabbitmq-lazy-queues/view) - Learn about lazy queues for memory-efficient message handling
-- [Exactly-Once Processing with Pub/Sub](/blog/post/2026-01-27-pubsub-exactly-once/view) - Patterns for reliable message processing
+- [RabbitMQ Lazy Queues for Large Messages](https://oneuptime.com/blog/post/2026-01-27-rabbitmq-lazy-queues/view) - Learn about lazy queues for memory-efficient message handling
+- [Exactly-Once Processing with Pub/Sub](https://oneuptime.com/blog/post/2026-01-27-pubsub-exactly-once/view) - Patterns for reliable message processing

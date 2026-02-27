@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Kubernetes, Database, High Availability, CloudNativePG
 
-Description: Learn how to deploy PostgreSQL using the CloudNativePG operator for high availability on Kubernetes, implementing automated failover, streaming replication, and robust database management for production workloads.
+Description: Learn how to deploy PostgreSQL using the CloudNativePG operator for high availability on Kubernetes, implementing automated failover, streaming replication.
 
 ---
 

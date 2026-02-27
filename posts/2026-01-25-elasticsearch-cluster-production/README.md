@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Search, Cluster, Production, DevOps, Infrastructure
 
-Description: A practical guide to setting up an Elasticsearch cluster for production environments, covering node configuration, cluster topology, hardware requirements, and best practices for reliability and performance.
+Description: A practical guide to setting up an Elasticsearch cluster for production environments, covering node configuration, cluster topology, hardware requirements.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Implement Connection Pooling with PgBouncer Sidecar for PostgreSQL on Kubernetes
+# How to Use Connection Pooling with PgBouncer Sidecar
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

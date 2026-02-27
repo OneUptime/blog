@@ -1,4 +1,4 @@
-# How to Query Parquet and CSV Files in Azure Data Lake Using Synapse Serverless SQL Pool
+# How to Query Parquet and CSV Files in Azure Data Lake
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

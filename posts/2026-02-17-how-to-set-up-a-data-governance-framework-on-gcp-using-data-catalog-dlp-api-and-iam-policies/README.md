@@ -1,4 +1,4 @@
-# How to Set Up a Data Governance Framework on GCP Using Data Catalog DLP API and IAM Policies
+# How to Set Up a Data Governance Framework on GCP Using Data Catalog DLP API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Trace In-App Purchase and Microtransaction Flows Across Game Client and Backend with OpenTelemetry
+# How to Trace In-App Purchase and Microtransaction Flows Across Game Client
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

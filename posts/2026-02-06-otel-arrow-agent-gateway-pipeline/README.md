@@ -1,4 +1,4 @@
-# How to Set Up an Agent-to-Gateway Pipeline Using OTel Arrow for High-Efficiency Telemetry Transport
+# How to Set Up an Agent-to-Gateway Pipeline Using OTel Arrow for High-Efficiency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

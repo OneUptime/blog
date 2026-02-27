@@ -1,4 +1,4 @@
-# How to Handle Retries and Dead Letter Topics in Cloud Functions for Reliable Event Processing
+# How to Handle Retries and Dead Letter Topics in Cloud Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

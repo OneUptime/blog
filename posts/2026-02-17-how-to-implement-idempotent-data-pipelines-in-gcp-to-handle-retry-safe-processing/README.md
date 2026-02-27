@@ -1,4 +1,4 @@
-# How to Implement Idempotent Data Pipelines in GCP to Handle Retry-Safe Processing
+# How to Use Idempotent Data Pipelines in GCP to Handle Retry-Safe Processing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

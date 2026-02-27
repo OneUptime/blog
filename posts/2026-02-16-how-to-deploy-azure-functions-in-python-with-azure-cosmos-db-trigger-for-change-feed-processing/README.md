@@ -1,4 +1,4 @@
-# How to Deploy Azure Functions in Python with Azure Cosmos DB Trigger for Change Feed Processing
+# How to Deploy Azure Functions in Python with Azure Cosmos DB Trigger
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

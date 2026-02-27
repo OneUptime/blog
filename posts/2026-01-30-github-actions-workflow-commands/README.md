@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: GitHub Actions, CI/CD, Commands, Automation
 
-Description: Learn how to build and use GitHub Actions workflow commands to control your CI/CD pipelines. This comprehensive guide covers output variables, environment files, logging commands, job summaries, and advanced automation techniques.
+Description: Learn how to build and use GitHub Actions workflow commands to control your CI/CD pipelines.
 
 ---
 

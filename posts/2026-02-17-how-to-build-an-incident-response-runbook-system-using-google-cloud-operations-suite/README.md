@@ -1,4 +1,4 @@
-# How to Build an Incident Response Runbook System Using Google Cloud Operations Suite
+# How to Build an Incident Response Runbook System
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

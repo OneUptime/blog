@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Priority Queue, Load Management, Performance, Scalability
 
-Description: When your Rust service is under heavy load, not all requests deserve equal treatment. Learn how to implement request prioritization using priority queues and admission control to keep critical traffic flowing smoothly.
+Description: When your Rust service is under heavy load, not all requests deserve equal treatment.
 
 ---
 

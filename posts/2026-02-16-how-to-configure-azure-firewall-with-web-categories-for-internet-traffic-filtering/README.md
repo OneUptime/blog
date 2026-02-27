@@ -1,4 +1,4 @@
-# How to Configure Azure Firewall with Web Categories for Internet Traffic Filtering
+# How to Configure Azure Firewall with Web Categories
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

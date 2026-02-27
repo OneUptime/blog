@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, External Secrets Operator, Security, Secrets Management, HashiCorp Vault
 
-Description: Comprehensive guide to migrating from native Kubernetes Secrets to External Secrets Operator for centralized secrets management with AWS Secrets Manager, Azure Key Vault, Google Secret Manager, or HashiCorp Vault.
+Description: Comprehensive guide to migrating from native Kubernetes Secrets to External Secrets Operator for centralized secrets management with AWS Secrets Manager, Azure Key Vault, Google Secret Manager.
 
 ---
 

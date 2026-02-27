@@ -1,4 +1,4 @@
-# How to Instrument Webhook Delivery and Retry Pipelines for SaaS Integrations with OpenTelemetry
+# How to Instrument Webhook Delivery and Retry Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

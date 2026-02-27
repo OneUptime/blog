@@ -1,4 +1,4 @@
-# How to Organize Azure Subscriptions and Management Groups for Enterprise Governance
+# How to Organize Azure Subscriptions and Management Groups
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

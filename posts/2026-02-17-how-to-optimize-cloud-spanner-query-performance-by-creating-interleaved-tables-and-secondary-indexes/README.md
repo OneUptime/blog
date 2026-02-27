@@ -1,4 +1,4 @@
-# How to Optimize Cloud Spanner Query Performance by Creating Interleaved Tables and Secondary Indexes
+# How to Optimize Cloud Spanner Query Performance by Creating Interleaved Tables
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

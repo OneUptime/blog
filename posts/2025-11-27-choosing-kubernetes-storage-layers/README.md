@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, Ceph, Bare Metal, Cloud, DevOps
 
-Description: A decision guide to the most common Kubernetes storage layers-Ceph/Rook, Longhorn, OpenEBS, Portworx, and cloud block/file services-covering architecture, failure modes, performance profiles, and how to match them to your workloads.
+Description: A decision guide to the most common Kubernetes storage layers-Ceph/Rook, Longhorn, OpenEBS, Portworx, and cloud block/file services-covering architecture, failure modes, performance profiles.
 
 ---
 

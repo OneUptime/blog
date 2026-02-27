@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: MongoDB, Query Profiling, Database Performance, Slow Queries, Database Optimization
 
-Description: A comprehensive guide to configuring MongoDB query profiling, covering profiling levels, threshold settings, filtering options, production strategies, and analyzing profiler output to identify and fix slow queries.
+Description: A comprehensive guide to configuring MongoDB query profiling, covering profiling levels, threshold settings, filtering options, production strategies.
 
 ---
 

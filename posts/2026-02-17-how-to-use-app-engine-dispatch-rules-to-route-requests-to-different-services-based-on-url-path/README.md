@@ -1,4 +1,4 @@
-# How to Use App Engine Dispatch Rules to Route Requests to Different Services Based on URL Path
+# How to Use App Engine Dispatch Rules to Route Requests to Different Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

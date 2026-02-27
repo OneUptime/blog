@@ -1,4 +1,4 @@
-# How to Create Microsoft Sentinel Analytics Rules to Detect Suspicious Sign-In Patterns
+# Create Microsoft Sentinel Analytics Rules to Detect Suspicious Sign-In Patterns
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

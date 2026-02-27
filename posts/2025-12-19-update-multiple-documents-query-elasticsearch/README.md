@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Update By Query, Bulk Operations, Painless Script, Data Management
 
-Description: Learn how to update multiple documents in Elasticsearch using the Update By Query API. This guide covers query syntax, Painless scripting, conflict handling, and performance optimization for batch updates.
+Description: Learn how to update multiple documents in Elasticsearch using the Update By Query API.
 
 The Update By Query API allows you to update multiple documents that match a query in a single operation. This is essential for bulk data modifications, schema migrations, and maintaining data consistency.
 

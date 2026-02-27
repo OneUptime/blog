@@ -1,4 +1,4 @@
-# How to Set Up Multi-Region Synthetic Health Checks Using Distributed OpenTelemetry Collectors
+# How to Set Up Multi-Region Synthetic Health Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

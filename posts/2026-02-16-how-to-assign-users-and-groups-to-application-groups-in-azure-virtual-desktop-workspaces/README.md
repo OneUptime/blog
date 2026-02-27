@@ -1,4 +1,4 @@
-# How to Assign Users and Groups to Application Groups in Azure Virtual Desktop Workspaces
+# How to Assign Users and Groups to Application Groups
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

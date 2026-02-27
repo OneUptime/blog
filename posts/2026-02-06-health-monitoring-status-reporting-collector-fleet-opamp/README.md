@@ -1,4 +1,4 @@
-# How to Implement Health Monitoring and Status Reporting for a Distributed Collector Fleet with OpAMP
+# How to Use Health Monitoring and Status Reporting for a Distributed Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

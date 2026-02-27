@@ -1,4 +1,4 @@
-# How to Build a Quarkus Native Application and Deploy It to Cloud Run with Minimal Cold Start
+# How to Build a Quarkus Native Application and Deploy It to Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CoreDNS, DNS, Configuration
 
-Description: Learn how to configure CoreDNS fallthrough behavior to handle unresolved DNS queries properly, ensuring queries pass through plugin chains correctly and external resolution works as expected in Kubernetes.
+Description: Learn how to configure CoreDNS fallthrough behavior to handle unresolved DNS queries properly.
 
 ---
 

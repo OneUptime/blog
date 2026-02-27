@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OAuth2, PKCE, Authentication, Security
 
-Description: A comprehensive, step-by-step guide to implementing PKCE (Proof Key for Code Exchange) in your applications. Learn the cryptographic foundations, build implementations for web, mobile, and backend services, and follow security best practices.
+Description: A comprehensive, step-by-step guide to implementing PKCE (Proof Key for Code Exchange) in your applications.
 
 ---
 

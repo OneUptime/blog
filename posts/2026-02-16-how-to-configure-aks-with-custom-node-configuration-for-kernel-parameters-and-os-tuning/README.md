@@ -1,4 +1,4 @@
-# How to Configure AKS with Custom Node Configuration for Kernel Parameters and OS Tuning
+# How to Configure AKS with Custom Node Configuration for Kernel Parameters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

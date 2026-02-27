@@ -1,4 +1,4 @@
-# How to Set Up GKE Fleet Management to Manage Multiple Clusters from a Central Hub
+# Set Up GKE Fleet Management to Manage Multiple Clusters from a Central Hub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

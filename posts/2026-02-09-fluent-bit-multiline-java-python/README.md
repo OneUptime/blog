@@ -1,4 +1,4 @@
-# How to Configure Fluent Bit Multiline Parsers for Java and Python Exception Logs in Kubernetes
+# How to Configure Fluent Bit Multiline Parsers for Java and Python Exception Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: JSON:API, REST API, API Design, Backend Development, Node.js, Python, API Specification, Web Services
 
-Description: Learn how to implement the JSON:API specification in your backend services. This guide covers the complete structure, relationships, pagination, filtering, and error handling with production-ready code examples.
+Description: Learn how to implement the JSON:API specification in your backend services.
 
 ---
 

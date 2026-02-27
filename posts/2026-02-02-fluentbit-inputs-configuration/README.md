@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Fluent Bit, Log Collection, Observability, DevOps, Kubernetes, Monitoring, Logging
 
-Description: A comprehensive guide to configuring Fluent Bit input plugins for collecting logs, metrics, and events from various sources. Learn how to set up tail, systemd, forward, and other inputs for production logging pipelines.
+Description: A comprehensive guide to configuring Fluent Bit input plugins for collecting logs, metrics, and events from various sources.
 
 ---
 

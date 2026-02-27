@@ -1,4 +1,4 @@
-# How to Set Up Node Auto-Provisioning in GKE to Automatically Create Optimal Node Pools
+# Set Up Node Auto-Provisioning in GKE to Automatically Create Optimal Node Pools
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

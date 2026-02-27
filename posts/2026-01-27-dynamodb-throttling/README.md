@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, Throttling, Performance, Scalability, NoSQL, Observability
 
-Description: A comprehensive guide to understanding, preventing, and handling DynamoDB throttling. Learn about partition key design, exponential backoff, burst capacity, and monitoring strategies to keep your applications running smoothly.
+Description: A comprehensive guide to understanding, preventing, and handling DynamoDB throttling.
 
 ---
 

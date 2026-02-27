@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, OPA Gatekeeper, Policy Engine, Constraint Framework, Sync
 
-Description: Learn how to configure OPA Gatekeeper sync to replicate Kubernetes resources into OPA cache, enabling policies that reference multiple resources, perform lookups, and enforce cross-resource constraints.
+Description: Learn how to configure OPA Gatekeeper sync to replicate Kubernetes resources into OPA cache, enabling policies that reference multiple resources, perform lookups.
 
 ---
 

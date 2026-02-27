@@ -1,10 +1,10 @@
-# How to Implement Kubernetes Namespace Resource Quotas for Multi-Team Production Clusters
+# Use Kubernetes Namespace Resource Quotas for Multi-Team Production Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Resource Quotas, Multi-Tenancy, Namespaces
 
-Description: Implement namespace resource quotas that prevent resource monopolization in multi-team Kubernetes clusters, ensuring fair allocation and preventing individual teams from impacting cluster-wide availability.
+Description: Implement namespace resource quotas that prevent resource monopolization in multi-team Kubernetes clusters.
 
 ---
 

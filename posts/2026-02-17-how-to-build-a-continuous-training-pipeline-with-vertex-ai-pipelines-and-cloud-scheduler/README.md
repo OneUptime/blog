@@ -1,4 +1,4 @@
-# How to Build a Continuous Training Pipeline with Vertex AI Pipelines and Cloud Scheduler
+# How to Build a Continuous Training Pipeline with Vertex AI Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

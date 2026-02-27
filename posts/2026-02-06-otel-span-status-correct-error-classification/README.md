@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Span Status (Unset, Ok, Error) Correctly for Accurate Error Classification
+# How to Use OpenTelemetry Span Status Correctly for Accurate Error Classification
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

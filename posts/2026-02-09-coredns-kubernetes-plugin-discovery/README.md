@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CoreDNS, Service Discovery, DNS
 
-Description: Learn how to configure the CoreDNS kubernetes plugin for advanced service discovery patterns, enabling custom endpoint resolution, pod-based discovery, and flexible DNS naming schemes in Kubernetes clusters.
+Description: Learn how to configure the CoreDNS kubernetes plugin for advanced service discovery patterns, enabling custom endpoint resolution, pod-based discovery.
 
 ---
 

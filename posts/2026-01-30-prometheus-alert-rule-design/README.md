@@ -809,9 +809,9 @@ Start with a small set of high-quality alerts. Add new alerts only when an incid
 
 ## Related Resources
 
-- [SRE Metrics Worth Tracking](/blog/post/2025-11-28-sre-metrics-to-track)
-- [Monitoring vs Observability](/blog/post/2025-11-28-monitoring-vs-observability-sre)
-- [What is Site Reliability Engineering](/blog/post/2025-11-28-what-is-site-reliability-engineering)
+- [SRE Metrics Worth Tracking](https://oneuptime.com/blog/post/2025-11-28-sre-metrics-to-track/view)
+- [Monitoring vs Observability](https://oneuptime.com/blog/post/2025-11-28-monitoring-vs-observability-sre/view)
+- [What is Site Reliability Engineering](https://oneuptime.com/blog/post/2025-11-28-what-is-site-reliability-engineering/view)
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Detect and Reclaim Idle Kubernetes Resources Using Kubecost Allocation APIs
+# How to Detect and Reclaim Idle Kubernetes Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

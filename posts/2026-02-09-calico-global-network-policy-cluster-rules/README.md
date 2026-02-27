@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Calico, Security
 
-Description: Implement Calico GlobalNetworkPolicy resources to enforce cluster-wide network security rules across all namespaces, establishing baseline security controls and managing cross-namespace traffic with centralized policy management.
+Description: Implement Calico GlobalNetworkPolicy resources to enforce cluster-wide network security rules across all namespaces.
 
 ---
 

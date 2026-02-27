@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry Sampling Strategies to Reduce Cost on Google Cloud
+# How to Configure OpenTelemetry Sampling Strategies to Reduce Cost
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

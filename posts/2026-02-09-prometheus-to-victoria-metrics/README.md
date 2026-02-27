@@ -1,4 +1,4 @@
-# How to Migrate Monitoring Stacks from Prometheus to Victoria Metrics on Kubernetes
+# How to Migrate Monitoring Stacks from Prometheus to Victoria Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Exemplars, Tracing, OpenTelemetry, Metrics, Observability, Grafana, Correlation
 
-Description: Learn how to implement exemplars in Prometheus to connect metrics with traces. This guide covers enabling exemplars, instrumenting applications, and using Grafana to navigate from metrics to specific trace data.
+Description: Learn how to implement exemplars in Prometheus to connect metrics with traces.
 
 ---
 

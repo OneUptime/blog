@@ -1,4 +1,4 @@
-# How to Set Up Automated Idle Resource Detection and Cleanup on GCP Using Recommender and Cloud Scheduler
+# How to Set Up Automated Idle Resource Detection and Cleanup on GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

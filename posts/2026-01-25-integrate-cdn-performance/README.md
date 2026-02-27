@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CDN, Performance, Caching, CloudFlare, AWS CloudFront, Web Performance, Frontend, Infrastructure
 
-Description: Learn how to integrate a Content Delivery Network (CDN) to improve your application's performance. This guide covers CDN configuration, cache headers, cache invalidation, and best practices for static and dynamic content.
+Description: Learn how to integrate a Content Delivery Network (CDN) to improve your application's performance.
 
 ---
 

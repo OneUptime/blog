@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, Deadlock, Async, Threading, Concurrency, Troubleshooting
 
-Description: Learn how to identify, diagnose, and fix deadlock issues in C# applications. This guide covers common deadlock patterns, async/await pitfalls, database deadlocks, and strategies for writing deadlock-free code.
+Description: Learn how to identify, diagnose, and fix deadlock issues in C# applications.
 
 Deadlocks are among the most frustrating issues to debug in C# applications. They cause applications to hang indefinitely, often without clear error messages. This guide will help you understand, diagnose, and fix deadlock issues in your .NET applications.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Fraud Detection, Real-Time Analytics, Pattern Matching, Security, Financial Data
 
-Description: A comprehensive guide to building a real-time fraud detection system with ClickHouse, covering transaction monitoring, pattern detection, velocity checks, anomaly scoring, and alert generation for financial and e-commerce applications.
+Description: A comprehensive guide to building a real-time fraud detection system with ClickHouse, covering transaction monitoring, pattern detection, velocity checks, anomaly scoring.
 
 ---
 

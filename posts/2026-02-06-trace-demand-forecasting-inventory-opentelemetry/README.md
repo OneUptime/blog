@@ -1,4 +1,4 @@
-# How to Trace Demand Forecasting and Inventory Replenishment Pipelines with OpenTelemetry
+# How to Trace Demand Forecasting and Inventory Replenishment Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

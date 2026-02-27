@@ -1,4 +1,4 @@
-# How to Use IAM Policy Troubleshooter to Debug Access Denied Errors in Google Cloud
+# How to Use IAM Policy Troubleshooter to Debug Access Denied Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

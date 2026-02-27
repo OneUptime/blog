@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: K3s, Edge Computing, Kubernetes, IoT, ARM, Raspberry Pi
 
-Description: A practical guide to deploying K3s, the lightweight Kubernetes distribution, on edge devices. Learn installation, configuration, and management techniques for resource-constrained environments like Raspberry Pi and ARM-based devices.
+Description: A practical guide to deploying K3s, the lightweight Kubernetes distribution, on edge devices.
 
 ---
 

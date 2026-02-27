@@ -1,4 +1,4 @@
-# How to Build a Fan-Out Pipeline That Sends Traces to Multiple Backends Simultaneously for Backend Comparison
+# How to Build a Fan-Out Pipeline That Sends Traces to Multi Backends
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

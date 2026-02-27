@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, NFS, DevOps, Bare Metal, Self-Hosting
 
-Description: A practical guide to connecting your NAS (Synology, QNAP, TrueNAS, or any NFS/SMB/iSCSI server) to Kubernetes clusters. Learn how to provision persistent volumes, set up dynamic provisioning with CSI drivers, and avoid common pitfalls.
+Description: A practical guide to connecting your NAS (Synology, QNAP, TrueNAS, or any NFS/SMB/iSCSI server) to Kubernetes clusters.
 
 ---
 

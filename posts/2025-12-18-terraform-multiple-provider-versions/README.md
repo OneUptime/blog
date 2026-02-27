@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Providers, Infrastructure as Code, DevOps, Configuration Management
 
-Description: Learn how to configure and manage multiple versions of the same Terraform provider in a single configuration. This guide covers provider aliases, version constraints, and practical use cases for multi-version setups.
+Description: Learn how to configure and manage multiple versions of the same Terraform provider in a single configuration.
 
 Managing infrastructure often requires working with multiple AWS accounts, different Azure subscriptions, or even different versions of the same provider. Terraform's provider aliasing system allows you to configure multiple instances of the same provider with different settings or versions, enabling complex multi-account and multi-region deployments.
 

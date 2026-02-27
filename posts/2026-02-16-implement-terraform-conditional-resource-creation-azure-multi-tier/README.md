@@ -1,4 +1,4 @@
-# How to Implement Terraform Conditional Resource Creation for Azure Multi-Tier Architectures
+# Use Terraform Conditional Resource Creation for Azure Multi-Tier Architectures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

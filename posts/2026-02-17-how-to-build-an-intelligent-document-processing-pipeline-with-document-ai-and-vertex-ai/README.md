@@ -1,4 +1,4 @@
-# How to Build an Intelligent Document Processing Pipeline with Document AI and Vertex AI
+# How to Build an Intelligent Document Processing Pipeline with Document AI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Trace Inventory Reservation and Stock Level Updates Across Warehouse Microservices with OpenTelemetry
+# How to Trace Inventory Reservation and Stock Level Updates Across Warehouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Monitoring, Observability, Metrics, Performance, Operations
 
-Description: Learn how to set up comprehensive monitoring for Elasticsearch clusters, covering built-in monitoring, Prometheus integration, key metrics to track, and alerting strategies for production environments.
+Description: Learn how to set up comprehensive monitoring for Elasticsearch clusters, covering built-in monitoring, Prometheus integration, key metrics to track.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Create an OpenTelemetry Migration Playbook for Transitioning from Proprietary APM Tools
+# How to Create an OpenTelemetry Migration Playbook for Transitioning from
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

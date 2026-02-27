@@ -1,10 +1,10 @@
-# How to Configure CoreDNS Custom Forward Zones for Split-Horizon DNS in Kubernetes
+# How to Configure CoreDNS Custom Forward Zones for Split-Horizon DNS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CoreDNS, DNS, Networking
 
-Description: Learn how to configure CoreDNS custom forward zones to implement split-horizon DNS in Kubernetes clusters, enabling different DNS responses for internal and external clients with zone-specific forwarding rules.
+Description: Learn how to configure CoreDNS custom forward zones to implement split-horizon DNS in Kubernetes clusters.
 
 ---
 

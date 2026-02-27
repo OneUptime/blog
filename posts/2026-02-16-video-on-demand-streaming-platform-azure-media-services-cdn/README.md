@@ -1,4 +1,4 @@
-# How to Build a Video-on-Demand Streaming Platform with Azure Media Services and Azure CDN
+# How to Build a Video-on-Demand Streaming Platform with Azure Media Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

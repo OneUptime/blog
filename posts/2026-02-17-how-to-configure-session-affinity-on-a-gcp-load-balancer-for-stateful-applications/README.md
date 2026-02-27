@@ -1,4 +1,4 @@
-# How to Configure Session Affinity on a GCP Load Balancer for Stateful Applications
+# How to Configure Session Affinity on a GCP Load Balancer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

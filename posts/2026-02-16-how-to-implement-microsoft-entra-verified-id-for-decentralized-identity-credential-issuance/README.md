@@ -1,4 +1,4 @@
-# How to Implement Microsoft Entra Verified ID for Decentralized Identity Credential Issuance
+# How to Use Microsoft Entra Verified ID
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

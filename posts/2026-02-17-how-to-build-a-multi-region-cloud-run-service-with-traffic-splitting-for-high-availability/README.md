@@ -1,4 +1,4 @@
-# How to Build a Multi-Region Cloud Run Service with Traffic Splitting for High Availability
+# How to Build a Multi-Region Cloud Run Service with Traffic Splitting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot Data Mismatch Between Tempo and Prometheus When Collector Pipelines Fork Incorrectly
+# How to Troubleshoot Data Mismatch Between Tempo
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

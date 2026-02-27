@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, GKE, Workload Identity, Google Cloud, Kubernetes
 
-Description: A comprehensive guide to deploying Google Kubernetes Engine clusters with Workload Identity using Terraform modules, covering IAM binding, service account mapping, and security best practices for GCP workloads.
+Description: A comprehensive guide to deploying Google Kubernetes Engine clusters with Workload Identity using Terraform modules, covering IAM binding, service account mapping.
 
 ---
 

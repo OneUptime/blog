@@ -1,4 +1,4 @@
-# How to Instrument Push Notification Delivery System (APNS, FCM, Web Push) with OpenTelemetry Delivery Metrics
+# How to Instrument Push Notification Delivery System
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

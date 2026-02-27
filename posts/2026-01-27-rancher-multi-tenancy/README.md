@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Rancher, Multi-Tenancy, DevOps, Security, RBAC, Resource Management
 
-Description: A comprehensive guide to implementing multi-tenancy in Rancher, covering projects and namespaces, resource quotas, network isolation, user management, and best practices for secure, scalable Kubernetes environments.
+Description: A comprehensive guide to implementing multi-tenancy in Rancher, covering projects and namespaces, resource quotas, network isolation, user management, and best practices for secure.
 
 ---
 

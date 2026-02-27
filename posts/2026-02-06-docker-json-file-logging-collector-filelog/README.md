@@ -1,4 +1,4 @@
-# How to Configure the Docker JSON-File Logging Driver with the Collector Filelog Receiver at /var/lib/docker/containers
+# How to Configure the Docker JSON-File Logging Driver with the Collector Filelog
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

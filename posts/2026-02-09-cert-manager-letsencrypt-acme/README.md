@@ -1,4 +1,4 @@
-# How to Deploy cert-manager with Let's Encrypt ACME for Automated TLS Certificates
+# How to Deploy cert-manager with Let's Encrypt ACME
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

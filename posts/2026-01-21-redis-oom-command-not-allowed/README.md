@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Troubleshooting, Memory Management, OOM, Eviction Policies
 
-Description: A comprehensive guide to diagnosing and resolving Redis 'OOM command not allowed when used memory > 'maxmemory'' errors, including memory analysis, eviction policy configuration, and prevention strategies.
+Description: A comprehensive guide to diagnosing and resolving Redis 'OOM command not allowed when used memory > 'maxmemory'' errors, including memory analysis, eviction policy configuration.
 
 ---
 

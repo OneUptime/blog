@@ -1,4 +1,4 @@
-# How to Configure Comprehensive Audit Log Collection and Retention Across a GCP Organization
+# How to Configure Comprehensive Audit Log Collection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

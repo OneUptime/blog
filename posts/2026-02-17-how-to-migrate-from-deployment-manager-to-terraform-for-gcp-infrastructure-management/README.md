@@ -1,4 +1,4 @@
-# How to Migrate from Deployment Manager to Terraform for GCP Infrastructure Management
+# How to Migrate from Deployment Manager to Terraform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

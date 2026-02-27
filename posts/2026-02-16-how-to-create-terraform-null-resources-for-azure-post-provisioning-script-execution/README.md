@@ -1,4 +1,4 @@
-# How to Create Terraform Null Resources for Azure Post-Provisioning Script Execution
+# Create Terraform Null Resources for Azure Post-Provisioning Script Execution
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

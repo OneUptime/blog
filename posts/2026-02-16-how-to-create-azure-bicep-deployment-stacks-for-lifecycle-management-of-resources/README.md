@@ -1,4 +1,4 @@
-# How to Create Azure Bicep Deployment Stacks for Lifecycle Management of Resources
+# How to Create Azure Bicep Deployment Stacks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

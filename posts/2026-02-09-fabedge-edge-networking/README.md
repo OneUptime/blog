@@ -1,10 +1,10 @@
-# How to Deploy FabEdge for Edge-to-Edge Container Networking Across Kubernetes Clusters
+# Deploy FabEdge for Edge-to-Edge Container Networking Across Kubernetes Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Edge Computing, Networking
 
-Description: Learn how to deploy FabEdge to enable direct pod-to-pod communication between edge Kubernetes clusters without hairpin routing through the cloud, reducing latency and bandwidth usage for distributed edge applications.
+Description: Learn how to deploy FabEdge to enable direct pod-to-pod communication between edge Kubernetes clusters without hairpin routing through the cloud.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector to Enrich Logs with Trace Context from the Same Request
+# How to Configure the OpenTelemetry Collector to Enrich Logs with Trace Context
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

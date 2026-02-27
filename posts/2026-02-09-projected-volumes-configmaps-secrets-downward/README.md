@@ -1,10 +1,10 @@
-# How to Configure Projected Volumes to Combine ConfigMaps, Secrets, and Downward API
+# How to Configure Projected Volumes to Combine ConfigMaps, Secrets,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Volumes, ConfigMap, Secrets
 
-Description: Master the use of projected volumes in Kubernetes to combine multiple volume sources including ConfigMaps, Secrets, DownwardAPI, and ServiceAccountToken into a single mounted directory with custom permissions and atomic updates.
+Description: Master the use of projected volumes in Kubernetes to combine multiple volume sources including ConfigMaps, Secrets, DownwardAPI.
 
 ---
 

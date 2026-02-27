@@ -1,4 +1,4 @@
-# How to Debug Flaky Tests Using OpenTelemetry Traces Captured During CI Pipeline Execution
+# How to Debug Flaky Tests Using OpenTelemetry Traces Captured During CI Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

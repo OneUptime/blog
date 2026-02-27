@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Vue.js, Vue Router, Routing, JavaScript, Frontend, SPA, Navigation, Web Development
 
-Description: A comprehensive guide to using Vue Router in Vue.js applications. Learn installation, configuration, dynamic routing, nested routes, navigation guards, route parameters, and best practices for building single-page applications.
+Description: A comprehensive guide to using Vue Router in Vue.js applications.
 
 ---
 

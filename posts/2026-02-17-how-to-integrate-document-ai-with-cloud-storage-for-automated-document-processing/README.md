@@ -1,4 +1,4 @@
-# How to Integrate Document AI with Cloud Storage for Automated Document Processing
+# How to Integrate Document AI with Cloud Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

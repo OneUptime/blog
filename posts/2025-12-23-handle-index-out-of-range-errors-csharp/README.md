@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, IndexOutOfRangeException, Arrays, Collections, Troubleshooting
 
-Description: Learn how to diagnose and prevent IndexOutOfRangeException errors in C# applications. This guide covers array bounds checking, safe collection access patterns, and best practices for writing robust code that handles indices properly.
+Description: Learn how to diagnose and prevent IndexOutOfRangeException errors in C# applications.
 
 The `IndexOutOfRangeException` is a common runtime error that occurs when trying to access an array or collection element using an invalid index. This guide will help you understand why this error occurs and how to prevent it.
 

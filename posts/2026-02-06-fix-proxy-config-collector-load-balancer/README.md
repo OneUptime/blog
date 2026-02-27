@@ -1,4 +1,4 @@
-# How to Fix Proxy Configuration Issues When the Collector Cannot Reach an OTLP Backend Behind a Load Balancer
+# How to Fix Proxy Config Issues When the Collector Cannot Reach an OTLP Backend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

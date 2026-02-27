@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Full-Text Search, Text Analysis, tokenbf_v1, ngrambf_v1, Bloom Filter
 
-Description: A comprehensive guide to implementing full-text search in ClickHouse using tokenbf_v1 and ngrambf_v1 bloom filter indexes, text analysis functions, and optimization techniques for log and document search.
+Description: A comprehensive guide to implementing full-text search in ClickHouse using tokenbf_v1 and ngrambf_v1 bloom filter indexes, text analysis functions.
 
 ---
 

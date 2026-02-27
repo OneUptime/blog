@@ -1,4 +1,4 @@
-# How to Implement Azure Table Storage Operations Using @azure/data-tables in Node.js
+# How to Use Azure Table Storage Operations Using @azure/data-tables in Node.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

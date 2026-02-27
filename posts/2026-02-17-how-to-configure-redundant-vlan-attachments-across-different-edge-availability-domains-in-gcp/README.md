@@ -1,4 +1,4 @@
-# How to Configure Redundant VLAN Attachments Across Different Edge Availability Domains in GCP
+# How to Configure Redundant VLAN Attachments Across Different Edge Availability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

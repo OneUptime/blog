@@ -1,4 +1,4 @@
-# How to Build Automated Incident Severity Classification from OpenTelemetry Signal Patterns
+# How to Build Automated Incident Severity Classification from OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

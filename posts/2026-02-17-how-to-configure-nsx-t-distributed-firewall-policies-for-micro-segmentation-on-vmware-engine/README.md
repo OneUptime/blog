@@ -1,4 +1,4 @@
-# How to Configure NSX-T Distributed Firewall Policies for Micro-Segmentation on VMware Engine
+# How to Configure NSX-T Distributed Firewall Policies for Micro-Segmentation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

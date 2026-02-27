@@ -1,4 +1,4 @@
-# How to Implement Approximate Aggregation Functions in BigQuery for Large Dataset Analysis
+# How to Use Approximate Aggregation Functions in BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

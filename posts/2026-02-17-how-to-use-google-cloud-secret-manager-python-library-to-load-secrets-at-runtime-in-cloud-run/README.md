@@ -1,4 +1,4 @@
-# How to Use the google-cloud-secret-manager Python Library to Load Secrets at Runtime in Cloud Run
+# How to Use the google-cloud-secret-manager Python Library to Load Secrets at
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

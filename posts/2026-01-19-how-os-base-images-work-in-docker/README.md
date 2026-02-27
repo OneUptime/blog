@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Containers, Linux, DevOps, Virtualization, Ubuntu, Base Images
 
-Description: A deep dive into how OS base images like Ubuntu work in Docker containers. Learn why containers share the host kernel, how they differ from VMs, why they're so efficient, and how many you can theoretically run on a single machine.
+Description: A deep dive into how OS base images like Ubuntu work in Docker containers.
 
 ---
 

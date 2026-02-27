@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Sentinel Incident Investigation with Entity Behavior Analytics (UEBA)
+# How to Set Up Microsoft Sentinel Incident Investigation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

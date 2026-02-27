@@ -1,4 +1,4 @@
-# How to Implement Azure Managed Grafana Dashboards with Power BI Dataset Integration for Hybrid Monitoring
+# How to Use Azure Managed Grafana Dashboards with Power BI Dataset Integration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

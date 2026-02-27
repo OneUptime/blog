@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TimescaleDB, Multi-Tenancy, PostgreSQL, Time-Series, Database Architecture, SaaS
 
-Description: Learn how to implement multi-tenancy in TimescaleDB for SaaS applications. Covers shared schema, schema-per-tenant, and database-per-tenant patterns with practical examples, performance considerations, and data isolation strategies.
+Description: Learn how to implement multi-tenancy in TimescaleDB for SaaS applications.
 
 ---
 

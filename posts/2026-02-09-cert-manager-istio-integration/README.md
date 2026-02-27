@@ -1,4 +1,4 @@
-# How to Use cert-manager Istio Integration for Service Mesh Certificate Management
+# How to Use cert-manager Istio Integration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

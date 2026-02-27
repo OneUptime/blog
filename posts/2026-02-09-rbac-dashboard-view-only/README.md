@@ -1,4 +1,4 @@
-# How to Build RBAC Roles for Kubernetes Dashboard Users with View-Only Permissions
+# Build RBAC Roles for Kubernetes Dashboard Users with View-Only Permissions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

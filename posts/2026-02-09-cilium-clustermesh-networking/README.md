@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Cilium, Multi-Cluster, Networking, Service Mesh
 
-Description: Implement Cilium ClusterMesh for seamless multi-cluster networking including setup, service discovery across clusters, global services, network policy enforcement, and troubleshooting connectivity issues.
+Description: Implement Cilium ClusterMesh for seamless multi-cluster networking including setup, service discovery across clusters, global services, network policy enforcement.
 
 ---
 

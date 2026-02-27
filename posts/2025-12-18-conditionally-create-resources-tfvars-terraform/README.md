@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, DevOps, Conditional Resources, Configuration Management
 
-Description: Learn how to conditionally create Terraform resources based on values in .tfvars files. This guide covers count-based conditionals, for_each patterns, and dynamic blocks for flexible infrastructure deployment.
+Description: Learn how to conditionally create Terraform resources based on values in .tfvars files.
 
 Terraform's power lies in its ability to adapt infrastructure based on configuration. By using variables defined in .tfvars files, you can control which resources get created, making your infrastructure code flexible across different environments, use cases, and deployment scenarios.
 

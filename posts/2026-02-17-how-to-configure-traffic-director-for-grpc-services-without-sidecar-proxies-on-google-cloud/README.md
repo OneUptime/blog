@@ -1,4 +1,4 @@
-# How to Configure Traffic Director for gRPC Services Without Sidecar Proxies on Google Cloud
+# How to Configure Traffic Director for gRPC Services Without Sidecar Proxies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

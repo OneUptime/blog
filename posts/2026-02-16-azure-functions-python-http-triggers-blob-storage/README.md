@@ -1,4 +1,4 @@
-# How to Create Azure Functions in Python with HTTP Triggers and Blob Storage Bindings
+# How to Create Azure Functions in Python with HTTP Triggers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Dependency Injection, Bean Configuration, Troubleshooting, Error Handling
 
-Description: Learn how to diagnose and fix the 'Failed to instantiate' errors in Spring Boot applications. This guide covers common causes including missing dependencies, circular references, constructor issues, and configuration problems with practical solutions.
+Description: Learn how to diagnose and fix the 'Failed to instantiate' errors in Spring Boot applications.
 
 ---
 

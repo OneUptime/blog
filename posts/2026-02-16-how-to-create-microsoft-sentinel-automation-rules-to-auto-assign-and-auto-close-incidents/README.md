@@ -1,4 +1,4 @@
-# How to Create Microsoft Sentinel Automation Rules to Auto-Assign and Auto-Close Incidents
+# How to Create Microsoft Sentinel Automation Rules to Auto-Assign
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

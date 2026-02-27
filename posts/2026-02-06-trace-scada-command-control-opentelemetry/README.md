@@ -1,4 +1,4 @@
-# How to Trace SCADA System Command and Control Flows with OpenTelemetry While Maintaining Air-Gap Security
+# How to Trace SCADA System Command and Control Flows with OpenTelemetry While
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

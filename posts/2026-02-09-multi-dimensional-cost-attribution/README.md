@@ -1,10 +1,10 @@
-# How to Implement Multi-Dimensional Cost Attribution for Shared Kubernetes Platform Services
+# How to Use Multi-Dimensional Cost Attribution
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: FinOps, Cost Attribution, Kubernetes, Shared Services, Chargeback
 
-Description: Implement sophisticated multi-dimensional cost attribution models that fairly allocate shared platform service costs like ingress controllers, monitoring, and service meshes across consuming teams based on usage metrics.
+Description: Implement sophisticated multi-dimensional cost attribution models that fairly allocate shared platform service costs like ingress controllers, monitoring.
 
 ---
 

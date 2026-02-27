@@ -1,4 +1,4 @@
-# How to Build an IoT Telemetry Pipeline on Google Cloud Using Pub/Sub and Dataflow After IoT Core Retirement
+# How to Build an IoT Telemetry Pipeline on Google Cloud Using Pub/Sub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

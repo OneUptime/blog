@@ -1,4 +1,4 @@
-# How to Fix Auto-Instrumentation Init Container Failing in Istio Service Mesh Due to Sidecar Ordering
+# How to Fix Auto-Instrumentation Init Container Failing in Istio Service Mesh
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

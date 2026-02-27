@@ -1,4 +1,4 @@
-# How to Troubleshoot Missing Resource Attributes When the Resource Detection Processor Cannot Read Container Metadata
+# How to Troubleshoot Missing Resource Attributes When the Resource Detection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

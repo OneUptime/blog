@@ -1,4 +1,4 @@
-# How to Configure Azure Automation Desired State Configuration for Server Compliance
+# How to Configure Azure Automation Desired State Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

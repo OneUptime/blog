@@ -1,4 +1,4 @@
-# How to Set Up AKS Confidential Containers with AMD SEV-SNP Encrypted Virtual Machines
+# Set Up AKS Confidential Containers with AMD SEV-SNP Encrypted Virtual Machines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

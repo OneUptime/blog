@@ -1,4 +1,4 @@
-# How to Use the google-cloud-translate Python Library to Build a Translation Microservice on Cloud Run
+# How to Use the google-cloud-translate Python Library to Build a Translation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

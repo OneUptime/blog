@@ -1,4 +1,4 @@
-# How to Build a Streaming File Upload API with Express.js and Cloud Storage on Cloud Run
+# How to Build a Streaming File Upload API with Express.js and Cloud Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

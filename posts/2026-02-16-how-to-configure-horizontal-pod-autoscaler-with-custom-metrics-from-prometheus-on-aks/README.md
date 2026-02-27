@@ -1,4 +1,4 @@
-# How to Configure Horizontal Pod Autoscaler with Custom Metrics from Prometheus on AKS
+# How to Configure Horizontal Pod Autoscaler with Custom Metrics from Prometheus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Monitor Cryptocurrency Exchange Order Book and Matching Engine with OpenTelemetry Metrics
+# How to Monitor Cryptocurrency Exchange Order Book and Matching Engine
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

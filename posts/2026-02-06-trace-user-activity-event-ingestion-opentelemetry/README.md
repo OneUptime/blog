@@ -1,4 +1,4 @@
-# How to Trace User Activity Tracking and Event Ingestion Pipelines with OpenTelemetry for Analytics
+# How to Trace User Activity Tracking and Event Ingestion Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

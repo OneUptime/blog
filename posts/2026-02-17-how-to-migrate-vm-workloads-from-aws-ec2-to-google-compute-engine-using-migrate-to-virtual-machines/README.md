@@ -1,4 +1,4 @@
-# How to Migrate VM Workloads from AWS EC2 to Google Compute Engine Using Migrate to Virtual Machines
+# How to Migrate VM Workloads from AWS EC2 to Google Compute Engine
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

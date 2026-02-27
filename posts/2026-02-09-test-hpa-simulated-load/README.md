@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Testing, Autoscaling
 
-Description: Learn how to systematically test Kubernetes Horizontal Pod Autoscaler configurations using simulated load patterns to verify scaling behavior, response times, and resource efficiency before production deployment.
+Description: Learn how to systematically test Kubernetes Horizontal Pod Autoscaler configurations using simulated load patterns to verify scaling behavior, response times.
 
 ---
 

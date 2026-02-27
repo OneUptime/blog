@@ -1,4 +1,4 @@
-# How to Build a Terraform Module for Firestore Databases with Security Rules and Composite Indexes
+# How to Build a Terraform Module for Firestore Databases with Security Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

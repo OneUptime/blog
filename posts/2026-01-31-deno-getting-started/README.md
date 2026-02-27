@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Deno, TypeScript, JavaScript, Runtime
 
-Description: A comprehensive guide to getting started with Deno runtime, covering installation, project setup, module system, permissions, TypeScript support, and practical examples for building modern applications.
+Description: A comprehensive guide to getting started with Deno runtime, covering installation, project setup, module system, permissions, TypeScript support.
 
 ---
 

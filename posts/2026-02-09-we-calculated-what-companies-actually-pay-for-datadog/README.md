@@ -1,4 +1,4 @@
-# We Calculated What Companies Actually Pay for Datadog (It's Worse Than You Think)
+# We Calculated What Companies Actually Pay for Datadog
 
 Author: [mallersjamie](https://www.github.com/mallersjamie)
 

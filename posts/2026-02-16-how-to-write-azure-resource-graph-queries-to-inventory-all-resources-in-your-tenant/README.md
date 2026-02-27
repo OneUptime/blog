@@ -1,4 +1,4 @@
-# How to Write Azure Resource Graph Queries to Inventory All Resources in Your Tenant
+# How to Write Azure Resource Graph Queries to Inventory All Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

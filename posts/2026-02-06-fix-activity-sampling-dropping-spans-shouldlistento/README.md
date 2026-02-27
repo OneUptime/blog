@@ -1,4 +1,4 @@
-# How to Fix Activity Sampling Dropping All Spans When ActivityListener.ShouldListenTo Returns False
+# How to Fix Activity Sampling Dropping All Spans When
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

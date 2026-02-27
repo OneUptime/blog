@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Runbook, Troubleshooting
 
-Description: A step-by-step operational runbook for diagnosing and fixing an ArgoCD application controller that has stopped processing applications, covering resource exhaustion, leader election, and connectivity issues.
+Description: A step-by-step operational runbook for diagnosing and fixing an ArgoCD application controller that has stopped processing applications, covering resource exhaustion, leader election.
 
 ---
 

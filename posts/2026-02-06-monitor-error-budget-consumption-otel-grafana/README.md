@@ -1,4 +1,4 @@
-# How to Monitor Error Budget Consumption Rate in Real Time with OpenTelemetry Metrics and Grafana
+# How to Monitor Error Budget Consumption Rate in Real Time
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby, Rails, Concerns, Code Organization, DRY, Modules
 
-Description: Learn how to use Rails Concerns to organize your code effectively. This guide covers extracting shared behavior, creating reusable modules, and best practices for maintaining clean, DRY Rails applications.
+Description: Learn how to use Rails Concerns to organize your code effectively.
 
 ---
 

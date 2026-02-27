@@ -1,4 +1,4 @@
-# How to Ingest Real-Time IoT Hub Telemetry into Azure Digital Twins Using Azure Functions
+# How to Ingest Real-Time IoT Hub Telemetry into Azure Digital Twins
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

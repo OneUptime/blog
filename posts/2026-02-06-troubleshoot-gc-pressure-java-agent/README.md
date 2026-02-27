@@ -1,4 +1,4 @@
-# How to Troubleshoot High GC Pressure and p99 Latency Spikes Caused by OpenTelemetry Java Agent Span Allocation
+# How to Troubleshoot High GC Pressure and p99 Latency Spikes Caused by
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build Azure Virtual Network Peering with Terraform Across Multiple Subscriptions
+# How to Build Azure Virtual Network Peering
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

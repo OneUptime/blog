@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Services, Networking, Troubleshooting, Load Balancing
 
-Description: Diagnose and fix Kubernetes service routing failures including misconfigured selectors, endpoint issues, network policy blocks, and kube-proxy problems that prevent services from reaching backend pods.
+Description: Diagnose and fix Kubernetes service routing failures including misconfigured selectors, endpoint issues, network policy blocks.
 
 ---
 

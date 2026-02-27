@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Kubernetes, Replication, PgBouncer, Performance
 
-Description: Learn how to configure PostgreSQL streaming replication with PgBouncer connection pooling on Kubernetes, implementing high-performance database architecture with read scalability and connection management.
+Description: Learn how to configure PostgreSQL streaming replication with PgBouncer connection pooling on Kubernetes.
 
 ---
 

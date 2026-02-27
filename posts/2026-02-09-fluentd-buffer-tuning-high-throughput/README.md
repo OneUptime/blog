@@ -1,4 +1,4 @@
-# How to Configure Fluentd Buffer Tuning for High-Throughput Kubernetes Log Collection
+# Configure Fluentd Buffer Tuning for High-Throughput Kubernetes Log Collection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

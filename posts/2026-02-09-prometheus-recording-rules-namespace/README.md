@@ -1,4 +1,4 @@
-# How to Create Prometheus Recording Rules for Kubernetes Namespace-Level Aggregations
+# Create Prometheus Recording Rules for Kubernetes Namespace-Level Aggregations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

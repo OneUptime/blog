@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: NodeJS, Dependency Injection, Architecture, Testing, TypeScript
 
-Description: Learn how to implement dependency injection in Node.js applications to build testable, maintainable code. This guide covers manual DI patterns, containers, and practical examples with Express and TypeScript.
+Description: Learn how to implement dependency injection in Node.js applications to build testable, maintainable code.
 
 ---
 

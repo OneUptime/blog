@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, TPL Dataflow, Batch Processing, Parallel Processing
 
-Description: Learn how to build efficient batch processing pipelines in .NET using TPL Dataflow. This guide covers dataflow blocks, linking strategies, throttling, error handling, and real-world patterns for processing large datasets.
+Description: Learn how to build efficient batch processing pipelines in .NET using TPL Dataflow.
 
 ---
 

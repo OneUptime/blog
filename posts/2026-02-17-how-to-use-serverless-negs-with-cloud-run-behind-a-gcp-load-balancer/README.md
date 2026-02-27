@@ -1,4 +1,4 @@
-# How to Use Serverless Network Endpoint Groups with Cloud Run Behind a GCP Load Balancer
+# Use Serverless Network Endpoint Groups with Cloud Run Behind a GCP Load Balancer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

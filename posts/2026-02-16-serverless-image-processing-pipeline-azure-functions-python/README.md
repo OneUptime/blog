@@ -1,4 +1,4 @@
-# How to Build a Serverless Image Processing Pipeline with Azure Functions in Python
+# How to Build a Serverless Image Processing Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

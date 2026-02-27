@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HashiCorp Vault, Transit Secrets Engine, Encryption, Data Protection, Security, Key Management
 
-Description: A practical guide to implementing HashiCorp Vault's Transit Secrets Engine for encryption as a service. Learn how to encrypt, decrypt, sign, and verify data without managing encryption keys in your applications.
+Description: A practical guide to implementing HashiCorp Vault's Transit Secrets Engine for encryption as a service.
 
 ---
 

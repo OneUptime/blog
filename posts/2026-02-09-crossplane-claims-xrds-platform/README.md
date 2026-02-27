@@ -1,4 +1,4 @@
-# How to Configure Crossplane Claims and XRDs for Platform Team Kubernetes Abstractions
+# How to Configure Crossplane Claims and XRDs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

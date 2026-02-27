@@ -1,4 +1,4 @@
-# How to Configure Linkerd Service Profiles for Per-Route Retry Budgets in Kubernetes
+# How to Configure Linkerd Service Profiles for Per-Route Retry Budgets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Fraud Detection Observability Pipeline Using OpenTelemetry Kafka Spans and Risk Score Attributes
+# How to Build a Fraud Detection Observability Pipeline Using OpenTelemetry Kafka
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

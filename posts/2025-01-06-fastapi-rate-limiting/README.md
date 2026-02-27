@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, FastAPI, Rate Limiting, API Security, Sliding Window, Performance
 
-Description: Learn how to implement rate limiting in FastAPI using sliding window algorithms without relying on Redis or external services. This guide covers token bucket, sliding window, and adaptive rate limiting patterns.
+Description: Learn how to implement rate limiting in FastAPI using sliding window algorithms without relying on Redis or external services.
 
 ---
 

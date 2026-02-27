@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CQRS, TypeScript, Architecture, Design Patterns, Node.js, Event-Driven, Backend
 
-Description: A practical guide to implementing the Command Query Responsibility Segregation (CQRS) pattern in TypeScript. Learn how to separate read and write operations for better scalability, maintainability, and performance.
+Description: A practical guide to implementing the Command Query Responsibility Segregation (CQRS) pattern in TypeScript.
 
 ---
 

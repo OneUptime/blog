@@ -1,4 +1,4 @@
-# How to Implement Database Schema Migrations in CI/CD Pipelines for Cloud SQL Using Cloud Build
+# How to Use Database Schema Migrations in CI/CD Pipelines for Cloud SQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

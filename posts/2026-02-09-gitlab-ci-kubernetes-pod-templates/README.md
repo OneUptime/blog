@@ -1,4 +1,4 @@
-# How to Configure GitLab CI Runners to Use Kubernetes Pod Templates for Custom Build Environments
+# How to Configure GitLab CI Runners to Use Kubernetes Pod Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

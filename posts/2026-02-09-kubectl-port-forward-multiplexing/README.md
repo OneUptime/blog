@@ -1,4 +1,4 @@
-# How to Implement Kubectl Port-Forward Multiplexing for Accessing Multiple Kubernetes Services
+# How to Use Kubectl Port-Forward Multiplexing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

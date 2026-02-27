@@ -1,4 +1,4 @@
-# How to Use Google Cloud Buildpacks to Create Reproducible Container Images for a Node.js Express Application
+# How to Use Google Cloud Buildpacks to Create Reproducible Container Images for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

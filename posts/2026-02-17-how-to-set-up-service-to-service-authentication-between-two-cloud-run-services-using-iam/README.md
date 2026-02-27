@@ -1,4 +1,4 @@
-# How to Set Up Service-to-Service Authentication Between Two Cloud Run Services Using IAM
+# How to Set Up Service-to-Service Authentication Between Two Cloud Run Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

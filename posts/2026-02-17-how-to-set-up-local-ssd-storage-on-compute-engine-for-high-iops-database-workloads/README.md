@@ -1,4 +1,4 @@
-# How to Set Up Local SSD Storage on Compute Engine for High-IOPS Database Workloads
+# Set Up Local SSD Storage on Compute Engine for High-IOPS Database Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

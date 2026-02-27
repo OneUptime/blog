@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, SQL, Aggregate Functions, PL/pgSQL, Analytics
 
-Description: Learn how to create custom aggregate functions in PostgreSQL for specialized analytics. This guide covers state transition functions, final functions, moving aggregates, and practical examples like weighted averages and percentiles.
+Description: Learn how to create custom aggregate functions in PostgreSQL for specialized analytics.
 
 ---
 

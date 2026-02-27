@@ -1,4 +1,4 @@
-# How to Build Observability for Event-Driven Architectures Using AsyncAPI Specs and OpenTelemetry
+# How to Build Observability for Event-Driven Architectures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

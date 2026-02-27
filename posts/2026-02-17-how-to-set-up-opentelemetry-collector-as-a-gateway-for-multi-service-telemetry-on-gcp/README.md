@@ -1,4 +1,4 @@
-# How to Set Up OpenTelemetry Collector as a Gateway for Multi-Service Telemetry on GCP
+# How to Set Up OpenTelemetry Collector as a Gateway for Multi-Service Telemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

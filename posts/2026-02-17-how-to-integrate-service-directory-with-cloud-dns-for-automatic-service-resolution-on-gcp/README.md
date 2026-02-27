@@ -1,4 +1,4 @@
-# How to Integrate Service Directory with Cloud DNS for Automatic Service Resolution on GCP
+# How to Integrate Service Directory with Cloud DNS for Auto Service Resolution
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

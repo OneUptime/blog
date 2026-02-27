@@ -1,4 +1,4 @@
-# How to Configure SDK Shutdown Procedures in Node.js with SIGTERM and SIGINT Trapping for Kubernetes Pods
+# How to Configure SDK Shutdown Procedures in Node.js with SIGTERM
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

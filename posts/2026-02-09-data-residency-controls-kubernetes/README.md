@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Compliance, Data Residency, GDPR, Multi-Region, Data Sovereignty
 
-Description: Implement data residency controls in multi-region Kubernetes deployments to ensure data stays within required geographic boundaries, meeting GDPR and data sovereignty regulations through node selectors, taints, and policy enforcement.
+Description: Implement data residency controls in multi-region Kubernetes deployments to ensure data stays within required geographic boundaries.
 
 ---
 

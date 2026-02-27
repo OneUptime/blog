@@ -1,10 +1,10 @@
-# Keep PII Out of Your Telemetry: Sanitizing Logs, Traces, and Metrics with OpenTelemetry
+# Keep PII Out of Your Telemetry: Sanitizing Logs, Traces, and Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Security, Data Protection, Logs, Metrics, Traces, PII, Compliance
 
-Description: A practical playbook for preventing sensitive data from leaking into telemetry pipelines. Learn how to classify data, instrument applications safely, sanitize it in the OpenTelemetry Collector, and validate that your observability stack stays compliant.
+Description: A practical playbook for preventing sensitive data from leaking into telemetry pipelines.
 
 ---
 

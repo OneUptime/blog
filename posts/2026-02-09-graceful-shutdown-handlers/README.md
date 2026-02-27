@@ -1,4 +1,4 @@
-# How to Implement Graceful Shutdown Handlers for Long-Running Kubernetes Processes
+# How to Use Graceful Shutdown Handlers for Long-Running Kubernetes Processes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

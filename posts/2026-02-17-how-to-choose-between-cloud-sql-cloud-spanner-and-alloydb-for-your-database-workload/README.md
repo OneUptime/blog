@@ -1,4 +1,4 @@
-# How to Choose Between Cloud SQL Cloud Spanner and AlloyDB for Your Database Workload
+# How to Choose Between Cloud SQL Cloud Spanner and AlloyDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

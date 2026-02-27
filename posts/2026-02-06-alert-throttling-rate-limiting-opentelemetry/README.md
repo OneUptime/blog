@@ -1,4 +1,4 @@
-# How to Configure Alert Throttling and Rate Limiting for Noisy OpenTelemetry Metric Sources
+# How to Configure Alert Throttling and Rate Limiting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

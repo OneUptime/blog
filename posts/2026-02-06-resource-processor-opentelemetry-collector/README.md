@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processors, Resource Processor, Service Metadata, Configuration
 
-Description: Learn how to configure the resource processor in OpenTelemetry Collector to manage service-level metadata, enrich resource attributes, and maintain consistent service identity across your observability pipeline.
+Description: Learn how to configure the resource processor in OpenTelemetry Collector to manage service-level metadata, enrich resource attributes.
 
 The resource processor modifies resource attributes attached to telemetry signals in the OpenTelemetry Collector. Resource attributes represent service-level metadata like `service.name`, `service.version`, `deployment.environment`, and infrastructure details that remain consistent across all spans, metrics, and logs from a service.
 

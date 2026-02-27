@@ -1,4 +1,4 @@
-# How to Set Up an OpenTelemetry + NATS + TimescaleDB Pipeline for IoT Telemetry at Scale
+# How to Set Up an OpenTelemetry + NATS + TimescaleDB Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

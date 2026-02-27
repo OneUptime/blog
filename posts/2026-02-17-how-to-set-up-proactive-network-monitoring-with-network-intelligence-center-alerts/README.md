@@ -1,4 +1,4 @@
-# How to Set Up Proactive Network Monitoring with Network Intelligence Center Alerts
+# How to Set Up Proactive Network Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

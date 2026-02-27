@@ -1,4 +1,4 @@
-# How to Configure Azure Repos Tag-Based Triggers for Release Pipelines and Versioning
+# How to Configure Azure Repos Tag-Based Triggers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Multi-Environment Configuration Overrides (Dev, Staging, Prod) with Declarative Configuration
+# How to Set Up Multi-Environment Configuration Overrides
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

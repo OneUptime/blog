@@ -1,4 +1,4 @@
-# How to Build a Data Quality Monitoring Framework on BigQuery Using Dataplex Data Quality Tasks
+# How to Build a Data Quality Monitoring Framework on BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

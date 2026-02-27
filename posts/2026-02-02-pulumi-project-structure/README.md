@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, Infrastructure as Code, IaC, DevOps, Cloud, TypeScript, Python
 
-Description: A practical guide to structuring Pulumi projects for maintainability, reusability, and team collaboration. Covers monorepo vs multi-repo approaches, component resources, stack organization, and best practices for scaling your infrastructure code.
+Description: A practical guide to structuring Pulumi projects for maintainability, reusability, and team collaboration.
 
 ---
 

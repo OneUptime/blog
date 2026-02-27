@@ -1,4 +1,4 @@
-# How to Add Custom Vocabulary and Phrases to Cloud Speech-to-Text for Domain-Specific Transcription
+# How to Add Custom Vocabulary and Phrases to Cloud Speech-to-Text for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

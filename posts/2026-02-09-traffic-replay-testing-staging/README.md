@@ -1,4 +1,4 @@
-# How to Build Production Traffic Replay Testing Pipelines Against Kubernetes Staging Clusters
+# How to Build Production Traffic Replay Testing Pipelines Against K8s Staging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

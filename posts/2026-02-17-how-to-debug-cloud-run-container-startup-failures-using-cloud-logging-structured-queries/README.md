@@ -1,4 +1,4 @@
-# How to Debug Cloud Run Container Startup Failures Using Cloud Logging Structured Queries
+# How to Debug Cloud Run Container Startup Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

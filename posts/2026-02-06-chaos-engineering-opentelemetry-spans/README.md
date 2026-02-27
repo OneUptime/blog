@@ -1,4 +1,4 @@
-# How to Tag Chaos Engineering Experiments in OpenTelemetry Spans for Isolated Failure Analysis
+# How to Tag Chaos Engineering Experiments in OpenTelemetry Spans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

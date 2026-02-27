@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Consul, KV Store, Configuration Management, HashiCorp, Distributed Systems, DevOps
 
-Description: Learn how to use Consul's key-value store for centralized configuration management. This guide covers storing, retrieving, and watching configuration values with practical examples in multiple languages.
+Description: Learn how to use Consul's key-value store for centralized configuration management.
 
 ---
 

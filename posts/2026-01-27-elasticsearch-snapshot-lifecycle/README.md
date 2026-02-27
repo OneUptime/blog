@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Snapshots, SLM, Backup, Disaster Recovery, Data Management, DevOps
 
-Description: A comprehensive guide to implementing Elasticsearch Snapshot Lifecycle Management (SLM), covering snapshot repositories, automated policies, retention rules, and restore procedures for reliable data protection.
+Description: A comprehensive guide to implementing Elasticsearch Snapshot Lifecycle Management (SLM), covering snapshot repositories, automated policies, retention rules.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Infrastructure as Code, Pulumi, Terraform, DevOps, Migration, Cloud Infrastructure
 
-Description: A comprehensive guide to migrating your infrastructure from Terraform to Pulumi, covering tf2pulumi conversion, state import strategies, HCL to code transformation, and gradual migration approaches for production environments.
+Description: A comprehensive guide to migrating your infrastructure from Terraform to Pulumi, covering tf2pulumi conversion, state import strategies, HCL to code transformation.
 
 ---
 

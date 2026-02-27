@@ -1,4 +1,4 @@
-# How to Integrate OTel Arrow with Apache Arrow-Native Backends Like ClickHouse for Zero-Copy Ingestion
+# How to Integrate OTel Arrow with Apache Arrow-Native Backends Like ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

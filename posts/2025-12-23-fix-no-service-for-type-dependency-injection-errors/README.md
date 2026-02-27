@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, Dependency Injection, ASP.NET Core, Troubleshooting, Common Issues
 
-Description: Learn how to diagnose and fix the common 'No service for type' dependency injection error in .NET applications. This guide covers registration patterns, common mistakes, and debugging techniques for DI container issues.
+Description: Learn how to diagnose and fix the common 'No service for type' dependency injection error in .NET applications.
 
 The "No service for type" error is one of the most common issues developers encounter when working with dependency injection in .NET. This error occurs when you try to resolve a service that hasn't been registered in the DI container. Let's explore the causes and solutions for this frustrating problem.
 

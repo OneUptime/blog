@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Node.js, TypeScript, Database, Migrations, PostgreSQL, DevOps, Backend
 
-Description: Learn how to build a robust database migration system in Node.js from scratch. This guide covers migration file management, up/down execution, version tracking, CLI tools, and best practices for production deployments.
+Description: Learn how to build a robust database migration system in Node.js from scratch.
 
 ---
 

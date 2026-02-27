@@ -1,4 +1,4 @@
-# How to Configure RBAC to Allow Node Logs and Metrics Access Without Full Node Permissions
+# How to Configure RBAC to Allow Node Logs and Metrics Access Without Full Node
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

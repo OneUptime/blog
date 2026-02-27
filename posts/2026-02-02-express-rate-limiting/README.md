@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Express.js, Rate Limiting, API, Node.js
 
-Description: A comprehensive guide to implementing rate limiting in Express.js APIs. Learn how to protect your endpoints from abuse, configure different limiting strategies, and implement production-ready rate limiting with Redis for distributed systems.
+Description: A comprehensive guide to implementing rate limiting in Express.js APIs.
 
 ---
 

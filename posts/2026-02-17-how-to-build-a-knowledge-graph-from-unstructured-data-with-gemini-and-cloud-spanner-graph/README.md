@@ -1,4 +1,4 @@
-# How to Build a Knowledge Graph from Unstructured Data with Gemini and Cloud Spanner Graph
+# How to Build a Knowledge Graph from Unstructured Data with Gemini
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

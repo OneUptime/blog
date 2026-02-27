@@ -1,4 +1,4 @@
-# How to Monitor Redis Cluster Node Status, Slot Coverage, and Replication with OpenTelemetry
+# How to Monitor Redis Cluster Node Status, Slot Coverage, and Replication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Spring Boot Application with Azure Cosmos DB Using azure-spring-data-cosmos
+# How to Build a Spring Boot App with Azure Cosmos DB Using
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

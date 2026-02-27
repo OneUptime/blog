@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Security, RBAC
 
-Description: Learn how to configure cluster resource whitelists in ArgoCD projects to control which cluster-scoped Kubernetes resources each team can create, with practical examples for platform and application teams.
+Description: Learn how to configure cluster resource whitelists in ArgoCD projects to control which cluster-scoped Kubernetes resources each team can create.
 
 ---
 

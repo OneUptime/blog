@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry in a Rails Initializer for Automatic Instrumentation
+# How to Configure OpenTelemetry in a Rails Initializer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Kustomize Overlays for Managing AKS Deployments Across Environments
+# Set Up Kustomize Overlays for Managing AKS Deployments Across Environments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Debug Intermittent Timeout Issues by Analyzing OpenTelemetry Span Duration Distributions
+# How to Debug Intermittent Timeout Issues by Analyzing OpenTelemetry Span
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Deploy a Custom-Trained Model to a Vertex AI Endpoint for Online Predictions
+# How to Deploy a Custom-Trained Model to a Vertex AI Endpoint
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

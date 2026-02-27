@@ -1,4 +1,4 @@
-# How to Design a Multi-Tenant Data Isolation Strategy on Azure SQL Database Using Row-Level Security
+# How to Design a Multi-Tenant Data Isolation Strategy on Azure SQL Database
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

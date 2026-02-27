@@ -1,4 +1,4 @@
-# How to Configure Mirrord for Running Local Processes in the Context of Kubernetes Cluster
+# How to Configure Mirrord for Running Local Processes in the Context of K8s
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

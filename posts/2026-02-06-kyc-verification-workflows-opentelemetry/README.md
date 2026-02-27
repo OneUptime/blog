@@ -1,4 +1,4 @@
-# How to Instrument KYC (Know Your Customer) Verification Workflows with OpenTelemetry for Compliance Tracking
+# How to Instrument KYC Verification Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

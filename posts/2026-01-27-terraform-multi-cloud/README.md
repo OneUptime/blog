@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Multi-Cloud, AWS, Azure, GCP, Infrastructure as Code, DevOps, Cloud Architecture
 
-Description: A comprehensive guide to managing infrastructure across AWS, Azure, and GCP using Terraform, covering provider configuration, resource abstraction, cross-cloud networking, version management, and state strategies.
+Description: A comprehensive guide to managing infrastructure across AWS, Azure, and GCP using Terraform, covering provider configuration, resource abstraction, cross-cloud networking, version management.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Avoid the Anti-Pattern of Instrumenting Every Function Instead of Meaningful Operations
+# How to Avoid the Anti-Pattern of Instrumenting Every Function Instead of
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

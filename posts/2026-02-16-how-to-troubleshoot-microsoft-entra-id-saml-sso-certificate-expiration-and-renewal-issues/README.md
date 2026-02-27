@@ -1,4 +1,4 @@
-# How to Troubleshoot Microsoft Entra ID SAML SSO Certificate Expiration and Renewal Issues
+# How to Troubleshoot Microsoft Entra ID SAML SSO Certificate Expiration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

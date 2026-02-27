@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Stalled Jobs, Job Recovery, Worker Crashes, Lock Management, Reliability
 
-Description: A comprehensive guide to handling stalled jobs in BullMQ, including understanding why jobs stall, configuring stall detection, implementing recovery strategies, and preventing stalls in production systems.
+Description: A comprehensive guide to handling stalled jobs in BullMQ, including understanding why jobs stall, configuring stall detection, implementing recovery strategies.
 
 ---
 

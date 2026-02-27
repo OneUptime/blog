@@ -1,4 +1,4 @@
-# How to Use Docker Desktop Built-In OpenTelemetry Integration for Local Development Trace Collection
+# How to Use Docker Desktop Built-In OpenTelemetry Integration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

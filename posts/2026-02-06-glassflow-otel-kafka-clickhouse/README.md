@@ -1,4 +1,4 @@
-# How to Use GlassFlow as a Stream Processor Between OpenTelemetry Kafka Pipelines and ClickHouse
+# How to Use GlassFlow as a Stream Processor Between OpenTelemetry Kafka Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

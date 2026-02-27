@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Loki, Kubernetes, Security
 
-Description: Learn how to configure Loki alerting rules that detect security events in Kubernetes logs, including unauthorized access attempts, privilege escalation, suspicious network activity, and container escapes.
+Description: Learn how to configure Loki alerting rules that detect security events in Kubernetes logs, including unauthorized access attempts, privilege escalation, suspicious network activity.
 
 ---
 

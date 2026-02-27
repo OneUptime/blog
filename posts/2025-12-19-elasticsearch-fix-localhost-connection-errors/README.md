@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Troubleshooting, Connection Errors, DevOps, Configuration, Networking
 
-Description: A comprehensive troubleshooting guide for fixing Elasticsearch localhost:9200 connection errors, covering common causes like service status, security settings, network bindings, and firewall configurations.
+Description: A comprehensive troubleshooting guide for fixing Elasticsearch localhost:9200 connection errors, covering common causes like service status, security settings, network bindings.
 
 ---
 

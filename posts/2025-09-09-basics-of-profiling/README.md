@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Profiling, Observability, Performance, NodeJS, TypeScript, Tracing
 
-Description: A practical guide to continuous profiling. What it is, why you need it beyond logs/metrics/traces, core concepts (CPU, wall time, memory, locks), how it complements tracing, and how to instrument and use profiles effectively without drowning in data or cost.
+Description: A practical guide to continuous profiling. What it is, why you need it beyond logs/metrics/traces, core concepts (CPU, wall time, memory, locks), how it complements tracing.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Use Loki Label Extraction from Log Lines for Dynamic Kubernetes Log Indexing
+# How to Use Loki Label Extraction from Log Lines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

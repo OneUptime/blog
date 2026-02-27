@@ -1,4 +1,4 @@
-# How to Configure Azure Managed Grafana Role-Based Access Control and Team Permissions
+# How to Configure Azure Managed Grafana Role-Based Access Control
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

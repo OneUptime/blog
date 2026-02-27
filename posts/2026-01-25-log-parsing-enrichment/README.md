@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Log Parsing, Log Enrichment, Grok, Regex, Data Pipeline, Log Processing, Observability
 
-Description: Learn how to implement log parsing and enrichment to transform raw logs into structured, queryable data. This guide covers parsing patterns, field extraction, data enrichment, and building efficient processing pipelines.
+Description: Learn how to implement log parsing and enrichment to transform raw logs into structured, queryable data.
 
 ---
 

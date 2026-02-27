@@ -1,4 +1,4 @@
-# How to Monitor Kafka Streams Application State Store Latency and Commit Rate with OpenTelemetry
+# How to Monitor Kafka Streams Application State Store Latency and Commit Rate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

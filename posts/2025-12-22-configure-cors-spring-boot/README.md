@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, CORS, Security, REST API, Web Development
 
-Description: Learn how to configure Cross-Origin Resource Sharing (CORS) in Spring Boot applications. This guide covers global configuration, controller-level settings, and security integration with practical examples.
+Description: Learn how to configure Cross-Origin Resource Sharing (CORS) in Spring Boot applications.
 
 ---
 
@@ -486,4 +486,4 @@ With correct CORS configuration, your frontend applications can securely communi
 *Need to monitor your API availability across different origins? [OneUptime](https://oneuptime.com) provides comprehensive API monitoring with multi-region checks and instant alerts.*
 
 **Related Reading:**
-- [How to Handle "Invalid CSRF token" Errors](/blog/post/2025-12-22-invalid-csrf-token-spring/view)
+- [How to Handle "Invalid CSRF token" Errors](https://oneuptime.com/blog/post/2025-12-22-invalid-csrf-token-spring/view)

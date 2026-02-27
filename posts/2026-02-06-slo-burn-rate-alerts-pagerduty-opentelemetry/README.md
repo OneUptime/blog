@@ -1,4 +1,4 @@
-# How to Build SLO Burn Rate Alerts That Trigger PagerDuty Incidents from OpenTelemetry Data
+# How to Build SLO Burn Rate Alerts That Trigger PagerDuty Incidents from
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Understand Trace Context and Why It's the Foundation of Distributed Tracing
+# Understand Trace Context and Why It's the Foundation of Distributed Tracing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

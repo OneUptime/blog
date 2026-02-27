@@ -1,4 +1,4 @@
-# How to Monitor Enrollment Surge Events (Registration Day) with OpenTelemetry Autoscaling Metrics
+# How to Monitor Enrollment Surge Events with OpenTelemetry Autoscaling Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

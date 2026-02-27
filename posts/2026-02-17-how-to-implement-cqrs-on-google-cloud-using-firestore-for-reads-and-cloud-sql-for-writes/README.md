@@ -1,4 +1,4 @@
-# How to Implement CQRS on Google Cloud Using Firestore for Reads and Cloud SQL for Writes
+# How to Use CQRS on Google Cloud Using Firestore for Reads and Cloud SQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

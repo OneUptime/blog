@@ -1,4 +1,4 @@
-# How to Fix the Common Mistake of Confusing OpenTelemetry Core and Contrib Collector Distributions
+# How to Fix the Common Mistake of Confusing OpenTelemetry Core
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

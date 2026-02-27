@@ -1,4 +1,4 @@
-# How to Monitor IoT Fleet Health Using Cloud Monitoring Custom Metrics and Pub/Sub Message Attributes
+# How to Monitor IoT Fleet Health Using Cloud Monitoring Custom Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

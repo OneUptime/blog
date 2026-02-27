@@ -1,4 +1,4 @@
-# How to Modernize Batch Processing Jobs from Cron and Scripts to Cloud Workflows and Cloud Scheduler
+# How to Modernize Batch Processing Jobs from Cron and Scripts to Cloud Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

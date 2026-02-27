@@ -1,4 +1,4 @@
-# How to Configure Log Retention Tiers (Hot Storage for 3 Days, Cold for 90 Days) with OpenTelemetry
+# How to Configure Log Retention Tiers with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

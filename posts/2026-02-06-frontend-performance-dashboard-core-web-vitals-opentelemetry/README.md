@@ -1,4 +1,4 @@
-# How to Create a Frontend Performance Dashboard with Core Web Vitals from OpenTelemetry Browser SDK
+# How to Create a Frontend Performance Dashboard with Core Web Vitals from
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

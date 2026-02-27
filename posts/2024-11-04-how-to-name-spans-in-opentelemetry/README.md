@@ -4,7 +4,7 @@ Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: OpenTelemetry, Tracing
 
-Description: Here's how to craft meaningful span names that enhance your observability efforts, making debugging and performance tuning a breeze. From best practices to advanced strategies, this guide covers it all. 
+Description: Here's how to craft meaningful span names that enhance your observability efforts, making debugging and performance tuning a breeze.
 
 Tracing allows developers to understand how their applications behave in real-time, pinpointing performance bottlenecks and troubleshooting errors effectively. OpenTelemetry, a powerful open-source observability framework, provides the tools necessary to achieve this. Central to OpenTelemetry is the concept of a "span," representing a single operation within a trace. To harness the full potential of tracing, it is crucial to name spans effectively. Let’s explore how to name spans in OTel to maximize their utility.
 

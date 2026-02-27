@@ -1,4 +1,4 @@
-# How to Set Up App Engine with Cloud SQL Using the Built-In Unix Socket Connection
+# Set Up App Engine with Cloud SQL Using the Built-In Unix Socket Connection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

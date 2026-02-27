@@ -1,4 +1,4 @@
-# How to Implement Exactly-Once Event Processing with Knative and Kafka on Kubernetes
+# How to Use Exactly-Once Event Processing with Knative and Kafka on Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

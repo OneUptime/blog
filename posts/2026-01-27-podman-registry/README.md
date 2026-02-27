@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container Registry, Docker, Containers, DevOps, Security
 
-Description: A comprehensive guide to configuring container registries in Podman, covering registry configuration, insecure registries, mirror registries, and credential management for seamless container workflows.
+Description: A comprehensive guide to configuring container registries in Podman, covering registry configuration, insecure registries, mirror registries.
 
 ---
 

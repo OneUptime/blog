@@ -1,4 +1,4 @@
-# How to Set Up Linkerd Multi-Cluster Gateway for Cross-Cluster Service Communication
+# Set Up Linkerd Multi-Cluster Gateway for Cross-Cluster Service Communication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Choose Between Cloud Endpoints Apigee and API Gateway for API Management on GCP
+# How to Choose Between Cloud Endpoints Apigee and API Gateway
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

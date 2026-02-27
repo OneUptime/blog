@@ -1,4 +1,4 @@
-# How to Use Azure Application Insights Live Metrics Stream for Real-Time Debugging
+# Use Azure Application Insights Live Metrics Stream for Real-Time Debugging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

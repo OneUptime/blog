@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: React, Vite, Migration, Build Tools, Frontend, Performance
 
-Description: A comprehensive guide to migrating your React application from Create React App (CRA) to Vite, unlocking significantly faster development builds, hot module replacement, and a modern tooling experience.
+Description: A comprehensive guide to migrating your React application from Create React App (CRA) to Vite, unlocking significantly faster development builds, hot module replacement.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Monitor Long-Polling API Endpoints with OpenTelemetry Span Duration Metrics
+# How to Monitor Long-Polling API Endpoints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

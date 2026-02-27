@@ -1,4 +1,4 @@
-# How to Create Error Analysis: A Practical Guide to Finding Root Causes in Distributed Systems
+# How to Create Error Analysis: A Practical Guide to Finding Root Causes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

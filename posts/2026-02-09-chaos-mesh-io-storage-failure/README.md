@@ -1,4 +1,4 @@
-# How to Configure Chaos Mesh IO Chaos Experiments for Kubernetes Storage Failure Simulation
+# How to Configure Chaos Mesh IO Chaos Experiments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

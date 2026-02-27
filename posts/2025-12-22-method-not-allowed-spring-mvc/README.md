@@ -463,4 +463,4 @@ Understanding your request mapping configuration prevents these errors and impro
 *Need to monitor your Spring Boot API health and catch errors quickly? [OneUptime](https://oneuptime.com) provides API monitoring with detailed error tracking and instant alerts.*
 
 **Related Reading:**
-- [How to Handle "Request method not supported" Errors](/blog/post/2025-12-22-request-method-not-supported-spring/view)
+- [How to Handle "Request method not supported" Errors](https://oneuptime.com/blog/post/2025-12-22-request-method-not-supported-spring/view)

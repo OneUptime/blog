@@ -1,4 +1,4 @@
-# How to Configure Cloud Build to Run Docker Security Scans with Trivy Before Pushing to Artifact Registry
+# How to Configure Cloud Build to Run Docker Security Scans with Trivy Before
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

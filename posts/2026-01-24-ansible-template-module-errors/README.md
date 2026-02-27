@@ -808,5 +808,5 @@ By following these practices, you can write robust templates that generate consi
 *Looking for comprehensive infrastructure monitoring? [OneUptime](https://oneuptime.com) provides real-time monitoring and alerting for your Ansible-managed infrastructure.*
 
 **Related Reading:**
-- [How to Fix "Copy Module" File Transfer Errors](/blog/post/2026-01-24-ansible-copy-module-errors/view)
-- [How to Handle Ansible Handlers and Notifications](/blog/post/2026-01-24-ansible-handlers-notifications/view)
+- [How to Fix "Copy Module" File Transfer Errors](https://oneuptime.com/blog/post/2026-01-24-ansible-copy-module-errors/view)
+- [How to Handle Ansible Handlers and Notifications](https://oneuptime.com/blog/post/2026-01-24-ansible-handlers-notifications/view)

@@ -1,10 +1,10 @@
-# How to Create Incident Response Runbooks for Common Kubernetes Production Failures
+# How to Create Incident Response Runbooks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Incident Response, Operations, Documentation
 
-Description: Build comprehensive incident response runbooks for common Kubernetes production failures, enabling faster resolution and reducing the stress of emergency situations through clear, actionable procedures.
+Description: Build comprehensive incident response runbooks for common Kubernetes production failures, enabling faster resolution and reducing the stress of emergency situations through clear.
 
 ---
 

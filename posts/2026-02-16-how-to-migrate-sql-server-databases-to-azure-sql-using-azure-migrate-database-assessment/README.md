@@ -1,4 +1,4 @@
-# How to Migrate SQL Server Databases to Azure SQL Using Azure Migrate Database Assessment
+# How to Migrate SQL Server Databases to Azure SQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

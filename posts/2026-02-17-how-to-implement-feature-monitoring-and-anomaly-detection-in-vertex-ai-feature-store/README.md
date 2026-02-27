@@ -1,4 +1,4 @@
-# How to Implement Feature Monitoring and Anomaly Detection in Vertex AI Feature Store
+# How to Use Feature Monitoring and Anomaly Detection in Vertex AI Feature Store
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

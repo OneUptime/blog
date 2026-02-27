@@ -1,4 +1,4 @@
-# How to Troubleshoot OTLP Exporter DNS Resolution Failures in Kubernetes Service Discovery
+# How to Troubleshoot OTLP Exporter DNS Resolution Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

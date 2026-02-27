@@ -1,4 +1,4 @@
-# How to Optimize 3D Model Conversion and Loading Times with Azure Remote Rendering
+# How to Optimize 3D Model Conversion and Loading Times
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

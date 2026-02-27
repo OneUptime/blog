@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Troubleshooting, Configuration, YAML, Validation
 
-Description: A practical guide to diagnosing and fixing invalid configuration errors in OpenTelemetry Collector, covering YAML syntax issues, schema validation, common misconfigurations, and validation best practices.
+Description: A practical guide to diagnosing and fixing invalid configuration errors in OpenTelemetry Collector, covering YAML syntax issues, schema validation, common misconfigurations.
 
 ---
 

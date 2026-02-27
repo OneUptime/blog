@@ -1,4 +1,4 @@
-# How to Use Terraform to Configure Cloud Armor WAF Policies for a Cloud Run Service Behind a Load Balancer
+# How to Use Terraform to Configure Cloud Armor WAF Policies for a Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

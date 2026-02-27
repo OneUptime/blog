@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: BGP, Networking, Routing, Filters
 
-Description: A comprehensive guide to implementing BGP route filtering, covering prefix lists, AS-path filters, route maps, and community-based filtering with practical configuration examples for Cisco, Juniper, and FRRouting.
+Description: A comprehensive guide to implementing BGP route filtering, covering prefix lists, AS-path filters, route maps, and community-based filtering with practical configuration examples for Cisco, Juniper.
 
 ---
 

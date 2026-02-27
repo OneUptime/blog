@@ -1,4 +1,4 @@
-# How to Export OpenTelemetry Metrics to Google Cloud Monitoring Using the OTLP Exporter
+# How to Export OpenTelemetry Metrics to Google Cloud Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

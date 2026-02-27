@@ -1,4 +1,4 @@
-# How to Trace Anti-Money Laundering (AML) Screening Pipeline Performance with OpenTelemetry
+# How to Trace Anti-Money Laundering Screening Pipeline Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Migrate Azure Application Insights to Google Cloud Monitoring and Cloud Trace
+# How to Migrate Azure Application Insights to Google Cloud Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

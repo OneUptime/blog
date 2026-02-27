@@ -1,4 +1,4 @@
-# How to Troubleshoot Orphaned Spans in Go When Goroutines Do Not Receive the Parent Context
+# How to Troubleshoot Orphaned Spans in Go When Goroutines Do Not Receive the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

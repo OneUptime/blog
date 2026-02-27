@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Cluster, Ubuntu, High Availability, Database, Replication
 
-Description: A comprehensive guide to setting up a PostgreSQL cluster on Ubuntu with streaming replication, covering primary and standby configuration, automatic failover considerations, monitoring, and production best practices.
+Description: A comprehensive guide to setting up a PostgreSQL cluster on Ubuntu with streaming replication, covering primary and standby configuration, automatic failover considerations, monitoring.
 
 ---
 

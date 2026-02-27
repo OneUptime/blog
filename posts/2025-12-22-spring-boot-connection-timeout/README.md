@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Timeout, HTTP Client, RestTemplate, WebClient, Performance
 
-Description: Learn how to configure connection timeouts in Spring Boot for HTTP clients, database connections, and external services. This guide covers RestTemplate, WebClient, connection pools, and best practices for timeout management.
+Description: Learn how to configure connection timeouts in Spring Boot for HTTP clients, database connections, and external services.
 
 ---
 

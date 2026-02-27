@@ -1,4 +1,4 @@
-# How to Enable and Analyze VPC Flow Logs for Network Traffic Forensics on Google Cloud
+# How to Enable and Analyze VPC Flow Logs for Network Traffic Forensics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Cluster Health, Shards, Operations, Troubleshooting, DevOps
 
-Description: Learn how to diagnose and fix unassigned shards in Elasticsearch. This guide covers common causes, diagnostic commands, resolution strategies, and prevention best practices for maintaining cluster health.
+Description: Learn how to diagnose and fix unassigned shards in Elasticsearch.
 
 Unassigned shards are one of the most common Elasticsearch cluster issues. They cause the cluster to report yellow or red health status and can impact search and indexing operations. This guide explains how to identify causes and resolve unassigned shard issues.
 

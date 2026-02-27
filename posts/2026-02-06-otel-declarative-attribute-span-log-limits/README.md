@@ -1,4 +1,4 @@
-# How to Use Declarative Configuration to Define Attribute Limits, Span Limits, and Log Record Limits in a Single File
+# How to Use Declarative Configuration to Define Attribute Limits, Span Limits,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

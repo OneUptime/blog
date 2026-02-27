@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Markdown, Productivity, Note-Taking, Developer Tools, Knowledge Management, Git, Plain Text
 
-Description: Discover why Markdown has become the ultimate format for note-taking. Learn how plain text files outlast proprietary apps, integrate with Git for versioning, work with any tool, and put you in control of your knowledge base forever.
+Description: Discover why Markdown has become the ultimate format for note-taking.
 
 ---
 

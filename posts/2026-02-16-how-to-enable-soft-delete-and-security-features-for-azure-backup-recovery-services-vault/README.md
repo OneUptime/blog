@@ -1,10 +1,10 @@
-# How to Enable Soft Delete and Security Features for Azure Backup Recovery Services Vault
+# How to Enable Soft Delete and Security Features for Azure Backup Recovery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Backup, Soft Delete, Security, Recovery Services Vault, Ransomware Protection, MUA, Immutable Vault
 
-Description: Learn how to enable soft delete, immutable vaults, multi-user authorization, and other security features for Azure Backup Recovery Services vaults to protect against ransomware and accidental deletion.
+Description: Learn how to enable soft delete, immutable vaults, multi-user authorization, and other security features for Azure Backup Recovery Services vaults to protect against ransomware and accidental.
 
 ---
 

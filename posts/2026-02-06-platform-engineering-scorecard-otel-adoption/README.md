@@ -1,4 +1,4 @@
-# How to Build a Platform Engineering Scorecard That Tracks OpenTelemetry Adoption Metrics
+# How to Build a Platform Engineering Scorecard That Tracks OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

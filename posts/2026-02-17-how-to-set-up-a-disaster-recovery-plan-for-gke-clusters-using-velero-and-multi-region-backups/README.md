@@ -1,4 +1,4 @@
-# How to Set Up a Disaster Recovery Plan for GKE Clusters Using Velero and Multi-Region Backups
+# How to Set Up a Disaster Recovery Plan for GKE Clusters Using Velero
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

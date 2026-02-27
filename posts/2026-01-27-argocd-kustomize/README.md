@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ArgoCD, Kustomize, GitOps, DevOps, CI/CD, Configuration Management
 
-Description: A comprehensive guide to using ArgoCD with Kustomize for managing Kubernetes deployments across multiple environments. Learn about overlays, strategic merge patches, component reuse, and best practices for GitOps workflows.
+Description: A comprehensive guide to using ArgoCD with Kustomize for managing Kubernetes deployments across multiple environments.
 
 ---
 

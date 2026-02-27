@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS IoT Core, IoT, Cloud, MQTT, Device Management, Security, Terraform
 
-Description: A practical guide to configuring AWS IoT Core for IoT device management. Learn to set up things, policies, certificates, rules engine, and integrate with other AWS services for a complete IoT solution.
+Description: A practical guide to configuring AWS IoT Core for IoT device management.
 
 ---
 

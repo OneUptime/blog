@@ -1,4 +1,4 @@
-# How to Use Azure Bicep What-If Command to Preview Infrastructure Changes Before Deployment
+# How to Use Azure Bicep What-If Command to Preview Infra Changes Before
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use the Failover Connector to Automatically Switch Between Primary and Backup Backends
+# How to Use the Failover Connector to Automatically Switch Between Primary
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

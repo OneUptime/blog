@@ -1,4 +1,4 @@
-# How to Monitor CDN and Edge Network Performance Using OpenTelemetry Synthetic Probes
+# How to Monitor CDN and Edge Network Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

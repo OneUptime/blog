@@ -1,4 +1,4 @@
-# How to Implement Host-Based Routing for Multi-Tenant Applications on GCP Load Balancer
+# How to Use Host-Based Routing for Multi-Tenant Applications on GCP Load Balancer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

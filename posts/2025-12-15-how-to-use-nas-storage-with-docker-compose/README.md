@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Docker Compose, Storage, NFS, DevOps, Self-Hosting
 
-Description: A practical guide to connecting your NAS (Synology, QNAP, TrueNAS, or any NFS/SMB server) to Docker Compose stacks. Learn how to mount network shares as volumes, configure permissions, and avoid common pitfalls.
+Description: A practical guide to connecting your NAS (Synology, QNAP, TrueNAS, or any NFS/SMB server) to Docker Compose stacks.
 
 ---
 

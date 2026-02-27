@@ -1,4 +1,4 @@
-# How to Build a Grafana USE Method Dashboard (Utilization, Saturation, Errors) from OpenTelemetry Host Metrics
+# How to Build a Grafana USE Method Dashboard from OpenTelemetry Host Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

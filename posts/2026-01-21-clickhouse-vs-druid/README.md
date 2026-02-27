@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Apache Druid, Comparison, Real-Time Analytics, OLAP, Database Selection
 
-Description: A comprehensive comparison of ClickHouse and Apache Druid for real-time analytics, covering architecture differences, query performance, data ingestion, operational complexity, and guidance on choosing the right system.
+Description: A comprehensive comparison of ClickHouse and Apache Druid for real-time analytics, covering architecture differences, query performance, data ingestion, operational complexity.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Incident Management, Mitigation, SRE, Response
 
-Description: Learn effective strategies for mitigating incidents quickly. This guide covers immediate actions, rollbacks, traffic shifting, feature flags, scaling responses, and temporary workarounds to minimize incident impact.
+Description: Learn effective strategies for mitigating incidents quickly.
 
 ---
 

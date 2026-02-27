@@ -1,4 +1,4 @@
-# How to Configure Native Sidecar Containers with restartPolicy for Kubernetes 1.29+
+# Configure Native Sidecar Containers with restartPolicy for Kubernetes 1.29+
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

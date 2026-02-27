@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Timeouts, Reliability, Performance, TCP, HTTP, Microservices, Fault Tolerance
 
-Description: Learn how to configure network timeouts effectively to prevent hung connections and cascading failures. This guide covers connection, read, write, and idle timeouts with practical examples across different layers.
+Description: Learn how to configure network timeouts effectively to prevent hung connections and cascading failures.
 
 ---
 

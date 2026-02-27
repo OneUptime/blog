@@ -1,4 +1,4 @@
-# How to Export Security Command Center Findings to BigQuery for Long-Term Analysis
+# Export Security Command Center Findings to BigQuery for Long-Term Analysis
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

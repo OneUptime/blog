@@ -1,4 +1,4 @@
-# How to Perform Azure Migrate at Scale Using CSV Import for Large Datacenter Inventories
+# How to Perform Azure Migrate at Scale Using CSV Import
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

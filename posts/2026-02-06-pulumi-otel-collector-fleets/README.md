@@ -1,4 +1,4 @@
-# How to Use Pulumi to Provision OpenTelemetry Collector Fleets with Programmatic Configuration
+# How to Use Pulumi to Provision OpenTelemetry Collector Fleets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

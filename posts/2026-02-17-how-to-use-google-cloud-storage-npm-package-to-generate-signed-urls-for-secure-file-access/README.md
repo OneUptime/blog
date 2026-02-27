@@ -1,4 +1,4 @@
-# How to Use the google-cloud/storage npm Package to Generate Signed URLs for Secure File Access
+# How to Use the google-cloud/storage npm Package to Generate Signed URLs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Migrate Amazon S3 Buckets to Google Cloud Storage Using the Storage Transfer Service
+# How to Migrate Amazon S3 Buckets to Google Cloud Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

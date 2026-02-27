@@ -1,4 +1,4 @@
-# How to Compare and Choose Between Premium and Standard Network Service Tiers on Google Cloud
+# How to Compare and Choose Between Premium and Standard Network Service Tiers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

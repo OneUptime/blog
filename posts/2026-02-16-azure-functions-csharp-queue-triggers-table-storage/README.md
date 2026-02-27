@@ -1,4 +1,4 @@
-# How to Create Azure Functions in C# with Queue Triggers and Table Storage Bindings
+# How to Create Azure Functions in C# with Queue Triggers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

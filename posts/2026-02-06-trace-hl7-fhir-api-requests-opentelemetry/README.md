@@ -1,4 +1,4 @@
-# How to Trace HL7 FHIR API Request Flows (Patient Lookup, Clinical Data Retrieval) with OpenTelemetry
+# How to Trace HL7 FHIR API Request Flows with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

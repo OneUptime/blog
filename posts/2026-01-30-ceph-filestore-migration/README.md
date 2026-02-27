@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ceph, Storage, Migration, BlueStore
 
-Description: A comprehensive guide to migrating Ceph clusters from FileStore to BlueStore. Learn planning strategies, step-by-step migration procedures, and best practices for zero-downtime storage backend transitions.
+Description: A comprehensive guide to migrating Ceph clusters from FileStore to BlueStore.
 
 ---
 

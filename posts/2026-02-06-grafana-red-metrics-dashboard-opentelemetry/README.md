@@ -1,4 +1,4 @@
-# How to Build a Grafana RED Metrics Dashboard (Rate, Errors, Duration) from OpenTelemetry Span Metrics
+# How to Build a Grafana RED Metrics Dashboard from OpenTelemetry Span Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

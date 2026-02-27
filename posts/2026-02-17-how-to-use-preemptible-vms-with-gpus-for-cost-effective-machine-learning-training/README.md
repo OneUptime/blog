@@ -1,4 +1,4 @@
-# How to Use Preemptible VMs with GPUs for Cost-Effective Machine Learning Training
+# Use Preemptible VMs with GPUs for Cost-Effective Machine Learning Training
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

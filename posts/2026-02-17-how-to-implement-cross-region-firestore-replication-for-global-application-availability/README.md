@@ -1,4 +1,4 @@
-# How to Implement Cross-Region Firestore Replication for Global Application Availability
+# How to Use Cross-Region Firestore Replication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

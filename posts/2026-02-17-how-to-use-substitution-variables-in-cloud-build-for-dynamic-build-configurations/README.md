@@ -1,4 +1,4 @@
-# How to Use Substitution Variables in Cloud Build for Dynamic Build Configurations
+# How to Use Substitution Variables in Cloud Build
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

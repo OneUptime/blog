@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Deployments, Rollback
 
-Description: Learn how to configure and manage deployment revision history in Kubernetes, implement safe rollback procedures, and set appropriate revision limits to balance recovery options with resource consumption.
+Description: Learn how to configure and manage deployment revision history in Kubernetes, implement safe rollback procedures.
 
 ---
 

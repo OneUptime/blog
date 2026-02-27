@@ -1,4 +1,4 @@
-# How to Configure Trace Sampling Rates in Cloud Trace to Control Data Collection Volume
+# Configure Trace Sampling Rates in Cloud Trace to Control Data Collection Volume
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

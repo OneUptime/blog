@@ -1,4 +1,4 @@
-# How to Monitor Clinical Trial Data Collection Platform Performance with OpenTelemetry
+# How to Monitor Clinical Trial Data Collection Platform Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

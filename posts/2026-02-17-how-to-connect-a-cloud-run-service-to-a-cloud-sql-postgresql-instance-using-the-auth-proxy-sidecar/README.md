@@ -1,4 +1,4 @@
-# How to Connect a Cloud Run Service to a Cloud SQL PostgreSQL Instance Using the Auth Proxy Sidecar
+# How to Connect a Cloud Run Service to a Cloud SQL PostgreSQL Instance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot AKS Cluster Certificate Expiration and Manual Rotation Procedures
+# How to Troubleshoot AKS Cluster Certificate Expiration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

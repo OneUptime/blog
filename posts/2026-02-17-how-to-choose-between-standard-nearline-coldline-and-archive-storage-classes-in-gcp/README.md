@@ -1,4 +1,4 @@
-# How to Choose Between Standard Nearline Coldline and Archive Storage Classes in GCP
+# How to Choose Between Standard Nearline Coldline and Archive Storage Classes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

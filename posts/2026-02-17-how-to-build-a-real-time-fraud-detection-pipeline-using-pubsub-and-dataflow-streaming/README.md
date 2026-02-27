@@ -1,4 +1,4 @@
-# How to Build a Real-Time Fraud Detection Pipeline Using Pub/Sub and Dataflow Streaming
+# How to Build a Real-Time Fraud Detection Pipeline Using Pub/Sub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

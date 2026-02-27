@@ -1,4 +1,4 @@
-# How to Create HLS and DASH Output Formats with Google Cloud Transcoder API Job Templates
+# How to Create HLS and DASH Output Formats with Google Cloud Transcoder API Job
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Implement Edge-Cloud Data Synchronization Patterns with MQTT and Kubernetes
+# How to Use Edge-Cloud Data Synchronization Patterns with MQTT and Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MQTT, Edge Computing
 
-Description: Learn how to implement bidirectional data synchronization between edge Kubernetes clusters and cloud using MQTT messaging patterns, enabling reliable data flow despite intermittent connectivity and network partitions.
+Description: Learn how to implement bidirectional data synchronization between edge Kubernetes clusters and cloud using MQTT messaging patterns.
 
 ---
 

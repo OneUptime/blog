@@ -1,4 +1,4 @@
-# How to Migrate Stateful Workloads to Stateless Microservices Using Cloud Firestore on GCP
+# How to Migrate Stateful Workloads to Stateless Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

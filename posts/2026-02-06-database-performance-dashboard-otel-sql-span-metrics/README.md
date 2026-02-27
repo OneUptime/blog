@@ -1,4 +1,4 @@
-# How to Build a Database Performance Dashboard from OpenTelemetry SQL Span Metrics
+# Build a Database Performance Dashboard from OpenTelemetry SQL Span Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

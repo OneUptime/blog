@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Log Metrics, Metrics Extraction, Observability, Prometheus, Monitoring, Analytics, Counters
 
-Description: Learn how to extract metrics from logs for monitoring and alerting. This guide covers counter extraction, histogram generation, log-derived SLIs, and integrating log metrics with your monitoring stack.
+Description: Learn how to extract metrics from logs for monitoring and alerting.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Use Terraform to Configure Cloud CDN with a Cloud Storage Bucket Origin and Cache Invalidation
+# How to Use Terraform to Configure Cloud CDN with a Cloud Storage Bucket Origin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

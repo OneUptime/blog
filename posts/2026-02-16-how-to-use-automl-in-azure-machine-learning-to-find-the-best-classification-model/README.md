@@ -1,4 +1,4 @@
-# How to Use AutoML in Azure Machine Learning to Find the Best Classification Model
+# Use AutoML in Azure Machine Learning to Find the Best Classification Model
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Service Catalog, Service Discovery, Microservices, DevOps, Platform Engineering
 
-Description: Learn how to implement a service catalog for managing, documenting, and discovering services in your organization, including metadata management, ownership tracking, and integration with service discovery systems.
+Description: Learn how to implement a service catalog for managing, documenting, and discovering services in your organization, including metadata management, ownership tracking.
 
 ---
 

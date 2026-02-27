@@ -1152,4 +1152,4 @@ Redis provides an excellent foundation for game state management, whether you're
 
 The key is choosing the right approach for your game type - strong consistency for turn-based games, eventual consistency with reconciliation for real-time games, and always implementing proper validation to prevent cheating.
 
-For more on building game systems with Redis, check out our guides on [Matchmaking Systems](/blog/redis-matchmaking-systems) and [Leaderboards](/blog/redis-sorted-sets-leaderboards).
+For more on building game systems with Redis, check out our guides on [Matchmaking Systems](https://oneuptime.com/blog/post/2026-01-21-redis-matchmaking-systems/view) and [Leaderboards](https://oneuptime.com/blog/post/2026-01-21-redis-sorted-sets-leaderboards/view).

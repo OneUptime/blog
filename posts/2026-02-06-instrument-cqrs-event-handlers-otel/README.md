@@ -1,4 +1,4 @@
-# How to Instrument CQRS Event Handlers with OpenTelemetry for Separate Read and Write Path Visibility
+# How to Instrument CQRS Event Handlers with OpenTelemetry for Separate Read
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

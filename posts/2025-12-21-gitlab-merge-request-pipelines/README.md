@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab CI, Merge Request, Pipelines, Code Review, CI/CD
 
-Description: Learn how to set up merge request pipelines in GitLab CI to run tests and validations specifically for merge requests. This guide covers pipeline configuration, merge result pipelines, and merge trains.
+Description: Learn how to set up merge request pipelines in GitLab CI to run tests and validations specifically for merge requests.
 
 > Merge request pipelines ensure that every proposed change is tested before it can be merged, catching issues early in the development process.
 

@@ -1,4 +1,4 @@
-# How to Configure BatchSpanProcessor Export Timeout to Prevent Data Loss During Traffic Spikes
+# How to Configure BatchSpanProcessor Export Timeout to Prevent Data Loss During
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

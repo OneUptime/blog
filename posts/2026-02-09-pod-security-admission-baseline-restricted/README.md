@@ -1,4 +1,4 @@
-# How to Configure Kubernetes Pod Security Admission for Baseline and Restricted Profiles
+# How to Configure Kubernetes Pod Security Admission
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

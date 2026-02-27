@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NestJS, TypeScript, NodeJS, Enterprise, Architecture, Backend
 
-Description: A practical guide to building enterprise-grade applications with NestJS. Learn about modular architecture, dependency injection, configuration management, testing strategies, and production patterns used in large-scale systems.
+Description: A practical guide to building enterprise-grade applications with NestJS.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: K3s, Edge Computing, Kubernetes, IoT, DevOps, ARM, Lightweight Kubernetes
 
-Description: A practical guide to leveraging K3s for edge computing scenarios. Learn how to deploy, configure, and manage lightweight Kubernetes clusters on resource-constrained devices, handle offline operations, and build resilient edge architectures.
+Description: A practical guide to leveraging K3s for edge computing scenarios.
 
 ---
 

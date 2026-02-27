@@ -1,4 +1,4 @@
-# How to Instrument Patient Portal and Health App API Performance with OpenTelemetry
+# How to Instrument Patient Portal and Health App API Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

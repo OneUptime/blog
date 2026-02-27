@@ -1,4 +1,4 @@
-# How to Compare AlloyDB vs Self-Managed PostgreSQL on Compute Engine for Enterprise Workloads
+# How to Compare AlloyDB vs Self-Managed PostgreSQL on Compute Engine
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

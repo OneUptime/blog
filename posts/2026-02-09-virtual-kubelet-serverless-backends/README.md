@@ -1,4 +1,4 @@
-# How to Use Virtual Kubelet to Extend Kubernetes Clusters with Serverless Backends
+# How to Use Virtual Kubelet to Extend Kubernetes Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

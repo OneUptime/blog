@@ -1,4 +1,4 @@
-# How to Build Custom ClusterRoles for Read-Only Cluster-Wide Access with Specific Resource Exclusions
+# How to Build Custom ClusterRoles for Read-Only Cluster-Wide Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

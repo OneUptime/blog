@@ -1,4 +1,4 @@
-# How to Configure the Webhook Event Receiver in the OpenTelemetry Collector to Ingest External Event Data
+# How to Configure the Webhook Event Receiver in the OpenTelemetry Collector to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

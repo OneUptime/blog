@@ -1,4 +1,4 @@
-# How to Set Up Model Governance and Approval Workflows in Vertex AI Model Registry
+# How to Set Up Model Governance and Approval Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

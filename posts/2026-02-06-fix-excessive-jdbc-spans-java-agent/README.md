@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry Java Agent Producing Excessive JDBC Spans That Overwhelm Your Tracing Backend
+# How to Fix OpenTelemetry Java Agent Producing Excessive JDBC Spans That
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

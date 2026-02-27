@@ -1,10 +1,10 @@
-# How to Implement Feature Flag-Based Progressive Rollouts from CI/CD to Kubernetes
+# How to Use Feature Flag-Based Progressive Rollouts from CI/CD to Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Feature Flags, Kubernetes, CI/CD, Progressive Delivery, DevOps
 
-Description: Implement progressive rollout strategies using feature flags in Kubernetes deployments, enabling gradual feature releases with automated canary analysis and rollback capabilities integrated into CI/CD pipelines.
+Description: Implement progressive rollout strategies using feature flags in Kubernetes deployments.
 
 ---
 

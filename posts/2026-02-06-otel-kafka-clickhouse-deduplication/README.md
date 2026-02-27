@@ -1,4 +1,4 @@
-# How to Implement Real-Time Deduplication in OpenTelemetry Kafka-to-ClickHouse Pipelines
+# Use Real-Time Deduplication in OpenTelemetry Kafka-to-ClickHouse Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build Disaster Recovery Testing Procedures Using Velero Restore Validation
+# How to Build Disaster Recovery Testing Procedures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

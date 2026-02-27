@@ -1,4 +1,4 @@
-# How to Configure Request Mirroring for Shadow Testing on Google Cloud Load Balancer
+# How to Configure Request Mirroring for Shadow Testing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

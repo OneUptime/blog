@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Envoy, Proxy, Debugging, Configuration, Service Mesh, DevOps, Kubernetes, Troubleshooting
 
-Description: A comprehensive guide to debugging Envoy proxy configuration issues, including admin interface usage, configuration dump analysis, access logging, common errors, and performance troubleshooting techniques.
+Description: A comprehensive guide to debugging Envoy proxy configuration issues, including admin interface usage, configuration dump analysis, access logging, common errors.
 
 ---
 

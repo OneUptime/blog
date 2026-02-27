@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: FastAPI, Python, Middleware, API
 
-Description: Learn how to add and configure middleware in FastAPI applications. This comprehensive guide covers built-in middleware, custom middleware creation, request/response processing, error handling, and production-ready patterns.
+Description: Learn how to add and configure middleware in FastAPI applications.
 
 ---
 

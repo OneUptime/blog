@@ -1,4 +1,4 @@
-# How to Monitor Social Graph Query Performance (Friend Suggestions, Connection Degrees) with OpenTelemetry
+# How to Monitor Social Graph Query Performance with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

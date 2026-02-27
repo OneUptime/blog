@@ -1,4 +1,4 @@
-# How to Build a Synthetic Monitoring Pipeline with OpenTelemetry for API Uptime Tracking
+# How to Build a Synthetic Monitoring Pipeline with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

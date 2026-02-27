@@ -1,4 +1,4 @@
-# How to De-Identify DICOM Medical Images While Preserving Clinical Utility on Google Cloud
+# How to De-Identify DICOM Medical Images While Preserving Clinical Utility
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

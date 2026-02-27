@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector to Receive and Forward Profiling Data via OTLP
+# How to Configure the OpenTelemetry Collector to Receive
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

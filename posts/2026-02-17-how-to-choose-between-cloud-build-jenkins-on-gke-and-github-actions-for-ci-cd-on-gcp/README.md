@@ -1,4 +1,4 @@
-# How to Choose Between Cloud Build Jenkins on GKE and GitHub Actions for CI/CD on GCP
+# How to Choose Between Cloud Build Jenkins on GKE and GitHub Actions for CI/CD
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

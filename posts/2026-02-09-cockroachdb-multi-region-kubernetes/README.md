@@ -1,4 +1,4 @@
-# How to Deploy CockroachDB with Multi-Region Topology on Kubernetes Using the Operator
+# How to Deploy CockroachDB with Multi-Region Topology
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

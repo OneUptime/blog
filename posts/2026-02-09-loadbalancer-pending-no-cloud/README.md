@@ -1,4 +1,4 @@
-# How to Fix Kubernetes LoadBalancer Service Stuck in Pending Without Cloud Provider
+# How to Fix Kubernetes LoadBalancer Service Stuck
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

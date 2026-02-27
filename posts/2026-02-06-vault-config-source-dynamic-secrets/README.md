@@ -1,4 +1,4 @@
-# How to Configure the Vault Config Source Provider for Dynamic Secret Injection in the OpenTelemetry Collector
+# How to Configure the Vault Config Source Provider for Dynamic Secret Injection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

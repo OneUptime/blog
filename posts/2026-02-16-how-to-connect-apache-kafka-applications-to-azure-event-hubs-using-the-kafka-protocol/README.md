@@ -1,4 +1,4 @@
-# How to Connect Apache Kafka Applications to Azure Event Hubs Using the Kafka Protocol
+# How to Connect Apache Kafka Applications to Azure Event Hubs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

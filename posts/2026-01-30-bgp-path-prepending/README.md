@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: BGP, Networking, Routing, Traffic Engineering
 
-Description: A comprehensive guide to BGP path prepending for traffic engineering. Learn how to influence inbound traffic paths, implement prepending on different router platforms, and avoid common pitfalls in production networks.
+Description: A comprehensive guide to BGP path prepending for traffic engineering.
 
 ---
 

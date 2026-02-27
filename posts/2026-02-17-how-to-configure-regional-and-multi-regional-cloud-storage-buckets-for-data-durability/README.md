@@ -1,4 +1,4 @@
-# How to Configure Regional and Multi-Regional Cloud Storage Buckets for Data Durability
+# How to Configure Regional and Multi-Regional Cloud Storage Buckets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

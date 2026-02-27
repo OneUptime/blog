@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, TLS, Runbook
 
-Description: A step-by-step operational runbook for diagnosing and fixing expired certificates in ArgoCD, covering TLS server certificates, Git repository certificates, cluster certificates, and Dex OIDC certificates.
+Description: A step-by-step operational runbook for diagnosing and fixing expired certificates in ArgoCD, covering TLS server certificates, Git repository certificates, cluster certificates.
 
 ---
 

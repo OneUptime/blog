@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Binary Authorization, Container Signing, Supply Chain, Image Verification
 
-Description: Learn how to implement Binary Authorization in Kubernetes to ensure only verified and signed container images run in your clusters. This guide covers image signing, attestation, and policy enforcement.
+Description: Learn how to implement Binary Authorization in Kubernetes to ensure only verified and signed container images run in your clusters.
 
 ---
 

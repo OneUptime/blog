@@ -1,4 +1,4 @@
-# How to Compare Profiles Across Time Periods in Cloud Profiler to Detect Regressions
+# Compare Profiles Across Time Periods in Cloud Profiler to Detect Regressions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

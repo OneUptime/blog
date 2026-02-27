@@ -1,4 +1,4 @@
-# How to Deploy AI Models at the Edge Using Azure Stack Edge and Azure Machine Learning
+# How to Deploy AI Models at the Edge Using Azure Stack Edge
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

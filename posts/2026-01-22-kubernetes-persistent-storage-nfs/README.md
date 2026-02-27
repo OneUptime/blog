@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, NFS, Persistent Storage, DevOps, Storage
 
-Description: A step-by-step guide to configuring NFS-based persistent storage in Kubernetes, including NFS server setup, PersistentVolumes, PersistentVolumeClaims, and dynamic provisioning with NFS subdir external provisioner.
+Description: A step-by-step guide to configuring NFS-based persistent storage in Kubernetes, including NFS server setup, PersistentVolumes, PersistentVolumeClaims.
 
 ---
 

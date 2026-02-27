@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Tracing, ID Generation, Observability
 
-Description: Learn how to create custom ID generators in OpenTelemetry for trace IDs and span IDs. This guide covers the default implementations, when to customize them, and practical examples in multiple languages.
+Description: Learn how to create custom ID generators in OpenTelemetry for trace IDs and span IDs.
 
 ---
 

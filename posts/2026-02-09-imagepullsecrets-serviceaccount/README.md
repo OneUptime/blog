@@ -1,4 +1,4 @@
-# How to Configure ImagePullSecrets at ServiceAccount Level for Namespace-Wide Authentication
+# How to Configure ImagePullSecrets at ServiceAccount Level for Namespace-Wide
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

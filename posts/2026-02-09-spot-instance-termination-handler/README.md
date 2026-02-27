@@ -1,10 +1,10 @@
-# How to Implement Spot Instance Interruption Handling with Node Termination Handler on Kubernetes
+# How to Use Spot Instance Interruption Handling with Node Termination Handler
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Spot Instances, Cost Optimization, AWS, Node Termination Handler
 
-Description: Implement AWS Node Termination Handler to gracefully manage spot instance interruptions on Kubernetes, maintaining application availability while achieving 60-90% cost savings compared to on-demand instances.
+Description: Implement AWS Node Termination Handler to gracefully manage spot instance interruptions on Kubernetes.
 
 ---
 

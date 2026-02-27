@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Debugging, Troubleshooting, Containers, DevOps, Storage
 
-Description: Learn how to diagnose and fix pods stuck in ContainerCreating status. This guide covers common causes including image pull issues, volume mount problems, and resource constraints with step-by-step debugging techniques.
+Description: Learn how to diagnose and fix pods stuck in ContainerCreating status.
 
 ---
 

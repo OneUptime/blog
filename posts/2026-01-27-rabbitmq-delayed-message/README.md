@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Message Queue, Delayed Messages, Scheduling, Node.js, Python, Distributed Systems, Microservices
 
-Description: A comprehensive guide to implementing delayed message delivery in RabbitMQ using the Delayed Message Exchange plugin, with practical examples for scheduled tasks, retry mechanisms, and workflow orchestration.
+Description: A comprehensive guide to implementing delayed message delivery in RabbitMQ using the Delayed Message Exchange plugin, with practical examples for scheduled tasks, retry mechanisms.
 
 ---
 

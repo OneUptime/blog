@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry Operator CRD Version Conflicts After Upgrading the Operator Helm Chart
+# How to Fix OpenTelemetry Operator CRD Version Conflicts After Upgrading the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

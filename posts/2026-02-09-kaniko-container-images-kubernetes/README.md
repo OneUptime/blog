@@ -1,4 +1,4 @@
-# How to Build Container Images Inside Kubernetes Using Kaniko Without Docker Daemon
+# How to Build Container Images Inside Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

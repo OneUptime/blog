@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Cross-Datacenter, Geo-Replication, Disaster Recovery, Active-Passive, Active-Active, High Availability, DevOps
 
-Description: A comprehensive guide to setting up cross-datacenter Redis replication for disaster recovery and global distribution. Learn active-passive, active-active patterns, and best practices for geo-distributed deployments.
+Description: A comprehensive guide to setting up cross-datacenter Redis replication for disaster recovery and global distribution.
 
 ---
 

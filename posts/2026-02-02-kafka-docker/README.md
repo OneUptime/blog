@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Kafka, Streaming, Message Queue, DevOps, Containers
 
-Description: Learn how to run Apache Kafka in Docker containers for local development and production environments. Covers single-node setup, multi-broker clusters, networking, producers, consumers, and monitoring strategies.
+Description: Learn how to run Apache Kafka in Docker containers for local development and production environments.
 
 ---
 

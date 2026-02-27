@@ -1,4 +1,4 @@
-# How to Set Up OpenTelemetry for Python Applications with Cloud Trace and Cloud Logging on GCP
+# How to Set Up OpenTelemetry for Python Applications with Cloud Trace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

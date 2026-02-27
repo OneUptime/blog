@@ -1,4 +1,4 @@
-# How to Implement Multi-Channel Alert Routing (PagerDuty + Slack + Email) from OpenTelemetry Data
+# How to Use Multi-Channel Alert Routing from OpenTelemetry Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

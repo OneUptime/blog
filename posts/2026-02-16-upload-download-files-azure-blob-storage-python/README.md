@@ -1,4 +1,4 @@
-# How to Upload and Download Files from Azure Blob Storage Using azure-storage-blob in Python
+# How to Upload and Download Files from Azure Blob Storage Using
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

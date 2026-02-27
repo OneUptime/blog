@@ -1,10 +1,10 @@
-# How to Implement Ambassador External Auth Service for Custom Authentication Logic
+# How to Use Ambassador External Auth Service for Custom Authentication Logic
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ambassador, Authentication, Kubernetes
 
-Description: Learn how to implement custom authentication and authorization logic using Ambassador's External Auth Service, enabling centralized security policies and complex authentication workflows in Kubernetes.
+Description: Learn how to implement custom authentication and authorization logic using Ambassador's External Auth Service.
 
 ---
 

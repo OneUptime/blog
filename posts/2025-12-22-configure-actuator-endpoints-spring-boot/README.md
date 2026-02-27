@@ -513,4 +513,4 @@ Properly configured Actuator endpoints provide the visibility you need without c
 *Need comprehensive monitoring for your Spring Boot applications? [OneUptime](https://oneuptime.com) integrates with Actuator endpoints to provide health monitoring, alerting, and incident management.*
 
 **Related Reading:**
-- [How to Configure Spring Boot with Redis](/blog/post/2025-12-22-configure-redis-spring-boot/view)
+- [How to Configure Spring Boot with Redis](https://oneuptime.com/blog/post/2025-12-22-configure-redis-spring-boot/view)

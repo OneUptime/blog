@@ -535,5 +535,5 @@ The goal is not to prevent duplicates entirely - that is impossible in a distrib
 
 **Related Reading:**
 
-- [Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Monitor your message processing with distributed tracing
-- [What is OpenTelemetry Collector](/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view) - Collect telemetry from your event-driven architecture
+- [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Monitor your message processing with distributed tracing
+- [What is OpenTelemetry Collector](https://oneuptime.com/blog/post/2025-09-18-what-is-opentelemetry-collector-and-why-use-one/view) - Collect telemetry from your event-driven architecture

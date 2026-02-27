@@ -1,4 +1,4 @@
-# How to Migrate Kubernetes Workloads from x86 to ARM64 Nodes with Multi-Arch Images
+# Migrate Kubernetes Workloads from x86 to ARM64 Nodes with Multi-Arch Images
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

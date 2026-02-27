@@ -1,4 +1,4 @@
-# How to Set Up Skaffold Profiles for Development Staging and Production Deployments on GKE with Kustomize
+# How to Set Up Skaffold Profiles for Development Staging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

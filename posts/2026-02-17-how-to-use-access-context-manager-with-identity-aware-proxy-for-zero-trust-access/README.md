@@ -1,4 +1,4 @@
-# How to Use Access Context Manager with Identity-Aware Proxy for Zero Trust Access
+# How to Use Access Context Manager with Identity-Aware Proxy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

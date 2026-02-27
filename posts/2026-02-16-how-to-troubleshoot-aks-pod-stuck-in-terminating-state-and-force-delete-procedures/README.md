@@ -1,4 +1,4 @@
-# How to Troubleshoot AKS Pod Stuck in Terminating State and Force Delete Procedures
+# How to Troubleshoot AKS Pod Stuck in Terminating State
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

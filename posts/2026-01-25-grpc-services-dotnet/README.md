@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, gRPC, Microservices, API, Protocol Buffers
 
-Description: Learn how to build high-performance gRPC services in .NET. This guide covers service definitions, server implementation, client creation, streaming patterns, and best practices for production deployments.
+Description: Learn how to build high-performance gRPC services in .NET.
 
 ---
 

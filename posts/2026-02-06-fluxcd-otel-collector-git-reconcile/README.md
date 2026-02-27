@@ -1,4 +1,4 @@
-# How to Use FluxCD to Continuously Reconcile OpenTelemetry Collector Configuration from Git
+# How to Use FluxCD to Continuously Reconcile OpenTelemetry Collector Config from
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

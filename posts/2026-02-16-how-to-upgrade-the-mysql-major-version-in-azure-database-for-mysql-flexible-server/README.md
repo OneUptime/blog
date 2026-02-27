@@ -1,4 +1,4 @@
-# How to Upgrade the MySQL Major Version in Azure Database for MySQL Flexible Server
+# How to Upgrade the MySQL Major Version in Azure Database
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

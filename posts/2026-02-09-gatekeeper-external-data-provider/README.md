@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, OPA Gatekeeper, External Data, Dynamic Policies, API Integration
 
-Description: Learn how to configure OPA Gatekeeper external data providers to fetch real-time data from external APIs, databases, and services for dynamic policy decisions based on current state and external context.
+Description: Learn how to configure OPA Gatekeeper external data providers to fetch real-time data from external APIs, databases.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, StorageClass, ReclaimPolicy
 
-Description: Learn how to configure and manage reclaim policies in Kubernetes StorageClasses including Retain, Delete, and the deprecated Recycle policy, with strategies for data lifecycle management and disaster recovery.
+Description: Learn how to configure and manage reclaim policies in Kubernetes StorageClasses including Retain, Delete, and the deprecated Recycle policy.
 
 ---
 

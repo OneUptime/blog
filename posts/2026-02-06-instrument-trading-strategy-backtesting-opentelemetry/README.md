@@ -1,4 +1,4 @@
-# How to Instrument Automated Trading Strategy Backtesting Pipelines with OpenTelemetry for Performance Analysis
+# How to Instrument Automated Trading Strategy Backtesting Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

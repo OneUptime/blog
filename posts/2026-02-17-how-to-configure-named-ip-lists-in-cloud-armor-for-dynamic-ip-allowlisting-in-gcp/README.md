@@ -1,4 +1,4 @@
-# How to Configure Named IP Lists in Cloud Armor for Dynamic IP Allowlisting in GCP
+# How to Configure Named IP Lists in Cloud Armor for Dynamic IP Allowlisting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

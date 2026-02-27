@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CNI, Networking, Bandwidth, QoS
 
-Description: Configure network bandwidth limits using CNI plugins in Kubernetes including bandwidth plugin setup, per-pod annotations, Calico bandwidth policies, and monitoring bandwidth usage for optimal cluster performance.
+Description: Configure network bandwidth limits using CNI plugins in Kubernetes including bandwidth plugin setup, per-pod annotations, Calico bandwidth policies.
 
 ---
 

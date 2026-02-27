@@ -1,4 +1,4 @@
-# How to Implement a Custom Resource Detector That Auto-Discovers Your Deployment Environment
+# Build a Custom Resource Detector That Auto-Discovers Your Deployment Environment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

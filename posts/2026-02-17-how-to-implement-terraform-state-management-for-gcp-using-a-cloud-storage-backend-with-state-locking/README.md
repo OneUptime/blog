@@ -1,4 +1,4 @@
-# How to Implement Terraform State Management for GCP Using a Cloud Storage Backend with State Locking
+# How to Use Terraform State Management for GCP Using a Cloud Storage Backend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

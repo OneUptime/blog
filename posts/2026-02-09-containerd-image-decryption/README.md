@@ -1,4 +1,4 @@
-# How to Configure containerd Image Decryption for Encrypted Container Images in Kubernetes
+# How to Configure containerd Image Decryption for Encrypted Container Images
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

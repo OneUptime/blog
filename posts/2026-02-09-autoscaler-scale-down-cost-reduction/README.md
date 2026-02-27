@@ -1,10 +1,10 @@
-# How to Implement Kubernetes Cluster Autoscaler Scale-Down Policies for Cost Reduction
+# How to Use Kubernetes Cluster Autoscaler Scale-Down Policies for Cost Reduction
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Cluster Autoscaler, Cost Optimization, Autoscaling
 
-Description: Configure Cluster Autoscaler scale-down policies to aggressively reclaim unused nodes during low-demand periods while protecting critical workloads, achieving 30-40% cost reduction in variable workload environments.
+Description: Configure Cluster Autoscaler scale-down policies to aggressively reclaim unused nodes during low-demand periods while protecting critical workloads.
 
 ---
 

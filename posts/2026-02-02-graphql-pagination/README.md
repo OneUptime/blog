@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: GraphQL, Pagination, API, Cursor
 
-Description: A comprehensive guide to implementing pagination in GraphQL APIs, covering offset-based, cursor-based, and keyset pagination with practical examples, database optimizations, and production best practices.
+Description: A comprehensive guide to implementing pagination in GraphQL APIs, covering offset-based, cursor-based, and keyset pagination with practical examples, database optimizations.
 
 ---
 

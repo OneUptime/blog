@@ -1,10 +1,10 @@
-# How to Implement DNS-Based Service Discovery for StatefulSet Pods with Stable Network IDs
+# How to Use DNS-Based Service Discovery for StatefulSet Pods
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DNS, StatefulSet, Service Discovery
 
-Description: Learn how to implement DNS-based service discovery for StatefulSet pods using stable network identities, enabling reliable peer discovery and communication for stateful applications like databases and distributed systems.
+Description: Learn how to implement DNS-based service discovery for StatefulSet pods using stable network identities.
 
 ---
 

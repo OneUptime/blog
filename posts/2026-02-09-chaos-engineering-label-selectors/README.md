@@ -1,4 +1,4 @@
-# How to Implement Chaos Engineering Experiments That Target Specific Kubernetes Label Selectors
+# How to Use Chaos Engineering Experiments That Target Specific K8s Label
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Monitor Fraud Detection Model Inference Latency in Real-Time Payment Systems with OpenTelemetry
+# How to Monitor Fraud Detection Model Inference Latency in Real-Time Payment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

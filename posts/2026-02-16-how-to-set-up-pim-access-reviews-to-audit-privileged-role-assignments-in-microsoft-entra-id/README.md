@@ -1,4 +1,4 @@
-# How to Set Up PIM Access Reviews to Audit Privileged Role Assignments in Microsoft Entra ID
+# How to Set Up PIM Access Reviews to Audit Privileged Role Assignments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

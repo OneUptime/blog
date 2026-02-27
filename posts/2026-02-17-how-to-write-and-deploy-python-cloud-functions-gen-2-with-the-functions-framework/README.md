@@ -1,4 +1,4 @@
-# How to Write and Deploy Python Cloud Functions Gen 2 with the Functions Framework
+# How to Write and Deploy Python Cloud Functions Gen 2
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

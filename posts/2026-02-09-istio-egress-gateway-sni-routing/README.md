@@ -1,4 +1,4 @@
-# How to Configure Istio Egress Gateway with SNI Routing for External HTTPS Services
+# How to Configure Istio Egress Gateway with SNI Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

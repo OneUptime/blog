@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Containers, Debugging, DevOps, Troubleshooting, Linux, OCI
 
-Description: A practical guide to debugging Podman containers covering log analysis, interactive inspection, networking issues, rootless debugging, resource constraints, and advanced troubleshooting techniques for production environments.
+Description: A practical guide to debugging Podman containers covering log analysis, interactive inspection, networking issues, rootless debugging, resource constraints.
 
 ---
 

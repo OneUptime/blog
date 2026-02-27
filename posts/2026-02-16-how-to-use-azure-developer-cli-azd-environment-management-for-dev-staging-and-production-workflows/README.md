@@ -1,4 +1,4 @@
-# How to Use Azure Developer CLI (azd) Environment Management for Dev, Staging, and Production Workflows
+# How to Use Azure Developer CLI Environment Management for Dev, Staging,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

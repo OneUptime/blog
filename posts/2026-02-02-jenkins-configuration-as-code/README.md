@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Jenkins, Configuration as Code, JCasC, CI/CD, DevOps, Automation, Infrastructure as Code
 
-Description: A complete guide to managing Jenkins with Configuration as Code (JCasC), covering installation, YAML configuration, secrets management, and production best practices for reproducible Jenkins environments.
+Description: A complete guide to managing Jenkins with Configuration as Code (JCasC), covering installation, YAML configuration, secrets management.
 
 ---
 

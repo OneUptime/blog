@@ -1,4 +1,4 @@
-# How to Fix the Collector Ignoring Memory Ballast Configuration After Upgrading to Versions with GOMEMLIMIT
+# How to Fix the Collector Ignoring Memory Ballast Config After Upgrading to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

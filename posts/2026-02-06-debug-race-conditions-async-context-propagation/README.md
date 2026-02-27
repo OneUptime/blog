@@ -1,4 +1,4 @@
-# How to Debug Race Conditions in Async Applications Using OpenTelemetry Context Propagation Traces
+# How to Debug Race Conditions in Async Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Real-Time Analytics Pipeline Using Pub/Sub Dataflow Streaming and BigQuery
+# How to Build a Real-Time Analytics Pipeline Using Pub/Sub Dataflow Streaming
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

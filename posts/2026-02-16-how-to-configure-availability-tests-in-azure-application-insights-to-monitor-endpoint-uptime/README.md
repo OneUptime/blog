@@ -1,4 +1,4 @@
-# How to Configure Availability Tests in Azure Application Insights to Monitor Endpoint Uptime
+# How to Configure Availability Tests in Azure App Insights to Monitor Endpoint
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

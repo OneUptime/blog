@@ -1,4 +1,4 @@
-# How to Implement Traffic Splitting with Traffic Director for Canary Deployments on Google Cloud
+# How to Use Traffic Splitting with Traffic Director for Canary Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

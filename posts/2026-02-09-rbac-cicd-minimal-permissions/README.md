@@ -1,4 +1,4 @@
-# How to Build RBAC Roles for CI/CD Service Accounts with Minimal Deployment Permissions
+# How to Build RBAC Roles for CI/CD Service Accounts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

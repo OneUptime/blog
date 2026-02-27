@@ -1,4 +1,4 @@
-# How to Build Minimal Docker Images for Go Microservices Using Scratch Base Images for Cloud Run
+# How to Build Minimal Docker Images for Go Microservices Using Scratch Base
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

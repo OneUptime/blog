@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector to Export to Baselime with Environment-Based Routing and API Key Auth
+# How to Configure the OpenTelemetry Collector to Export to Baselime with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

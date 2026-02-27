@@ -1,4 +1,4 @@
-# How to Set Up Object Change Notifications Using Google Cloud Storage and Cloud Functions
+# How to Set Up Object Change Notifications Using Google Cloud Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

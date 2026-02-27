@@ -1,4 +1,4 @@
-# How to Build a Living Architecture Diagram from OpenTelemetry Service Graph Connector Data
+# How to Build a Living Architecture Diagram from OpenTelemetry Service Graph
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

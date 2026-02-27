@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Containers, Linux, Systemd, DevOps, Rootless Containers, Microservices
 
-Description: Learn how to manage Podman containers as system services using systemd. Covers unit file generation, rootless and rootful configurations, auto-restart policies, health checks, and production deployment patterns.
+Description: Learn how to manage Podman containers as system services using systemd.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, OPA Gatekeeper, Testing, Policy Validation, CI/CD
 
-Description: Learn how to use the Gatekeeper gator CLI tool to test constraint templates and policies locally, build automated policy testing frameworks, integrate with CI/CD pipelines, and ensure policy correctness before deployment.
+Description: Learn how to use the Gatekeeper gator CLI tool to test constraint templates and policies locally, build automated policy testing frameworks, integrate with CI/CD pipelines.
 
 ---
 

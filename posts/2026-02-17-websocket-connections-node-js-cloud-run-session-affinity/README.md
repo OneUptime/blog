@@ -1,4 +1,4 @@
-# How to Implement WebSocket Connections in a Node.js Application on Cloud Run with Session Affinity
+# How to Use WebSocket Connections in a Node.js Application on Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

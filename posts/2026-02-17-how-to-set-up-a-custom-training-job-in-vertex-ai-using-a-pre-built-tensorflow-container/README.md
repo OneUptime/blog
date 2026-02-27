@@ -1,4 +1,4 @@
-# How to Set Up a Custom Training Job in Vertex AI Using a Pre-Built TensorFlow Container
+# Set Up a Custom Training Job in Vertex AI Using a Pre-Built TensorFlow Container
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

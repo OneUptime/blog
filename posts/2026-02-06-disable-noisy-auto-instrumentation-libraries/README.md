@@ -1,4 +1,4 @@
-# How to Disable Noisy Auto-Instrumentation Libraries (DNS, File System) to Reduce Data Volume
+# How to Disable Noisy Auto-Instrumentation Libraries to Reduce Data Volume
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

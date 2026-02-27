@@ -1,4 +1,4 @@
-# How to Display Real-Time Weather Overlays on Maps Using Azure Maps Weather Service
+# How to Display Real-Time Weather Overlays on Maps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

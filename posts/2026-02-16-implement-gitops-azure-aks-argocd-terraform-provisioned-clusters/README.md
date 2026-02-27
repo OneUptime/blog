@@ -1,4 +1,4 @@
-# How to Implement GitOps for Azure AKS with ArgoCD and Terraform-Provisioned Clusters
+# How to Use GitOps for Azure AKS with ArgoCD and Terraform-Provisioned Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

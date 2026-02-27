@@ -1,4 +1,4 @@
-# How to Use cert-manager ACME External Account Binding for Enterprise Let's Encrypt
+# Use cert-manager ACME External Account Binding for Enterprise Let's Encrypt
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Azure Pipelines Integration with SonarQube for Continuous Code Quality Analysis
+# How to Set Up Azure Pipelines Integration with SonarQube
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

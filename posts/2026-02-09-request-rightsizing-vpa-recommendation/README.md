@@ -1,4 +1,4 @@
-# How to Configure Kubernetes Request Right-Sizing Automation with VPA in Recommendation Mode
+# How to Configure Kubernetes Request Right-Sizing Automation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

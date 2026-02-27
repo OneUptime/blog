@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, Secrets Management, Security, CI/CD, DevOps, Credentials
 
-Description: Learn how to securely manage secrets in GitHub Actions workflows. This guide covers repository secrets, environment secrets, organization secrets, OIDC authentication, and best practices for keeping credentials safe.
+Description: Learn how to securely manage secrets in GitHub Actions workflows.
 
 ---
 

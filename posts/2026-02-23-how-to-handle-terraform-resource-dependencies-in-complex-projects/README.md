@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Dependencies, Resource Management, Infrastructure as Code, DevOps
 
-Description: Learn how to manage complex resource dependencies in Terraform projects, including implicit and explicit dependencies, cross-module references, circular dependency resolution, and dependency visualization.
+Description: Learn how to manage complex resource dependencies in Terraform projects, including implicit and explicit dependencies, cross-module references, circular dependency resolution.
 
 ---
 

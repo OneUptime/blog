@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Django, Python, GraphQL, Graphene, API
 
-Description: Learn how to build powerful GraphQL APIs with Graphene-Django. This comprehensive guide covers schema design, queries, mutations, subscriptions, authentication, and performance optimization with practical examples.
+Description: Learn how to build powerful GraphQL APIs with Graphene-Django.
 
 ---
 

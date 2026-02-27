@@ -1,4 +1,4 @@
-# How to Implement CI/CD for Terraform GCP Deployments Using Cloud Build and Terraform Plan Approval
+# How to Use CI/CD for Terraform GCP Deployments Using Cloud Build
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

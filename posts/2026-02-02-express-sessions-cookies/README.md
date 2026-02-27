@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Express.js, Sessions, Cookies, Node.js, Authentication, Security
 
-Description: A comprehensive guide to handling sessions and cookies in Express.js applications. Learn how to implement secure session management, configure cookies properly, use different session stores, and follow security best practices for production deployments.
+Description: A comprehensive guide to handling sessions and cookies in Express.js applications.
 
 ---
 

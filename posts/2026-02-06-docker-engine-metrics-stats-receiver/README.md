@@ -1,4 +1,4 @@
-# How to Monitor Docker Engine Metrics (CPU, Memory, Network, Block I/O per Container) with the Docker Stats Receiver
+# How to Monitor Docker Engine Metrics with the Docker Stats Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

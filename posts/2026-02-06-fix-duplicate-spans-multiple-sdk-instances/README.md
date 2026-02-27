@@ -1,4 +1,4 @@
-# How to Fix Duplicate Spans Appearing in Your Tracing Backend Due to Multiple SDK Instances in the Same Process
+# How to Fix Duplicate Spans Appearing in Your Tracing Backend Due to Multi SDK
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

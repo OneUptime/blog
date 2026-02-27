@@ -1,4 +1,4 @@
-# How to Troubleshoot mTLS Authentication Errors Between Application SDKs and the OpenTelemetry Collector
+# How to Troubleshoot mTLS Authentication Errors Between Application SDKs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

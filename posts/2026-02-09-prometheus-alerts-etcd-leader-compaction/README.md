@@ -1,4 +1,4 @@
-# How to Create Prometheus Alerts for Kubernetes etcd Leader Changes and Compaction Lag
+# How to Create Prometheus Alerts for Kubernetes etcd Leader Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

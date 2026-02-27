@@ -1,4 +1,4 @@
-# How to Configure ARM Templates with Nested Deployments for Complex Resource Topologies
+# How to Configure ARM Templates with Nested Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

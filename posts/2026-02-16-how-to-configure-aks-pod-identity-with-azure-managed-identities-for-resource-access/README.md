@@ -1,4 +1,4 @@
-# How to Configure AKS Pod Identity with Azure Managed Identities for Resource Access
+# How to Configure AKS Pod Identity with Azure Managed Identities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Schedule a Cloud Workflow to Run on a Recurring Basis with Cloud Scheduler
+# How to Schedule a Cloud Workflow to Run on a Recurring Basis
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

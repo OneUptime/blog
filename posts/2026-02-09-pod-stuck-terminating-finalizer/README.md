@@ -1,4 +1,4 @@
-# How to Diagnose Kubernetes Pod Stuck in Terminating State Due to Finalizer Issues
+# Diagnose Kubernetes Pod Stuck in Terminating State Due to Finalizer Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

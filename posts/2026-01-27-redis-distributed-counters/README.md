@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Distributed Counters, INCR, Atomic Operations, Analytics, High Throughput
 
-Description: Learn how to build scalable distributed counters using Redis. This guide covers atomic increment operations, sharded counters for high throughput, time-windowed counters, and techniques for handling counter overflow and persistence.
+Description: Learn how to build scalable distributed counters using Redis.
 
 ---
 

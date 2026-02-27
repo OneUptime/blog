@@ -1,4 +1,4 @@
-# How to Copy Data from On-Premises SQL Server to Azure Data Lake Using Data Factory
+# How to Copy Data from On-Premises SQL Server to Azure Data Lake
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

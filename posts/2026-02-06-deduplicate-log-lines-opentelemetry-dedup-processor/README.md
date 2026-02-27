@@ -1,4 +1,4 @@
-# How to Deduplicate Redundant Log Lines Using the OpenTelemetry Log Dedup Processor
+# Deduplicate Redundant Log Lines Using the OpenTelemetry Log Dedup Processor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

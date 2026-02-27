@@ -1,4 +1,4 @@
-# How to Deploy SuperEdge for Managing Large-Scale Edge Node Fleets with Kubernetes
+# How to Deploy SuperEdge for Managing Large-Scale Edge Node Fleets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

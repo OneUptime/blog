@@ -1,4 +1,4 @@
-# How to Fix Prisma Instrumentation Not Generating Spans Because the Preview Feature Flag Is Missing
+# How to Fix Prisma Instrumentation Not Generating Spans Because the Preview
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

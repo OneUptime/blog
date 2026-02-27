@@ -1,4 +1,4 @@
-# How to Implement Structured JSON Logging with OpenTelemetry Log Bridge API in Production
+# How to Use Structured JSON Logging with OpenTelemetry Log Bridge API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Platform Engineering Observability Layer That Abstracts OpenTelemetry Complexity from Dev Teams
+# How to Build a Platform Engineering Observability Layer That Abstracts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

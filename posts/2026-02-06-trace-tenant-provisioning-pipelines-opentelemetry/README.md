@@ -1,4 +1,4 @@
-# How to Trace Tenant Provisioning and Environment Setup Pipelines with OpenTelemetry
+# How to Trace Tenant Provisioning and Environment Setup Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

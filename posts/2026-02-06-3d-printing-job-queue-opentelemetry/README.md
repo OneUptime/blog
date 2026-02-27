@@ -1,4 +1,4 @@
-# How to Instrument 3D Printing and Additive Manufacturing Job Queue Performance with OpenTelemetry
+# How to Instrument 3D Printing and Additive Manufacturing Job Queue Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

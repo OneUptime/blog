@@ -1,4 +1,4 @@
-# How to Monitor gRPC Channel States and Connection Pool Metrics with OpenTelemetry
+# How to Monitor gRPC Channel States and Connection Pool Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

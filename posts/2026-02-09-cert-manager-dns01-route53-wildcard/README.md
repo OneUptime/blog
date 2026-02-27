@@ -1,4 +1,4 @@
-# How to Implement cert-manager DNS-01 Challenge with Route53 for Wildcard Certificates
+# How to Use cert-manager DNS-01 Challenge with Route53 for Wildcard Certificates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

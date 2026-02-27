@@ -1,4 +1,4 @@
-# How to Route Audit Log Events from Google Cloud Services to Cloud Run with Eventarc
+# How to Route Audit Log Events from Google Cloud Services to Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

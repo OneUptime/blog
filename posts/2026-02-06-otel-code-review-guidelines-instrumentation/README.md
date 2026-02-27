@@ -1,4 +1,4 @@
-# How to Establish OpenTelemetry Code Review Guidelines for Instrumentation Quality
+# How to Establish OpenTelemetry Code Review Guidelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

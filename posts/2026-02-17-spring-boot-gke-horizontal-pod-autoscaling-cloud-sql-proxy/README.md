@@ -1,4 +1,4 @@
-# How to Deploy a Spring Boot Application to GKE with Horizontal Pod Autoscaling and Cloud SQL Proxy
+# How to Deploy a Spring Boot Application to GKE with Horizontal Pod Autoscaling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

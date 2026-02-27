@@ -1,4 +1,4 @@
-# How to Automate Azure Disk Encryption Set Configuration with Terraform and Key Vault
+# How to Automate Azure Disk Encryption Set Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

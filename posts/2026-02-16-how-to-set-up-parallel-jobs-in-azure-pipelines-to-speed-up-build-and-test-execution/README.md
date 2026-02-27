@@ -1,4 +1,4 @@
-# How to Set Up Parallel Jobs in Azure Pipelines to Speed Up Build and Test Execution
+# How to Set Up Parallel Jobs in Azure Pipelines to Speed Up Build
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

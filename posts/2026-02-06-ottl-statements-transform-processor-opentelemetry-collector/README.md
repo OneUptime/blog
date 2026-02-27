@@ -1,4 +1,4 @@
-# How to Write OTTL Statements for the Transform Processor in the OpenTelemetry Collector
+# How to Write OTTL Statements for the Transform Processor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

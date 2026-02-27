@@ -1,4 +1,4 @@
-# How to Build a Video Content Analysis Pipeline with Vertex AI Video Intelligence and Gemini
+# How to Build a Video Content Analysis Pipeline with Vertex AI Video Intelligence
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

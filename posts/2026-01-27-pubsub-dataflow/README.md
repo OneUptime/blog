@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Google Cloud, Pub/Sub, Dataflow, Apache Beam, Streaming, Windowing, Watermarks, Real-Time Processing
 
-Description: A comprehensive guide to building real-time streaming pipelines with Google Cloud Pub/Sub and Dataflow, covering Apache Beam integration, windowing strategies, triggers, watermarks, and production best practices.
+Description: A comprehensive guide to building real-time streaming pipelines with Google Cloud Pub/Sub and Dataflow, covering Apache Beam integration, windowing strategies, triggers, watermarks.
 
 ---
 

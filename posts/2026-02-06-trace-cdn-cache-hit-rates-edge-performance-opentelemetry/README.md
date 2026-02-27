@@ -1,4 +1,4 @@
-# How to Trace CDN Cache Hit Rates and Edge Server Performance Across Global PoPs with OpenTelemetry
+# How to Trace CDN Cache Hit Rates and Edge Server Performance Across Global PoPs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

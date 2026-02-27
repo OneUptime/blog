@@ -1,10 +1,10 @@
-# How to Build a GitOps Promotion Pipeline Across Dev Staging and Production Clusters
+# How to Build a GitOps Promotion Pipeline Across Dev Staging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitOps, Flux, ArgoCD, Promotion Pipeline, Multi-Environment
 
-Description: Learn how to implement a GitOps promotion pipeline that automatically or manually promotes application versions across development, staging, and production environments using Git branches, tags, or image policies.
+Description: Learn how to implement a GitOps promotion pipeline that automatically or manually promotes application versions across development, staging, and production environments using Git branches, tags.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Design a Pilot Light Disaster Recovery Architecture on Google Cloud Platform
+# How to Design a Pilot Light Disaster Recovery Architecture
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

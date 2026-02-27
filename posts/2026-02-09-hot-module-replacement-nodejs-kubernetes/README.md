@@ -1,4 +1,4 @@
-# How to Implement Hot Module Replacement for Node.js Applications Running in Kubernetes
+# How to Use Hot Module Replacement for Node.js Applications Running in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

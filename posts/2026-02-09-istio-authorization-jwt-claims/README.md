@@ -1,4 +1,4 @@
-# How to Create Fine-Grained Istio AuthorizationPolicies Based on JWT Claims in Kubernetes
+# How to Create Fine-Grained Istio AuthorizationPolicies Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

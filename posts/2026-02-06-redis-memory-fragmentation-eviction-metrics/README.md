@@ -1,4 +1,4 @@
-# How to Track Redis Memory Fragmentation, Eviction Rates, and Connected Client Count with OpenTelemetry Metrics
+# How to Track Redis Memory Fragmentation, Eviction Rates,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

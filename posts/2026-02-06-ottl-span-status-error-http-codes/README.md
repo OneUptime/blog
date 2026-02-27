@@ -1,4 +1,4 @@
-# How to Write OTTL Statements That Conditionally Set span.status to ERROR Based on HTTP Status Codes
+# How to Write OTTL Statements That Conditionally Set span.status to ERROR Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

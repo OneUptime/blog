@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab CI, Trigger Jobs, Multi-Project Pipelines, CI/CD, Automation
 
-Description: Learn how to use trigger jobs in GitLab CI to create multi-project pipelines, parent-child pipelines, and cross-project dependencies. This guide covers trigger tokens, pipeline bridges, and downstream pipelines.
+Description: Learn how to use trigger jobs in GitLab CI to create multi-project pipelines, parent-child pipelines, and cross-project dependencies.
 
 > Trigger jobs enable complex deployment workflows by connecting pipelines across multiple projects or creating hierarchical pipeline structures within a single project.
 

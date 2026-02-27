@@ -1,4 +1,4 @@
-# How to Automate Security Incident Response with Google Cloud Workflows and Pub/Sub
+# How to Automate Security Incident Response with Google Cloud Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

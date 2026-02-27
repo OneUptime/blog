@@ -1,4 +1,4 @@
-# How to Set Up a Local OpenTelemetry Playground with Docker Compose (Collector, Jaeger, and Grafana)
+# How to Set Up a Local OpenTelemetry Playground with Docker Compose
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Dead Letter Queues for Failed Log Delivery in Kubernetes Logging Pipelines
+# How to Set Up Dead Letter Queues for Failed Log Delivery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

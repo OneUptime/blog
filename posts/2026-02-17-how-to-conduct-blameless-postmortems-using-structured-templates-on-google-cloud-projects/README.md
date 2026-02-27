@@ -1,4 +1,4 @@
-# How to Conduct Blameless Postmortems Using Structured Templates on Google Cloud Projects
+# How to Conduct Blameless Postmortems Using Structured Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

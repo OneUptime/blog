@@ -1,4 +1,4 @@
-# How to Tune CRI-O Container Runtime for Reduced Pod Startup Latency on Kubernetes
+# How to Tune CRI-O Container Runtime for Reduced Pod Startup Latency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

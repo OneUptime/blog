@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Express.js, Node.js, GraphQL, Apollo, API Development, Backend, JavaScript
 
-Description: Learn how to build robust GraphQL APIs using Express.js and Apollo Server. This comprehensive guide covers project setup, schema design, resolver implementation, database integration, authentication, real-time subscriptions, testing, and deployment best practices.
+Description: Learn how to build robust GraphQL APIs using Express.js and Apollo Server.
 
 ---
 

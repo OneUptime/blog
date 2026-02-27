@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: .NET, C#, Dependency Injection, IServiceCollection, ASP.NET Core, Extensions, Architecture
 
-Description: Learn how to build production-ready custom dependency injection extensions in .NET. This guide covers extension method patterns, service registration conventions, configuration binding, and validation techniques.
+Description: Learn how to build production-ready custom dependency injection extensions in .NET.
 
 ---
 

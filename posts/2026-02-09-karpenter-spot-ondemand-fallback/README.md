@@ -1,4 +1,4 @@
-# How to Configure Karpenter Spot-to-On-Demand Fallback for Cost-Optimized Kubernetes Workloads
+# How to Configure Karpenter Spot-to-On-Demand Fallback for Cost-Optimized K8s
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

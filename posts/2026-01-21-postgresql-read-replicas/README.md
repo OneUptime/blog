@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Read Replicas, Replication, Scaling, Load Balancing, High Availability
 
-Description: A comprehensive guide to implementing PostgreSQL read replicas for horizontal read scaling, covering streaming replication setup, connection routing, load balancing, and application integration patterns.
+Description: A comprehensive guide to implementing PostgreSQL read replicas for horizontal read scaling, covering streaming replication setup, connection routing, load balancing.
 
 ---
 

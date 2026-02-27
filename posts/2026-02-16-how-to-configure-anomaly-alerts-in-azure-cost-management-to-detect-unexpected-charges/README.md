@@ -1,4 +1,4 @@
-# How to Configure Anomaly Alerts in Azure Cost Management to Detect Unexpected Charges
+# Configure Anomaly Alerts in Azure Cost Management to Detect Unexpected Charges
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

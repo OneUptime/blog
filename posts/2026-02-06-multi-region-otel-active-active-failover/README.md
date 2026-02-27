@@ -1,4 +1,4 @@
-# How to Implement Multi-Region OpenTelemetry Collector Deployments with Active-Active Failover
+# Use Multi-Region OpenTelemetry Collector Deployments with Active-Active Failover
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

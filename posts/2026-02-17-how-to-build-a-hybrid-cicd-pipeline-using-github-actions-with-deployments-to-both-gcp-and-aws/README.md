@@ -1,4 +1,4 @@
-# How to Build a Hybrid CI/CD Pipeline Using GitHub Actions with Deployments to Both GCP and AWS
+# How to Build a Hybrid CI/CD Pipeline Using GitHub Actions with Deployments to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

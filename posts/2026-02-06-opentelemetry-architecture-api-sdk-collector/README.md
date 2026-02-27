@@ -1,4 +1,4 @@
-# How to Understand OpenTelemetry Architecture: API, SDK, and Collector Explained Simply
+# How to Understand OpenTelemetry Architecture: API, SDK,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

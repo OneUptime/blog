@@ -1,4 +1,4 @@
-# How to Harden IAM Permissions in a New GCP Project Using the Principle of Least Privilege
+# How to Harden IAM Permissions in a New GCP Project Using the Principle of Least
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

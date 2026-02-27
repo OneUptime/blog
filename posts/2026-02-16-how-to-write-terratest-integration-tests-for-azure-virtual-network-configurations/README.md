@@ -1,4 +1,4 @@
-# How to Write Terratest Integration Tests for Azure Virtual Network Configurations
+# How to Write Terratest Integration Tests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

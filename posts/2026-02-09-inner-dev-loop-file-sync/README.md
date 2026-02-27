@@ -1,4 +1,4 @@
-# How to Implement Inner Development Loop Optimization with File Sync to Kubernetes Pods
+# How to Use Inner Development Loop Optimization with File Sync to Kubernetes Pods
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

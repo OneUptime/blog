@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Spring Data JPA, PostgreSQL, Database, Backend, ORM
 
-Description: A practical guide to integrating Spring Data JPA with PostgreSQL, covering project setup, entity mapping, repository patterns, custom queries, and production-ready configurations with real-world examples.
+Description: A practical guide to integrating Spring Data JPA with PostgreSQL, covering project setup, entity mapping, repository patterns, custom queries.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, Java, Spring Boot, Microservices, Protocol Buffers, gRPC Spring Boot Starter, Backend Development
 
-Description: A comprehensive guide to building production-ready gRPC services in Java using Spring Boot and grpc-spring-boot-starter, covering service implementation, interceptors, health checks, and Spring ecosystem integration.
+Description: A comprehensive guide to building production-ready gRPC services in Java using Spring Boot and grpc-spring-boot-starter, covering service implementation, interceptors, health checks.
 
 ---
 

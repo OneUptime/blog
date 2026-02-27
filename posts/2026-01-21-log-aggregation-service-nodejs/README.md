@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Node.js, Logging, Log Aggregation, Observability, TypeScript, Elasticsearch, Monitoring
 
-Description: Learn how to build a centralized log aggregation service in Node.js that collects, processes, and stores logs from multiple sources. This guide covers log ingestion, parsing, indexing, and querying patterns.
+Description: Learn how to build a centralized log aggregation service in Node.js that collects, processes, and stores logs from multiple sources.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Implement Azure Event Hubs Event Processing with @azure/event-hubs in Node.js
+# How to Use Azure Event Hubs Event Processing with @azure/event-hubs in Node.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

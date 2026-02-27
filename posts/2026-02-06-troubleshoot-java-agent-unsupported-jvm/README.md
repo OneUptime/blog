@@ -1,4 +1,4 @@
-# How to Troubleshoot OpenTelemetry Java Agent Disabling Itself Due to Unsupported JVM Versions
+# How to Troubleshoot OpenTelemetry Java Agent Disabling Itself Due to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

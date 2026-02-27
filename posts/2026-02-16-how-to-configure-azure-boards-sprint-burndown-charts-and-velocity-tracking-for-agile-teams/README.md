@@ -1,4 +1,4 @@
-# How to Configure Azure Boards Sprint Burndown Charts and Velocity Tracking for Agile Teams
+# How to Configure Azure Boards Sprint Burndown Charts and Velocity Tracking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

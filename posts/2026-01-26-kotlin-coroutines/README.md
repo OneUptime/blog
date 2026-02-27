@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kotlin, Coroutines, Async, Concurrency, Android, JVM, Structured Concurrency
 
-Description: Learn how to implement coroutines in Kotlin for asynchronous programming. This guide covers coroutine basics, suspend functions, dispatchers, structured concurrency, error handling, and practical patterns for real-world applications.
+Description: Learn how to implement coroutines in Kotlin for asynchronous programming.
 
 ---
 

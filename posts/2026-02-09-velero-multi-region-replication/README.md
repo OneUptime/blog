@@ -1,4 +1,4 @@
-# How to Implement Multi-Region Velero Backup Replication for Geographic Redundancy
+# How to Use Multi-Region Velero Backup Replication for Geographic Redundancy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

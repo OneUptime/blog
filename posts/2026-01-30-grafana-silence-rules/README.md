@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Grafana, Alerting, Silence Rules, Maintenance
 
-Description: A comprehensive guide to implementing Grafana silence rules for managing alert noise during maintenance windows, deployments, and known issues. Learn how to create, automate, and manage silences effectively.
+Description: A comprehensive guide to implementing Grafana silence rules for managing alert noise during maintenance windows, deployments, and known issues.
 
 ---
 

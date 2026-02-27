@@ -1,4 +1,4 @@
-# How to Define Targets in Cloud Deploy for Dev Staging and Production Environments
+# How to Define Targets in Cloud Deploy for Dev Staging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

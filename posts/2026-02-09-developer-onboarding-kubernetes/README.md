@@ -1,4 +1,4 @@
-# How to Build Developer Onboarding Scripts That Auto-Configure Kubernetes Access and Tooling
+# How to Build Developer Onboarding Scripts That Auto-Configure Kubernetes Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot Collector Config Validation Not Catching Connector Misconfiguration Until Runtime
+# How to Troubleshoot Collector Config Validation Not Catching Connector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

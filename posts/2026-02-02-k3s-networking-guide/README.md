@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: K3s, Kubernetes, Networking, Flannel, Traefik, CNI, LoadBalancer, ServiceLB
 
-Description: A practical guide to K3s networking covering CNI plugins, service exposure, Traefik ingress, network policies, load balancing, and troubleshooting common connectivity issues in lightweight Kubernetes clusters.
+Description: A practical guide to K3s networking covering CNI plugins, service exposure, Traefik ingress, network policies, load balancing.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Prepare for the Google Cloud Professional Cloud DevOps Engineer Exam SRE Principles
+# How to Prepare for the Google Cloud Professional Cloud DevOps Engineer Exam SRE
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

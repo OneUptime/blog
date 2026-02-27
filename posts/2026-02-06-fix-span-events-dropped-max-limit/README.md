@@ -1,4 +1,4 @@
-# How to Fix Span Events Being Silently Dropped Because They Exceed the Maximum Events Per Span Limit
+# How to Fix Span Events Being Silently Dropped Because They Exceed the Maximum
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Authentication with Azure Active Directory in Azure Static Web Apps
+# How to Configure Authentication with Azure Active Directory
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

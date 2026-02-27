@@ -1,4 +1,4 @@
-# How to Configure Spring Boot Actuator Health Checks for Cloud Run Startup and Liveness Probes
+# How to Configure Spring Boot Actuator Health Checks for Cloud Run Startup
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

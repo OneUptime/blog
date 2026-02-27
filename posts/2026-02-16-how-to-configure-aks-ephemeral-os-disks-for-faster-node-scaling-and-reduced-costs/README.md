@@ -1,4 +1,4 @@
-# How to Configure AKS Ephemeral OS Disks for Faster Node Scaling and Reduced Costs
+# How to Configure AKS Ephemeral OS Disks for Faster Node Scaling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

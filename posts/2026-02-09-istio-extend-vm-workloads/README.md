@@ -1,10 +1,10 @@
-# How to Extend Istio Service Mesh to Include VM Workloads Outside the Kubernetes Cluster
+# Extend Istio Service Mesh to Include VM Workloads Outside the Kubernetes Cluster
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Istio, Kubernetes, Virtual Machines, Hybrid Cloud, Service Mesh
 
-Description: Learn how to extend your Istio service mesh beyond Kubernetes to include virtual machine workloads, enabling unified traffic management, security policies, and observability across hybrid environments.
+Description: Learn how to extend your Istio service mesh beyond Kubernetes to include virtual machine workloads, enabling unified traffic management, security policies.
 
 ---
 

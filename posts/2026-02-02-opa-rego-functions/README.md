@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OPA, Rego, Policy as Code, Authorization, Kubernetes, Security, DevOps
 
-Description: Learn how to build complex OPA Rego functions for advanced policy evaluation. Covers custom functions, recursive logic, data aggregation, and performance optimization patterns for production policy engines.
+Description: Learn how to build complex OPA Rego functions for advanced policy evaluation.
 
 ---
 

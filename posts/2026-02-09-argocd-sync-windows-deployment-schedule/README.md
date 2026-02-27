@@ -1,4 +1,4 @@
-# How to Configure ArgoCD Sync Windows to Restrict Deployments During Business Hours
+# Configure ArgoCD Sync Windows to Restrict Deployments During Business Hours
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry Distributed Tracing in Consul Connect Envoy Sidecar Proxies
+# How to Configure OpenTelemetry Distributed Tracing in Consul Connect Envoy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

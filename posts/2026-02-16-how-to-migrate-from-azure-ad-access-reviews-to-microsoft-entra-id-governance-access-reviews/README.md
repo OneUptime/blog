@@ -1,4 +1,4 @@
-# How to Migrate from Azure AD Access Reviews to Microsoft Entra ID Governance Access Reviews
+# How to Migrate from Azure AD Access Reviews to Microsoft Entra ID Governance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

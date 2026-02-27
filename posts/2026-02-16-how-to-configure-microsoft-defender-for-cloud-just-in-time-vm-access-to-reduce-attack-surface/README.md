@@ -1,4 +1,4 @@
-# How to Configure Microsoft Defender for Cloud Just-in-Time VM Access to Reduce Attack Surface
+# How to Configure Microsoft Defender for Cloud Just-in-Time VM Access to Reduce
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

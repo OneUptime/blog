@@ -899,6 +899,4 @@ Reduce functions are fundamental building blocks in stream processing. They prov
 ### See Also
 
 - [Apache Flink Documentation: Reduce](https://flink.apache.org/)
-- [Stream Processing Fundamentals](/blog/post/stream-processing-fundamentals/)
-- [Windowing in Stream Processing](/blog/post/windowing-stream-processing/)
 

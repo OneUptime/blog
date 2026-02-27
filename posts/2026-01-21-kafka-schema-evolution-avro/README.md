@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Avro, Schema Registry, Schema Evolution, Data Serialization, Java, Python
 
-Description: A comprehensive guide to implementing schema evolution in Kafka using Avro and Schema Registry, covering compatibility modes, schema design, evolution patterns, and best practices for managing changing data structures.
+Description: A comprehensive guide to implementing schema evolution in Kafka using Avro and Schema Registry, covering compatibility modes, schema design, evolution patterns.
 
 ---
 

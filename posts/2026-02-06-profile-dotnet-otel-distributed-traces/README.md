@@ -1,4 +1,4 @@
-# How to Profile .NET Applications with OpenTelemetry and Connect Profiles to Distributed Traces
+# How to Profile .NET Applications with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

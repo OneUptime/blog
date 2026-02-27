@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Bull Board, Monitoring, Dashboard, Queue Management, Real-Time
 
-Description: A comprehensive guide to setting up Bull Board for monitoring BullMQ queues, including dashboard configuration, queue visualization, job management, and integrating with Express, Fastify, and other frameworks.
+Description: A comprehensive guide to setting up Bull Board for monitoring BullMQ queues, including dashboard configuration, queue visualization, job management, and integrating with Express, Fastify.
 
 ---
 

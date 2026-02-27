@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Kubernetes, Monitoring, CPU, Memory, Metrics, PromQL
 
-Description: Learn how to query CPU and memory usage for Kubernetes pods using Prometheus. This guide covers essential PromQL queries, understanding container metrics, and building effective resource monitoring dashboards.
+Description: Learn how to query CPU and memory usage for Kubernetes pods using Prometheus.
 
 Monitoring resource usage in Kubernetes is essential for capacity planning, cost optimization, and ensuring application health. Prometheus, combined with metrics from the kubelet and cAdvisor, provides detailed insights into CPU and memory consumption at the pod and container level. This guide walks you through the essential queries and patterns for effective resource monitoring.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Policy, Compliance, Security
 
-Description: A comprehensive guide to implementing policy as code for Terraform using open-source tools like OPA, Conftest, Checkov, and tflint. Learn to automate security, compliance, and best practice enforcement in your infrastructure pipelines.
+Description: A comprehensive guide to implementing policy as code for Terraform using open-source tools like OPA, Conftest, Checkov, and tflint.
 
 ---
 

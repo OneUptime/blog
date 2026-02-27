@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Pod Security Standards, PSA, PSP Migration, Hardening
 
-Description: Learn how to implement Pod Security Standards in Kubernetes to enforce security baselines across your cluster. This guide covers all three security levels with practical examples and migration strategies.
+Description: Learn how to implement Pod Security Standards in Kubernetes to enforce security baselines across your cluster.
 
 ---
 

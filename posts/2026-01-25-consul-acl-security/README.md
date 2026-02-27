@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Consul, ACL, Security, HashiCorp, Access Control, DevOps, Infrastructure
 
-Description: Learn how to secure your Consul cluster using Access Control Lists (ACLs). This guide covers bootstrapping ACLs, creating policies and tokens, and implementing least-privilege access for services and operators.
+Description: Learn how to secure your Consul cluster using Access Control Lists (ACLs).
 
 ---
 

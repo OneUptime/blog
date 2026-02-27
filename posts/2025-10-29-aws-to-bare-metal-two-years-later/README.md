@@ -1,4 +1,4 @@
-# AWS to Bare Metal Two Years Later: Answering Your Toughest Questions About Leaving AWS
+# AWS to Bare Metal Two Years Later: Answering Your Toughest Questions About
 
 Author: [devneelpatel](https://www.github.com/devneelpatel)
 

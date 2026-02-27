@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Blackbox Exporter, Monitoring, HTTP, TCP, DNS, ICMP, Probing, Observability, Alerting
 
-Description: Learn how to implement Prometheus Blackbox Exporter to monitor endpoints via HTTP, TCP, DNS, and ICMP probes. Master external endpoint monitoring with practical configuration examples and alerting rules.
+Description: Learn how to implement Prometheus Blackbox Exporter to monitor endpoints via HTTP, TCP, DNS, and ICMP probes.
 
 ---
 

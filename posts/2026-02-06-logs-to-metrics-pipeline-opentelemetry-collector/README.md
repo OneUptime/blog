@@ -1,4 +1,4 @@
-# How to Build a Logs-to-Metrics Pipeline in the OpenTelemetry Collector for Alert-Ready Data
+# How to Build a Logs-to-Metrics Pipeline in the OpenTelemetry Collector for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

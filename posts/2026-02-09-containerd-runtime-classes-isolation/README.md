@@ -1,4 +1,4 @@
-# How to Configure containerd Runtime Classes for Mixed Workload Isolation in Kubernetes
+# How to Configure containerd Runtime Classes for Mixed Workload Isolation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

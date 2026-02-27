@@ -1,4 +1,4 @@
-# How to Chain Multiple Cloud Functions Together Using Pub/Sub for a Processing Pipeline
+# How to Chain Multiple Cloud Functions Together Using Pub/Sub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

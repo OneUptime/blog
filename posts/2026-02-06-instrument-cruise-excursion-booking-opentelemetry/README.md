@@ -1,4 +1,4 @@
-# How to Instrument Cruise Line Shore Excursion Booking and Capacity Management with OpenTelemetry
+# How to Instrument Cruise Line Shore Excursion Booking and Capacity Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

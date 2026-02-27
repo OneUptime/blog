@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: SQS, Node.js, AWS, Message Queue, Serverless, Microservices
 
-Description: Learn how to use Amazon SQS with Node.js for building scalable message-driven applications. Covers queue setup, sending and receiving messages, FIFO queues, dead-letter queues, and production best practices.
+Description: Learn how to use Amazon SQS with Node.js for building scalable message-driven applications.
 
 ---
 

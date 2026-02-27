@@ -1,4 +1,4 @@
-# How to Use Ansible to Deploy and Configure OpenTelemetry Collectors Across a Fleet of Linux Servers
+# How to Use Ansible to Deploy and Configure OpenTelemetry Collectors Across a
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

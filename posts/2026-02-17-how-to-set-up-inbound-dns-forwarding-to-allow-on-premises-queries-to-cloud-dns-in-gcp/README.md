@@ -1,4 +1,4 @@
-# How to Set Up Inbound DNS Forwarding to Allow On-Premises Queries to Cloud DNS in GCP
+# How to Set Up Inbound DNS Forwarding to Allow On-Premises Queries to Cloud DNS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: IPv6, DNS, Dual-Stack, Networking, Infrastructure, DevOps
 
-Description: A comprehensive guide to implementing split-horizon DNS in dual-stack IPv4/IPv6 environments, covering BIND and CoreDNS configurations, use cases, security considerations, and operational best practices.
+Description: A comprehensive guide to implementing split-horizon DNS in dual-stack IPv4/IPv6 environments, covering BIND and CoreDNS configurations, use cases, security considerations.
 
 ---
 

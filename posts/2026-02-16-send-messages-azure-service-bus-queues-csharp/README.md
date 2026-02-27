@@ -1,4 +1,4 @@
-# How to Send Messages to Azure Service Bus Queues Using Azure.Messaging.ServiceBus in C#
+# Send Messages to Azure Service Bus Queues Using Azure.Messaging.ServiceBus in C#
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

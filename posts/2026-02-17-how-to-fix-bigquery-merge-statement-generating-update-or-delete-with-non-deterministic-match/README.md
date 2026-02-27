@@ -1,4 +1,4 @@
-# How to Fix BigQuery MERGE Statement Generating UPDATE or DELETE with Non-Deterministic Match
+# How to Fix BigQuery MERGE Statement Generating UPDATE or DELETE with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build an IoT Alerting System with Pub/Sub Cloud Functions and Google Cloud Monitoring
+# How to Build an IoT Alerting System with Pub/Sub Cloud Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

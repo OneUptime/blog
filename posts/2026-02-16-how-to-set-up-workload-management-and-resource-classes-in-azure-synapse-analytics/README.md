@@ -1,4 +1,4 @@
-# How to Set Up Workload Management and Resource Classes in Azure Synapse Analytics
+# How to Set Up Workload Management and Resource Classes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

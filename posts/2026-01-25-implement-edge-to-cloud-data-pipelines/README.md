@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Edge Computing, Data Pipeline, Cloud, ETL, Streaming, IoT, Kafka
 
-Description: Learn how to build reliable data pipelines from edge devices to cloud platforms. Cover data collection, transformation, batching, compression, and delivery with guaranteed delivery and fault tolerance.
+Description: Learn how to build reliable data pipelines from edge devices to cloud platforms.
 
 ---
 

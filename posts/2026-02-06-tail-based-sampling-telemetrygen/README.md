@@ -1,4 +1,4 @@
-# How to Test Tail-Based Sampling Rules Before Deploying to Production Using telemetrygen
+# How to Test Tail-Based Sampling Rules Before Deploying to Production
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

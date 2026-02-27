@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HashiCorp Vault, Security, Audit Logging, Compliance, SIEM, DevOps, Secrets Management
 
-Description: A comprehensive guide to configuring HashiCorp Vault audit logging for security monitoring, compliance requirements, and SIEM integration. Learn about audit device types, log formats, and best practices.
+Description: A comprehensive guide to configuring HashiCorp Vault audit logging for security monitoring, compliance requirements, and SIEM integration.
 
 ---
 

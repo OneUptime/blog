@@ -1,4 +1,4 @@
-# How to Test Custom Span Processors and Exporters with the OpenTelemetry SDK Test Utilities
+# How to Test Custom Span Processors and Exporters with the OpenTelemetry SDK
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

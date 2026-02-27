@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: K3s, Kubernetes, High Availability, Cluster, DevOps, Infrastructure, etcd
 
-Description: A comprehensive guide to configuring K3s for high availability, covering embedded etcd clusters, external datastores, load balancers, failover strategies, and production best practices for reliable Kubernetes deployments.
+Description: A comprehensive guide to configuring K3s for high availability, covering embedded etcd clusters, external datastores, load balancers, failover strategies.
 
 ---
 

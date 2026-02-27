@@ -1,4 +1,4 @@
-# How to Implement LangChain Document Loaders for Google Cloud Storage and BigQuery
+# How to Use LangChain Document Loaders for Google Cloud Storage and BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

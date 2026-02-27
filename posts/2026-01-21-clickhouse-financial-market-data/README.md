@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Financial Data, Market Data, Tick Data, OHLCV, Time-Weighted Calculations, Trading Analytics
 
-Description: A comprehensive guide to using ClickHouse for financial market data, covering tick data storage, OHLCV aggregations, time-weighted calculations, VWAP analysis, and building real-time trading analytics systems.
+Description: A comprehensive guide to using ClickHouse for financial market data, covering tick data storage, OHLCV aggregations, time-weighted calculations, VWAP analysis.
 
 ---
 

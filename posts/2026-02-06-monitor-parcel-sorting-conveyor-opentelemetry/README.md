@@ -1,4 +1,4 @@
-# How to Monitor Parcel Sorting Facility Conveyor System and Scanner Performance with OpenTelemetry
+# How to Monitor Parcel Sorting Facility Conveyor System and Scanner Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

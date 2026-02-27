@@ -1,4 +1,4 @@
-# How to Build a Serverless ETL Pipeline on GCP Using Cloud Functions Dataflow and BigQuery
+# How to Build a Serverless ETL Pipeline on GCP Using Cloud Functions Dataflow
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

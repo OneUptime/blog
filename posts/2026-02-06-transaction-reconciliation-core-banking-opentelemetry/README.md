@@ -1,4 +1,4 @@
-# How to Monitor Real-Time Transaction Reconciliation Between Core Banking and Payment Processors with OpenTelemetry
+# How to Monitor Real-Time Transaction Reconciliation Between Core Banking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

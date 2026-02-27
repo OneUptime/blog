@@ -1,4 +1,4 @@
-# How to Create and Manage Virtual Rooms for Controlled Calling in Azure Communication Services
+# How to Manage Virtual Rooms for Controlled Calling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

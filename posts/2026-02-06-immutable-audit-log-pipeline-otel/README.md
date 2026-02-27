@@ -1,4 +1,4 @@
-# How to Build an Immutable Audit Log Pipeline Using OpenTelemetry and Append-Only Storage
+# How to Build an Immutable Audit Log Pipeline Using OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

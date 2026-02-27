@@ -1,4 +1,4 @@
-# How to Monitor Player Session Lifecycle (Login, Matchmake, Play, Disconnect) with OpenTelemetry Spans
+# How to Monitor Player Session Lifecycle with OpenTelemetry Spans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

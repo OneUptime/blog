@@ -1,4 +1,4 @@
-# How to Set Up Dataform in BigQuery for Version-Controlled SQL-Based Data Transformations
+# How to Set Up Dataform in BigQuery for Version-Controlled SQL-Based Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

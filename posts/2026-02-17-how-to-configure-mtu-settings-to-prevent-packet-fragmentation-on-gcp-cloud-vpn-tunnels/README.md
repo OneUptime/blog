@@ -1,4 +1,4 @@
-# How to Configure MTU Settings to Prevent Packet Fragmentation on GCP Cloud VPN Tunnels
+# How to Configure MTU Settings to Prevent Packet Fragmentation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

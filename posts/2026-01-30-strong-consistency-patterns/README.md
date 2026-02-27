@@ -1631,5 +1631,5 @@ Strong consistency is expensive but necessary for certain workloads. Understand 
 
 **Related Reading:**
 
-- [SRE Best Practices](/blog/post/2025-11-28-sre-best-practices/)
-- [How to Implement the Choreography Pattern in Microservices](/blog/post/2026-01-30-choreography-pattern/)
+- [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view)
+- [How to Implement the Choreography Pattern in Microservices](https://oneuptime.com/blog/post/2026-01-30-choreography-pattern/view)

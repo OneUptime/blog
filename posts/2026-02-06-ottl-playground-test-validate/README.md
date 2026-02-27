@@ -1,4 +1,4 @@
-# How to Use the OTTL Playground to Test and Validate Transform Processor Statements Before Deployment
+# How to Use the OTTL Playground to Test and Validate Transform Processor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

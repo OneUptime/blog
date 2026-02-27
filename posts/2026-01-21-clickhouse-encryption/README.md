@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Encryption, TLS, Security, Data Protection, SSL, Compliance
 
-Description: A comprehensive guide to encrypting data at rest and in transit in ClickHouse, covering TLS configuration, disk encryption, column-level encryption functions, and security best practices for compliance.
+Description: A comprehensive guide to encrypting data at rest and in transit in ClickHouse, covering TLS configuration, disk encryption, column-level encryption functions.
 
 ---
 

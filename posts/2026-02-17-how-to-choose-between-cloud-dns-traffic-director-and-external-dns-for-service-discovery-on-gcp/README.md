@@ -1,4 +1,4 @@
-# How to Choose Between Cloud DNS Traffic Director and External DNS for Service Discovery on GCP
+# How to Choose Between Cloud DNS Traffic Director and External DNS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

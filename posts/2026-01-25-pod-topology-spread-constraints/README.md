@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Scheduling, High Availability, Topology, DevOps, Pod Distribution
 
-Description: Learn how to configure pod topology spread constraints in Kubernetes to distribute workloads evenly across zones, nodes, and regions. This guide covers configuration options, real-world examples, and best practices for high availability.
+Description: Learn how to configure pod topology spread constraints in Kubernetes to distribute workloads evenly across zones, nodes, and regions.
 
 ---
 

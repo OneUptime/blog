@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Jenkins, Security, CI/CD, DevOps, Authentication, Authorization, RBAC, Secrets Management
 
-Description: A comprehensive guide to securing your Jenkins installation covering authentication methods, authorization strategies, role-based access control, credentials management, and security best practices for production environments.
+Description: A comprehensive guide to securing your Jenkins installation covering authentication methods, authorization strategies, role-based access control, credentials management.
 
 ---
 

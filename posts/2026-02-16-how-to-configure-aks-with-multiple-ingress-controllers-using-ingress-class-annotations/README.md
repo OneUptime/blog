@@ -1,4 +1,4 @@
-# How to Configure AKS with Multiple Ingress Controllers Using Ingress Class Annotations
+# How to Configure AKS with Multiple Ingress Controllers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

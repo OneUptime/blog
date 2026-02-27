@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Database, Blue-Green Deployment
 
-Description: Learn how to implement blue-green database deployments with ArgoCD, including parallel database instances, data synchronization, traffic switching, and rollback strategies for zero-downtime schema changes.
+Description: Learn how to implement blue-green database deployments with ArgoCD, including parallel database instances, data synchronization, traffic switching.
 
 ---
 

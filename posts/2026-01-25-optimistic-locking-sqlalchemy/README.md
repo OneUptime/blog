@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, SQLAlchemy, Database, Concurrency, Optimistic Locking, PostgreSQL, ORM
 
-Description: Learn how to implement optimistic locking in SQLAlchemy to handle concurrent updates safely. This guide covers version columns, conflict detection, and retry strategies for building robust database applications.
+Description: Learn how to implement optimistic locking in SQLAlchemy to handle concurrent updates safely.
 
 ---
 

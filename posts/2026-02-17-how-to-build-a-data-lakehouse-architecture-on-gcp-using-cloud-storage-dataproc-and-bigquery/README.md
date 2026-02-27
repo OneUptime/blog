@@ -1,4 +1,4 @@
-# How to Build a Data Lakehouse Architecture on GCP Using Cloud Storage Dataproc and BigQuery
+# How to Build a Data Lakehouse Architecture on GCP Using Cloud Storage Dataproc
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

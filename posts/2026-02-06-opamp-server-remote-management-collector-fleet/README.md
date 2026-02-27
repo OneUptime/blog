@@ -1,4 +1,4 @@
-# How to Set Up an OpAMP Server for Remote Management of Your OpenTelemetry Collector Fleet
+# How to Set Up an OpAMP Server for Remote Mgmt of Your OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

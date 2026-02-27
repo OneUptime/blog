@@ -1,4 +1,4 @@
-# How to Build HIPAA-Compliant OpenTelemetry Pipelines That Redact PHI from Traces, Logs, and Metrics
+# How to Build HIPAA-Compliant OpenTelemetry Pipelines That Redact PHI from
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

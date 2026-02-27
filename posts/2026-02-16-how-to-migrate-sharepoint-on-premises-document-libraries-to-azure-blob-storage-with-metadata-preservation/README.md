@@ -1,4 +1,4 @@
-# How to Migrate SharePoint On-Premises Document Libraries to Azure Blob Storage with Metadata Preservation
+# How to Migrate SharePoint On-Premises Document Libraries to Azure Blob Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

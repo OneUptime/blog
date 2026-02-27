@@ -1,4 +1,4 @@
-# How to Build Custom Alert Rules from OpenTelemetry Span Metrics (Error Rate, Latency P99)
+# How to Build Custom Alert Rules from OpenTelemetry Span Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

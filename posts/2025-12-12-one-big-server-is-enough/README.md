@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Infrastructure, Cloud, Cost Optimization, Bare Metal, Docker, Kubernetes, DevOps, Scaling, Self-Hosting
 
-Description: Modern servers are incredibly powerful and reliable. For most workloads, a single well-configured server with Docker Compose or single-node Kubernetes can get you 99.99% of the way there - at a fraction of the cloud cost.
+Description: Modern servers are incredibly powerful and reliable. For most workloads, a single well-configured server with Docker Compose or single-node Kubernetes can get you 99.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Right-Size Kubernetes Cluster Node Pools Based on Workload Resource Profiles
+# How to Right-Size Kubernetes Cluster Node Pools Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

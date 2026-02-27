@@ -1,4 +1,4 @@
-# How to Fix Collector Failing to Start Because a Component Is Defined but Not Referenced in the Service Section
+# How to Fix Collector Failing to Start Because a Component Is Defined but Not
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

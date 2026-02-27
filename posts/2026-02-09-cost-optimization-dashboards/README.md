@@ -1,4 +1,4 @@
-# How to Build Cost Optimization Dashboards That Track Kubernetes Resource Efficiency Over Time
+# How to Build Cost Optimization Dashboards That Track K8s Resource Efficiency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

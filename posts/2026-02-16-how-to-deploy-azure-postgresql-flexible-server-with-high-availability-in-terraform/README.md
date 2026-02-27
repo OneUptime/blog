@@ -1,4 +1,4 @@
-# How to Deploy Azure PostgreSQL Flexible Server with High Availability in Terraform
+# How to Deploy Azure PostgreSQL Flexible Server
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

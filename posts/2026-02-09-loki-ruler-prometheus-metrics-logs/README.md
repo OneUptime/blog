@@ -1,4 +1,4 @@
-# How to Use Loki Ruler to Generate Prometheus Metrics from Kubernetes Log Patterns
+# Use Loki Ruler to Generate Prometheus Metrics from Kubernetes Log Patterns
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

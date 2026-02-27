@@ -1,4 +1,4 @@
-# How to Capture GraphQL Errors (Partial Failures with HTTP 200) in OpenTelemetry Span Events
+# How to Capture GraphQL Errors in OpenTelemetry Span Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

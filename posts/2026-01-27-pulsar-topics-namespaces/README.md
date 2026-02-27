@@ -891,8 +891,8 @@ Designing Pulsar topics and namespaces well from the start saves significant ope
 
 ### See Also
 
-- [What are Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry) - Understand distributed tracing for debugging message flows
-- [The Three Pillars of Observability](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces) - Complete observability strategy for messaging systems
+- [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Understand distributed tracing for debugging message flows
+- [The Three Pillars of Observability](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view) - Complete observability strategy for messaging systems
 
 **Related Reading:**
 

@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Metrics for Cloud Cost Right-Sizing (AWS, GCP, Azure Instance Types)
+# How to Use OpenTelemetry Metrics for Cloud Cost Right-Sizing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

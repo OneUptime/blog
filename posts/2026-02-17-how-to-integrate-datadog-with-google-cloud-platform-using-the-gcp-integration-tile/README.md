@@ -1,4 +1,4 @@
-# How to Integrate Datadog with Google Cloud Platform Using the GCP Integration Tile
+# How to Integrate Datadog with Google Cloud Platform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

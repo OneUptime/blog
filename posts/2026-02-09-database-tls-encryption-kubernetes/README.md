@@ -1,10 +1,10 @@
-# How to Configure Database TLS Encryption for In-Transit Data Protection on Kubernetes
+# How to Configure Database TLS Encryption for In-Transit Data Protection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Database, TLS, Security, Encryption
 
-Description: Implement TLS encryption for database connections on Kubernetes to protect data in transit, including certificate management, mutual TLS authentication, and client configuration for PostgreSQL, MySQL, and MongoDB.
+Description: Implement TLS encryption for database connections on Kubernetes to protect data in transit, including certificate management, mutual TLS authentication, and client configuration for PostgreSQL, MySQL.
 
 ---
 

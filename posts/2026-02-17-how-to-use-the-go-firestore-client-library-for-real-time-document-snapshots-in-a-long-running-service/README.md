@@ -1,4 +1,4 @@
-# How to Use the Go Firestore Client Library for Real-Time Document Snapshots in a Long-Running Service
+# How to Use the Go Firestore Client Library for Real-Time Document Snapshots in
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

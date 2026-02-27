@@ -1,4 +1,4 @@
-# How to Collect Application Server Metrics (Tomcat, Jetty, WildFly) with the Collector
+# How to Collect Application Server Metrics with the Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

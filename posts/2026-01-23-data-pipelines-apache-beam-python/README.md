@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Apache Beam, Data Pipelines, ETL, Big Data, Batch Processing, Stream Processing
 
-Description: Learn how to build portable data pipelines with Apache Beam in Python. This guide covers batch and streaming processing, transforms, windowing, and running pipelines on different runners like DirectRunner and Dataflow.
+Description: Learn how to build portable data pipelines with Apache Beam in Python.
 
 ---
 

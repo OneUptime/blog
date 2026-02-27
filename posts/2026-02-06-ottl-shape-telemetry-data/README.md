@@ -1,4 +1,4 @@
-# How to Use the OpenTelemetry Transformation Language (OTTL) to Shape Telemetry Data
+# How to Use the OpenTelemetry Transformation Language to Shape Telemetry Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

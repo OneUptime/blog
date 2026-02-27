@@ -1,4 +1,4 @@
-# How to Troubleshoot Loki Rejecting OpenTelemetry Logs Because allow_structured_metadata Is Not Enabled
+# How to Troubleshoot Loki Rejecting OpenTelemetry Logs Because
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

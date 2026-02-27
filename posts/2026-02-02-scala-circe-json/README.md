@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Scala, Circe, JSON, Parsing, Functional Programming, Type Safety, Serialization, Deserialization
 
-Description: Learn how to handle JSON encoding and decoding in Scala using Circe, the functional JSON library. This guide covers automatic derivation, custom codecs, error handling, and best practices for building type-safe JSON applications.
+Description: Learn how to handle JSON encoding and decoding in Scala using Circe, the functional JSON library.
 
 ---
 

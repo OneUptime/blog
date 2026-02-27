@@ -1,4 +1,4 @@
-# How to Configure ACR Artifact Cache for Pulling Public Images Through Private Registry
+# Configure ACR Artifact Cache for Pulling Public Images Through Private Registry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

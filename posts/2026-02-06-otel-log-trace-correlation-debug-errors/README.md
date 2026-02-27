@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Log-Trace Correlation to Debug Errors Without Reproducing Them Locally
+# How to Use OpenTelemetry Log-Trace Correlation to Debug Errors Without
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

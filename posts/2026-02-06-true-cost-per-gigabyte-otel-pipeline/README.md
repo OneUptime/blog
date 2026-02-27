@@ -1,4 +1,4 @@
-# How to Calculate the True Cost per Gigabyte of OpenTelemetry Data Across Your Pipeline
+# Calculate the True Cost per Gigabyte of OpenTelemetry Data Across Your Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

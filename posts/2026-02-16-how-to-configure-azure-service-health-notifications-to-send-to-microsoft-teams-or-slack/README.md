@@ -1,4 +1,4 @@
-# How to Configure Azure Service Health Notifications to Send to Microsoft Teams or Slack
+# Configure Azure Service Health Notifications to Send to Microsoft Teams or Slack
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Mutating Webhooks, Sidecar Injection, Service Mesh, Observability
 
-Description: Learn how to build mutating admission webhooks that automatically inject sidecar containers into pods for logging, monitoring, service mesh proxies, and security agents without modifying application deployments.
+Description: Learn how to build mutating admission webhooks that automatically inject sidecar containers into pods for logging, monitoring, service mesh proxies.
 
 ---
 

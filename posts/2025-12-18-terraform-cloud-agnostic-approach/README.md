@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Multi-Cloud, Infrastructure as Code, Cloud Architecture, DevOps
 
-Description: Learn strategies for writing cloud-agnostic Terraform code that works across AWS, Azure, and GCP. This guide covers abstraction patterns, module design, and practical techniques for multi-cloud deployments.
+Description: Learn strategies for writing cloud-agnostic Terraform code that works across AWS, Azure, and GCP.
 
 As organizations adopt multi-cloud strategies for resilience, cost optimization, or compliance requirements, the ability to write portable infrastructure code becomes crucial. Terraform's provider-agnostic nature makes it an excellent choice for multi-cloud deployments, but achieving true cloud-agnosticism requires careful architecture and abstraction patterns.
 

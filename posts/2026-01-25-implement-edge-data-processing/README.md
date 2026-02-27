@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Edge Computing, Data Processing, Stream Processing, IoT, Apache Flink, Time Series, Filtering
 
-Description: Learn how to implement edge data processing to filter, aggregate, and transform IoT data locally before sending it to the cloud. Reduce bandwidth, lower latency, and enable real-time decision making at the edge.
+Description: Learn how to implement edge data processing to filter, aggregate, and transform IoT data locally before sending it to the cloud.
 
 ---
 

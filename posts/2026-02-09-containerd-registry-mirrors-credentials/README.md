@@ -1,4 +1,4 @@
-# How to Configure containerd Registry Mirrors and Credentials for Private Kubernetes Registries
+# How to Configure containerd Registry Mirrors and Credentials
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

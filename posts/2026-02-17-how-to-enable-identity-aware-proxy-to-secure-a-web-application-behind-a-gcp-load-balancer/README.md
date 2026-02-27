@@ -1,4 +1,4 @@
-# How to Enable Identity-Aware Proxy to Secure a Web Application Behind a GCP Load Balancer
+# How to Enable Identity-Aware Proxy to Secure a Web App Behind a GCP Load
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

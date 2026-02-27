@@ -1,4 +1,4 @@
-# How to Fix Elasticsearch Rejecting OpenTelemetry Data Due to Index Template Mapping Conflicts
+# How to Fix Elasticsearch Rejecting OpenTelemetry Data Due to Index Template
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

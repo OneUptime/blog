@@ -1,4 +1,4 @@
-# How to Implement Infrastructure as Code Deployment Pipelines Using Cloud Build and Terraform on GCP
+# How to Use Infrastructure as Code Deployment Pipelines Using Cloud Build
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

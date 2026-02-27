@@ -1,4 +1,4 @@
-# How to Deploy and Configure Cloud Next-Generation Firewall for Advanced Threat Prevention
+# How to Deploy and Configure Cloud Next-Generation Firewall
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

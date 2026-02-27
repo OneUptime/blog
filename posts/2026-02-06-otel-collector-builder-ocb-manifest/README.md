@@ -1,4 +1,4 @@
-# How to Use the OpenTelemetry Collector Builder (OCB) Manifest to Include Your Custom Components
+# How to Use the OpenTelemetry Collector Builder Manifest to Include Your Custom
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

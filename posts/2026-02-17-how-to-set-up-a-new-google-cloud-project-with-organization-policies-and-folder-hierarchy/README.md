@@ -1,4 +1,4 @@
-# How to Set Up a New Google Cloud Project with Organization Policies and Folder Hierarchy
+# How to Set Up a New Google Cloud Project with Organization Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

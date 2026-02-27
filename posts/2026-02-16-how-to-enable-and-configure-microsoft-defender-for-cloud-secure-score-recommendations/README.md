@@ -1,4 +1,4 @@
-# How to Enable and Configure Microsoft Defender for Cloud Secure Score Recommendations
+# How to Enable and Configure Microsoft Defender
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

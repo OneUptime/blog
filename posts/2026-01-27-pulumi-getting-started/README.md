@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, Infrastructure as Code, IaC, DevOps, TypeScript, Python, Cloud, AWS, Kubernetes
 
-Description: A comprehensive guide to getting started with Pulumi for Infrastructure as Code. Learn core concepts, state management, stack configuration, and deploy cloud resources using TypeScript and Python with practical examples.
+Description: A comprehensive guide to getting started with Pulumi for Infrastructure as Code.
 
 ---
 

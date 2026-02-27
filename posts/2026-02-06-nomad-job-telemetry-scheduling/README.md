@@ -1,4 +1,4 @@
-# How to Use the OpenTelemetry Collector with HashiCorp Nomad Job Telemetry for Scheduling Metrics
+# How to Use the OpenTelemetry Collector with HashiCorp Nomad Job Telemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

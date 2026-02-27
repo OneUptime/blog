@@ -1,4 +1,4 @@
-# How to Run Apache Flink on Kubernetes Using the Flink Operator for Stream Processing
+# How to Run Apache Flink on Kubernetes Using the Flink Operator
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

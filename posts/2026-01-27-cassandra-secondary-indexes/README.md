@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cassandra, Database, Secondary Indexes, SASI, SAI, NoSQL, Performance, Query Optimization
 
-Description: A comprehensive guide to using secondary indexes in Apache Cassandra, covering traditional secondary indexes, SASI indexes, and Storage-Attached Indexes (SAI), with performance considerations and best practices for production deployments.
+Description: A comprehensive guide to using secondary indexes in Apache Cassandra, covering traditional secondary indexes, SASI indexes, and Storage-Attached Indexes (SAI).
 
 ---
 

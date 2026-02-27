@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processors, Traces, Grouping, Distributed Tracing, Tail Sampling
 
-Description: Learn how to configure the group-by-trace processor in OpenTelemetry Collector to group spans by trace ID, enable trace-aware processing, and prepare traces for tail sampling, filtering, and complete trace analysis across distributed systems.
+Description: Learn how to configure the group-by-trace processor in OpenTelemetry Collector to group spans by trace ID, enable trace-aware processing, and prepare traces for tail sampling, filtering.
 
 ---
 

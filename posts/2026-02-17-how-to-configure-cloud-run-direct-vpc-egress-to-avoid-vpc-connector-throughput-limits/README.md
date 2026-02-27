@@ -1,4 +1,4 @@
-# How to Configure Cloud Run Direct VPC Egress to Avoid VPC Connector Throughput Limits
+# Configure Cloud Run Direct VPC Egress to Avoid VPC Connector Throughput Limits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

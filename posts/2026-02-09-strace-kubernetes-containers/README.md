@@ -1,4 +1,4 @@
-# How to Implement strace Tracing Inside Kubernetes Containers for System Call Analysis
+# How to Use strace Tracing Inside Kubernetes Containers for System Call Analysis
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

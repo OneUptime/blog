@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Audit, pgAudit, Compliance, Security, Logging
 
-Description: Learn how to implement comprehensive audit logging in PostgreSQL using pgAudit. This guide covers installation, configuration, log analysis, and compliance-ready audit trails for SOC 2 and HIPAA requirements.
+Description: Learn how to implement comprehensive audit logging in PostgreSQL using pgAudit.
 
 ---
 

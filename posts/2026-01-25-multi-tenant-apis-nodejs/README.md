@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Node.js, TypeScript, Multi-Tenancy, API, Architecture, SaaS
 
-Description: Learn how to build multi-tenant APIs in Node.js that securely isolate tenant data while sharing infrastructure. This guide covers tenant identification, data isolation strategies, and middleware patterns.
+Description: Learn how to build multi-tenant APIs in Node.js that securely isolate tenant data while sharing infrastructure.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Implement Targeted Push Notifications with Azure Notification Hubs Tags and Templates
+# How to Use Targeted Push Notifications with Azure Notification Hubs Tags
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

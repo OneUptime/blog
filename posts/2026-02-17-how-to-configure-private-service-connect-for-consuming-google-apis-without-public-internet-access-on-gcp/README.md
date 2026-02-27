@@ -1,4 +1,4 @@
-# How to Configure Private Service Connect for Consuming Google APIs Without Public Internet Access on GCP
+# How to Configure Private Service Connect for Consuming Google APIs Without
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

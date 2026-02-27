@@ -1,4 +1,4 @@
-# How to Monitor Elasticsearch JVM Heap Usage, GC Pause Time, and Thread Pool Utilization with OpenTelemetry
+# How to Monitor Elasticsearch JVM Heap Usage, GC Pause Time,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

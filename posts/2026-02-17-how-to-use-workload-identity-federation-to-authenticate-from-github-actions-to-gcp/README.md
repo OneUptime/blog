@@ -1,4 +1,4 @@
-# How to Use Workload Identity Federation to Authenticate from GitHub Actions to GCP
+# Use Workload Identity Federation to Authenticate from GitHub Actions to GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

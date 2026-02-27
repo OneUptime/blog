@@ -1,4 +1,4 @@
-# How to Configure OpenID Connect Authentication for a Web Application Using Microsoft Entra ID
+# How to Configure OpenID Connect Authentication for a Web Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

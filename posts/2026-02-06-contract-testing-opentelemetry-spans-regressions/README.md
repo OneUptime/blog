@@ -1,4 +1,4 @@
-# How to Implement Contract Testing for OpenTelemetry Spans to Prevent Instrumentation Regressions
+# How to Use Contract Testing for OpenTelemetry Spans to Prevent Instrumentation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

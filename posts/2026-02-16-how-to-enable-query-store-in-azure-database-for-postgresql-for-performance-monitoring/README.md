@@ -1,4 +1,4 @@
-# How to Enable Query Store in Azure Database for PostgreSQL for Performance Monitoring
+# How to Enable Query Store in Azure Database
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

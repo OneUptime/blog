@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Context Propagation, Distributed Tracing, Async Context, W3C Trace Context, Observability
 
-Description: Learn how to implement context management in OpenTelemetry for proper trace propagation across async boundaries and service calls. This guide covers context APIs, propagation, and handling async code patterns.
+Description: Learn how to implement context management in OpenTelemetry for proper trace propagation across async boundaries and service calls.
 
 ---
 

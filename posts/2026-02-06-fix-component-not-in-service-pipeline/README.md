@@ -1,4 +1,4 @@
-# How to Fix the Common Mistake of Configuring a Component but Not Including It in the Service Pipeline
+# How to Fix the Common Mistake of Configuring a Component but Not Including It
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

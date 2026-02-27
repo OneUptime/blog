@@ -1,4 +1,4 @@
-# How to Monitor Batch Job Progress and Debug Failures with Cloud Logging on Google Cloud
+# How to Monitor Batch Job Progress and Debug Failures with Cloud Logging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

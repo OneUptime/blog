@@ -1,4 +1,4 @@
-# How to Implement Token-Efficient Prompt Engineering for Gemini Long Context Applications
+# How to Use Token-Efficient Prompt Engineering
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

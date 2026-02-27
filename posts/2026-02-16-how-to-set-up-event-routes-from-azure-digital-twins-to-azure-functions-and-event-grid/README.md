@@ -1,4 +1,4 @@
-# How to Set Up Event Routes from Azure Digital Twins to Azure Functions and Event Grid
+# How to Set Up Event Routes from Azure Digital Twins to Azure Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

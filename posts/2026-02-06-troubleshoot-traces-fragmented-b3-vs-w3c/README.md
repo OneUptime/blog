@@ -1,4 +1,4 @@
-# How to Troubleshoot Traces Breaking into Disconnected Fragments When One Service Uses B3 and Another Uses W3C
+# How to Troubleshoot Traces Breaking into Disconnected Fragments When One
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

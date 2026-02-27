@@ -1,4 +1,4 @@
-# How to Benchmark OTel Arrow vs Standard OTLP/gRPC to Measure Bandwidth Savings in Your Environment
+# How to Benchmark OTel Arrow vs Standard OTLP/gRPC to Measure Bandwidth Savings
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

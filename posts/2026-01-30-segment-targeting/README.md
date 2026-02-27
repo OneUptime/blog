@@ -1257,6 +1257,3 @@ Segment targeting transforms feature flags from simple toggles into a precision 
 
 ### See Also
 
-- [What are Feature Flags and Why Use Them](/blog/post/feature-flags-introduction/) - Understand the fundamentals before diving into targeting
-- [Gradual Rollout Strategies](/blog/post/gradual-rollout-strategies/) - Combine segment targeting with percentage-based rollouts
-- [A/B Testing with Feature Flags](/blog/post/ab-testing-feature-flags/) - Use segments to build experiment cohorts

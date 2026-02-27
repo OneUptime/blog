@@ -1,4 +1,4 @@
-# How to Configure TLS Encryption for Database Connections in Kubernetes StatefulSets
+# How to Configure TLS Encryption for Database Connections
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

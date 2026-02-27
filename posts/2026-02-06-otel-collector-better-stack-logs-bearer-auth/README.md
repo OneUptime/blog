@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector to Export to Better Stack Logs with Bearer Token Authentication
+# How to Configure the OpenTelemetry Collector to Export to Better Stack Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

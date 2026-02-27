@@ -1,4 +1,4 @@
-# How to Rename Metric Names and Labels Using the Metrics Transform Processor in the Collector
+# How to Rename Metric Names and Labels Using the Metrics Transform Processor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

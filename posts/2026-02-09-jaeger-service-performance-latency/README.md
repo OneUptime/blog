@@ -1,4 +1,4 @@
-# How to Use Jaeger Service Performance Monitoring to Detect Kubernetes Latency Regressions
+# How to Use Jaeger Service Performance Monitoring to Detect K8s Latency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

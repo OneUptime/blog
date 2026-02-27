@@ -1,4 +1,4 @@
-# How to Create Custom Grafana Dashboards in Azure Managed Grafana for Infrastructure Monitoring
+# How to Create Custom Grafana Dashboards in Azure Managed Grafana
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

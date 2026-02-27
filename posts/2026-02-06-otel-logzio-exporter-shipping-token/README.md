@@ -1,4 +1,4 @@
-# How to Export OpenTelemetry Logs to Logz.io Using the Logz.io Exporter in the Collector with Shipping Token
+# How to Export OpenTelemetry Logs to Logz.io Using the Logz.io Exporter in the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

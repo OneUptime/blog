@@ -1,4 +1,4 @@
-# How to Troubleshoot the OpenTelemetry Go SDK Silently Dropping Spans When TracerProvider.Shutdown Is Not Called
+# How to Troubleshoot the OpenTelemetry Go SDK Silently Dropping Spans When
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

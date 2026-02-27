@@ -1,4 +1,4 @@
-# How to Trace Dynamic Pricing Algorithm Execution for Airline Revenue Management with OpenTelemetry
+# How to Trace Dynamic Pricing Algorithm Execution for Airline Revenue Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

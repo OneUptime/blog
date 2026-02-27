@@ -1,4 +1,4 @@
-# How to Fix the Python opentelemetry-semantic-conventions Version Conflict When Updating Instrumentation Libraries
+# How to Fix the Python opentelemetry-semantic-conventions Version Conflict When
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

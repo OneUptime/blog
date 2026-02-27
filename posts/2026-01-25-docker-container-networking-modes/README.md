@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Networking, DevOps, Containers, Infrastructure
 
-Description: Learn the different Docker network modes including bridge, host, none, and container networking. Understand when to use each mode and how to configure networks for development and production environments.
+Description: Learn the different Docker network modes including bridge, host, none, and container networking.
 
 ---
 

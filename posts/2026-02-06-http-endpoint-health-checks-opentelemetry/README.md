@@ -1,4 +1,4 @@
-# How to Set Up HTTP Endpoint Health Checks Using the OpenTelemetry HTTP Check Receiver
+# Set Up HTTP Endpoint Health Checks Using the OpenTelemetry HTTP Check Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Onboard Customer Tenants Using Azure Lighthouse for Multi-Tenant Management
+# Onboard Customer Tenants Using Azure Lighthouse for Multi-Tenant Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

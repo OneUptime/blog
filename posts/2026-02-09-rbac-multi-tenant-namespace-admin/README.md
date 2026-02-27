@@ -1,4 +1,4 @@
-# How to Configure RBAC for Multi-Tenant Kubernetes Clusters with Namespace-Scoped Admin Roles
+# How to Configure RBAC for Multi-Tenant K8s Clusters with Namespace-Scoped Admin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

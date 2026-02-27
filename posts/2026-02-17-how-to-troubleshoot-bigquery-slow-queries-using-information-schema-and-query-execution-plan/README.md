@@ -1,4 +1,4 @@
-# How to Troubleshoot BigQuery Slow Queries Using INFORMATION_SCHEMA and Query Execution Plan
+# How to Troubleshoot BigQuery Slow Queries Using INFORMATION_SCHEMA
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

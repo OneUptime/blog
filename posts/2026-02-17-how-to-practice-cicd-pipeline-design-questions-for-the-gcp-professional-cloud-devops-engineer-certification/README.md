@@ -1,4 +1,4 @@
-# How to Practice CI/CD Pipeline Design Questions for the GCP Professional Cloud DevOps Engineer Certification
+# How to Practice CI/CD Pipeline Design Questions for the GCP Professional Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

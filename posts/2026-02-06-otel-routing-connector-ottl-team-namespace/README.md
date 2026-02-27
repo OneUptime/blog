@@ -1,4 +1,4 @@
-# How to Use the Routing Connector with OTTL to Route Telemetry by Team, Namespace, or Environment
+# How to Use the Routing Connector with OTTL to Route Telemetry by Team,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

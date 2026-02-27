@@ -1,4 +1,4 @@
-# How to Build a Kubernetes Cluster Overview Dashboard from OpenTelemetry Collector Metrics
+# How to Build a K8s Cluster Overview Dashboard from OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

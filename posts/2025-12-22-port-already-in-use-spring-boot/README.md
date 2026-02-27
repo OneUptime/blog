@@ -463,4 +463,4 @@ With these techniques, you can quickly resolve port conflicts and prevent them f
 *Need to monitor port availability and application health? [OneUptime](https://oneuptime.com) provides port monitoring, health checks, and instant alerts when your Spring Boot applications become unreachable.*
 
 **Related Reading:**
-- [How to Configure Actuator Endpoints in Spring Boot](/blog/post/2025-12-22-configure-actuator-endpoints-spring-boot/view)
+- [How to Configure Actuator Endpoints in Spring Boot](https://oneuptime.com/blog/post/2025-12-22-configure-actuator-endpoints-spring-boot/view)

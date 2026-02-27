@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Preview Environments, Pull Requests, CI/CD
 
-Description: Learn how to automatically create ephemeral preview environments for every pull request using ArgoCD ApplicationSet pull request generator, enabling developers to test changes in isolated Kubernetes namespaces before merging.
+Description: Learn how to automatically create ephemeral preview environments for every pull request using ArgoCD ApplicationSet pull request generator.
 
 ---
 

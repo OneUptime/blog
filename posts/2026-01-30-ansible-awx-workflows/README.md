@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ansible, AWX, Automation, Workflows
 
-Description: A comprehensive guide to building Ansible AWX workflows for orchestrating complex automation tasks. Learn how to design, implement, and monitor multi-step automation pipelines with practical examples and best practices.
+Description: A comprehensive guide to building Ansible AWX workflows for orchestrating complex automation tasks.
 
 ---
 

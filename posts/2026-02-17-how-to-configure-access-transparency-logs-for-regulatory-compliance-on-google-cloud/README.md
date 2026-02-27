@@ -1,4 +1,4 @@
-# How to Configure Access Transparency Logs for Regulatory Compliance on Google Cloud
+# How to Configure Access Transparency Logs for Regulatory Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

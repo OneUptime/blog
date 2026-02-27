@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Distributed Tracing, Observability, OpenTelemetry, Microservices, Context Propagation, W3C Trace Context, Span Context
 
-Description: A comprehensive guide to implementing distributed tracing context propagation across microservices. Learn W3C Trace Context standards, propagation patterns for HTTP, gRPC, and message queues, and best practices for maintaining trace continuity.
+Description: A comprehensive guide to implementing distributed tracing context propagation across microservices.
 
 ---
 

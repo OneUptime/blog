@@ -1,4 +1,4 @@
-# How to Optimize AI Training Pipeline Performance with Parallelstore and A3 GPU VMs
+# How to Optimize AI Training Pipeline Performance with Parallelstore
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -531,5 +531,5 @@ jobs:
 *Need to monitor your test suite performance in CI/CD? [OneUptime](https://oneuptime.com) provides comprehensive monitoring with test result tracking and alerting.*
 
 **Related Reading:**
-- [How to Fix "Assertion" Failures in Tests](/blog/post/2026-01-24-fix-assertion-failures-tests/view)
-- [How to Fix "Test Dependency" Issues](/blog/post/2026-01-24-fix-test-dependency-issues/view)
+- [How to Fix "Assertion" Failures in Tests](https://oneuptime.com/blog/post/2026-01-24-fix-assertion-failures-tests/view)
+- [How to Fix "Test Dependency" Issues](https://oneuptime.com/blog/post/2026-01-24-fix-test-dependency-issues/view)

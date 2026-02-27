@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HashiCorp Vault, Secrets Management, Kubernetes, Security, DevOps, Secret Injection, Sidecar, Auto-Auth
 
-Description: A comprehensive guide to using HashiCorp Vault Agent for automatic secret injection, covering auto-auth methods, template rendering, Kubernetes sidecar injection, secret caching, and production best practices.
+Description: A comprehensive guide to using HashiCorp Vault Agent for automatic secret injection, covering auto-auth methods, template rendering, Kubernetes sidecar injection, secret caching.
 
 ---
 

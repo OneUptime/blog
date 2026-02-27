@@ -1,4 +1,4 @@
-# How to Troubleshoot OpenTelemetry Python SDK Not Exporting Metrics with Gunicorn Multi-Worker Fork
+# How to Troubleshoot OpenTelemetry Python SDK Not Exporting Metrics with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

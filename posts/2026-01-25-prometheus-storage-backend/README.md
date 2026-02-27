@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Storage, TSDB, Remote Storage, Long-term Retention, Metrics Storage, Performance Tuning, Observability
 
-Description: A comprehensive guide to configuring Prometheus storage backends. Learn about local TSDB tuning, remote write configurations, and integrating with long-term storage solutions like Thanos, Cortex, and VictoriaMetrics.
+Description: A comprehensive guide to configuring Prometheus storage backends.
 
 ---
 

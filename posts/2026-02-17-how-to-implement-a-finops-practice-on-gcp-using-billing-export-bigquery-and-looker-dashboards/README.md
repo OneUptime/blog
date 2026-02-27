@@ -1,4 +1,4 @@
-# How to Implement a FinOps Practice on GCP Using Billing Export BigQuery and Looker Dashboards
+# How to Build a FinOps Practice on GCP Using Billing Export BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

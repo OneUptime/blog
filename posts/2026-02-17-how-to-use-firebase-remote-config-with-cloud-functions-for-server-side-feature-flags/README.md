@@ -1,4 +1,4 @@
-# How to Use Firebase Remote Config with Cloud Functions for Server-Side Feature Flags
+# Use Firebase Remote Config with Cloud Functions for Server-Side Feature Flags
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

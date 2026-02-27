@@ -1,4 +1,4 @@
-# How to Correlate Metrics Logs and Traces in a Unified Investigation Workflow on GCP
+# How to Correlate Metrics Logs and Traces in a Unified Investigation Workflow
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

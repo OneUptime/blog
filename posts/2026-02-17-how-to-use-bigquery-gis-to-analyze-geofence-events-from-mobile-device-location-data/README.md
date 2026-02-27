@@ -1,4 +1,4 @@
-# How to Use BigQuery GIS to Analyze Geofence Events from Mobile Device Location Data
+# Use BigQuery GIS to Analyze Geofence Events from Mobile Device Location Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

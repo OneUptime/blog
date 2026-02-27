@@ -1,4 +1,4 @@
-# How to Troubleshoot IPv6 vs IPv4 Binding Issues When the Collector Fails to Accept Connections
+# How to Troubleshoot IPv6 vs IPv4 Binding Issues When the Collector Fails to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

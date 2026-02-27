@@ -1,4 +1,4 @@
-# How to Use the OpenTelemetry Java Agent with Application Servers (Tomcat, WildFly, Liberty)
+# How to Use the OpenTelemetry Java Agent with Application Servers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

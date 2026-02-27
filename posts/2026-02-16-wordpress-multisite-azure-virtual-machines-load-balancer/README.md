@@ -1,4 +1,4 @@
-# How to Set Up WordPress Multisite on Azure Virtual Machines with Azure Load Balancer
+# How to Set Up WordPress Multisite on Azure Virtual Machines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

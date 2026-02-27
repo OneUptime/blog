@@ -1,4 +1,4 @@
-# How to Monitor RBAC Authorization Decisions Across Services with OpenTelemetry Span Attributes
+# How to Monitor RBAC Authorization Decisions Across Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

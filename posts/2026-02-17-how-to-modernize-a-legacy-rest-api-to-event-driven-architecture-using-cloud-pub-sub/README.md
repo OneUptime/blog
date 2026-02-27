@@ -1,4 +1,4 @@
-# How to Modernize a Legacy REST API to Event-Driven Architecture Using Cloud Pub/Sub
+# Modernize a Legacy REST API to Event-Driven Architecture Using Cloud Pub/Sub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

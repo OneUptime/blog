@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, Dead Letter Queue, Error Handling, Reliability, Message Processing
 
-Description: Learn how to implement dead letter topics (DLT) in Kafka to handle failed messages gracefully, including retry strategies, error tracking, and message recovery patterns for building resilient consumers.
+Description: Learn how to implement dead letter topics (DLT) in Kafka to handle failed messages gracefully, including retry strategies, error tracking.
 
 ---
 

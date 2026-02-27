@@ -1,4 +1,4 @@
-# How to Instrument Telehealth Video Consultation Platforms with OpenTelemetry for Quality-of-Experience Metrics
+# How to Instrument Telehealth Video Consultation Platforms with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

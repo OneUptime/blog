@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, DevOps, Best Practices, Project Structure
 
-Description: Learn how to structure Terraform folders for scalable, maintainable infrastructure projects. This guide covers flat structures for small projects, module-based architectures for large deployments, and environment separation strategies.
+Description: Learn how to structure Terraform folders for scalable, maintainable infrastructure projects.
 
 A well-organized Terraform folder structure is crucial for maintaining infrastructure code as your project grows. Poor organization leads to duplicated code, difficult updates, and team confusion. Let's explore different folder structures suited for various project sizes and requirements.
 

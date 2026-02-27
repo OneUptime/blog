@@ -1,10 +1,10 @@
-# How to Configure the Group by Attributes Processor in the OpenTelemetry Collector
+# How to Configure the Group by Attributes Processor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processors, Attributes, Grouping, Metrics, Resource, Cardinality
 
-Description: Learn how to configure the group-by-attributes processor in OpenTelemetry Collector to reorganize telemetry attributes, reduce cardinality, optimize storage costs, and improve query performance by grouping metrics and logs by specific attribute keys.
+Description: Learn how to configure the group-by-attributes processor in OpenTelemetry Collector to reorganize telemetry attributes, reduce cardinality, optimize storage costs.
 
 ---
 

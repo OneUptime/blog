@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry Collector Alertmanager Exporter for Prometheus-Style Alerts
+# How to Configure OpenTelemetry Collector Alertmanager Exporter for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

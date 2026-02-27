@@ -1,4 +1,4 @@
-# How to Monitor and Predict Storage Capacity Needs from OpenTelemetry Telemetry Volume Trends
+# How to Monitor and Predict Storage Capacity Needs from OpenTelemetry Telemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

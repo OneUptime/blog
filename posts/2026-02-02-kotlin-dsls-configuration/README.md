@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kotlin, DSL, Configuration, Type-Safe Builders, Domain-Specific Languages
 
-Description: Learn how to create and use Kotlin DSLs for type-safe, readable configuration in your applications. This guide covers DSL design patterns, type-safe builders, scope control, and practical examples for building configuration systems.
+Description: Learn how to create and use Kotlin DSLs for type-safe, readable configuration in your applications.
 
 ---
 

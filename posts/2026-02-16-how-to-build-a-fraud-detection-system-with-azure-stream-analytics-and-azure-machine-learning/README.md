@@ -1,4 +1,4 @@
-# How to Build a Fraud Detection System with Azure Stream Analytics and Azure Machine Learning
+# How to Build a Fraud Detection System with Azure Stream Analytics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

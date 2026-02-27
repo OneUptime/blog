@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: MySQL, Database, Migrations, Schema Management, DevOps, CI/CD
 
-Description: Learn how to handle database migrations in MySQL using tools like Flyway, Liquibase, and native SQL scripts. This comprehensive guide covers migration strategies, version control, rollback procedures, and best practices for production deployments.
+Description: Learn how to handle database migrations in MySQL using tools like Flyway, Liquibase, and native SQL scripts.
 
 ---
 

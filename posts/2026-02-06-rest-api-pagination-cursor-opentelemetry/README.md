@@ -1,4 +1,4 @@
-# How to Instrument REST API Pagination and Cursor-Based Queries with OpenTelemetry Span Attributes
+# How to Instrument REST API Pagination and Cursor-Based Queries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

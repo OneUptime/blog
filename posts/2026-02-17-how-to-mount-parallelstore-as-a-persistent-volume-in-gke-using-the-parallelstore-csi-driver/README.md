@@ -1,4 +1,4 @@
-# How to Mount Parallelstore as a Persistent Volume in GKE Using the Parallelstore CSI Driver
+# How to Mount Parallelstore as a Persistent Volume in GKE
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Instrument CSRF and XSS Protection Layers with OpenTelemetry for Security Event Tracking
+# How to Instrument CSRF and XSS Protection Layers with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

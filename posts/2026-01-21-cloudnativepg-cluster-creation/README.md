@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CloudNativePG, Kubernetes, PostgreSQL, Database, Cluster, Configuration
 
-Description: A comprehensive guide to creating and configuring PostgreSQL clusters with CloudNativePG, covering cluster specifications, storage configuration, users, databases, and advanced settings for production deployments.
+Description: A comprehensive guide to creating and configuring PostgreSQL clusters with CloudNativePG, covering cluster specifications, storage configuration, users, databases.
 
 ---
 

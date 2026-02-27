@@ -1,4 +1,4 @@
-# How to Deploy Azure Spring Apps with Custom Virtual Network Injection Using Bicep
+# How to Deploy Azure Spring Apps with Custom Virtual Network Injection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Exception Handling, REST API, Error Response, ControllerAdvice
 
-Description: Learn how to implement global exception handling in Spring Boot using @ControllerAdvice. This guide covers custom exceptions, error responses, validation errors, and best practices for consistent API error handling.
+Description: Learn how to implement global exception handling in Spring Boot using @ControllerAdvice.
 
 ---
 

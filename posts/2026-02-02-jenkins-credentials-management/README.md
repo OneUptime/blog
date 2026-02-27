@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Jenkins, CI/CD, Security, DevOps, Credentials, Secrets Management, Automation
 
-Description: A comprehensive guide to managing credentials in Jenkins securely. Learn how to store, access, and rotate secrets using the Jenkins Credentials Plugin, environment bindings, and integration with external secret managers.
+Description: A comprehensive guide to managing credentials in Jenkins securely.
 
 ---
 

@@ -2026,6 +2026,6 @@ Build these capabilities incrementally. Start with metrics collection and basic 
 
 **Related Reading:**
 
-- [What is Site Reliability Engineering](/blog/post/2025-11-28-what-is-site-reliability-engineering/view)
-- [SRE Metrics Worth Tracking](/blog/post/2025-11-28-sre-metrics-to-track/view)
-- [How to Build Impact Analysis](/blog/post/2026-01-30-impact-analysis/view)
+- [What is Site Reliability Engineering](https://oneuptime.com/blog/post/2025-11-28-what-is-site-reliability-engineering/view)
+- [SRE Metrics Worth Tracking](https://oneuptime.com/blog/post/2025-11-28-sre-metrics-to-track/view)
+- [How to Build Impact Analysis](https://oneuptime.com/blog/post/2026-01-30-impact-analysis/view)

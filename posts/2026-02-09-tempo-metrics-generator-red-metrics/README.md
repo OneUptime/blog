@@ -1,10 +1,10 @@
-# How to Configure Tempo Metrics Generator to Create RED Metrics from Kubernetes Traces
+# Configure Tempo Metrics Generator to Create RED Metrics from Kubernetes Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Grafana Tempo, Distributed Tracing, Metrics, Observability
 
-Description: Learn how to configure Grafana Tempo's metrics generator to automatically create Rate, Error, and Duration (RED) metrics from distributed traces in Kubernetes for unified observability without dual instrumentation.
+Description: Learn how to configure Grafana Tempo's metrics generator to automatically create Rate, Error.
 
 ---
 

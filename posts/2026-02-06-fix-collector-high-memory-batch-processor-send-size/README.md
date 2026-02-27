@@ -1,4 +1,4 @@
-# How to Fix High Collector Memory When the Batch Processor send_batch_size Is Set Too Large
+# How to Fix High Collector Memory When the Batch Processor send_batch_size Is
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Integration Testing, Testcontainers, JUnit, Testing
 
-Description: Learn how to set up comprehensive integration tests in Spring Boot using @SpringBootTest, Testcontainers, and MockMvc. This guide covers database testing, API testing, and best practices for reliable tests.
+Description: Learn how to set up comprehensive integration tests in Spring Boot using @SpringBootTest, Testcontainers, and MockMvc.
 
 ---
 
@@ -566,4 +566,4 @@ Comprehensive integration tests give you confidence that your application will w
 *Need to monitor your Spring Boot application's integration points? [OneUptime](https://oneuptime.com) provides end-to-end monitoring for APIs, databases, and external services with instant alerting.*
 
 **Related Reading:**
-- [How to Set Up Unit Testing with Mockito in Spring Boot](/blog/post/2025-12-22-unit-testing-mockito-spring-boot/view)
+- [How to Set Up Unit Testing with Mockito in Spring Boot](https://oneuptime.com/blog/post/2025-12-22-unit-testing-mockito-spring-boot/view)

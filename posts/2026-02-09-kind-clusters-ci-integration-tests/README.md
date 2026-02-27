@@ -1,4 +1,4 @@
-# How to Build Integration Tests That Spin Up Kind Clusters in CI for Kubernetes Controllers
+# How to Build Integration Tests That Spin Up Kind Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

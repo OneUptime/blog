@@ -1,4 +1,4 @@
-# How to Implement End-to-End Supply Chain Security with Google Cloud Software Delivery Shield
+# Use End-to-End Supply Chain Security with Google Cloud Software Delivery Shield
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Configure Terraform Cloud Workspaces for Multi-Environment Kubernetes Deployments
+# How to Configure Terraform Cloud Workspaces for Multi-Env Kubernetes Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Kubernetes, DevOps
 
-Description: Learn how to use Terraform Cloud workspaces to manage multiple Kubernetes environments with isolated state, variable management, and automated deployment workflows across development, staging, and production.
+Description: Learn how to use Terraform Cloud workspaces to manage multiple Kubernetes environments with isolated state, variable management, and automated deployment workflows across development, staging.
 
 ---
 

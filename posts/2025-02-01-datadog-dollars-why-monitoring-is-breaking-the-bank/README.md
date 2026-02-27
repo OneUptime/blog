@@ -4,7 +4,7 @@ Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: Observability, Datadog
 
-Description: Have you ever opened your monitoring bill and felt your heart skip a beat? You're not alone. In the world of digital infrastructure, many companies are experiencing sticker shock when they see their Datadog invoices. Let's unpack why your monitoring bill might be breaking the bank and explore how you can rein it back in.
+Description: Have you ever opened your monitoring bill and felt your heart skip a beat? You're not alone.
 
 Have you ever opened your monitoring bill and felt your heart skip a beat? You're not alone. In the world of digital infrastructure, many companies are experiencing sticker shock when they see their Datadog invoices. Let's unpack why your monitoring bill might be breaking the bank and explore how you can rein it back in.
 

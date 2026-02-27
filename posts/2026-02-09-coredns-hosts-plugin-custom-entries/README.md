@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CoreDNS, DNS, Configuration
 
-Description: Learn how to configure the CoreDNS hosts plugin to inject custom DNS entries across your Kubernetes cluster, enabling static host mappings for legacy systems, testing, and special routing requirements.
+Description: Learn how to configure the CoreDNS hosts plugin to inject custom DNS entries across your Kubernetes cluster, enabling static host mappings for legacy systems, testing.
 
 ---
 

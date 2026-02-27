@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Software Development, Dependencies, Maintenance, Security
 
-Description: Dependency bloat isn't just about bundle size, it's a hidden tax on your development velocity, security posture, and long-term maintainability. Learn why fewer dependencies often means faster, safer, and more sustainable software.
+Description: Dependency bloat isn't just about bundle size, it's a hidden tax on your development velocity, security posture, and long-term maintainability.
 
 In the early days of software development, we wrote everything from scratch. Libraries were scarce, and dependencies were viewed with suspicion. Fast forward to today, and the pendulum has swung wildly in the opposite direction. Modern development is built on layers of dependencies -> npm packages, Ruby gems, Python wheels, Go modules. They're convenient, they're powerful, but sometimes they're also dangerous, hard to maintain and are not always backward compatible. 
 

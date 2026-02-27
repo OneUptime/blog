@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Networking, Containers, DevOps, Linux, Docker Alternative, CNI
 
-Description: A practical guide to configuring Podman networking for containers and pods. Learn bridge networks, host networking, macvlan, container communication, DNS resolution, and advanced networking patterns for production deployments.
+Description: A practical guide to configuring Podman networking for containers and pods.
 
 ---
 

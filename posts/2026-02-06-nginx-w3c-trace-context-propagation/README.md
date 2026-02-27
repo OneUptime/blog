@@ -1,4 +1,4 @@
-# How to Configure NGINX W3C Trace Context Propagation with traceparent and tracestate Header Forwarding
+# How to Configure NGINX W3C Trace Context Propagation with traceparent
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

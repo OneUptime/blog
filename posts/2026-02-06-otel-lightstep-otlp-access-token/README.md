@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Data to Lightstep (ServiceNow Cloud Observability) via OTLP with Access Token Headers
+# How to Send OpenTelemetry Data to Lightstep via OTLP with Access Token Headers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

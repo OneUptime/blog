@@ -1,4 +1,4 @@
-# How to Build a Go gRPC Service and Deploy It to Cloud Run with Health Check Endpoints
+# How to Build a Go gRPC Service and Deploy It to Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

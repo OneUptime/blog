@@ -1,4 +1,4 @@
-# How to Monitor Podman VM Resource Usage and Running Container Metrics via the OpenTelemetry Collector
+# How to Monitor Podman VM Resource Usage and Running Container Metrics via the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Automated Model Retraining Triggered by Data Drift Alerts on GCP
+# How to Configure Automated Model Retraining Triggered by Data Drift Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

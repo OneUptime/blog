@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, OPA, Policy, Compliance
 
-Description: A comprehensive guide to integrating Open Policy Agent (OPA) with Terraform for policy-as-code. Learn how to enforce security, compliance, and cost controls on your infrastructure before it gets deployed.
+Description: A comprehensive guide to integrating Open Policy Agent (OPA) with Terraform for policy-as-code.
 
 ---
 

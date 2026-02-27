@@ -1,4 +1,4 @@
-# How to Migrate from App Engine Task Queues to Cloud Tasks for Push Queue Processing
+# How to Migrate from App Engine Task Queues to Cloud Tasks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

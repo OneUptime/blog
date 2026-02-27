@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Secrets, Security, IaC, DevOps, HashiCorp Vault, AWS Secrets Manager
 
-Description: Learn best practices for managing secrets in Terraform, including integration with secret managers like HashiCorp Vault, AWS Secrets Manager, and Azure Key Vault, plus techniques for secure variable handling and preventing exposure.
+Description: Learn best practices for managing secrets in Terraform, including integration with secret managers like HashiCorp Vault, AWS Secrets Manager, and Azure Key Vault.
 
 ---
 

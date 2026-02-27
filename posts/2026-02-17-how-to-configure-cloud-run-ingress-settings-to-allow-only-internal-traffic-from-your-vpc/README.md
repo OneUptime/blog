@@ -1,4 +1,4 @@
-# How to Configure Cloud Run Ingress Settings to Allow Only Internal Traffic from Your VPC
+# How to Configure Cloud Run Ingress Settings to Allow Only Internal Traffic from
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

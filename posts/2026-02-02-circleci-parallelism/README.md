@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CircleCI, CI/CD, Parallelism, DevOps, Testing, Performance Optimization
 
-Description: A practical guide to using parallelism in CircleCI to speed up your test suites and build pipelines. Learn how to split tests across multiple containers, configure parallelism levels, and optimize your CI/CD performance.
+Description: A practical guide to using parallelism in CircleCI to speed up your test suites and build pipelines.
 
 ---
 

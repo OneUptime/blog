@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Django, Python, Background Tasks, Async, Celery, Django-Q, Django-RQ, Redis
 
-Description: A comprehensive guide to implementing background tasks in Django applications. Learn multiple approaches including Celery, Django-Q, Django-RQ, and native async support with practical examples and production considerations.
+Description: A comprehensive guide to implementing background tasks in Django applications.
 
 ---
 

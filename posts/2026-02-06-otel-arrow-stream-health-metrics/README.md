@@ -1,4 +1,4 @@
-# How to Monitor OTel Arrow Stream Health and Compression Ratios with Collector Internal Metrics
+# How to Monitor OTel Arrow Stream Health and Compression Ratios
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

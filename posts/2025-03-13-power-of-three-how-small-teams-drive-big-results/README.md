@@ -4,7 +4,7 @@ Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: Team Management, Startups
 
-Description: At OneUptime, we’ve cracked the code: teams of three. Whether it’s engineering squads or management hierarchies, we’ve found that keeping teams small and focused isn’t just efficient- it’s transformative. Here’s how this approach helped us deliver platforms rivaling the scope of Incident.io, StatusPage.io, and more- all with just two tiny teams.
+Description: At OneUptime, we’ve cracked the code: teams of three.
 
 In the fast-paced world of software development, team structure can make or break productivity. At OneUptime, we’ve cracked the code: teams of three. Whether it’s engineering squads or management hierarchies, we’ve found that **keeping teams small and focused isn’t just efficient -  it’s transformative**. Here’s how this approach helped us deliver platforms rivaling the scope of Incident.io, StatusPage.io, and more- all with just two tiny teams - we call pods.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Azure AKS, Multi-Cluster
 
-Description: Learn how to register an Azure Kubernetes Service cluster with ArgoCD for multi-cluster GitOps deployments, covering Azure AD authentication, managed identity integration, and kubeconfig-based registration.
+Description: Learn how to register an Azure Kubernetes Service cluster with ArgoCD for multi-cluster GitOps deployments, covering Azure AD authentication, managed identity integration.
 
 ---
 

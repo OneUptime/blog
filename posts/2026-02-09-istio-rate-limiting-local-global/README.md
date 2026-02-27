@@ -1,4 +1,4 @@
-# How to Implement Rate Limiting with Istio Using Local and Global Rate Limit Filters
+# How to Use Rate Limiting with Istio Using Local and Global Rate Limit Filters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

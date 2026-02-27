@@ -1,4 +1,4 @@
-# How to Choose Between Cloud Armor Security Policies and Cloud NGFW for Web Application Protection
+# How to Choose Between Cloud Armor Security Policies and Cloud NGFW
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

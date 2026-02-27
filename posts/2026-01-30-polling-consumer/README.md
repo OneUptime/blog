@@ -669,8 +669,8 @@ The Polling Consumer pattern gives you explicit control over message consumption
 ## Related Reading
 
 - [Enterprise Integration Patterns: Polling Consumer](https://www.enterpriseintegrationpatterns.com/patterns/messaging/PollingConsumer.html)
-- [What are Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry)
-- [Node.js Graceful Shutdown Handler](/blog/post/2026-01-06-nodejs-graceful-shutdown-handler)
+- [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)
+- [Node.js Graceful Shutdown Handler](https://oneuptime.com/blog/post/2026-01-06-nodejs-graceful-shutdown-handler/view)
 
 ---
 

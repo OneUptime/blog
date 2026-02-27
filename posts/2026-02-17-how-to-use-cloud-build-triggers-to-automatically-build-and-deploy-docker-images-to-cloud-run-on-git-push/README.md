@@ -1,4 +1,4 @@
-# How to Use Cloud Build Triggers to Automatically Build and Deploy Docker Images to Cloud Run on Git Push
+# How to Use Cloud Build Triggers to Automatically Build
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

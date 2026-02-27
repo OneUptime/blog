@@ -1,4 +1,4 @@
-# How to Set Up Azure Pipelines to Deploy Azure Functions with Staging Slots and Swap Deployment
+# How to Set Up Azure Pipelines to Deploy Azure Functions with Staging Slots
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

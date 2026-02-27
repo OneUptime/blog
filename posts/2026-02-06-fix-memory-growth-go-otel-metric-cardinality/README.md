@@ -1,4 +1,4 @@
-# How to Fix Memory Growth in Go Applications When OpenTelemetry Metric Cardinality Exceeds Limits
+# How to Fix Memory Growth in Go Apps When OpenTelemetry Metric Cardinality
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

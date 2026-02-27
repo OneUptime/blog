@@ -1,4 +1,4 @@
-# How to Troubleshoot Cloud SQL Auth Proxy Dial Error Failed to Dial Connection Issues
+# Troubleshoot Cloud SQL Auth Proxy Dial Error Failed to Dial Connection Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

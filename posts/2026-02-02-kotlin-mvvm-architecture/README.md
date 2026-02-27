@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Kotlin, MVVM, Android, Architecture, Jetpack
 
-Description: Learn how to implement MVVM (Model-View-ViewModel) architecture in Kotlin Android applications using Jetpack components like ViewModel, LiveData, and StateFlow for clean, testable, and maintainable code.
+Description: Learn how to implement MVVM (Model-View-ViewModel) architecture in Kotlin Android applications using Jetpack components like ViewModel, LiveData, and StateFlow for clean, testable.
 
 ---
 

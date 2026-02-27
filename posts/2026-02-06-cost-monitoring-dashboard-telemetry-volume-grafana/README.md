@@ -1,4 +1,4 @@
-# How to Create a Cost Monitoring Dashboard That Tracks Telemetry Volume per Service in Grafana
+# How to Create a Cost Monitoring Dashboard That Tracks Telemetry Volume per
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

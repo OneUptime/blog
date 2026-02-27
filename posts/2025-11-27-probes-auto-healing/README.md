@@ -1,4 +1,4 @@
-# How to Add Liveness, Readiness, and Startup Probes So Kubernetes Auto-Heals Your Apps
+# Add Liveness, Readiness, and Startup Probes So Kubernetes Auto-Heals Your Apps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Serverless Event Processing Using Eventarc Triggers and Cloud Run
+# How to Use Serverless Event Processing Using Eventarc Triggers and Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

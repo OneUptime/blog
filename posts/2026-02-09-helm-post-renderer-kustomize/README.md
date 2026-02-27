@@ -1,4 +1,4 @@
-# How to Use Helm Post-Renderer Hooks to Apply Kustomize Patches to Rendered Manifests
+# Use Helm Post-Renderer Hooks to Apply Kustomize Patches to Rendered Manifests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

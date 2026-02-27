@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Search, Performance, Query Optimization, API
 
-Description: Learn how to return only specific fields from Elasticsearch queries to reduce network overhead, improve performance, and simplify data processing using _source filtering, stored fields, and docvalue_fields.
+Description: Learn how to return only specific fields from Elasticsearch queries to reduce network overhead, improve performance, and simplify data processing using _source filtering, stored fields.
 
 When querying Elasticsearch, the default behavior returns the entire `_source` document for each hit. For large documents or high-volume queries, this can create unnecessary network overhead and slow down your application. This guide covers multiple techniques to return only the fields you need.
 

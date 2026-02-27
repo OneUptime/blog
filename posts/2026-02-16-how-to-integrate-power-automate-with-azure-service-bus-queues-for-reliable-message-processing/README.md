@@ -1,4 +1,4 @@
-# How to Integrate Power Automate with Azure Service Bus Queues for Reliable Message Processing
+# How to Integrate Power Automate with Azure Service Bus Queues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Storage Class Parameters for Optimal Database IOPS on Kubernetes
+# How to Configure Storage Class Parameters for Optimal Database IOPS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

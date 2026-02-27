@@ -1,4 +1,4 @@
-# How to Use Exemplars to Link Error Rate Metric Spikes to Specific OpenTelemetry Traces
+# Use Exemplars to Link Error Rate Metric Spikes to Specific OpenTelemetry Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

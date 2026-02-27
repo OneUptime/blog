@@ -1,4 +1,4 @@
-# How to Monitor and Alert on Regional Outages Using Cloud Monitoring Uptime Checks and Incident Response
+# How to Monitor and Alert on Regional Outages Using Cloud Monitoring Uptime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

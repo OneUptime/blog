@@ -1,4 +1,4 @@
-# How to Enable Built-In OpenTelemetry in Deno with the OTEL_DENO Environment Variable
+# How to Enable Built-In OpenTelemetry in Deno
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

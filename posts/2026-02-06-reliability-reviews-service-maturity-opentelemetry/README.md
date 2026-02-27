@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Data to Drive Reliability Reviews and Service Maturity Assessments
+# How to Use OpenTelemetry Data to Drive Reliability Reviews
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

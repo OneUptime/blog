@@ -1,4 +1,4 @@
-# How to Migrate On-Premises MongoDB to Google Cloud Firestore or MongoDB Atlas on GCP
+# How to Migrate On-Premises MongoDB to Google Cloud Firestore or MongoDB Atlas
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

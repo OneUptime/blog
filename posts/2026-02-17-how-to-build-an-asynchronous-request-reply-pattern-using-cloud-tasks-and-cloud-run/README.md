@@ -1,4 +1,4 @@
-# How to Build an Asynchronous Request-Reply Pattern Using Cloud Tasks and Cloud Run
+# How to Build an Asynchronous Request-Reply Pattern Using Cloud Tasks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

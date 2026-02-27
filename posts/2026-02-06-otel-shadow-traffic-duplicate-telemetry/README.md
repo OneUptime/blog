@@ -1,4 +1,4 @@
-# How to Configure Shadow Traffic in the Collector to Duplicate Telemetry to a Test Backend for Evaluation
+# How to Configure Shadow Traffic in the Collector to Duplicate Telemetry to a
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

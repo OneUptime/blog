@@ -1,4 +1,4 @@
-# How to Trace Hashtag Trending Algorithm and Real-Time Aggregation Performance with OpenTelemetry
+# How to Trace Hashtag Trending Algorithm and Real-Time Aggregation Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix GKE Private Cluster Nodes Unable to Pull Images from Container Registry
+# Fix GKE Private Cluster Nodes Unable to Pull Images from Container Registry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

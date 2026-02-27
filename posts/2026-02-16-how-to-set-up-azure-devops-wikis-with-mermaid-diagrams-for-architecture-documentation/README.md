@@ -1,4 +1,4 @@
-# How to Set Up Azure DevOps Wikis with Mermaid Diagrams for Architecture Documentation
+# How to Set Up Azure DevOps Wikis with Mermaid Diagrams
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

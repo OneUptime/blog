@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Kafka, Storage, Tiered Storage, Architecture
 
-Description: A comprehensive guide to implementing Apache Kafka tiered storage with S3, GCS, and Azure Blob Storage, including configuration best practices, cost optimization strategies, and production deployment patterns.
+Description: A comprehensive guide to implementing Apache Kafka tiered storage with S3, GCS, and Azure Blob Storage, including configuration best practices, cost optimization strategies.
 
 ---
 

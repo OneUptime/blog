@@ -1,4 +1,4 @@
-# How to Use IAP to Secure Access to Cloud Run Services Without Public Ingress in GCP
+# How to Use IAP to Secure Access to Cloud Run Services Without Public Ingress
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

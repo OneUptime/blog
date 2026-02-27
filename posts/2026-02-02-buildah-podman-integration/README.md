@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Buildah, Podman, Containers, Docker, DevOps, OCI, Container Images, Linux
 
-Description: Learn how to use Buildah with Podman for building and running container images without Docker. Master OCI-compliant image creation, rootless containers, and seamless integration between these powerful tools.
+Description: Learn how to use Buildah with Podman for building and running container images without Docker.
 
 ---
 

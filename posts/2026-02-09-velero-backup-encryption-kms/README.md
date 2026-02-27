@@ -1,4 +1,4 @@
-# How to Configure Velero Backup Encryption at Rest Using AWS KMS or Azure Key Vault
+# Configure Velero Backup Encryption at Rest Using AWS KMS or Azure Key Vault
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

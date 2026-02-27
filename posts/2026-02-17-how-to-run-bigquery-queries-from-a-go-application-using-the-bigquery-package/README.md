@@ -1,4 +1,4 @@
-# How to Run BigQuery Queries from a Go Application Using the cloud.google.com/go/bigquery Package
+# How to Run BigQuery Queries from a Go App Using the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

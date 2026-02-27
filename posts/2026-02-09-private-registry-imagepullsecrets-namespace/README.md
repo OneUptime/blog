@@ -1,4 +1,4 @@
-# How to Configure Private Registry Authentication with ImagePullSecrets Per Namespace
+# How to Configure Private Registry Authentication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

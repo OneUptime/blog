@@ -1,4 +1,4 @@
-# How to Create Azure Container Registry with Geo-Replication and RBAC in Terraform
+# How to Create Azure Container Registry with Geo-Replication and RBAC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

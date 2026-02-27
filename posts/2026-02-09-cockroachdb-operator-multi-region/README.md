@@ -1,4 +1,4 @@
-# How to Deploy CockroachDB with Multi-Region Topology Using the CockroachDB Operator
+# How to Deploy CockroachDB with Multi-Region Topology
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

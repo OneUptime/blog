@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, VPA, Autoscaling, Resource Management, DevOps, Cost Optimization
 
-Description: Learn how to set up and configure the Vertical Pod Autoscaler (VPA) in Kubernetes. This guide covers installation, configuration modes, resource recommendations, and best practices for automatic resource adjustment.
+Description: Learn how to set up and configure the Vertical Pod Autoscaler (VPA) in Kubernetes.
 
 ---
 

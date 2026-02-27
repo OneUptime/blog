@@ -1,4 +1,4 @@
-# How to Deploy a gRPC Server on Cloud Run and Connect to It from a Client Application
+# Deploy a gRPC Server on Cloud Run and Connect to It from a Client Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

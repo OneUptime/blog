@@ -1,4 +1,4 @@
-# How to Configure Shielded VM Options to Protect Against Rootkits on Compute Engine
+# How to Configure Shielded VM Options to Protect Against Rootkits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

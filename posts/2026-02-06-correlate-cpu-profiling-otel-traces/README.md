@@ -1,4 +1,4 @@
-# How to Correlate CPU Profiling Data with OpenTelemetry Traces to Identify Hot Code Paths
+# How to Correlate CPU Profiling Data with OpenTelemetry Traces to Identify Hot
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

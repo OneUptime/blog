@@ -1,4 +1,4 @@
-# How to Set Up Azure Firewall Manager with Secured Virtual Hubs and Firewall Policies
+# How to Set Up Azure Firewall Manager with Secured Virtual Hubs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

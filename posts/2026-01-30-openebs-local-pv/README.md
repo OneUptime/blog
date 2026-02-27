@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenEBS, Kubernetes, Storage, Local PV
 
-Description: A comprehensive guide to implementing OpenEBS Local PV for high-performance local persistent storage in Kubernetes, covering hostpath and device provisioners, storage classes, and production best practices.
+Description: A comprehensive guide to implementing OpenEBS Local PV for high-performance local persistent storage in Kubernetes, covering hostpath and device provisioners, storage classes.
 
 ---
 

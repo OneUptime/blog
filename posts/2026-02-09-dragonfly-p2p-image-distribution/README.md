@@ -1,4 +1,4 @@
-# How to Configure Dragonfly P2P Image Distribution for Large-Scale Kubernetes Clusters
+# Configure Dragonfly P2P Image Distribution for Large-Scale Kubernetes Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

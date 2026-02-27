@@ -1,4 +1,4 @@
-# How to Build a Server-Sent Events Endpoint with Express.js on Cloud Run for Real-Time Updates
+# How to Build a Server-Sent Events Endpoint with Express.js on Cloud Run for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

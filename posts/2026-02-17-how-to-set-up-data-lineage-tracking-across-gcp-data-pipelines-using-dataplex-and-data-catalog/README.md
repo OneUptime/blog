@@ -1,4 +1,4 @@
-# How to Set Up Data Lineage Tracking Across GCP Data Pipelines Using Dataplex and Data Catalog
+# How to Set Up Data Lineage Tracking Across GCP Data Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

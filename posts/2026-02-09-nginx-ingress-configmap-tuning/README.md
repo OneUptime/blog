@@ -1,4 +1,4 @@
-# How to Configure NGINX Ingress Controller with Custom ConfigMap Tuning Parameters
+# How to Configure NGINX Ingress Controller
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up OpenTelemetry with Elasticsearch for Full-Text Log Search and Trace Correlation
+# How to Set Up OpenTelemetry with Elasticsearch for Full-Text Log Search
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# OneUptime Embraces Open Standards: Complete OpenAPI 3.0 Specification Now Available
+# OneUptime Embraces Open Standards: Complete OpenAPI 3.0 Specification Now
 
 Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: OpenAPI, Open Source, Standards, Interoperability, API
 
-Description: OneUptime now provides a comprehensive OpenAPI 3.0 specification covering our entire API surface. This commitment to open standards enables seamless integrations, third-party tool development, and demonstrates our dedication to interoperability in the open source ecosystem.
+Description: OneUptime now provides a comprehensive OpenAPI 3.0 specification covering our entire API surface.
 
 Today, we're excited to announce that **OneUptime now provides a complete OpenAPI 3.0 specification** for our entire API surface. This isn't just about documentation- it's a fundamental commitment to open standards, interoperability, and empowering the developer community to build on top of our platform.
 

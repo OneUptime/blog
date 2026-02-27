@@ -1,4 +1,4 @@
-# How to Instrument CloudEvents with OpenTelemetry Using the CloudEvents SDK Distributed Tracing Extension
+# How to Instrument CloudEvents with OpenTelemetry Using the CloudEvents SDK
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

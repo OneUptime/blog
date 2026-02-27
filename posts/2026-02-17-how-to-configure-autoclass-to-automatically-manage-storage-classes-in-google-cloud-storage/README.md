@@ -1,4 +1,4 @@
-# How to Configure Autoclass to Automatically Manage Storage Classes in Google Cloud Storage
+# How to Configure Autoclass to Automatically Manage Storage Classes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

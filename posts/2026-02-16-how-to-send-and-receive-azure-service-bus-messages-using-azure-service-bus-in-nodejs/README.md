@@ -1,4 +1,4 @@
-# How to Send and Receive Azure Service Bus Messages Using @azure/service-bus in Node.js
+# Send and Receive Azure Service Bus Messages Using @azure/service-bus in Node.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

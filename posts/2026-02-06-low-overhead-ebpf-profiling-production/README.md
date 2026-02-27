@@ -1,4 +1,4 @@
-# How to Configure Low-Overhead eBPF Profiling for Production (Under 1% CPU Impact)
+# How to Configure Low-Overhead eBPF Profiling for Production
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

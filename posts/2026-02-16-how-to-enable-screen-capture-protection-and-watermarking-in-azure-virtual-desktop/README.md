@@ -1,4 +1,4 @@
-# How to Enable Screen Capture Protection and Watermarking in Azure Virtual Desktop
+# How to Enable Screen Capture Protection and Watermarking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

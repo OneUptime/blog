@@ -1,4 +1,4 @@
-# How to Configure Cloud Run Concurrency Settings to Optimize Throughput for CPU-Bound Applications
+# How to Configure Cloud Run Concurrency Settings to Optimize Throughput for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

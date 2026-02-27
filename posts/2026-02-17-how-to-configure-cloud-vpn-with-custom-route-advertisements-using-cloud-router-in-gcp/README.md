@@ -1,4 +1,4 @@
-# How to Configure Cloud VPN with Custom Route Advertisements Using Cloud Router in GCP
+# How to Configure Cloud VPN with Custom Route Advertisements
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

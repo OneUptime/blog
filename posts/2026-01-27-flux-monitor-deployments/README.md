@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Flux, GitOps, Monitoring, Prometheus, Grafana, Alerting, DevOps
 
-Description: A comprehensive guide to monitoring Flux CD deployments, including CLI status commands, Prometheus metrics, Grafana dashboards, alerting on sync failures, and notification providers for complete GitOps observability.
+Description: A comprehensive guide to monitoring Flux CD deployments, including CLI status commands, Prometheus metrics, Grafana dashboards, alerting on sync failures.
 
 ---
 

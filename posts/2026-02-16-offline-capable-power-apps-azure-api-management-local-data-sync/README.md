@@ -1,4 +1,4 @@
-# How to Implement Offline-Capable Power Apps with Azure API Management and Local Data Sync
+# How to Use Offline-Capable Power Apps with Azure API Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

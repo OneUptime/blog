@@ -1,4 +1,4 @@
-# How to Build a Pub/Sub Push Subscription Handler in an Express.js Application on Cloud Run
+# How to Build a Pub/Sub Push Subscription Handler in an Express.js Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

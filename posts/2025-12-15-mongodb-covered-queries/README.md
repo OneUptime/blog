@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Database, Performance, Query Optimization, Indexes
 
-Description: Learn how to use MongoDB covered queries to achieve maximum query performance by returning results directly from indexes without accessing documents, with practical examples and optimization techniques.
+Description: Learn how to use MongoDB covered queries to achieve maximum query performance by returning results directly from indexes without accessing documents.
 
 ---
 

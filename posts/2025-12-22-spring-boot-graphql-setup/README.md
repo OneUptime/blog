@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, GraphQL, API, Query, Mutation, Schema-First
 
-Description: Learn how to set up GraphQL in Spring Boot applications using Spring for GraphQL. This guide covers schema definition, queries, mutations, subscriptions, error handling, and security with practical examples.
+Description: Learn how to set up GraphQL in Spring Boot applications using Spring for GraphQL.
 
 ---
 

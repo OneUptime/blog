@@ -1,4 +1,4 @@
-# How to Troubleshoot Thread-Local Context Loss When Using ThreadPoolExecutor with OpenTelemetry in Python
+# How to Troubleshoot Thread-Local Context Loss When Using ThreadPoolExecutor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

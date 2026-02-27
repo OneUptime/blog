@@ -1,4 +1,4 @@
-# How to Perform Zero-Downtime Schema Migrations in Cloud SQL PostgreSQL Using pg_repack
+# How to Perform Zero-Downtime Schema Migrations in Cloud SQL PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

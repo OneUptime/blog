@@ -1,4 +1,4 @@
-# How to Use the google-cloud-tasks Python Library to Create and Manage Cloud Tasks Queues
+# How to Use the google-cloud-tasks Python Library to Create
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

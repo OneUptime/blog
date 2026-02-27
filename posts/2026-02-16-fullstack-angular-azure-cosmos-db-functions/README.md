@@ -1,4 +1,4 @@
-# How to Build a Full-Stack Angular Application with Azure Cosmos DB and Azure Functions
+# How to Build a Full-Stack Angular Application with Azure Cosmos DB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

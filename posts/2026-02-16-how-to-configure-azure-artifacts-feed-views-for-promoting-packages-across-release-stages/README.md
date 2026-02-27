@@ -1,4 +1,4 @@
-# How to Configure Azure Artifacts Feed Views for Promoting Packages Across Release Stages
+# How to Configure Azure Artifacts Feed Views for Promoting Packages Across
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

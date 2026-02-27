@@ -979,6 +979,4 @@ OneUptime provides native OpenTelemetry support with a migration-friendly approa
 
 ## See Also
 
-- [OpenTelemetry Collector Deep Dive](/blog/opentelemetry-collector)
-- [Migrating from Zipkin to OpenTelemetry](/blog/migrating-zipkin-opentelemetry)
-- [OpenTelemetry Best Practices](/blog/opentelemetry-best-practices)
+- [OpenTelemetry Collector Deep Dive](https://oneuptime.com/blog/post/2026-01-07-ubuntu-opentelemetry-collector/view)

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Dead Letter Queue, DLQ, Error Handling, Failed Jobs, Job Recovery
 
-Description: A comprehensive guide to implementing dead letter queues in BullMQ for handling permanently failed jobs, including DLQ patterns, job inspection, retry strategies, and building robust failure handling systems.
+Description: A comprehensive guide to implementing dead letter queues in BullMQ for handling permanently failed jobs, including DLQ patterns, job inspection, retry strategies.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Quarkus, Metrics, Java, Micrometer, Configuration
 
-Description: Comprehensive guide to implementing and configuring OpenTelemetry metrics in Quarkus applications, including Micrometer integration, custom metrics, native image support, and performance monitoring for cloud-native workloads.
+Description: Comprehensive guide to implementing and configuring OpenTelemetry metrics in Quarkus applications, including Micrometer integration, custom metrics, native image support.
 
 Metrics provide the foundation for understanding application health, performance trends, and capacity planning. While traces show individual request flows and logs capture discrete events, metrics aggregate data over time to reveal patterns invisible in single operations. Quarkus applications benefit from OpenTelemetry's standardized metrics API, which ensures consistency across environments and compatibility with any backend that supports OTLP.
 

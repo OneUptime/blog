@@ -1,4 +1,4 @@
-# How to Set Up Azure DDoS Protection Diagnostic Logs and Integration with Microsoft Sentinel
+# How to Set Up Azure DDoS Protection Diagnostic Logs and Integration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

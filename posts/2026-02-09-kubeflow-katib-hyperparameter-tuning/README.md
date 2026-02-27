@@ -1,4 +1,4 @@
-# How to Build an End-to-End MLOps Pipeline with Kubeflow Katib Hyperparameter Tuning
+# How to Build an End-to-End MLOps Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

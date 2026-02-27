@@ -1,4 +1,4 @@
-# How to Implement Traefik Middleware Chains for Authentication and Header Manipulation
+# How to Use Traefik Middleware Chains for Authentication and Header Manipulation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

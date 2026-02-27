@@ -1140,4 +1140,4 @@ With the property wrappers and patterns provided in this guide, you have a produ
 *Need to monitor your iOS app's performance and user experience? [OneUptime](https://oneuptime.com) provides comprehensive application monitoring, real-time alerting, and incident management to keep your apps running smoothly in production.*
 
 **Related Reading:**
-- [How to Use Keychain for Secure Storage in Swift](/blog/post/2026-02-02-swift-keychain-secure-storage)
+- [How to Use Keychain for Secure Storage in Swift](https://oneuptime.com/blog/post/2026-02-02-swift-keychain-secure-storage/view)

@@ -1,4 +1,4 @@
-# How to Deploy to Kubernetes from GitHub Actions Using OIDC Workload Identity Federation
+# How to Deploy to Kubernetes from GitHub Actions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

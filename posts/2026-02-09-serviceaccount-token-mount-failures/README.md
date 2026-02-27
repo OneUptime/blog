@@ -1,4 +1,4 @@
-# How to Debug Kubernetes Service Account Token Mount Failures After Cluster Upgrade
+# Debug Kubernetes Service Account Token Mount Failures After Cluster Upgrade
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

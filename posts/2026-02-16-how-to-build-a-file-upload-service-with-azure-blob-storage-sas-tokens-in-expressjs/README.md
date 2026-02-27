@@ -1,4 +1,4 @@
-# How to Build a File Upload Service with Azure Blob Storage SAS Tokens in Express.js
+# Build a File Upload Service with Azure Blob Storage SAS Tokens in Express.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

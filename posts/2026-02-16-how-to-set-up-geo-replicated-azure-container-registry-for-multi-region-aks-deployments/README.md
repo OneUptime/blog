@@ -1,4 +1,4 @@
-# How to Set Up Geo-Replicated Azure Container Registry for Multi-Region AKS Deployments
+# Set Up Geo-Replicated Azure Container Registry for Multi-Region AKS Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

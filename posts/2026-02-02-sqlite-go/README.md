@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Go, SQLite, Database, SQL, Golang
 
-Description: A comprehensive guide to using SQLite in Go applications. Learn database setup, CRUD operations, prepared statements, transactions, migrations, connection management, and production best practices with practical examples.
+Description: A comprehensive guide to using SQLite in Go applications.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Monitor E-Commerce Session Replay Correlation with OpenTelemetry Trace Context for Conversion Debugging
+# How to Monitor E-Commerce Session Replay Correlation with OpenTelemetry Trace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

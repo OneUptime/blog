@@ -1,4 +1,4 @@
-# How to Trace Travel Insurance Quoting and Policy Issuance Workflows with OpenTelemetry
+# How to Trace Travel Insurance Quoting and Policy Issuance Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: NATS, Messaging, Performance, Microservices, Go, Backend, Distributed Systems
 
-Description: Learn how to optimize NATS performance for high-throughput messaging systems. Covers connection management, message batching, JetStream tuning, cluster configuration, and production best practices for achieving maximum throughput and low latency.
+Description: Learn how to optimize NATS performance for high-throughput messaging systems.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Deploy a Next.js 14 App Router Application to Cloud Run with Standalone Output Mode
+# How to Deploy a Next.js 14 App Router Application to Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

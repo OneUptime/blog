@@ -1,4 +1,4 @@
-# How to Deploy a Vue.js Application to Azure Static Web Apps with Custom Authentication
+# How to Deploy a Vue.js Application to Azure Static Web Apps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

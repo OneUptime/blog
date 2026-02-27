@@ -1,4 +1,4 @@
-# How to Configure OCI Runtime Hooks for Custom Container Lifecycle Events in Kubernetes
+# How to Configure OCI Runtime Hooks for Custom Container Lifecycle Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

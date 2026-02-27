@@ -1,4 +1,4 @@
-# How to Build a Custom Propagator for Legacy Trace Context Formats in Your Organization
+# How to Build a Custom Propagator for Legacy Trace Context Formats
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

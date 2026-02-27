@@ -1,4 +1,4 @@
-# How to Build a Data Vault Model on BigQuery for Auditable Enterprise Data Warehousing
+# How to Build a Data Vault Model on BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

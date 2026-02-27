@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ArgoCD, GitOps, Multi-Cluster, DevOps, CI/CD, Infrastructure
 
-Description: A comprehensive guide to managing multiple Kubernetes clusters with ArgoCD, covering cluster registration, ApplicationSets, centralized vs distributed architectures, security best practices, and disaster recovery strategies.
+Description: A comprehensive guide to managing multiple Kubernetes clusters with ArgoCD, covering cluster registration, ApplicationSets, centralized vs distributed architectures, security best practices.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Create a Business KPI Dashboard Using OpenTelemetry Custom Metrics in Grafana
+# How to Create a Business KPI Dashboard Using OpenTelemetry Custom Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Prepare for the Google Cloud Associate Cloud Engineer Exam Core Services Study Guide
+# How to Prepare for the Google Cloud Associate Cloud Engineer Exam Core Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

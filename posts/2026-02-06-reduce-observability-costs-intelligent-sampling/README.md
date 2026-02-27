@@ -1,4 +1,4 @@
-# How to Reduce Observability Costs by 80% with OpenTelemetry Intelligent Sampling and Filtering
+# How to Reduce Observability Costs by 80% with OpenTelemetry Intelligent Sampling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

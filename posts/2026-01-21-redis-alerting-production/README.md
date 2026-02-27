@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Alerting, Production, Monitoring, Prometheus, PagerDuty, Slack
 
-Description: A comprehensive guide to setting up Redis alerting for production environments, covering key metrics, alert thresholds, incident response, and integration with popular alerting platforms like Prometheus Alertmanager, PagerDuty, and Slack.
+Description: A comprehensive guide to setting up Redis alerting for production environments, covering key metrics, alert thresholds, incident response.
 
 ---
 

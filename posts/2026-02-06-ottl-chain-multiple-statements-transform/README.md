@@ -1,4 +1,4 @@
-# How to Chain Multiple OTTL Statements in the Transform Processor for Complex Multi-Step Transformations
+# How to Chain Multi OTTL Statements in the Transform Processor for Complex
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Deploy ScyllaDB on Kubernetes with the Scylla Operator for Low-Latency Workloads
+# Deploy ScyllaDB on Kubernetes with the Scylla Operator for Low-Latency Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

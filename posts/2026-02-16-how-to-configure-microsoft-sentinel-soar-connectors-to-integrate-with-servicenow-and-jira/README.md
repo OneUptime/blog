@@ -1,4 +1,4 @@
-# How to Configure Microsoft Sentinel SOAR Connectors to Integrate with ServiceNow and Jira
+# How to Configure Microsoft Sentinel SOAR Connectors to Integrate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Connection Pooling for Cloud Spanner in a Spring Boot Application Using the Spanner JDBC Driver
+# How to Use Connection Pooling for Cloud Spanner in a Spring Boot Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

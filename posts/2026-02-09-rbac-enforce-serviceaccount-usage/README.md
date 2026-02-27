@@ -1,4 +1,4 @@
-# How to Build RBAC Policies That Enforce Service Account Usage Instead of User Credentials
+# How to Build RBAC Policies That Enforce Service Account Usage Instead of User
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

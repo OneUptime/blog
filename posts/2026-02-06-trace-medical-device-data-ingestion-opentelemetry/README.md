@@ -1,4 +1,4 @@
-# How to Trace Medical Device Data Ingestion Pipelines (Vitals, Lab Results) with OpenTelemetry
+# How to Trace Medical Device Data Ingestion Pipelines with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

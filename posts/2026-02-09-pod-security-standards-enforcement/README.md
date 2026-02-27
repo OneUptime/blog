@@ -1,10 +1,10 @@
-# How to Configure Kubernetes Pod Security Standards Enforcement for Baseline and Restricted Profiles
+# How to Configure Kubernetes Pod Security Standards Enforcement
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Pod Security, PSS, Compliance, Hardening
 
-Description: Configure Kubernetes Pod Security Standards enforcement across namespaces using Baseline and Restricted profiles to prevent insecure pod configurations and meet security compliance requirements without complex admission controllers.
+Description: Configure Kubernetes Pod Security Standards enforcement across namespaces using Baseline and Restricted profiles to prevent insecure pod configurations and meet security compliance requirements.
 
 ---
 

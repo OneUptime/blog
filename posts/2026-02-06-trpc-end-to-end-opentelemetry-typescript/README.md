@@ -1,4 +1,4 @@
-# How to Trace tRPC API Procedures End-to-End with OpenTelemetry in a TypeScript Monorepo
+# How to Trace tRPC API Procedures End-to-End with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

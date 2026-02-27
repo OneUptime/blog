@@ -1,4 +1,4 @@
-# How to Implement the Sidecar Pattern for Cross-Cutting Concerns in GKE Microservices
+# How to Use the Sidecar Pattern for Cross-Cutting Concerns in GKE Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Monitor Game Patch Distribution and Asset Download CDN Performance with OpenTelemetry
+# How to Monitor Game Patch Distribution and Asset Download CDN Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Write PromQL Queries That Calculate Per-Pod Network Throughput in Kubernetes
+# How to Write PromQL Queries That Calculate Per-Pod Network Throughput
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

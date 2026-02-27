@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, OpenTelemetry, Tracing, Observability, Distributed Tracing, APM
 
-Description: A comprehensive guide to instrumenting BullMQ with OpenTelemetry for distributed tracing, including span creation, context propagation, metrics collection, and integrating with observability platforms like Jaeger and Zipkin.
+Description: A comprehensive guide to instrumenting BullMQ with OpenTelemetry for distributed tracing, including span creation, context propagation, metrics collection.
 
 ---
 

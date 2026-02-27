@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry to Compare API Performance Across Blue-Green and Canary Deployments
+# How to Use OpenTelemetry to Compare API Performance Across Blue-Green
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

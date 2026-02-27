@@ -614,4 +614,4 @@ With proper Redis configuration, you can significantly improve application perfo
 *Need to monitor your Redis instances? [OneUptime](https://oneuptime.com) provides Redis monitoring with connection pool metrics, latency tracking, and instant alerts.*
 
 **Related Reading:**
-- [How to Set Up Caching in Spring Boot](/blog/post/2025-12-22-setup-caching-spring-boot/view)
+- [How to Set Up Caching in Spring Boot](https://oneuptime.com/blog/post/2025-12-22-setup-caching-spring-boot/view)

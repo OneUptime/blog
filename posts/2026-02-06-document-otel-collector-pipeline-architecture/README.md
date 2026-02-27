@@ -1,4 +1,4 @@
-# How to Document Your OpenTelemetry Collector Pipeline Architecture for Operations Runbooks
+# How to Document Your OpenTelemetry Collector Pipeline Architecture
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

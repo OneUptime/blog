@@ -1,10 +1,10 @@
-# How to Implement SOC2 Control Mapping for Kubernetes Infrastructure Using Policy as Code
+# How to Use SOC2 Control Mapping for Kubernetes Infrastructure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Compliance, SOC2, Policy as Code, Security, OPA
 
-Description: Map SOC2 Trust Service Criteria controls to Kubernetes policies using OPA Gatekeeper and Kyverno, creating an automated compliance framework that satisfies auditors while maintaining operational efficiency.
+Description: Map SOC2 Trust Service Criteria controls to Kubernetes policies using OPA Gatekeeper and Kyverno.
 
 ---
 

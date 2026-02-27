@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Cluster Autoscaler, Node Management
 
-Description: Configure Cluster Autoscaler priority expander to control which node pools are selected during scale-up events, optimizing cost and performance by preferring specific instance types or availability zones.
+Description: Configure Cluster Autoscaler priority expander to control which node pools are selected during scale-up events.
 
 ---
 

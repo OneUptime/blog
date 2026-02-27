@@ -1536,6 +1536,4 @@ Well-designed dimensions provide the foundation for intuitive, high-performance 
 
 ### See Also
 
-- [Star Schema vs Snowflake Schema](/blog/post/star-vs-snowflake-schema/) - Understanding the two main dimensional modeling approaches
-- [Fact Table Design Patterns](/blog/post/fact-table-design-patterns/) - Deep dive into fact table types and granularity
-- [ETL Best Practices for Data Warehouses](/blog/post/etl-best-practices/) - Loading strategies for dimensional models
+- [ETL Best Practices for Data Warehouses](https://oneuptime.com/blog/post/2026-02-13-etl-best-practices/view) - Loading strategies for dimensional models

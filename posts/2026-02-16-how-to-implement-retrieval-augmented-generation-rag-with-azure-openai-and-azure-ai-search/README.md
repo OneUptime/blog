@@ -1,4 +1,4 @@
-# How to Implement Retrieval-Augmented Generation (RAG) with Azure OpenAI and Azure AI Search
+# How to Use Retrieval-Augmented Generation with Azure OpenAI and Azure AI Search
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure OpAMP Connection Credential Management for Secure Agent Authentication
+# How to Configure OpAMP Connection Credential Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

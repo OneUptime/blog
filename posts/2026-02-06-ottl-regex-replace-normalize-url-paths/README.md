@@ -1,4 +1,4 @@
-# How to Write OTTL Regex Replace Patterns to Normalize URL Paths and Remove Dynamic Segments from Spans
+# How to Write OTTL Regex Replace Patterns to Normalize URL Paths
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

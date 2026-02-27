@@ -1,4 +1,4 @@
-# How to Use GKE Sandbox gVisor to Isolate Untrusted Workloads at the Container Level
+# Use GKE Sandbox gVisor to Isolate Untrusted Workloads at the Container Level
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

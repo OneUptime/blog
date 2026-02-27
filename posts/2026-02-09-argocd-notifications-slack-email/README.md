@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, Kubernetes, GitOps, Monitoring, Notifications
 
-Description: Learn how to configure ArgoCD notifications with Slack and email triggers to receive real-time alerts about deployment status, sync failures, and application health changes in your Kubernetes GitOps workflows.
+Description: Learn how to configure ArgoCD notifications with Slack and email triggers to receive real-time alerts about deployment status, sync failures.
 
 ---
 

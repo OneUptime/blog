@@ -1,4 +1,4 @@
-# How to Configure Microsoft Defender for Cloud Regulatory Compliance Assessments Against Custom Benchmarks
+# How to Configure Microsoft Defender for Cloud Regulatory Compliance Assessments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby, Rails, Caching, Redis, Performance, Fragment Caching
 
-Description: Learn how to implement effective caching strategies in Ruby on Rails to dramatically improve application performance. This guide covers page caching, action caching, fragment caching, Russian doll caching, and low-level caching with Redis.
+Description: Learn how to implement effective caching strategies in Ruby on Rails to dramatically improve application performance.
 
 ---
 

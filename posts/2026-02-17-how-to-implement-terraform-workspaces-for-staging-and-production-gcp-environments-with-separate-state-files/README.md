@@ -1,4 +1,4 @@
-# How to Implement Terraform Workspaces for Staging and Production GCP Environments with Separate State Files
+# How to Use Terraform Workspaces for Staging and Production GCP Environments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

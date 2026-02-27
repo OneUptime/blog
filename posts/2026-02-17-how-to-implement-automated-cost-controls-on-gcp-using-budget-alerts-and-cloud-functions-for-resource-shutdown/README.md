@@ -1,4 +1,4 @@
-# How to Implement Automated Cost Controls on GCP Using Budget Alerts and Cloud Functions for Resource Shutdown
+# How to Use Automated Cost Controls on GCP Using Budget Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, CI/CD, Multi-Platform, Cross-Platform, Build Automation, DevOps
 
-Description: Learn how to set up GitHub Actions workflows for building applications across multiple platforms including Linux, macOS, and Windows. Covers matrix builds, platform-specific configurations, artifact handling, and optimization strategies.
+Description: Learn how to set up GitHub Actions workflows for building applications across multiple platforms including Linux, macOS, and Windows.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Trace Multi-Currency Pricing and Tax Calculation Services with OpenTelemetry
+# How to Trace Multi-Currency Pricing and Tax Calculation Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Collect Caddy Structured Access Logs as OpenTelemetry Logs via the Collector Filelog Receiver
+# How to Collect Caddy Structured Access Logs as OpenTelemetry Logs via the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

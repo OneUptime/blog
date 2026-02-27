@@ -1,4 +1,4 @@
-# How to Correlate Asynchronous Event-Driven Flows Across Multiple Services Using OpenTelemetry Span Links
+# How to Correlate Asynchronous Event-Driven Flows Across Multiple Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

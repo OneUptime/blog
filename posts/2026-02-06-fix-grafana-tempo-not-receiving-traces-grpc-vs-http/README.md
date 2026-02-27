@@ -1,4 +1,4 @@
-# How to Fix Grafana Tempo Not Receiving Traces Because the Collector Uses OTLP/gRPC but Tempo Expects HTTP
+# How to Fix Grafana Tempo Not Receiving Traces Because the Collector Uses
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

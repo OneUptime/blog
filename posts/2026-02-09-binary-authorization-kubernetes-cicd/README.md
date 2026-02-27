@@ -1,4 +1,4 @@
-# How to Implement Binary Authorization Policies for Kubernetes Deployments in CI/CD
+# How to Use Binary Authorization Policies for Kubernetes Deployments in CI/CD
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

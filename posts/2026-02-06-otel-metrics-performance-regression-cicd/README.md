@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Metrics for Automated Performance Regression Detection in CI/CD Pipelines
+# How to Use OpenTelemetry Metrics for Automated Performance Regression Detection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Instrument Hotel Property Management System (PMS) Check-In/Check-Out Flows with OpenTelemetry
+# How to Instrument Hotel Property Management System Check-In/Check-Out Flows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

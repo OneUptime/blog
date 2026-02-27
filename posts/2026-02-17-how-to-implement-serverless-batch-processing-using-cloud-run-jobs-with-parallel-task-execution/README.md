@@ -1,4 +1,4 @@
-# How to Implement Serverless Batch Processing Using Cloud Run Jobs with Parallel Task Execution
+# How to Use Serverless Batch Processing Using Cloud Run Jobs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

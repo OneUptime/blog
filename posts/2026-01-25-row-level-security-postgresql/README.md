@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Row-Level Security, Multi-Tenancy, Security, Database, Access Control
 
-Description: Learn how to implement row-level security (RLS) in PostgreSQL to isolate tenant data in multi-tenant applications. This guide covers policy creation, performance considerations, and real-world implementation patterns.
+Description: Learn how to implement row-level security (RLS) in PostgreSQL to isolate tenant data in multi-tenant applications.
 
 ---
 

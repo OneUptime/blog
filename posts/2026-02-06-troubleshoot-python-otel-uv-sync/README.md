@@ -1,4 +1,4 @@
-# How to Troubleshoot OpenTelemetry Python Auto-Instrumentation Not Working After Running uv sync
+# How to Troubleshoot OpenTelemetry Python Auto-Instrumentation Not Working After
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

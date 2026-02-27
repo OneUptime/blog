@@ -1,4 +1,4 @@
-# How to Set Up ACR Import for Copying Images Between Registries Without Docker Pull and Push
+# How to Set Up ACR Import for Copying Images Between Registries Without Docker
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

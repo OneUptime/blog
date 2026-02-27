@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Docker Compose, Troubleshooting, DevOps, Microservices
 
-Description: Learn to diagnose and fix Docker Compose dependency issues including startup order problems, health check failures, and service connection errors that cause cascading failures in multi-container applications.
+Description: Learn to diagnose and fix Docker Compose dependency issues including startup order problems, health check failures.
 
 ---
 

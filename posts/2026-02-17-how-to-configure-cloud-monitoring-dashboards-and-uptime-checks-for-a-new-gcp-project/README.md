@@ -1,4 +1,4 @@
-# How to Configure Cloud Monitoring Dashboards and Uptime Checks for a New GCP Project
+# How to Configure Cloud Monitoring Dashboards and Uptime Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

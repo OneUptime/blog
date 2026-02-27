@@ -1,4 +1,4 @@
-# How to Implement AKS Pod Security Admission Controller to Enforce Restricted Security Context
+# Use AKS Pod Security Admission Controller to Enforce Restricted Security Context
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

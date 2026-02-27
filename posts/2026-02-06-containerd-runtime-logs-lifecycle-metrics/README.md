@@ -1,4 +1,4 @@
-# How to Collect containerd Runtime Logs and Container Lifecycle Metrics with the OpenTelemetry Collector
+# How to Collect containerd Runtime Logs and Container Lifecycle Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

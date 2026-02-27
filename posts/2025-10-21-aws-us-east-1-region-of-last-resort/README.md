@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Cloud, Reliability, Incident Management, Disaster Recovery
 
-Description: AWS us-east-1 keeps proving that a single cheap, default region can hospitalise your entire business. Here's why it fails so loudly, how the blast radius reaches far beyond Virginia, and what to do if you still have workloads anchored there.
+Description: AWS us-east-1 keeps proving that a single cheap, default region can hospitalise your entire business.
 
 On October 20, 2025, us-east-1 melted down again. DynamoDB's control plane started returning poison DNS responses, network load balancers throttled launches, and teams across the planet were locked out of the AWS console because Identity Center lived only in Virginia. Snowflake, Twilio, Slack huddles, CircleCI, countless internal tools and even consumer devices like Ring doorbells all blipped at the same time. If you were single-homed in us-east-1, you spent the day in incident bridges. If you were multi-region on paper but your auth stack or ticketing system still pointed at Virginia, failover didn't happen.
 

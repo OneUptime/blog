@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Logs, Logging, Observability, TypeScript, NodeJS, Structured Logging, Correlation
 
-Description: A comprehensive guide to structuring logs properly in OpenTelemetry- mastering log correlation with traces, effective attribute usage, and implementing structured logging patterns that enhance debugging and observability.
+Description: A comprehensive guide to structuring logs properly in OpenTelemetry- mastering log correlation with traces, effective attribute usage.
 
 ---
 

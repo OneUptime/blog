@@ -1,4 +1,4 @@
-# How to Implement Slowly Changing Dimensions in BigQuery Using MERGE Statements and Partitioning
+# How to Use Slowly Changing Dimensions in BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

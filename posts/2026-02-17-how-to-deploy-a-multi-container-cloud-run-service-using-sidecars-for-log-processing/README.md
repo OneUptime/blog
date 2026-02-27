@@ -1,4 +1,4 @@
-# How to Deploy a Multi-Container Cloud Run Service Using Sidecars for Log Processing
+# How to Deploy a Multi-Container Cloud Run Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

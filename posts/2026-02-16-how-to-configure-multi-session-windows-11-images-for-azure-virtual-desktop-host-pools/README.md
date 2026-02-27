@@ -1,4 +1,4 @@
-# How to Configure Multi-Session Windows 11 Images for Azure Virtual Desktop Host Pools
+# Configure Multi-Session Windows 11 Images for Azure Virtual Desktop Host Pools
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

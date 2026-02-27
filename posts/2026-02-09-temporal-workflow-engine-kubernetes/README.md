@@ -1,4 +1,4 @@
-# How to Deploy Temporal Workflow Engine on Kubernetes for Durable Serverless Workflows
+# How to Deploy Temporal Workflow Engine on Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

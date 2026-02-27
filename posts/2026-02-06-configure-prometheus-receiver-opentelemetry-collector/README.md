@@ -1,4 +1,4 @@
-# How to Configure the Prometheus Receiver for Metric Scraping in the OpenTelemetry Collector
+# How to Configure the Prometheus Receiver for Metric Scraping
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

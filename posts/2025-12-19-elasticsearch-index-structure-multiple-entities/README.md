@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Index Design, Data Modeling, Multi-Tenant, Schema Design, Architecture
 
-Description: Learn how to structure Elasticsearch indices for applications with multiple entity types. Covers single index vs multiple indices, parent-child relationships, denormalization patterns, and best practices for scaling.
+Description: Learn how to structure Elasticsearch indices for applications with multiple entity types.
 
 ---
 

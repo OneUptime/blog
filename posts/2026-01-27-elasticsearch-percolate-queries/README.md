@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Percolate Queries, Search, Alerting, Content Matching, Real-Time Monitoring
 
-Description: A comprehensive guide to implementing Elasticsearch percolate queries for reverse search operations. Learn how to set up percolator indices, register queries, match documents against stored queries, and build real-time alerting and content classification systems.
+Description: A comprehensive guide to implementing Elasticsearch percolate queries for reverse search operations.
 
 ---
 

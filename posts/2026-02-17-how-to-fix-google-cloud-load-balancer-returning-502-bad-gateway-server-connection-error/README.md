@@ -1,4 +1,4 @@
-# How to Fix Google Cloud Load Balancer Returning 502 Bad Gateway Server Connection Error
+# Fix Google Cloud Load Balancer Returning 502 Bad Gateway Server Connection Error
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

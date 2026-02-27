@@ -1,4 +1,4 @@
-# How to Design a Global Anycast Network Architecture Using GCP Premium Tier Networking
+# How to Design a Global Anycast Network Architecture
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Traefik Ingress Controller with Let's Encrypt ACME HTTP-01 Challenge
+# Configure Traefik Ingress Controller with Let's Encrypt ACME HTTP-01 Challenge
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

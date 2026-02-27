@@ -1,4 +1,4 @@
-# How to Configure Lens Desktop with Custom Extensions for Kubernetes Cluster Management
+# How to Configure Lens Desktop with Custom Extensions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

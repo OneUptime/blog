@@ -1,4 +1,4 @@
-# How to Fix 'SubnetIsFull' Errors When Deploying Resources to Azure Virtual Networks
+# Fix 'SubnetIsFull' Errors When Deploying Resources to Azure Virtual Networks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

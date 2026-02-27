@@ -1,4 +1,4 @@
-# How to Monitor Payment Gateway Failover (Stripe to Braintree to Adyen) with OpenTelemetry Distributed Tracing
+# How to Monitor Payment Gateway Failover with OpenTelemetry Distributed Tracing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Propagate OpenTelemetry Trace Context Through CloudEvents for End-to-End Event-Driven Tracing
+# How to Propagate OpenTelemetry Trace Context Through CloudEvents for End-to-End
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

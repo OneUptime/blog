@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, Kind, Local Development, Testing
 
-Description: Learn how to set up MetalLB on Kind (Kubernetes in Docker) clusters for local development and testing. This guide covers Docker network configuration, IP pool selection, and testing LoadBalancer services locally.
+Description: Learn how to set up MetalLB on Kind (Kubernetes in Docker) clusters for local development and testing.
 
 ---
 

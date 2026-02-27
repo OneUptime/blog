@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, FastAPI, Authentication, Middleware, JWT, Security, API Development
 
-Description: Learn how to build robust authentication middleware in FastAPI to protect your API endpoints. This guide covers JWT tokens, API keys, OAuth2 flows, and custom middleware patterns with practical examples.
+Description: Learn how to build robust authentication middleware in FastAPI to protect your API endpoints.
 
 ---
 

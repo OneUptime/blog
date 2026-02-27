@@ -1,4 +1,4 @@
-# How to Troubleshoot Missing Span Attributes When Auto-Instrumentation Drops Custom Attributes You Added
+# How to Troubleshoot Missing Span Attributes When Auto-Instrumentation Drops
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

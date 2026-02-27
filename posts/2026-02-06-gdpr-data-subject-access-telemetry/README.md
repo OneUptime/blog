@@ -1,4 +1,4 @@
-# How to Implement GDPR Data Subject Access Requests for Telemetry Data in OpenTelemetry Pipelines
+# How to Use GDPR Data Subject Access Requests for Telemetry Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

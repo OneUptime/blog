@@ -1,4 +1,4 @@
-# How to Fix Missing Spans When Using Node.js ES Modules Without the --experimental-loader Hook
+# How to Fix Missing Spans When Using Node.js ES Modules Without the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

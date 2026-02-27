@@ -1,4 +1,4 @@
-# How to Implement Silent Push Notifications for Background Data Sync with Azure Notification Hubs
+# How to Use Silent Push Notifications for Background Data Sync
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

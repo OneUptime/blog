@@ -1,4 +1,4 @@
-# How to Fix Logs Not Correlating with Traces in Grafana Loki Because trace_id Is Missing from Log Records
+# How to Fix Logs Not Correlating with Traces in Grafana Loki Because trace_id Is
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

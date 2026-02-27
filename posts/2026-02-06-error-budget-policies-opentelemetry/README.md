@@ -1,4 +1,4 @@
-# How to Implement Error Budget Policies (Green/Yellow/Red) with OpenTelemetry Data
+# How to Use Error Budget Policies (Green/Yellow/Red) with OpenTelemetry Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

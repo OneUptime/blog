@@ -1,4 +1,4 @@
-# How to Implement the Saga Pattern for Distributed Transactions Using Cloud Pub/Sub and Cloud Functions
+# How to Use the Saga Pattern for Distributed Transactions Using Cloud Pub/Sub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

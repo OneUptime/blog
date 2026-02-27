@@ -1,4 +1,4 @@
-# How to Build Predictive Maintenance Observability by Correlating Machine Vibration Metrics with OpenTelemetry
+# How to Build Predictive Maintenance Observability by Correlating Machine
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

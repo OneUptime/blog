@@ -1,4 +1,4 @@
-# How to Troubleshoot Kotlin Coroutine Context Loss When Using OpenTelemetry in Spring WebFlux
+# How to Troubleshoot Kotlin Coroutine Context Loss When
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

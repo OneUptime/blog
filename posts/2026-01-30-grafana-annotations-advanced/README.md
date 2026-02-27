@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Grafana, Annotations, Visualization, Dashboards
 
-Description: Master advanced Grafana annotations to correlate deployments, incidents, and events with your metrics. Learn to create programmatic annotations via API, use custom data sources, and build automated annotation pipelines for superior observability.
+Description: Master advanced Grafana annotations to correlate deployments, incidents, and events with your metrics.
 
 You are staring at a latency spike on your Grafana dashboard. The graph shows a clear anomaly starting at 14:23. But what happened at 14:23? Was it a deployment? A config change? A third-party outage? Without context, you are left guessing.
 

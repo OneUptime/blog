@@ -1,4 +1,4 @@
-# How to Configure Azure Notification Hubs with Firebase Cloud Messaging for Android Apps
+# How to Configure Azure Notification Hubs with Firebase Cloud Messaging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

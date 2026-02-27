@@ -1,4 +1,4 @@
-# How to Parse Syslog RFC 5424 and RFC 3164 Messages with the Syslog Receiver in the Collector
+# How to Parse Syslog RFC 5424 and RFC 3164 Messages with the Syslog Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

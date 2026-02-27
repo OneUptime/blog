@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NestJS, TypeScript, Validation, Pipes, Data Transformation, Backend, Node.js
 
-Description: Learn how to build custom validation pipes in NestJS for data transformation and validation. This guide covers pipe implementation, validation decorators, async validation, and error handling patterns.
+Description: Learn how to build custom validation pipes in NestJS for data transformation and validation.
 
 ---
 

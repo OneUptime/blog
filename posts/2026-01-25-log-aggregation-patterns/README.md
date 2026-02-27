@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Log Aggregation, Architecture, Distributed Systems, Kafka, Microservices, Data Pipeline, Log Management
 
-Description: Learn how to implement log aggregation patterns for distributed systems. This guide covers aggregation architectures, buffering strategies, fanout patterns, and techniques for building reliable log pipelines at scale.
+Description: Learn how to implement log aggregation patterns for distributed systems.
 
 ---
 

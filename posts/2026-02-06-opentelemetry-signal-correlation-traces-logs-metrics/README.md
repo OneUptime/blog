@@ -1,4 +1,4 @@
-# How to Understand OpenTelemetry Signal Correlation (Traces + Logs + Metrics Together)
+# How to Understand OpenTelemetry Signal Correlation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

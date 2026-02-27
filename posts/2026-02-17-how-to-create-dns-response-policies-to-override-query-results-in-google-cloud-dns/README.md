@@ -1,4 +1,4 @@
-# How to Create DNS Response Policies to Override Query Results in Google Cloud DNS
+# How to Create DNS Response Policies to Override Query Results
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

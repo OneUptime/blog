@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Software Development, Engineering Culture, Learning Resource, DevOps, Distributed Systems
 
-Description: A candid look at why networking knowledge is surprisingly rare among software engineers, how this knowledge gap manifests in production systems, and why understanding the basics could make you significantly more effective.
+Description: A candid look at why networking knowledge is surprisingly rare among software engineers, how this knowledge gap manifests in production systems.
 
 ---
 

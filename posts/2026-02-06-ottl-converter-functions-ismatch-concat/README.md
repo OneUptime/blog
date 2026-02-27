@@ -1,4 +1,4 @@
-# How to Use OTTL Converter Functions (IsMatch, Concat, SpanID) for Advanced Telemetry Manipulation
+# How to Use OTTL Converter Functions for Advanced Telemetry Manipulation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

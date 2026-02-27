@@ -1,4 +1,4 @@
-# How to Configure Azure NSG Application Rules for Multi-Tier Architecture Security Isolation
+# How to Configure Azure NSG App Rules for Multi-Tier Architecture Security
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

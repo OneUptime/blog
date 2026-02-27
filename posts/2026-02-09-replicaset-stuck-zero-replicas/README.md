@@ -1,4 +1,4 @@
-# How to Troubleshoot Kubernetes Deployment ReplicaSet Stuck at Zero Available Replicas
+# Troubleshoot Kubernetes Deployment ReplicaSet Stuck at Zero Available Replicas
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

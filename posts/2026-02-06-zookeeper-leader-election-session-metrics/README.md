@@ -1,4 +1,4 @@
-# How to Monitor Zookeeper Leader Election Frequency, Session Count, and Outstanding Requests with the Collector
+# How to Monitor Zookeeper Leader Election Frequency, Session Count,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

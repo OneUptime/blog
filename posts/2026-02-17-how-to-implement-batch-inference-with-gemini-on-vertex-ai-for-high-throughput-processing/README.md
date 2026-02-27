@@ -1,4 +1,4 @@
-# How to Implement Batch Inference with Gemini on Vertex AI for High-Throughput Processing
+# Use Batch Inference with Gemini on Vertex AI for High-Throughput Processing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

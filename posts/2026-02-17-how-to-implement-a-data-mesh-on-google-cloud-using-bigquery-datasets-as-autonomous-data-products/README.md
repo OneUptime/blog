@@ -1,4 +1,4 @@
-# How to Implement a Data Mesh on Google Cloud Using BigQuery Datasets as Autonomous Data Products
+# How to Build a Data Mesh on Google Cloud Using BigQuery Datasets as Autonomous
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

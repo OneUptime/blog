@@ -1,4 +1,4 @@
-# How to Deploy Grafana Tempo in Microservices Mode for Scalable Kubernetes Tracing
+# How to Deploy Grafana Tempo in Microservices Mode
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

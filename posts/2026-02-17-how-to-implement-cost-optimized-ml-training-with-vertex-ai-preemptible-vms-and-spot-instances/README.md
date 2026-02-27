@@ -1,4 +1,4 @@
-# How to Implement Cost-Optimized ML Training with Vertex AI Preemptible VMs and Spot Instances
+# How to Use Cost-Optimized ML Training with Vertex AI Preemptible VMs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

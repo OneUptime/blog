@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Django, MongoDB, Python, Database, Djongo, MongoEngine
 
-Description: A comprehensive guide to integrating MongoDB with Django applications. Learn how to connect Django to MongoDB using Djongo and MongoEngine, define models, perform CRUD operations, and implement best practices for production deployments.
+Description: A comprehensive guide to integrating MongoDB with Django applications.
 
 ---
 

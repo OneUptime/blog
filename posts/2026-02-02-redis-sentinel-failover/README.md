@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Sentinel, High Availability, Failover
 
-Description: A step-by-step guide to configuring Redis Sentinel for automatic failover. Learn about quorum settings, timing parameters, client reconnection strategies, split-brain prevention, and production deployment patterns.
+Description: A step-by-step guide to configuring Redis Sentinel for automatic failover.
 
 ---
 

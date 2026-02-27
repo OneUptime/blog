@@ -1,4 +1,4 @@
-# How to Migrate Virtual Machines from On-Premises vSphere to Google Cloud VMware Engine Using HCX
+# How to Migrate Virtual Machines from On-Premises vSphere to Google Cloud VMware
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

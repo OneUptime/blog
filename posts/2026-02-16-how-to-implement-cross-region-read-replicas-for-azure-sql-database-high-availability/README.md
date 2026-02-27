@@ -1,4 +1,4 @@
-# How to Implement Cross-Region Read Replicas for Azure SQL Database High Availability
+# How to Use Cross-Region Read Replicas for Azure SQL Database High Availability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

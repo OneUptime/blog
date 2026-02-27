@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, CI/CD, Auto-Merge, Pull Requests, Automation, DevOps
 
-Description: Learn how to implement automatic pull request merging in GitHub Actions, including dependency update automation, required checks, approval requirements, and safe merge strategies for different scenarios.
+Description: Learn how to implement automatic pull request merging in GitHub Actions, including dependency update automation, required checks, approval requirements.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Deploy Oracle Database on Google Cloud Bare Metal Solution Following Best Practices
+# How to Deploy Oracle Database on Google Cloud Bare Metal Solution Following
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

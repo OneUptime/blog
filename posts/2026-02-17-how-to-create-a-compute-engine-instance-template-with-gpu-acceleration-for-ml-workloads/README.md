@@ -1,4 +1,4 @@
-# How to Create a Compute Engine Instance Template with GPU Acceleration for ML Workloads
+# How to Create a Compute Engine Instance Template with GPU Acceleration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

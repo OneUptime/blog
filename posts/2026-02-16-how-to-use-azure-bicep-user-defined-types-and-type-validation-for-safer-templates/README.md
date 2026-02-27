@@ -1,4 +1,4 @@
-# How to Use Azure Bicep User-Defined Types and Type Validation for Safer Templates
+# How to Use Azure Bicep User-Defined Types and Type Validation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

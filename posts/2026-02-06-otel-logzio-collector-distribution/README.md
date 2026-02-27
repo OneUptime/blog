@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Traces and Metrics to Logz.io with the Logz.io Collector Distribution
+# How to Send OpenTelemetry Traces and Metrics to Logz.io with the Logz.io
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

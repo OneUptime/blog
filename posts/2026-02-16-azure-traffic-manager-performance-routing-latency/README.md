@@ -1,4 +1,4 @@
-# How to Set Up Azure Traffic Manager with Performance Routing for Latency-Based Routing
+# Set Up Azure Traffic Manager with Performance Routing for Latency-Based Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

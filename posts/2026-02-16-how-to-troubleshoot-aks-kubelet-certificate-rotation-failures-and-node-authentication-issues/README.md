@@ -1,4 +1,4 @@
-# How to Troubleshoot AKS Kubelet Certificate Rotation Failures and Node Authentication Issues
+# How to Troubleshoot AKS Kubelet Certificate Rotation Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

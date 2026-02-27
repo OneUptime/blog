@@ -1,4 +1,4 @@
-# How to Migrate App Engine Standard Applications from Python 2.7 to Python 3 Runtime
+# Migrate App Engine Standard Applications from Python 2.7 to Python 3 Runtime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

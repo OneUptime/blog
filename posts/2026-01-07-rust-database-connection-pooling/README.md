@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Database, Connection Pooling, SQLx, Deadpool, PostgreSQL, MySQL, Performance
 
-Description: Learn how to implement database connection pooling in Rust using SQLx and Deadpool. This guide covers pool configuration, health checks, connection lifecycle management, and best practices for production.
+Description: Learn how to implement database connection pooling in Rust using SQLx and Deadpool.
 
 ---
 

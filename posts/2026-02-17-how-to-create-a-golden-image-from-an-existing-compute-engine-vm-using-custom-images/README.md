@@ -1,4 +1,4 @@
-# How to Create a Golden Image from an Existing Compute Engine VM Using Custom Images
+# How to Create a Golden Image from an Existing Compute Engine VM
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

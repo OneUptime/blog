@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Query Optimization, Performance, Database, Indexing, Aggregation
 
-Description: Learn how to optimize MongoDB queries for better performance. This guide covers query analysis with explain(), indexing strategies, projection optimization, aggregation pipeline tuning, and monitoring slow queries in production.
+Description: Learn how to optimize MongoDB queries for better performance.
 
 ---
 

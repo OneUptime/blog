@@ -1,4 +1,4 @@
-# How to Use Azure Artifacts Credential Provider for Seamless Authentication in Local Development
+# How to Use Azure Artifacts Credential Provider for Seamless Authentication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

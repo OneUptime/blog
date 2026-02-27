@@ -1,4 +1,4 @@
-# How to Monitor Tenant Data Migration and Import/Export Pipeline Performance with OpenTelemetry
+# How to Monitor Tenant Data Migration and Import/Export Pipeline Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

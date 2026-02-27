@@ -1,4 +1,4 @@
-# How to Troubleshoot Google Cloud Load Balancer 503 Backend Service Unavailable Errors
+# Troubleshoot Google Cloud Load Balancer 503 Backend Service Unavailable Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

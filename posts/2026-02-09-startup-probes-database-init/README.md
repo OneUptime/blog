@@ -1,4 +1,4 @@
-# How to Implement Startup Probes with Extended Timeout for Database Initialization
+# How to Use Startup Probes with Extended Timeout for Database Initialization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

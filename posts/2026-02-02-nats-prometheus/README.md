@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NATS, Prometheus, Monitoring, Messaging, Observability, Metrics, JetStream
 
-Description: Learn how to monitor NATS messaging systems with Prometheus. Covers NATS server metrics, JetStream monitoring, client-side instrumentation, alerting rules, and Grafana dashboards for complete observability.
+Description: Learn how to monitor NATS messaging systems with Prometheus.
 
 ---
 

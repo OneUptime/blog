@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Rate Limiting, Throttling, Job Queue, API Protection
 
-Description: A comprehensive guide to implementing rate limiting in BullMQ, including global rate limits, per-key rate limiting, dynamic throttling, and strategies for protecting external APIs and managing job throughput.
+Description: A comprehensive guide to implementing rate limiting in BullMQ, including global rate limits, per-key rate limiting, dynamic throttling.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Implement Pre-Deployment Observability Validation: Ensure OpenTelemetry Instrumentation Exists Before Merge
+# How to Use Pre-Deployment Observability Validation: Ensure OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

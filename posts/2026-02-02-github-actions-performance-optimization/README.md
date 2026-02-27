@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, CI/CD, DevOps, Performance, Automation, Caching, Optimization
 
-Description: A practical guide to optimizing GitHub Actions workflows for faster builds, reduced costs, and better developer experience. Learn caching strategies, matrix optimization, job parallelization, and advanced techniques to cut your CI/CD time in half.
+Description: A practical guide to optimizing GitHub Actions workflows for faster builds, reduced costs, and better developer experience.
 
 ---
 

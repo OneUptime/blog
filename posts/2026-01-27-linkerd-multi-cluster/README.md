@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linkerd, Kubernetes, Service Mesh, Multi-Cluster, High Availability, Failover, Service Mirroring
 
-Description: A comprehensive guide to setting up Linkerd multi-cluster for cross-cluster service communication, including service mirroring, gateway configuration, and failover strategies for resilient microservices architectures.
+Description: A comprehensive guide to setting up Linkerd multi-cluster for cross-cluster service communication, including service mirroring, gateway configuration.
 
 ---
 

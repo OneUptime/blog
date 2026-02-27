@@ -1,4 +1,4 @@
-# How to Use Helm Template Functions like toYaml, tpl, and include for Dynamic Rendering
+# How to Use Helm Template Functions like toYaml, tpl, and include
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

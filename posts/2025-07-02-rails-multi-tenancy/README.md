@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby, Rails, Multi-tenancy, SaaS, Database, Architecture
 
-Description: Learn how to implement multi-tenancy in Ruby on Rails applications. This guide covers shared database, schema-based, and database-per-tenant approaches with practical examples and production best practices.
+Description: Learn how to implement multi-tenancy in Ruby on Rails applications.
 
 ---
 

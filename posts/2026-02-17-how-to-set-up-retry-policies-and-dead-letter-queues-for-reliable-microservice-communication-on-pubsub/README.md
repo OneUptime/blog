@@ -1,4 +1,4 @@
-# How to Set Up Retry Policies and Dead Letter Queues for Reliable Microservice Communication on Pub/Sub
+# How to Set Up Retry Policies and Dead Letter Queues for Reliable Microservice
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

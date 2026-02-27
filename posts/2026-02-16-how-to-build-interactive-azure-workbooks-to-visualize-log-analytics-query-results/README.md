@@ -1,4 +1,4 @@
-# How to Build Interactive Azure Workbooks to Visualize Log Analytics Query Results
+# Build Interactive Azure Workbooks to Visualize Log Analytics Query Results
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

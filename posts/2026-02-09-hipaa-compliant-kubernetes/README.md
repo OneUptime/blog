@@ -1,10 +1,10 @@
-# How to Configure HIPAA-Compliant Kubernetes Clusters with Encryption and Access Logging
+# How to Configure HIPAA-Compliant Kubernetes Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, HIPAA, Compliance, Security, Encryption, Healthcare
 
-Description: Configure Kubernetes clusters to meet HIPAA requirements through encryption at rest and in transit, comprehensive audit logging, access controls, and automated compliance monitoring for healthcare workloads.
+Description: Configure Kubernetes clusters to meet HIPAA requirements through encryption at rest and in transit, comprehensive audit logging, access controls.
 
 ---
 

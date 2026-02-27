@@ -1,4 +1,4 @@
-# How to Use Foreign Keys and Interleaved Tables in Cloud Spanner for Efficient Parent-Child Queries
+# How to Use Foreign Keys and Interleaved Tables in Cloud Spanner for Efficient
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

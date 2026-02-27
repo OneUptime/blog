@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Replication, Scaling, High Availability, Database, Performance, Read Scaling, Load Balancing
 
-Description: A practical guide to scaling ClickHouse read performance using replicas, covering replica configuration, load balancing strategies, read-write splitting, and query routing for high-throughput analytics workloads.
+Description: A practical guide to scaling ClickHouse read performance using replicas, covering replica configuration, load balancing strategies, read-write splitting.
 
 ---
 

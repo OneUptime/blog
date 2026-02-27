@@ -1,4 +1,4 @@
-# How to Migrate AWS VPC Networking and Security Groups to Google Cloud VPC Firewall Rules
+# How to Migrate AWS VPC Networking and Security Groups to Google Cloud VPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

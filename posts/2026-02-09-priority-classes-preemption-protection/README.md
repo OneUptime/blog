@@ -1,4 +1,4 @@
-# How to Configure Kubernetes Priority Classes for Production Workload Preemption Protection
+# How to Configure Kubernetes Priority Classes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Workload Identity Federation with AWS for Cross-Cloud Authentication in GCP
+# How to Configure Workload Identity Federation with AWS for Cross-Cloud Auth in
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Redact Sensitive Data (PII, Tokens, Credentials) from Logs in the OpenTelemetry Pipeline
+# How to Redact Sensitive Data from Logs in the OpenTelemetry Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

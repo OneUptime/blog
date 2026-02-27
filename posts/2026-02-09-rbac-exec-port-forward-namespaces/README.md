@@ -1,4 +1,4 @@
-# How to Configure RBAC Roles That Allow Exec and Port-Forward to Specific Namespaces Only
+# How to Configure RBAC Roles That Allow Exec
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Track Reliability Debt and Prioritize Fixes Using OpenTelemetry Error Budget Consumption
+# How to Track Reliability Debt and Prioritize Fixes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

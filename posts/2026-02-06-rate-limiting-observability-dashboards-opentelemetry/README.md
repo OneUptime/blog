@@ -1,4 +1,4 @@
-# How to Build Rate Limiting Observability Dashboards with OpenTelemetry Counters and Histograms
+# How to Build Rate Limiting Observability Dashboards
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

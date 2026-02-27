@@ -1,4 +1,4 @@
-# How to Configure Cloud Functions Memory and CPU Allocation for Compute-Intensive Tasks
+# Configure Cloud Functions Memory and CPU Allocation for Compute-Intensive Tasks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

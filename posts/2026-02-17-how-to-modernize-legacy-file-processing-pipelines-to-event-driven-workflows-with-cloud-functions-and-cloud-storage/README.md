@@ -1,4 +1,4 @@
-# How to Modernize Legacy File Processing Pipelines to Event-Driven Workflows with Cloud Functions and Cloud Storage
+# How to Modernize Legacy File Processing Pipelines to Event-Driven Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use the OpenTelemetry Filter Processor to Drop Low-Value Health Check Telemetry
+# Use the OpenTelemetry Filter Processor to Drop Low-Value Health Check Telemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

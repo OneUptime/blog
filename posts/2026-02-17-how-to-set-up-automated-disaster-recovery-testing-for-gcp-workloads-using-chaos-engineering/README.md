@@ -1,4 +1,4 @@
-# How to Set Up Automated Disaster Recovery Testing for GCP Workloads Using Chaos Engineering
+# How to Set Up Automated Disaster Recovery Testing for GCP Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

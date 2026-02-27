@@ -1,4 +1,4 @@
-# How to Implement Pod Security Standards in GKE to Replace the Deprecated PodSecurityPolicy
+# Use Pod Security Standards in GKE to Replace the Deprecated PodSecurityPolicy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

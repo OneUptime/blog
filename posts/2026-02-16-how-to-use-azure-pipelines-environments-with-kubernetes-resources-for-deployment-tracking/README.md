@@ -1,4 +1,4 @@
-# How to Use Azure Pipelines Environments with Kubernetes Resources for Deployment Tracking
+# How to Use Azure Pipelines Environments with Kubernetes Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

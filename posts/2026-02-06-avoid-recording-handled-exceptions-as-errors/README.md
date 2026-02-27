@@ -1,4 +1,4 @@
-# How to Avoid the Anti-Pattern of Recording Every Exception as a Span Error Including Handled Ones
+# How to Avoid the Anti-Pattern of Recording Every Exception as a Span Error
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

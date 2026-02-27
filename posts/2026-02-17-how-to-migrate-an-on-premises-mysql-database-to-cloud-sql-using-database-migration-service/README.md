@@ -1,4 +1,4 @@
-# How to Migrate an On-Premises MySQL Database to Cloud SQL Using Database Migration Service
+# How to Migrate an On-Premises MySQL Database to Cloud SQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

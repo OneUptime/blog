@@ -1,4 +1,4 @@
-# How to Use Rotel (Rust-Based OTel Collector) for 3.7M Spans/Sec Throughput in High-Volume Pipelines
+# How to Use Rotel for 3.7M Spans/Sec Throughput in High-Volume Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

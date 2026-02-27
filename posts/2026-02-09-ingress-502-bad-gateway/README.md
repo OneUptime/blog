@@ -1,4 +1,4 @@
-# How to Debug Kubernetes Ingress 502 Bad Gateway Errors from Backend Pod Unavailability
+# Debug Kubernetes Ingress 502 Bad Gateway Errors from Backend Pod Unavailability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Transcode Video Files for Adaptive Bitrate Streaming Using Google Cloud Transcoder API
+# How to Transcode Video Files for Adaptive Bitrate Streaming
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

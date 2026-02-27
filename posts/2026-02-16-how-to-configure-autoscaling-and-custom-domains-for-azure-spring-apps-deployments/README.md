@@ -1,4 +1,4 @@
-# How to Configure Autoscaling and Custom Domains for Azure Spring Apps Deployments
+# How to Configure Autoscaling and Custom Domains
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

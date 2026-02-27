@@ -1,4 +1,4 @@
-# How to Configure the Filelog Receiver with Fingerprint-Based Log Rotation Handling for Production
+# How to Configure the Filelog Receiver with Fingerprint-Based Log Rotation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

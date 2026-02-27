@@ -1,4 +1,4 @@
-# How to Configure Azure Pipelines to Trigger on Specific File Path Changes in a Monorepo
+# How to Configure Azure Pipelines to Trigger on Specific File Path Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

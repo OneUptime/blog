@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, StatefulSets, Containers, DevOps, Databases, Persistent Storage, Cloud Native
 
-Description: A comprehensive guide to configuring Kubernetes StatefulSets for stateful applications. Learn about stable network identities, persistent storage, ordered deployment, headless services, and production best practices for databases and distributed systems.
+Description: A comprehensive guide to configuring Kubernetes StatefulSets for stateful applications.
 
 ---
 

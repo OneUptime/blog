@@ -1,4 +1,4 @@
-# How to Configure Deployment Strategies Like Canary and Blue-Green in Azure Pipelines Environments
+# How to Configure Deployment Strategies Like Canary and Blue-Green
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

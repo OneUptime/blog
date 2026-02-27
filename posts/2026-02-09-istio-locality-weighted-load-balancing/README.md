@@ -1,10 +1,10 @@
-# How to Implement Istio Locality-Weighted Load Balancing Across Kubernetes Availability Zones
+# Use Istio Locality-Weighted Load Balancing Across Kubernetes Availability Zones
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Istio, Kubernetes, Load Balancing, High Availability, Multi-AZ
 
-Description: Learn how to configure Istio locality-weighted load balancing to optimize traffic distribution across Kubernetes availability zones, reduce latency, and improve fault tolerance in multi-zone deployments.
+Description: Learn how to configure Istio locality-weighted load balancing to optimize traffic distribution across Kubernetes availability zones, reduce latency.
 
 ---
 

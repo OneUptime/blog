@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, FastAPI, Exception Handling, Error Handling, API Development, REST API
 
-Description: Learn how to build robust exception handlers in FastAPI that provide clear error responses, proper logging, and maintain API consistency. This guide covers custom exceptions, global handlers, and production patterns.
+Description: Learn how to build robust exception handlers in FastAPI that provide clear error responses, proper logging, and maintain API consistency.
 
 ---
 

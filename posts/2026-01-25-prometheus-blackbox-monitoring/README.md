@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Blackbox Monitoring, Blackbox Exporter, HTTP Probes, TCP Probes, ICMP, Observability, Site Reliability Engineering
 
-Description: Learn how to set up blackbox monitoring with Prometheus using the Blackbox Exporter. This guide covers HTTP, TCP, ICMP, and DNS probes with practical configuration examples for monitoring external endpoints.
+Description: Learn how to set up blackbox monitoring with Prometheus using the Blackbox Exporter.
 
 ---
 

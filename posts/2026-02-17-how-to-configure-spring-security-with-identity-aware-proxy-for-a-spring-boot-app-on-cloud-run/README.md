@@ -1,4 +1,4 @@
-# How to Configure Spring Security with Identity-Aware Proxy for a Spring Boot App on Cloud Run
+# How to Configure Spring Security with Identity-Aware Proxy for a Spring Boot App
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

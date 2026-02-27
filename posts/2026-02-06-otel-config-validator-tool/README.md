@@ -1,4 +1,4 @@
-# How to Use the OpenTelemetry Configuration Validator Tool for Environment Variable Substitution and Schema Checking
+# How to Use the OpenTelemetry Config Validator Tool for Env Variable
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

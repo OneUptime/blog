@@ -1,4 +1,4 @@
-# How to Modernize Session Management from Sticky Sessions to Cloud Memorystore Redis on GCP
+# How to Modernize Session Mgmt from Sticky Sessions to Cloud Memorystore Redis
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

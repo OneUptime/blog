@@ -1,4 +1,4 @@
-# How to Profile and Optimize Cloud Bigtable Read and Write Latency Using Key Visualizer
+# How to Profile and Optimize Cloud Bigtable Read and Write Latency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

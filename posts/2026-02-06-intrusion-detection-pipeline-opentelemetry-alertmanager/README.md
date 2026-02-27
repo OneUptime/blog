@@ -1,4 +1,4 @@
-# How to Build an Intrusion Detection Alert Pipeline Using OpenTelemetry Logs and the Alertmanager Exporter
+# How to Build an Intrusion Detection Alert Pipeline Using OpenTelemetry Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

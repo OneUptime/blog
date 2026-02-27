@@ -1,4 +1,4 @@
-# How to Process Real-Time IoT Sensor Data with Google Cloud Dataflow Streaming Pipelines
+# Process Real-Time IoT Sensor Data with Google Cloud Dataflow Streaming Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

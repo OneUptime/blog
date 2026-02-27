@@ -1,4 +1,4 @@
-# How to Schedule Recurring Batch Jobs Using Cloud Scheduler and Google Cloud Batch
+# How to Schedule Recurring Batch Jobs Using Cloud Scheduler
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

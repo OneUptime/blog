@@ -1,4 +1,4 @@
-# How to Implement Rate Limiting in a Go Cloud Run Service Using Cloud Memorystore for Redis
+# How to Use Rate Limiting in a Go Cloud Run Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Persistent Disk-Backed Queues in the OpenTelemetry Collector for Crash Recovery
+# How to Configure Persistent Disk-Backed Queues in the OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

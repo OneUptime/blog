@@ -1,4 +1,4 @@
-# How to Deploy WooCommerce on Azure Kubernetes Service with Azure Database for MySQL Flexible Server
+# How to Deploy WooCommerce on Azure Kubernetes Service with Azure Database
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

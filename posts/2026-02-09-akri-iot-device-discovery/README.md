@@ -1,10 +1,10 @@
-# How to Deploy Akri on Kubernetes for Automatic Discovery of Edge IoT Leaf Devices
+# Deploy Akri on Kubernetes for Automatic Discovery of Edge IoT Leaf Devices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, IoT, Edge Computing
 
-Description: Learn how to deploy Akri on Kubernetes to automatically discover and manage edge IoT leaf devices like USB cameras, Bluetooth sensors, and OPC UA devices, enabling dynamic device-as-resource allocation for edge workloads.
+Description: Learn how to deploy Akri on Kubernetes to automatically discover and manage edge IoT leaf devices like USB cameras, Bluetooth sensors, and OPC UA devices.
 
 ---
 

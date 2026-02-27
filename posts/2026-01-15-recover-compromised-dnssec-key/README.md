@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: DNSSEC, DNS, Security, Incident Response, Key Management, DevOps
 
-Description: A comprehensive guide to detecting, responding to, and recovering from a compromised DNSSEC key, including emergency rollover procedures, communication strategies, and prevention measures to protect your domain infrastructure.
+Description: A comprehensive guide to detecting, responding to, and recovering from a compromised DNSSEC key, including emergency rollover procedures, communication strategies.
 
 ---
 

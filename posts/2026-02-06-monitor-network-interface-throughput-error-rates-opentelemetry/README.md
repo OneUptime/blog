@@ -1,4 +1,4 @@
-# How to Monitor Network Interface Throughput and Error Rates with OpenTelemetry Host Metrics
+# How to Monitor Network Interface Throughput and Error Rates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

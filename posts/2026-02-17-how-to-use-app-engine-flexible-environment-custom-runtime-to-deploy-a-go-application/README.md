@@ -1,4 +1,4 @@
-# How to Use App Engine Flexible Environment Custom Runtime to Deploy a Go Application
+# Use App Engine Flexible Environment Custom Runtime to Deploy a Go Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

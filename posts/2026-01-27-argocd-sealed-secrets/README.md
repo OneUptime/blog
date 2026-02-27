@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ArgoCD, Sealed Secrets, GitOps, Security, DevOps, Secrets Management
 
-Description: A comprehensive guide to managing secrets in ArgoCD using Bitnami Sealed Secrets, covering controller installation, secret encryption, key rotation, and GitOps best practices for secure secret management.
+Description: A comprehensive guide to managing secrets in ArgoCD using Bitnami Sealed Secrets, covering controller installation, secret encryption, key rotation.
 
 ---
 

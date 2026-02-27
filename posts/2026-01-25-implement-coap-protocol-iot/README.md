@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CoAP, IoT, Protocol, UDP, Constrained Devices, REST, Embedded
 
-Description: Learn how to implement the Constrained Application Protocol (CoAP) for IoT devices. Understand CoAP vs HTTP, message formats, observe pattern, and build lightweight RESTful services for resource-constrained environments.
+Description: Learn how to implement the Constrained Application Protocol (CoAP) for IoT devices.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot Collector CrashLoopBackOff in Kubernetes Caused by Persistent Queue Corruption
+# How to Troubleshoot Collector CrashLoopBackOff in K8s Caused by Persistent
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

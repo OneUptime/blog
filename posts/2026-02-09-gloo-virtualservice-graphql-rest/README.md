@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Gloo, GraphQL, API Gateway
 
-Description: Learn how to configure Gloo VirtualService resources to route both GraphQL and REST APIs, enabling unified API management across different architectural styles with advanced query routing and schema stitching.
+Description: Learn how to configure Gloo VirtualService resources to route both GraphQL and REST APIs.
 
 ---
 

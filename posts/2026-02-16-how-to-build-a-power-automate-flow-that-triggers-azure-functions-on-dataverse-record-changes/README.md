@@ -1,4 +1,4 @@
-# How to Build a Power Automate Flow That Triggers Azure Functions on Dataverse Record Changes
+# How to Build a Power Automate Flow That Triggers Azure Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

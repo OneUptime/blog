@@ -1,4 +1,4 @@
-# How to Configure Prometheus Target Relabeling for Dynamic Kubernetes Pod Discovery
+# How to Configure Prometheus Target Relabeling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

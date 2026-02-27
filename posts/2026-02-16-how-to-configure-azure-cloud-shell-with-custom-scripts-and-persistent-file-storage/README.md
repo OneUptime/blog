@@ -1,4 +1,4 @@
-# How to Configure Azure Cloud Shell with Custom Scripts and Persistent File Storage
+# How to Configure Azure Cloud Shell with Custom Scripts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

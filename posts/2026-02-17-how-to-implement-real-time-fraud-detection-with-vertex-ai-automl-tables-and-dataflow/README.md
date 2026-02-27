@@ -1,4 +1,4 @@
-# How to Implement Real-Time Fraud Detection with Vertex AI AutoML Tables and Dataflow
+# How to Use Real-Time Fraud Detection with Vertex AI AutoML Tables and Dataflow
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

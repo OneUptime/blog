@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Sphinx, Lucene, Xapian, Search Engines, Full-Text Search, Comparison
 
-Description: A detailed comparison of popular search engines - Elasticsearch, Sphinx, Lucene, and Xapian. Learn their architectures, strengths, weaknesses, and ideal use cases to choose the right one for your project.
+Description: A detailed comparison of popular search engines - Elasticsearch, Sphinx, Lucene, and Xapian.
 
 ---
 

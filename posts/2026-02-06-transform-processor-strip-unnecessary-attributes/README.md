@@ -1,4 +1,4 @@
-# How to Use the OpenTelemetry Transform Processor to Strip Unnecessary Attributes Before Export
+# How to Use the OpenTelemetry Transform Processor to Strip Unnecessary
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

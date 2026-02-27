@@ -1,4 +1,4 @@
-# How to Implement Fine-Grained Access Control on BigLake Tables with Row and Column Security
+# How to Use Fine-Grained Access Control on BigLake Tables
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

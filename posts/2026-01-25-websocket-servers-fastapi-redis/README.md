@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, FastAPI, WebSocket, Redis, Real-time, Pub/Sub, Async
 
-Description: Learn how to build scalable WebSocket servers with FastAPI and Redis pub/sub. This guide covers connection management, broadcasting across multiple server instances, authentication, and production patterns for real-time applications.
+Description: Learn how to build scalable WebSocket servers with FastAPI and Redis pub/sub.
 
 ---
 

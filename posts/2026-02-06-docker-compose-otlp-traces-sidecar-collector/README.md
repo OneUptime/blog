@@ -1,4 +1,4 @@
-# How to Configure Docker Compose Services to Export OTLP Traces to a Sidecar Collector Container
+# How to Configure Docker Compose Services to Export OTLP Traces to a Sidecar
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

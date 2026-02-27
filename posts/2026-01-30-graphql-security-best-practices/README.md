@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: GraphQL, Security, API Security, Authentication, Authorization, Input Validation, Node.js, TypeScript
 
-Description: A comprehensive guide to securing GraphQL APIs covering input validation, introspection control, error handling, query whitelisting, and defense-in-depth strategies with production-ready code examples.
+Description: A comprehensive guide to securing GraphQL APIs covering input validation, introspection control, error handling, query whitelisting.
 
 ---
 

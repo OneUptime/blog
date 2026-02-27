@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DevOps, Observability, Automation, Security, Cost Optimization
 
-Description: Ten field-tested Kubernetes capabilities - topology spread, disruption budgets, admission policies, autoscaling guardrails, and more - that most teams ignore but instantly boost resilience, velocity, and cost control.
+Description: Ten field-tested Kubernetes capabilities - topology spread, disruption budgets, admission policies, autoscaling guardrails, and more - that most teams ignore but instantly boost resilience, velocity.
 
 ---
 

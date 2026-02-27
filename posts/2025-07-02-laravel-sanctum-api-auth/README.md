@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PHP, Laravel, Sanctum, API, Authentication, Token
 
-Description: A comprehensive guide to implementing API authentication in Laravel using Sanctum. Learn token-based authentication, SPA authentication, mobile app tokens, and security best practices for building secure Laravel APIs.
+Description: A comprehensive guide to implementing API authentication in Laravel using Sanctum.
 
 ---
 

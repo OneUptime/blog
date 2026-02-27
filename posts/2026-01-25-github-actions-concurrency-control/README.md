@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, Concurrency, CI/CD, Resource Management, DevOps, Automation
 
-Description: Learn how to control workflow concurrency in GitHub Actions to prevent race conditions, manage resources, and ensure safe deployments. This guide covers concurrency groups, cancellation strategies, and practical patterns.
+Description: Learn how to control workflow concurrency in GitHub Actions to prevent race conditions, manage resources, and ensure safe deployments.
 
 ---
 

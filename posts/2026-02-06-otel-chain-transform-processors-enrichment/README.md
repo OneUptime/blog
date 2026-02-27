@@ -1,4 +1,4 @@
-# How to Chain Multiple Transform Processors for Sequential Data Enrichment in a Single Pipeline
+# How to Chain Multiple Transform Processors for Sequential Data Enrichment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

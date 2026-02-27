@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Optimistic Locking, Database, Concurrency, Data Integrity
 
-Description: Learn how to prevent lost updates in concurrent systems using optimistic locking in Rust. This guide covers version-based locking, database implementation patterns, and retry strategies for handling conflicts gracefully.
+Description: Learn how to prevent lost updates in concurrent systems using optimistic locking in Rust.
 
 ---
 

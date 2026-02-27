@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Docker, Docker Compose, Log Management, Observability, Logging
 
-Description: A comprehensive guide to running Grafana Loki in Docker containers, covering single-node setups, distributed deployments with Docker Compose, storage configuration, and production-ready configurations.
+Description: A comprehensive guide to running Grafana Loki in Docker containers, covering single-node setups, distributed deployments with Docker Compose, storage configuration.
 
 ---
 

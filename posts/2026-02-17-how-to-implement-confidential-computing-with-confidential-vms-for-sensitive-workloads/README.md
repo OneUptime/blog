@@ -1,4 +1,4 @@
-# How to Implement Confidential Computing with Confidential VMs for Sensitive Workloads
+# How to Use Confidential Computing with Confidential VMs for Sensitive Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

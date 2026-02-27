@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Node Exporter, Linux Monitoring, System Metrics, CPU, Memory, Disk, Network, Observability
 
-Description: A complete guide to configuring Prometheus Node Exporter for Linux system monitoring. Learn how to install, configure collectors, create dashboards, and set up alerts for comprehensive infrastructure monitoring.
+Description: A complete guide to configuring Prometheus Node Exporter for Linux system monitoring.
 
 ---
 

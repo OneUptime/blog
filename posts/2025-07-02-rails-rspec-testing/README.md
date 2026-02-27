@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby, Rails, RSpec, Testing, TDD, Unit Tests
 
-Description: A comprehensive guide to writing tests with RSpec in Ruby on Rails applications. Learn how to set up RSpec, write unit tests, integration tests, and request specs with best practices for test organization and maintainability.
+Description: A comprehensive guide to writing tests with RSpec in Ruby on Rails applications.
 
 ---
 

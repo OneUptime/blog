@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Pulsar, Schema Registry, Avro, JSON Schema, Protobuf, Data Serialization, Streaming, Messaging, Event-Driven
 
-Description: A comprehensive guide to using Apache Pulsar's built-in Schema Registry for data serialization, schema evolution, compatibility checking, and type-safe messaging. Learn how to implement Avro, JSON, and Protobuf schemas with practical examples.
+Description: A comprehensive guide to using Apache Pulsar's built-in Schema Registry for data serialization, schema evolution, compatibility checking, and type-safe messaging.
 
 ---
 

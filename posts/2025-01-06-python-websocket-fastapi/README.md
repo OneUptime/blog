@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, WebSocket, FastAPI, Real-time, Async, Starlette
 
-Description: Learn how to implement WebSocket connections in Python using FastAPI and Starlette. This guide covers connection management, broadcasting, authentication, and production best practices for real-time applications.
+Description: Learn how to implement WebSocket connections in Python using FastAPI and Starlette.
 
 ---
 

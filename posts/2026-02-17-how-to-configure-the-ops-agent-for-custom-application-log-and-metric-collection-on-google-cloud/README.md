@@ -1,4 +1,4 @@
-# How to Configure the Ops Agent for Custom Application Log and Metric Collection on Google Cloud
+# How to Configure the Ops Agent for Custom Application Log and Metric Collection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

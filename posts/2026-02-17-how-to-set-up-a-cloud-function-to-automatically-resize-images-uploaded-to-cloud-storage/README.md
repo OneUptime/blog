@@ -1,4 +1,4 @@
-# How to Set Up a Cloud Function to Automatically Resize Images Uploaded to Cloud Storage
+# Set Up a Cloud Function to Automatically Resize Images Uploaded to Cloud Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

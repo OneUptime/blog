@@ -1,4 +1,4 @@
-# How to Configure ClusterRoles with Aggregation Rules for Dynamic Permission Composition
+# How to Configure ClusterRoles with Aggregation Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Loki, Logging, Observability, LogQL, Promtail, Log Management
 
-Description: A comprehensive guide to using Grafana Loki for log aggregation and analysis. Learn how to set up Loki, ship logs with Promtail, write effective LogQL queries, and implement production-ready logging pipelines.
+Description: A comprehensive guide to using Grafana Loki for log aggregation and analysis.
 
 ---
 

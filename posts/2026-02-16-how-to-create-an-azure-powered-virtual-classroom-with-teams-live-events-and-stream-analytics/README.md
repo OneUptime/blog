@@ -1,4 +1,4 @@
-# How to Create an Azure-Powered Virtual Classroom with Teams Live Events and Stream Analytics
+# How to Create an Azure-Powered Virtual Classroom with Teams Live Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

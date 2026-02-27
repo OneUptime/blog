@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Chaos Engineering, Reliability, SRE, DevOps, Site Reliability Engineering, Resilience
 
-Description: Learn the fundamentals of chaos engineering and how to build more resilient systems by intentionally introducing controlled failures. This guide covers core principles, planning your first experiments, and building a chaos engineering practice from scratch.
+Description: Learn the fundamentals of chaos engineering and how to build more resilient systems by intentionally introducing controlled failures.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Edge Computing, Offline
 
-Description: Learn how to design and deploy Kubernetes applications for edge nodes that operate primarily offline, ensuring critical services continue functioning during extended network outages while syncing when connectivity returns.
+Description: Learn how to design and deploy Kubernetes applications for edge nodes that operate primarily offline.
 
 ---
 

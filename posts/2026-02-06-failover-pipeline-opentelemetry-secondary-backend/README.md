@@ -1,4 +1,4 @@
-# How to Build a Failover Pipeline That Routes OpenTelemetry Data to a Secondary Backend on Outage
+# How to Build a Failover Pipeline That Routes OpenTelemetry Data to a Secondary
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Automatic DNS Records for GKE Ingress Resources Using Cloud DNS in GCP
+# How to Set Up Automatic DNS Records for GKE Ingress Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Trace Product Catalog Sync Between ERP, PIM, and Storefront Systems with OpenTelemetry
+# How to Trace Product Catalog Sync Between ERP, PIM, and Storefront Systems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, CI/CD, Infrastructure as Code, DevOps, Automation, GitOps, GitHub Actions, GitLab CI
 
-Description: A comprehensive guide to implementing Terraform CI/CD pipelines with plan and apply stages, pull request workflows, approval gates, and state management best practices for reliable infrastructure automation.
+Description: A comprehensive guide to implementing Terraform CI/CD pipelines with plan and apply stages, pull request workflows, approval gates.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Create Deployment Stacks in Azure Bicep to Manage Resource Lifecycle as a Unit
+# Create Deployment Stacks in Azure Bicep to Manage Resource Lifecycle as a Unit
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

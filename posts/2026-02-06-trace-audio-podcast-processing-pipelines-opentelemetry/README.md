@@ -1,4 +1,4 @@
-# How to Trace Audio and Podcast Processing Pipelines (Upload, Transcode, Distribute) with OpenTelemetry
+# How to Trace Audio and Podcast Processing Pipelines with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

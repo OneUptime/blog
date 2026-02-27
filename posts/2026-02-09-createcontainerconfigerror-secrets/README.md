@@ -1,4 +1,4 @@
-# How to Fix CreateContainerConfigError from Misconfigured Secrets and ConfigMap References
+# How to Fix CreateContainerConfigError from Misconfigured Secrets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

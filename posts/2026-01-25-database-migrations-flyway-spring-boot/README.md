@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Flyway, Database Migration, Schema
 
-Description: Learn how to implement reliable database migrations in Spring Boot applications using Flyway. This guide covers setup, migration scripts, versioning strategies, and best practices for production deployments.
+Description: Learn how to implement reliable database migrations in Spring Boot applications using Flyway.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Use the Go Cloud Spanner Client Library for Read-Write Transactions and Mutations
+# How to Use the Go Cloud Spanner Client Library for Read-Write Transactions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

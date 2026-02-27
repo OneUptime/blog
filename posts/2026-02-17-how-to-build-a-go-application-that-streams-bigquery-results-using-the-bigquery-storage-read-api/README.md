@@ -1,4 +1,4 @@
-# How to Build a Go Application That Streams BigQuery Results Using the BigQuery Storage Read API
+# How to Build a Go App That Streams BigQuery Results Using the BigQuery Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

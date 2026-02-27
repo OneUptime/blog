@@ -1,4 +1,4 @@
-# How to Build a Reactive Spring WebFlux API on Cloud Run with Firestore as the Data Store
+# How to Build a Reactive Spring WebFlux API on Cloud Run with Firestore as the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

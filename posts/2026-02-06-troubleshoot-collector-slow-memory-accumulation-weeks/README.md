@@ -1,4 +1,4 @@
-# How to Troubleshoot the Collector Slowly Accumulating Memory Until It Stops Receiving Spans After Weeks
+# How to Troubleshoot the Collector Slowly Accumulating Memory Until It Stops
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

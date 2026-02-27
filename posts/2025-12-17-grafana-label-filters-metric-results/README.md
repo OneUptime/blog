@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Prometheus, PromQL, Labels, Filters, Queries, Dashboard Variables
 
-Description: Learn how to create dynamic label filters in Grafana that are populated based on metric query results. This guide covers advanced variable queries, subqueries, and techniques for building intelligent filtering that adapts to your data.
+Description: Learn how to create dynamic label filters in Grafana that are populated based on metric query results.
 
 Standard Grafana variables show all possible label values. But what if you want to filter labels based on conditions - showing only pods with high CPU usage, or services that have errors? This guide shows how to create smart, data-driven label filters.
 

@@ -1,4 +1,4 @@
-# How to Monitor gRPC Deadline Propagation and Timeout Cascades Using OpenTelemetry Trace Waterfalls
+# How to Monitor gRPC Deadline Propagation and Timeout Cascades
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

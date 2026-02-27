@@ -1,4 +1,4 @@
-# How to Design a Multi-Region Active-Active Architecture on GCP Using Global Load Balancing and Spanner
+# How to Design a Multi-Region Active-Active Architecture on GCP Using Global
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

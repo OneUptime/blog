@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Ambassador, Multi-Tenancy
 
-Description: Learn how to implement multi-tenant architectures using Ambassador's Host and Mapping CRDs to isolate traffic, manage separate configurations, and provide dedicated hostnames for each tenant in Kubernetes.
+Description: Learn how to implement multi-tenant architectures using Ambassador's Host and Mapping CRDs to isolate traffic, manage separate configurations.
 
 ---
 

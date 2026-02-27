@@ -1,4 +1,4 @@
-# How to Configure EKS Access Entries for Kubernetes Authentication Without aws-auth
+# Configure EKS Access Entries for Kubernetes Authentication Without aws-auth
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

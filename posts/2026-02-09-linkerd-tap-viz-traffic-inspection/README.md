@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linkerd, Service Mesh, Observability, Traffic Inspection, Debugging
 
-Description: Learn how to install and configure Linkerd Tap and Viz dashboard for real-time traffic inspection, debugging service communication issues, and gaining instant visibility into request flows across your mesh.
+Description: Learn how to install and configure Linkerd Tap and Viz dashboard for real-time traffic inspection, debugging service communication issues.
 
 ---
 

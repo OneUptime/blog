@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CNI, Networking
 
-Description: Compare the performance characteristics of Calico, Cilium, Flannel, and Weave CNI plugins to choose the best network solution for your Kubernetes cluster based on throughput, latency, and resource usage benchmarks.
+Description: Compare the performance characteristics of Calico, Cilium, Flannel, and Weave CNI plugins to choose the best network solution for your Kubernetes cluster based on throughput, latency.
 
 ---
 

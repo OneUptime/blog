@@ -1,4 +1,4 @@
-# How to Manage Azure Resource Groups and VMs Programmatically Using azure-mgmt SDK in Python
+# How to Manage Azure Resource Groups and VMs Programmatically Using azure-mgmt
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

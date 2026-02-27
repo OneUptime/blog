@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Laravel, PHP, Authentication, API, Security, Backend Development
 
-Description: Learn how to implement secure API authentication in Laravel using Sanctum. This guide covers installation, SPA authentication, token-based authentication for mobile apps, token abilities, and best practices for production.
+Description: Learn how to implement secure API authentication in Laravel using Sanctum.
 
 ---
 

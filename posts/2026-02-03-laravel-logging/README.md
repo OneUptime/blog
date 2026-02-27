@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Laravel, PHP, Logging, Monolog, Observability, Application Monitoring, Debugging
 
-Description: A complete guide to configuring Laravel logging - covering channels, log levels, custom channels, stack channels, daily logs, contextual logging, Monolog handlers, and integration with external services.
+Description: A complete guide to configuring Laravel logging - covering channels, log levels, custom channels, stack channels, daily logs, contextual logging, Monolog handlers.
 
 ---
 

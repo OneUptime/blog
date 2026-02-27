@@ -1,4 +1,4 @@
-# How to Use the Node.js BigQuery Storage Write API for High-Throughput Data Ingestion
+# Use the Node.js BigQuery Storage Write API for High-Throughput Data Ingestion
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

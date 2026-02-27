@@ -1,4 +1,4 @@
-# How to Use Exec Probes with Custom Commands for Application-Specific Health Checks
+# Use Exec Probes with Custom Commands for Application-Specific Health Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

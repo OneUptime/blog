@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Prometheus, AWS, EC2, Service Discovery
 
-Description: Learn how to implement Prometheus EC2 Service Discovery to automatically discover and monitor EC2 instances. This guide covers IAM configuration, Prometheus setup, relabeling, filtering by tags, and production best practices.
+Description: Learn how to implement Prometheus EC2 Service Discovery to automatically discover and monitor EC2 instances.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Scala, Slick, Database, ORM, Functional Programming, PostgreSQL, MySQL, Type Safety
 
-Description: Learn how to handle database operations in Scala using Slick, the functional relational mapping library. This guide covers table definitions, queries, transactions, and best practices for building type-safe database applications.
+Description: Learn how to handle database operations in Scala using Slick, the functional relational mapping library.
 
 ---
 

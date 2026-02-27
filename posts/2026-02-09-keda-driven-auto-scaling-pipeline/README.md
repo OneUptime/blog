@@ -1,4 +1,4 @@
-# How to Build a KEDA-Driven Auto-Scaling Pipeline for Event-Driven Kubernetes Workloads
+# Build a KEDA-Driven Auto-Scaling Pipeline for Event-Driven Kubernetes Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

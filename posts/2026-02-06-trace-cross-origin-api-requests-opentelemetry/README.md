@@ -1,4 +1,4 @@
-# How to Trace Cross-Origin API Requests from Browser to Backend with OpenTelemetry
+# How to Trace Cross-Origin API Requests from Browser to Backend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

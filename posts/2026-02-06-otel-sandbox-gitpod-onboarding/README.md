@@ -1,4 +1,4 @@
-# How to Build an OpenTelemetry Sandbox Environment with Gitpod for Team Onboarding
+# How to Build an OpenTelemetry Sandbox Environment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

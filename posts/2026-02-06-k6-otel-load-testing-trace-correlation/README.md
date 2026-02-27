@@ -1,4 +1,4 @@
-# How to Use k6 with OpenTelemetry Output for Load Testing with Distributed Trace Correlation
+# How to Use k6 with OpenTelemetry Output for Load Testing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Secrets, Configuration Drift
 
-Description: Learn how to detect and handle secret drift in ArgoCD environments where Kubernetes secrets may diverge from their declared state due to external modifications, operator actions, or rotation processes.
+Description: Learn how to detect and handle secret drift in ArgoCD environments where Kubernetes secrets may diverge from their declared state due to external modifications, operator actions.
 
 ---
 

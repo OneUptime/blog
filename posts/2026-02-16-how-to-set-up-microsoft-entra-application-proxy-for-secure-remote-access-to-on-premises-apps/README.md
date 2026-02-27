@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Entra Application Proxy for Secure Remote Access to On-Premises Apps
+# How to Set Up Microsoft Entra App Proxy for Secure Remote Access to On-Premises
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

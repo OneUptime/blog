@@ -969,4 +969,4 @@ Redis provides an excellent foundation for building matchmaking systems. Its sor
 
 The key is balancing match quality with queue times - players want fair matches but won't wait forever. Implement expanding skill ranges, priority queues for players with long waits, and comprehensive monitoring to achieve this balance.
 
-For more on Redis data structures and patterns, check out our other guides on [Redis Sorted Sets](/blog/redis-sorted-sets-leaderboards) and [Real-Time Notifications](/blog/redis-realtime-notifications).
+For more on Redis data structures and patterns, check out our other guides on [Redis Sorted Sets](https://oneuptime.com/blog/post/2026-01-21-redis-sorted-sets-leaderboards/view) and Real-Time Notifications.

@@ -1,4 +1,4 @@
-# How to Trace Event Sourcing Systems with OpenTelemetry: From Command to Event to Projection
+# How to Trace Event Sourcing Systems with OpenTelemetry: From Command to Event
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

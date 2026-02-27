@@ -1,4 +1,4 @@
-# How to Use OpAMP to Securely Upgrade and Downgrade Collector Versions Across Your Fleet
+# Use OpAMP to Securely Upgrade and Downgrade Collector Versions Across Your Fleet
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

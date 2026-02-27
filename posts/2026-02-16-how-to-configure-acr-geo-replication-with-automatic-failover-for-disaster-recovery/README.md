@@ -1,4 +1,4 @@
-# How to Configure ACR Geo-Replication with Automatic Failover for Disaster Recovery
+# How to Configure ACR Geo-Replication with Automatic Failover
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

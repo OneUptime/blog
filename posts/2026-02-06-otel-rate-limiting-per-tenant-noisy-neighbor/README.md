@@ -1,4 +1,4 @@
-# How to Implement Collector-Level Rate Limiting Per Tenant to Prevent Noisy Neighbor Problems
+# Use Collector-Level Rate Limiting Per Tenant to Prevent Noisy Neighbor Problems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

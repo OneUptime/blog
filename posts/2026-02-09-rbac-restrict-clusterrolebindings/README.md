@@ -1,4 +1,4 @@
-# How to Configure RBAC to Restrict Creation of ClusterRoleBindings to Platform Admins
+# Configure RBAC to Restrict Creation of ClusterRoleBindings to Platform Admins
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Kustomize, ApplicationSets
 
-Description: Learn how to combine Kustomize with ArgoCD ApplicationSets to automatically generate applications from Git directory structures, cluster lists, and matrix generators for scalable multi-environment deployments.
+Description: Learn how to combine Kustomize with ArgoCD ApplicationSets to automatically generate applications from Git directory structures, cluster lists.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Persistence, RDB, AOF, Data Durability, DevOps
 
-Description: Learn the differences between Redis RDB snapshots and AOF append-only files to choose the right persistence strategy for your use case. This guide covers configuration, trade-offs, and hybrid approaches.
+Description: Learn the differences between Redis RDB snapshots and AOF append-only files to choose the right persistence strategy for your use case.
 
 ---
 

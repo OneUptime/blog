@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, PromQL, Metrics, Time Series, Analysis, avg_over_time, Recording Rules, Observability
 
-Description: Learn how to create and analyze Prometheus metrics over time using over_time functions, subqueries, and recording rules. This guide covers aggregation patterns for historical analysis and trend detection.
+Description: Learn how to create and analyze Prometheus metrics over time using over_time functions, subqueries, and recording rules.
 
 ---
 

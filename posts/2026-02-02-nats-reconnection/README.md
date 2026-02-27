@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: NATS, Messaging, Distributed Systems, Node.js, Go, Resilience
 
-Description: Learn how to implement robust connection reconnection strategies in NATS messaging system. Covers automatic reconnection, event handling, buffering during disconnects, and best practices for building resilient applications.
+Description: Learn how to implement robust connection reconnection strategies in NATS messaging system.
 
 ---
 

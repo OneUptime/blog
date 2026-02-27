@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry Auto-Instrumentation for Java Applications on Google Cloud
+# How to Configure OpenTelemetry Auto-Instrumentation for Java Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

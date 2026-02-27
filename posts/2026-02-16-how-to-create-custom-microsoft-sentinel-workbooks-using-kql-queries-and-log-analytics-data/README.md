@@ -1,4 +1,4 @@
-# How to Create Custom Microsoft Sentinel Workbooks Using KQL Queries and Log Analytics Data
+# How to Create Custom Microsoft Sentinel Workbooks Using KQL Queries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

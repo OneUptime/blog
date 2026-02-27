@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Flux, SOPS, GitOps, Secrets Management, Age, GPG, Encryption, Security
 
-Description: A comprehensive guide to managing Kubernetes secrets securely in GitOps workflows using Flux and Mozilla SOPS, covering Age and GPG encryption, automatic decryption, secret rotation, and best practices.
+Description: A comprehensive guide to managing Kubernetes secrets securely in GitOps workflows using Flux and Mozilla SOPS, covering Age and GPG encryption, automatic decryption, secret rotation.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Implement a Custom Resource Detector That Merges Cloud Provider Metadata with Application Config
+# How to Build a Custom Resource Detector That Merges Cloud Provider Metadata
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

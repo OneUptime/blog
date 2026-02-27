@@ -1,4 +1,4 @@
-# How to Implement Model Versioning and Rollback Strategies in Vertex AI Model Registry
+# How to Use Model Versioning and Rollback Strategies in Vertex AI Model Registry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

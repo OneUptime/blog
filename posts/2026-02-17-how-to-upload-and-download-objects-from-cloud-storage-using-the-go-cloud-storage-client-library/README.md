@@ -1,4 +1,4 @@
-# How to Upload and Download Objects from Cloud Storage Using the Go Cloud Storage Client Library
+# How to Upload and Download Objects from Cloud Storage Using the Go Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

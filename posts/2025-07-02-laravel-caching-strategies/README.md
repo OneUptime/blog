@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PHP, Laravel, Caching, Redis, Performance, Optimization
 
-Description: Learn how to implement effective caching strategies in Laravel to dramatically improve application performance. This guide covers cache drivers, cache tags, model caching, query caching, and production best practices.
+Description: Learn how to implement effective caching strategies in Laravel to dramatically improve application performance.
 
 ---
 

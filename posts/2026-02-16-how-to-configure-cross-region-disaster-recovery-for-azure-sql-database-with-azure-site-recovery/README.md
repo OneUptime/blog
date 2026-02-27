@@ -1,4 +1,4 @@
-# How to Configure Cross-Region Disaster Recovery for Azure SQL Database with Azure Site Recovery
+# How to Configure Cross-Region Disaster Recovery for Azure SQL Database
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

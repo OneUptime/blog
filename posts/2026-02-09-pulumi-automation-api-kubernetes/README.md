@@ -1,10 +1,10 @@
-# How to Use Pulumi Automation API for Dynamic Kubernetes Infrastructure Provisioning
+# How to Use Pulumi Automation API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, Kubernetes, Automation
 
-Description: Learn how to use Pulumi Automation API to programmatically provision Kubernetes infrastructure from applications, enabling self-service platforms and dynamic environment creation without CLI interaction.
+Description: Learn how to use Pulumi Automation API to programmatically provision Kubernetes infrastructure from applications.
 
 ---
 

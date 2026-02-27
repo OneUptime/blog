@@ -1,4 +1,4 @@
-# How to Instrument Leaderboard and Achievement System Write and Query Latency with OpenTelemetry
+# How to Instrument Leaderboard and Achievement System Write and Query Latency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Deploy the OpenTelemetry Collector with Nomad and Integrate Consul Discovery and Vault Secrets
+# How to Deploy the OpenTelemetry Collector with Nomad and Integrate Consul
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Blue-Green Deployment, Zero Downtime, Deployments, DevOps, CI/CD
 
-Description: Learn how to implement blue-green deployments in Kubernetes for zero-downtime releases. This guide covers manual Service switching, Ingress-based routing, and automated approaches with practical examples.
+Description: Learn how to implement blue-green deployments in Kubernetes for zero-downtime releases.
 
 ---
 

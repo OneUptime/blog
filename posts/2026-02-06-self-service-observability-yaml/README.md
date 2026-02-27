@@ -1,4 +1,4 @@
-# How to Build a Self-Service Observability Platform Where Teams Declare Their Telemetry Needs in YAML
+# How to Build a Self-Service Observability Platform Where Teams Declare Their
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

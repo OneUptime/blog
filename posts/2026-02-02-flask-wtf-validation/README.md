@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flask, Flask-WTF, Validation, Forms, Python, WTForms
 
-Description: A comprehensive guide to implementing form validation in Flask using Flask-WTF. Learn how to create secure forms, implement built-in and custom validators, handle file uploads, and build production-ready validation workflows.
+Description: A comprehensive guide to implementing form validation in Flask using Flask-WTF.
 
 ---
 

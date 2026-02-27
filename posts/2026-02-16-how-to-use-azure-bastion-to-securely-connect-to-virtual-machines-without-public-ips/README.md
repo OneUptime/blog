@@ -1,4 +1,4 @@
-# How to Use Azure Bastion to Securely Connect to Virtual Machines Without Public IPs
+# Use Azure Bastion to Securely Connect to Virtual Machines Without Public IPs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

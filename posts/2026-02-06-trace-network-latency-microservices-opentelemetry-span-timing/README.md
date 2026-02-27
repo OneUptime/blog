@@ -1,4 +1,4 @@
-# How to Trace Network Latency Between Microservices Using OpenTelemetry Span Timing Data
+# How to Trace Network Latency Between Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

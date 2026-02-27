@@ -1,4 +1,4 @@
-# How to Configure Terraform Remote State Backend with Azure Blob Storage and State Locking
+# How to Configure Terraform Remote State Backend with Azure Blob Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

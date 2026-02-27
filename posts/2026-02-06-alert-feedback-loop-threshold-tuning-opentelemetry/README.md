@@ -1,4 +1,4 @@
-# How to Build an Alert Feedback Loop That Tunes Thresholds Based on OpenTelemetry Historical Data
+# How to Build an Alert Feedback Loop That Tunes Thresholds Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

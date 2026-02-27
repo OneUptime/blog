@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: HashiCorp Vault, Auto-Unseal, AWS KMS, Azure Key Vault, GCP Cloud KMS, Transit Auto-Unseal, Security, DevOps, Secrets Management
 
-Description: A comprehensive guide to configuring HashiCorp Vault auto-unseal using AWS KMS, Azure Key Vault, GCP Cloud KMS, and Transit auto-unseal, including migration from Shamir keys and best practices for production deployments.
+Description: A comprehensive guide to configuring HashiCorp Vault auto-unseal using AWS KMS, Azure Key Vault, GCP Cloud KMS, and Transit auto-unseal.
 
 ---
 

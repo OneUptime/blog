@@ -1,4 +1,4 @@
-# How to Trace gRPC Server Streaming RPCs with OpenTelemetry and Capture Stream Duration and Message Counts
+# How to Trace gRPC Server Streaming RPCs with OpenTelemetry and Capture Stream
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

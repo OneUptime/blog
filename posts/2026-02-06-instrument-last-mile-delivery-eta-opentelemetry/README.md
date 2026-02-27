@@ -1,4 +1,4 @@
-# How to Instrument Last-Mile Delivery Tracking and ETA Prediction Pipelines with OpenTelemetry
+# How to Instrument Last-Mile Delivery Tracking and ETA Prediction Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Deploy Cloud Next Generation Firewall with Intrusion Detection on Google Cloud
+# How to Deploy Cloud Next Generation Firewall with Intrusion Detection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

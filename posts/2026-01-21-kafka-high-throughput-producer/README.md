@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Producer, High Throughput, Performance, Batching, Compression, Java, Python
 
-Description: A comprehensive guide to building high-throughput Kafka producers, covering batching strategies, compression options, async sending, partitioning, and performance tuning for maximum message throughput.
+Description: A comprehensive guide to building high-throughput Kafka producers, covering batching strategies, compression options, async sending, partitioning.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure Docker Layer Caching in Cloud Build to Speed Up Multi-Stage Builds
+# Configure Docker Layer Caching in Cloud Build to Speed Up Multi-Stage Builds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

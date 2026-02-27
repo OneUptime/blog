@@ -1,4 +1,4 @@
-# How to Set Up Distributed Tracing Across Microservices with Azure Application Insights
+# How to Set Up Distributed Tracing Across Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

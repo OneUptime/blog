@@ -1,4 +1,4 @@
-# How to Build a Streaming Data Pipeline from IoT Devices Through Pub/Sub to BigQuery
+# Build a Streaming Data Pipeline from IoT Devices Through Pub/Sub to BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

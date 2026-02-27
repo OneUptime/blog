@@ -1,4 +1,4 @@
-# How to Implement Anomaly-Based Alerting from OpenTelemetry Metrics Using Dynamic Baselines
+# How to Use Anomaly-Based Alerting from OpenTelemetry Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

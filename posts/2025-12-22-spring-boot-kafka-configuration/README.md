@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Kafka, Messaging, Event-Driven Architecture, Microservices
 
-Description: Learn how to configure Apache Kafka with Spring Boot for building event-driven applications. This guide covers producer and consumer setup, serialization, error handling, and best practices for production deployments.
+Description: Learn how to configure Apache Kafka with Spring Boot for building event-driven applications.
 
 ---
 

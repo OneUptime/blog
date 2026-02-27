@@ -1,4 +1,4 @@
-# How to Pass Environment Variables and Input Parameters to Google Cloud Batch Job Tasks
+# Pass Environment Variables and Input Parameters to Google Cloud Batch Job Tasks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

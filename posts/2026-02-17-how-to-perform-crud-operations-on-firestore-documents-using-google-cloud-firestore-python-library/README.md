@@ -1,4 +1,4 @@
-# How to Perform CRUD Operations on Firestore Documents Using the google-cloud-firestore Python Library
+# How to Perform CRUD Operations on Firestore Documents Using the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

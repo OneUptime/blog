@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Rollup, Data Aggregation, Storage Optimization, Analytics
 
-Description: Configure Elasticsearch rollup jobs to create downsampled summaries of historical log data, reducing storage costs while maintaining the ability to query long-term trends and perform analytics on aged data.
+Description: Configure Elasticsearch rollup jobs to create downsampled summaries of historical log data.
 
 ---
 

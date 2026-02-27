@@ -1,4 +1,4 @@
-# How to Build a Rate-Limited API Gateway with Express.js and Cloud Tasks on Cloud Run
+# How to Build a Rate-Limited API Gateway with Express.js and Cloud Tasks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

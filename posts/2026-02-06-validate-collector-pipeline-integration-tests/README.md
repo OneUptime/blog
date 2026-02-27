@@ -1,4 +1,4 @@
-# How to Validate OpenTelemetry Collector Pipeline Configurations with End-to-End Integration Tests
+# How to Validate OpenTelemetry Collector Pipeline Configurations with End-to-End
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

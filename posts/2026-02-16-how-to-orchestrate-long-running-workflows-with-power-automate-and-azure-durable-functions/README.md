@@ -1,4 +1,4 @@
-# How to Orchestrate Long-Running Workflows with Power Automate and Azure Durable Functions
+# How to Orchestrate Long-Running Workflows with Power Automate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

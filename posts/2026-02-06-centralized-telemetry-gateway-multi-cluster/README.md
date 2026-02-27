@@ -1,4 +1,4 @@
-# How to Build a Centralized Telemetry Gateway for Multi-Cluster Platform Environments
+# Build a Centralized Telemetry Gateway for Multi-Cluster Platform Environments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

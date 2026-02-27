@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Team Management, Engineering Culture, Leadership, Organizational Design, Startups
 
-Description: Middle managers have become the organizational equivalent of technical debt- layers that slow everything down without adding clear value. At OneUptime, we've intentionally eliminated middle management in favor of direct leadership and autonomous teams. Here's why this approach drives better results, happier engineers, and faster innovation.
+Description: Middle managers have become the organizational equivalent of technical debt- layers that slow everything down without adding clear value.
 
 Middle managers have become the organizational equivalent of technical debt- layers that slow everything down without adding clear value. They sit between frontline workers and senior leadership, often becoming bottlenecks rather than accelerators. At OneUptime, we've intentionally eliminated middle management in favor of **direct leadership and autonomous teams**. Here's why this approach drives better results, happier engineers, and faster innovation.
 

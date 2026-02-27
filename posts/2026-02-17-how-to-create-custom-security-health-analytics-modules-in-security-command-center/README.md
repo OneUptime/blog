@@ -1,4 +1,4 @@
-# How to Create Custom Security Health Analytics Modules in Security Command Center
+# How to Create Custom Security Health Analytics Modules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

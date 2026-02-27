@@ -1,4 +1,4 @@
-# How to Set Up ArgoCD ApplicationSet Matrix Generator for Cross-Product Deployments
+# Set Up ArgoCD ApplicationSet Matrix Generator for Cross-Product Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

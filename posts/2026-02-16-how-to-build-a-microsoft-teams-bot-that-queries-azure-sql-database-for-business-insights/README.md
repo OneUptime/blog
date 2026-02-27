@@ -1,4 +1,4 @@
-# How to Build a Microsoft Teams Bot That Queries Azure SQL Database for Business Insights
+# How to Build a Microsoft Teams Bot That Queries Azure SQL Database
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

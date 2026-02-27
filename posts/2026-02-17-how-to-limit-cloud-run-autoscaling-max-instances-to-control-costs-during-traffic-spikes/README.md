@@ -1,4 +1,4 @@
-# How to Limit Cloud Run Autoscaling Max Instances to Control Costs During Traffic Spikes
+# Limit Cloud Run Autoscaling Max Instances to Control Costs During Traffic Spikes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

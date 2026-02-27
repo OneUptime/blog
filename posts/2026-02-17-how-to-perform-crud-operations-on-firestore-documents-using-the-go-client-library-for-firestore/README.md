@@ -1,4 +1,4 @@
-# How to Perform CRUD Operations on Firestore Documents Using the Go Client Library for Firestore
+# How to Perform CRUD Operations on Firestore Documents Using the Go Client
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

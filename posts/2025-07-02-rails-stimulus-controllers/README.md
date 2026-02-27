@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby, Rails, Stimulus, JavaScript, Hotwire, Frontend
 
-Description: Learn how to build interactive web applications with Stimulus controllers in Ruby on Rails. This guide covers controller basics, targets, actions, values, outlets, and best practices for modern Rails frontend development.
+Description: Learn how to build interactive web applications with Stimulus controllers in Ruby on Rails.
 
 ---
 

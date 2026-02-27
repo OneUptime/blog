@@ -1,10 +1,10 @@
-# How to Implement Structured JSON Logging for Go Applications Running in Kubernetes
+# How to Use Structured JSON Logging for Go Applications Running in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Kubernetes, Logging
 
-Description: Learn how to implement structured JSON logging in Go applications deployed on Kubernetes using libraries like zap and logrus, enabling efficient log aggregation and querying with Loki and other log management systems.
+Description: Learn how to implement structured JSON logging in Go applications deployed on Kubernetes using libraries like zap and logrus.
 
 ---
 

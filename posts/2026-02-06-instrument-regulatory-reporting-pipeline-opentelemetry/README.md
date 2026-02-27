@@ -1,4 +1,4 @@
-# How to Instrument Regulatory Reporting Pipeline (MiFID II, Basel III) Generation with OpenTelemetry
+# How to Instrument Regulatory Reporting Pipeline Generation with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

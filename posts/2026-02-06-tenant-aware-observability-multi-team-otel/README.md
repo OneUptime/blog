@@ -1,4 +1,4 @@
-# How to Implement Tenant-Aware Observability in a Multi-Team Platform with OpenTelemetry
+# How to Use Tenant-Aware Observability in a Multi-Team Platform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

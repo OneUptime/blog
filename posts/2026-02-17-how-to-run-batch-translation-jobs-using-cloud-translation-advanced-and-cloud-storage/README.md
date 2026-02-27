@@ -1,4 +1,4 @@
-# How to Run Batch Translation Jobs Using Cloud Translation Advanced and Cloud Storage
+# How to Run Batch Translation Jobs Using Cloud Translation Advanced
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

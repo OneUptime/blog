@@ -1,4 +1,4 @@
-# How to Set Up Azure AI Search Hybrid Search Combining Keyword and Vector Retrieval
+# How to Set Up Azure AI Search Hybrid Search Combining Keyword
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

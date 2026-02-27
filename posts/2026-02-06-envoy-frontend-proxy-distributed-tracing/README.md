@@ -1,4 +1,4 @@
-# How to Set Up Envoy as a Front-End Proxy with Full Distributed Tracing via OpenTelemetry Collector
+# How to Set Up Envoy as a Front-End Proxy with Full Distributed Tracing via
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

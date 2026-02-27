@@ -1,4 +1,4 @@
-# How to Implement Telemetry Data Ownership: Define Who Owns, Who Can Access, and Who Pays for Each Signal
+# How to Use Telemetry Data Ownership: Define Who Owns, Who Can Access,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

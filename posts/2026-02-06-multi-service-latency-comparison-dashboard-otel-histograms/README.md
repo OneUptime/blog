@@ -1,4 +1,4 @@
-# How to Create a Multi-Service Latency Comparison Dashboard from OpenTelemetry Histograms
+# How to Create a Multi-Service Latency Comparison Dashboard from OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

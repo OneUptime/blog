@@ -1,4 +1,4 @@
-# How to Deploy Windows Containers Alongside Linux Containers on AKS with Mixed Node Pools
+# How to Deploy Windows Containers Alongside Linux Containers on AKS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

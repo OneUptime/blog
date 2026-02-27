@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rails, GraphQL, GraphQL-Ruby, Ruby, API, Backend
 
-Description: Learn how to build GraphQL APIs in Ruby on Rails using the graphql-ruby gem. This guide covers schema design, types, queries, mutations, subscriptions, authentication, and performance optimization with practical examples.
+Description: Learn how to build GraphQL APIs in Ruby on Rails using the graphql-ruby gem.
 
 ---
 

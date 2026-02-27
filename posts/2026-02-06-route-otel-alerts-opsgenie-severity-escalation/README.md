@@ -1,4 +1,4 @@
-# How to Route OpenTelemetry Alerts to OpsGenie with Severity-Based Escalation Policies
+# Route OpenTelemetry Alerts to OpsGenie with Severity-Based Escalation Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

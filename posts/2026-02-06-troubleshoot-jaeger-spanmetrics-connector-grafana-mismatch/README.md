@@ -1,4 +1,4 @@
-# How to Troubleshoot the Jaeger spanmetrics Processor vs Connector Format Mismatch with Grafana Dashboards
+# How to Troubleshoot the Jaeger spanmetrics Processor vs Connector Format
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

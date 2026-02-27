@@ -1322,6 +1322,6 @@ The goal is not maximum headroom but optimal headroom. Enough buffer to handle t
 
 **Related Reading:**
 
-- [SRE Metrics to Track](/blog/post/2025-11-28-sre-metrics-to-track)
-- [HPA Autoscaling in Kubernetes](/blog/post/2025-11-27-hpa-autoscale)
-- [What is Toil and How to Eliminate It](/blog/post/2025-10-01-what-is-toil-and-how-to-eliminate-it)
+- [SRE Metrics to Track](https://oneuptime.com/blog/post/2025-11-28-sre-metrics-to-track/view)
+- [HPA Autoscaling in Kubernetes](https://oneuptime.com/blog/post/2025-11-27-hpa-autoscale/view)
+- [What is Toil and How to Eliminate It](https://oneuptime.com/blog/post/2025-10-01-what-is-toil-and-how-to-eliminate-it/view)

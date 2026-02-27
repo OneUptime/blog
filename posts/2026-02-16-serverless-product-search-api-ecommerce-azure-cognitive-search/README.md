@@ -1,4 +1,4 @@
-# How to Implement a Serverless Product Search API for E-Commerce with Azure Cognitive Search
+# How to Build a Serverless Product Search API for E-Commerce
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

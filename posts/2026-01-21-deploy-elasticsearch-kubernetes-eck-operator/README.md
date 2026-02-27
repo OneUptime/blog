@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Kubernetes, ECK, Operator, DevOps, Search, Infrastructure
 
-Description: A comprehensive guide to deploying and managing Elasticsearch clusters on Kubernetes using the Elastic Cloud on Kubernetes (ECK) operator, covering installation, configuration, scaling, and production best practices.
+Description: A comprehensive guide to deploying and managing Elasticsearch clusters on Kubernetes using the Elastic Cloud on Kubernetes (ECK) operator, covering installation, configuration, scaling.
 
 ---
 

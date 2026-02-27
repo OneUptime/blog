@@ -1,4 +1,4 @@
-# How to Monitor Warehouse Robotics and AGV (Automated Guided Vehicle) System Performance with OpenTelemetry
+# How to Monitor Warehouse Robotics and AGV System Performance with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

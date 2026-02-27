@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Event-Driven Architecture, Software Design, API Design, TypeScript, System Design, Microservices
 
-Description: Learn how to design robust event payloads for distributed systems. This guide covers payload structure, versioning strategies, schema validation, and production-ready patterns with practical TypeScript examples.
+Description: Learn how to design robust event payloads for distributed systems.
 
 ---
 
@@ -1043,6 +1043,6 @@ Start with these patterns, adjust based on your specific constraints (message si
 
 **Related Reading:**
 
-- [What are Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Correlate events with distributed traces
-- [How to Structure Logs Properly in OpenTelemetry](/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view) - Complement events with structured logging
+- [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Correlate events with distributed traces
+- [How to Structure Logs Properly in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view) - Complement events with structured logging
 

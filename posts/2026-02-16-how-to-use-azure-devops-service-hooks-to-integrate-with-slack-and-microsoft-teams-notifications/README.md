@@ -1,4 +1,4 @@
-# How to Use Azure DevOps Service Hooks to Integrate with Slack and Microsoft Teams Notifications
+# How to Use Azure DevOps Service Hooks to Integrate with Slack
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

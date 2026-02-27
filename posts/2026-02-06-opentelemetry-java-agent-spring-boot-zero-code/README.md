@@ -1,4 +1,4 @@
-# How to Use the OpenTelemetry Java Agent for Zero-Code Spring Boot Instrumentation
+# Use the OpenTelemetry Java Agent for Zero-Code Spring Boot Instrumentation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

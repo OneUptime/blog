@@ -1,4 +1,4 @@
-# How to Build a Full-Stack Application with React Frontend and Azure Functions Backend
+# How to Build a Full-Stack Application with React Frontend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

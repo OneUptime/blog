@@ -1,4 +1,4 @@
-# How to Implement Telemetry Budgets and Quotas per Team Using OpenTelemetry Collector Routing
+# How to Use Telemetry Budgets and Quotas per Team
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

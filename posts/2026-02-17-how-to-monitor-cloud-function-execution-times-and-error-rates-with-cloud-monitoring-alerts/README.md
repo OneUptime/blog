@@ -1,4 +1,4 @@
-# How to Monitor Cloud Function Execution Times and Error Rates with Cloud Monitoring Alerts
+# How to Monitor Cloud Function Execution Times and Error Rates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

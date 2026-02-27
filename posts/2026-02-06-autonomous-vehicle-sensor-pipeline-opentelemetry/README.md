@@ -1,4 +1,4 @@
-# How to Trace Autonomous Vehicle Sensor Data Processing Pipelines with OpenTelemetry
+# How to Trace Autonomous Vehicle Sensor Data Processing Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

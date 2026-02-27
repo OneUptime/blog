@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Crossplane, Advanced
 
-Description: Learn how to use Crossplane Composition Functions to implement advanced logic in infrastructure provisioning including conditional resource creation, complex transformations, and external data sources.
+Description: Learn how to use Crossplane Composition Functions to implement advanced logic in infrastructure provisioning including conditional resource creation, complex transformations.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry in a Monorepo with Shared SDK Configuration Across Multiple Services
+# How to Use OpenTelemetry in a Monorepo with Shared SDK Config Across Multi
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

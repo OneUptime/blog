@@ -1,4 +1,4 @@
-# How to Configure Rules and Email Alerts in Azure IoT Central Based on Device Telemetry
+# How to Configure Rules and Email Alerts in Azure IoT Central Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

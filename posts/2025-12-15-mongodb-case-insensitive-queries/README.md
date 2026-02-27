@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Database, Queries, Indexing, Text Search
 
-Description: Learn multiple approaches for case-insensitive queries in MongoDB including regex, collation, text indexes, and storing normalized values. Understand performance implications and choose the right method.
+Description: Learn multiple approaches for case-insensitive queries in MongoDB including regex, collation, text indexes, and storing normalized values.
 
 ---
 

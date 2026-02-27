@@ -1,4 +1,4 @@
-# How to Implement Policy-as-Code for Observability: Enforce Minimum Instrumentation Standards with OPA
+# How to Use Policy-as-Code for Observability: Enforce Minimum Instrumentation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure GitHub Actions Matrix Builds for Kubernetes Multi-Cluster Deployments
+# Configure GitHub Actions Matrix Builds for Kubernetes Multi-Cluster Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

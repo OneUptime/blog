@@ -1,4 +1,4 @@
-# How to Analyze Critical Path Latency Using Trace Waterfall Diagrams on Google Cloud
+# How to Analyze Critical Path Latency Using Trace Waterfall Diagrams
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

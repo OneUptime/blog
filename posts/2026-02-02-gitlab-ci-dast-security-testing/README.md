@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab CI, DAST, Security Testing, DevSecOps, CI/CD, Application Security, Vulnerability Scanning
 
-Description: A comprehensive guide to configuring Dynamic Application Security Testing (DAST) in GitLab CI pipelines. Learn how to set up DAST scans, configure authentication, handle false positives, and integrate security testing into your DevSecOps workflow.
+Description: A comprehensive guide to configuring Dynamic Application Security Testing (DAST) in GitLab CI pipelines.
 
 ---
 

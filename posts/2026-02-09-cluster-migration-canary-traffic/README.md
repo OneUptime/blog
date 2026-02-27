@@ -1,4 +1,4 @@
-# How to Plan Kubernetes Cluster Migration with Canary Traffic Shifting Between Old and New Clusters
+# How to Plan K8s Cluster Migration with Canary Traffic Shifting Between Old and
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

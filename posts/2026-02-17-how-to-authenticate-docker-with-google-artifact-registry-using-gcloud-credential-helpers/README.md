@@ -1,4 +1,4 @@
-# How to Authenticate Docker with Google Artifact Registry Using gcloud Credential Helpers
+# How to Authenticate Docker with Google Artifact Registry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

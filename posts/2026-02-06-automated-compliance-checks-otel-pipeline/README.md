@@ -1,4 +1,4 @@
-# How to Set Up Automated Compliance Checks for OpenTelemetry Pipeline Configuration
+# How to Set Up Automated Compliance Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

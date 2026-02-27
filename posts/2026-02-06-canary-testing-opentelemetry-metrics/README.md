@@ -1,4 +1,4 @@
-# How to Implement Canary Testing with OpenTelemetry Metrics Comparison Between Old and New Versions
+# How to Use Canary Testing with OpenTelemetry Metrics Comparison Between Old
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

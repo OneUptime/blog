@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: LangChain, AI, LLM, Chat, Python, Conversational AI, OpenAI, WebSocket, FastAPI
 
-Description: A comprehensive guide to building production-ready chat applications with LangChain, covering message handling, conversation memory, streaming responses, multi-user support, and real-time WebSocket integration.
+Description: A comprehensive guide to building production-ready chat applications with LangChain, covering message handling, conversation memory, streaming responses, multi-user support.
 
 ---
 

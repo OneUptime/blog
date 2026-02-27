@@ -1,4 +1,4 @@
-# How to Deploy Security Command Center Premium Posture Management Across an Organization
+# Deploy Security Command Center Premium Posture Management Across an Organization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

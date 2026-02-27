@@ -1,4 +1,4 @@
-# How to Visualize BigQuery GIS Query Results on Google Maps Using the Maps JavaScript API
+# How to Visualize BigQuery GIS Query Results on Google Maps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

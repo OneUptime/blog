@@ -1,4 +1,4 @@
-# How to Instrument Direct Messaging System (Encryption, Delivery, Read Receipts) with OpenTelemetry
+# How to Instrument Direct Messaging System with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

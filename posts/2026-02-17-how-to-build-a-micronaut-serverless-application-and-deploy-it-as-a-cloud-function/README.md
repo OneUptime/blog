@@ -1,4 +1,4 @@
-# How to Build a Micronaut Serverless Application and Deploy It as a Cloud Function
+# How to Build a Micronaut Serverless Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

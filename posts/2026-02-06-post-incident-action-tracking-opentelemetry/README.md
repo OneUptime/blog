@@ -1,4 +1,4 @@
-# How to Automate Post-Incident Action Item Tracking with OpenTelemetry and Issue Trackers
+# How to Automate Post-Incident Action Item Tracking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

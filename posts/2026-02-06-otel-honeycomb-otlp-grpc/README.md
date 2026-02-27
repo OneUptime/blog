@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Traces and Metrics to Honeycomb via OTLP gRPC with API Key Authentication
+# How to Send OpenTelemetry Traces and Metrics to Honeycomb via OTLP gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

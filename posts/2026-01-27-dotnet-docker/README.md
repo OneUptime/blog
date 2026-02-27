@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, Docker, DevOps, Containers, C#, ASP.NET Core, Microservices
 
-Description: A comprehensive guide to containerizing .NET applications with Docker, covering multi-stage builds, image optimization, SDK vs runtime images, Docker Compose, and health checks for production deployments.
+Description: A comprehensive guide to containerizing .NET applications with Docker, covering multi-stage builds, image optimization, SDK vs runtime images, Docker Compose.
 
 ---
 

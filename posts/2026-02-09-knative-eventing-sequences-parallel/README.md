@@ -1,4 +1,4 @@
-# How to Build Serverless Workflows with Knative Eventing Sequences and Parallel Processing
+# How to Build Serverless Workflows with Knative Eventing Sequences
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

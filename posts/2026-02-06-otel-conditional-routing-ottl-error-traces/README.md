@@ -1,4 +1,4 @@
-# How to Implement Conditional Routing with OTTL Statements to Send Error Traces to a Dedicated Backend
+# How to Use Conditional Routing with OTTL Statements to Send Error Traces to a
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

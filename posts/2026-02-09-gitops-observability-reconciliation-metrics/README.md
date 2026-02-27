@@ -1,4 +1,4 @@
-# How to Implement GitOps Observability by Monitoring Flux and ArgoCD Reconciliation Metrics
+# How to Use GitOps Observability by Monitoring Flux
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

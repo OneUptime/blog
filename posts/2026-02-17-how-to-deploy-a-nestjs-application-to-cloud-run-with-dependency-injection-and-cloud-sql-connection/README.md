@@ -1,4 +1,4 @@
-# How to Deploy a NestJS Application to Cloud Run with Dependency Injection and Cloud SQL Connection
+# How to Deploy a NestJS Application to Cloud Run with Dependency Injection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

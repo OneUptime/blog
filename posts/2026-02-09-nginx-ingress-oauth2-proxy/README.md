@@ -1,4 +1,4 @@
-# How to Implement NGINX Ingress Controller External Authentication with OAuth2 Proxy
+# How to Use NGINX Ingress Controller External Authentication with OAuth2 Proxy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

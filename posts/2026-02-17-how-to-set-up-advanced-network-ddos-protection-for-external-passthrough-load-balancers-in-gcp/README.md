@@ -1,4 +1,4 @@
-# How to Set Up Advanced Network DDoS Protection for External Passthrough Load Balancers in GCP
+# How to Set Up Advanced Network DDoS Protection for External Passthrough Load
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Create Azure Functions in TypeScript with Durable Functions Orchestrations
+# How to Create Azure Functions in TypeScript
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

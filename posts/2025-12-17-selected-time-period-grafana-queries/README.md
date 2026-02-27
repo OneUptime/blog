@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, PromQL, Queries, Time Range, Variables, Dashboard, Monitoring, Visualization
 
-Description: Learn how to use Grafana's selected time period in your queries with $__range, $__interval, and other built-in variables. This guide covers dynamic time ranges for PromQL, InfluxDB, and other data sources.
+Description: Learn how to use Grafana's selected time period in your queries with $__range, $__interval, and other built-in variables.
 
 ---
 

@@ -1712,6 +1712,6 @@ A well-designed capacity dashboard transforms reactive firefighting into proacti
 
 ### See Also
 
-- [SRE Metrics Worth Tracking](/blog/post/2025-11-28-sre-metrics-to-track/) - Learn which metrics matter most for reliability
-- [Monitoring vs Observability](/blog/post/2025-11-28-monitoring-vs-observability-sre/) - Understand the difference and when you need each
-- [Three Pillars of Observability](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/) - Context for capacity metrics in the broader observability picture
+- [SRE Metrics Worth Tracking](https://oneuptime.com/blog/post/2025-11-28-sre-metrics-to-track/view) - Learn which metrics matter most for reliability
+- [Monitoring vs Observability](https://oneuptime.com/blog/post/2025-11-28-monitoring-vs-observability-sre/view) - Understand the difference and when you need each
+- [Three Pillars of Observability](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view) - Context for capacity metrics in the broader observability picture

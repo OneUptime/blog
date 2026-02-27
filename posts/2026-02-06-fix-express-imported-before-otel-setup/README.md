@@ -1,4 +1,4 @@
-# How to Fix Express.js Instrumentation Failing Because the App Was Imported Before OpenTelemetry Setup
+# How to Fix Express.js Instrumentation Failing Because the App Was Imported
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure HAProxy OpenTelemetry Tracing with the OpenTracing Filter and OTLP Exporter Bridge
+# How to Configure HAProxy OpenTelemetry Tracing with the OpenTracing Filter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure DevSpace for Team-Based Kubernetes Development with Shared Dependencies
+# How to Configure DevSpace for Team-Based Kubernetes Development
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -519,6 +519,6 @@ Create a shareable link:
 \`\`\`bash
 devspace run share
 \`\`\`
-\`\`\`
+```
 
 DevSpace with shared dependencies provides team members with independent development environments while maximizing resource efficiency. Configure it once, and every developer gains instant access to a complete, isolated workspace.

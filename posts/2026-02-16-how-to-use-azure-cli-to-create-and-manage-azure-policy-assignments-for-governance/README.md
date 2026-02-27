@@ -1,4 +1,4 @@
-# How to Use Azure CLI to Create and Manage Azure Policy Assignments for Governance
+# How to Use Azure CLI to Create and Manage Azure Policy Assignments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Graceful Shutdown in a Go Cloud Run Service with Context Cancellation
+# How to Use Graceful Shutdown in a Go Cloud Run Service with Context Cancellation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

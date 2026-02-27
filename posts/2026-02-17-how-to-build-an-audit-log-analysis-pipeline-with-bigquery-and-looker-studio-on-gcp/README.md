@@ -1,4 +1,4 @@
-# How to Build an Audit Log Analysis Pipeline with BigQuery and Looker Studio on GCP
+# How to Build an Audit Log Analysis Pipeline with BigQuery and Looker Studio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix ClassNotFoundException Errors When OpenTelemetry Java Agent Conflicts with Application Dependencies
+# How to Fix ClassNotFoundException Errors When OpenTelemetry Java Agent Conflicts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

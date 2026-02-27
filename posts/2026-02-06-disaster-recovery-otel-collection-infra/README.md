@@ -1,4 +1,4 @@
-# How to Design a Disaster Recovery Plan for Your OpenTelemetry Collection Infrastructure
+# How to Design a Disaster Recovery Plan
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

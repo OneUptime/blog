@@ -1,4 +1,4 @@
-# How to Implement a Saga Pattern for Distributed Transactions Across GCP Microservices
+# Build a Saga Pattern for Distributed Transactions Across GCP Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix the Top 10 OpenTelemetry Setup Mistakes That Silently Drop Your Telemetry Data
+# How to Fix the Top 10 OpenTelemetry Setup Mistakes That Silently Drop Your
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

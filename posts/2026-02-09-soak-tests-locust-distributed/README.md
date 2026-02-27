@@ -1,4 +1,4 @@
-# How to Implement Soak Tests for Kubernetes Applications Using Locust Distributed Workers
+# How to Use Soak Tests for Kubernetes Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

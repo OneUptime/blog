@@ -1,4 +1,4 @@
-# How to Set Up Startup and Liveness Probes for Cloud Run Services to Improve Reliability
+# Set Up Startup and Liveness Probes for Cloud Run Services to Improve Reliability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

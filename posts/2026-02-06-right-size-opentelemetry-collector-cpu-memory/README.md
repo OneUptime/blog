@@ -1,4 +1,4 @@
-# How to Right-Size OpenTelemetry Collector CPU and Memory Based on Throughput Metrics
+# How to Right-Size OpenTelemetry Collector CPU and Memory Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

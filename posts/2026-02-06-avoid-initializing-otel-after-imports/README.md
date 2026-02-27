@@ -1,4 +1,4 @@
-# How to Avoid the Anti-Pattern of Initializing OpenTelemetry SDK After Importing Instrumented Libraries
+# How to Avoid the Anti-Pattern of Initializing OpenTelemetry SDK After Importing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Node.js, WebSockets, Push Notifications, Real-time, Socket.io, TypeScript, Backend
 
-Description: Learn how to build a real-time push notification system using WebSockets in Node.js. This guide covers connection management, message routing, scaling with Redis, and handling reconnections gracefully.
+Description: Learn how to build a real-time push notification system using WebSockets in Node.js.
 
 ---
 

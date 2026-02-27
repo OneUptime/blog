@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Modules, IaC, Architecture
 
-Description: A comprehensive guide to creating composable Terraform modules that scale with your infrastructure. Learn module design patterns, composition strategies, dependency management, and best practices for building maintainable Infrastructure as Code.
+Description: A comprehensive guide to creating composable Terraform modules that scale with your infrastructure.
 
 Terraform module composition is the practice of combining smaller, focused modules into larger, more complex infrastructure deployments. Instead of building monolithic modules that handle everything, you create reusable building blocks that can be assembled in different ways to meet various infrastructure requirements. This approach leads to more maintainable, testable, and scalable Infrastructure as Code.
 

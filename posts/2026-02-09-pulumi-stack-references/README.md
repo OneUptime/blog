@@ -1,4 +1,4 @@
-# How to Use Pulumi Stack References for Cross-Stack Kubernetes Resource Dependencies
+# Use Pulumi Stack References for Cross-Stack Kubernetes Resource Dependencies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

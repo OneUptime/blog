@@ -1,4 +1,4 @@
-# How to Build an OCI Artifact Registry Workflow for Helm Charts and Container Images
+# How to Build an OCI Artifact Registry Workflow for Helm Charts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

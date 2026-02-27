@@ -1,4 +1,4 @@
-# How to Build a Reusable Tekton Task Catalog for Common Kubernetes CI/CD Operations
+# Build a Reusable Tekton Task Catalog for Common Kubernetes CI/CD Operations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

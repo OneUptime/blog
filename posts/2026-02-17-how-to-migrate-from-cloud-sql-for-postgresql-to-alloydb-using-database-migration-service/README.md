@@ -1,4 +1,4 @@
-# How to Migrate from Cloud SQL for PostgreSQL to AlloyDB Using Database Migration Service
+# How to Migrate from Cloud SQL for PostgreSQL to AlloyDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

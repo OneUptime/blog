@@ -1,4 +1,4 @@
-# How to Fix BigQuery Export to Cloud Storage Failing with Exceeded Maximum File Size Error
+# How to Fix BigQuery Export to Cloud Storage Failing with Exceeded Maximum File
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

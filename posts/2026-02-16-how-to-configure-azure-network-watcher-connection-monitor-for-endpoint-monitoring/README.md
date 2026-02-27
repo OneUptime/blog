@@ -1,4 +1,4 @@
-# How to Configure Azure Network Watcher Connection Monitor for Endpoint Monitoring
+# How to Configure Azure Network Watcher Connection Monitor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

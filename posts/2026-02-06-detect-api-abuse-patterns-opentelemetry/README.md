@@ -1,4 +1,4 @@
-# How to Detect API Abuse Patterns (Credential Stuffing, Scraping, Enumeration) with OpenTelemetry Rate Metrics
+# How to Detect API Abuse Patterns with OpenTelemetry Rate Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

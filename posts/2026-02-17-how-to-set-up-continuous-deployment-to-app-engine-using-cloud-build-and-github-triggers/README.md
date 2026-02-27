@@ -1,4 +1,4 @@
-# How to Set Up Continuous Deployment to App Engine Using Cloud Build and GitHub Triggers
+# How to Set Up Continuous Deployment to App Engine Using Cloud Build
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

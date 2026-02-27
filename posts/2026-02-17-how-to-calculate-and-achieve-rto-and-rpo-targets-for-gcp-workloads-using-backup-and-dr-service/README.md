@@ -1,4 +1,4 @@
-# How to Calculate and Achieve RTO and RPO Targets for GCP Workloads Using Backup and DR Service
+# How to Calculate and Achieve RTO and RPO Targets for GCP Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

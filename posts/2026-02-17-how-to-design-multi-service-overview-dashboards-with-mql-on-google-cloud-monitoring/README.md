@@ -1,4 +1,4 @@
-# How to Design Multi-Service Overview Dashboards with MQL on Google Cloud Monitoring
+# How to Design Multi-Service Overview Dashboards with MQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

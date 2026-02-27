@@ -1,4 +1,4 @@
-# How to Configure Azure Active Directory Authentication for Power Apps Portal Users
+# How to Configure Azure Active Directory Authentication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

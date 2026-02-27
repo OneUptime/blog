@@ -1,4 +1,4 @@
-# How to Build a Spring Batch Job That Reads from Cloud Storage and Writes to BigQuery
+# How to Build a Spring Batch Job That Reads from Cloud Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

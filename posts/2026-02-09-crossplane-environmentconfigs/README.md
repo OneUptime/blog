@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Crossplane, Kubernetes, Infrastructure-as-Code
 
-Description: Learn how to use Crossplane EnvironmentConfigs to inject dynamic configuration into compositions at runtime, enabling environment-specific patching without duplicating composition definitions across environments.
+Description: Learn how to use Crossplane EnvironmentConfigs to inject dynamic configuration into compositions at runtime.
 
 ---
 

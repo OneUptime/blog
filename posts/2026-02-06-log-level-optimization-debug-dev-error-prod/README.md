@@ -1,4 +1,4 @@
-# How to Implement Log Level Optimization (DEBUG in Dev, ERROR in Prod) with OpenTelemetry
+# How to Use Log Level Optimization with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

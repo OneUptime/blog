@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Lua Scripts, Troubleshooting, Performance, BUSY Errors
 
-Description: A comprehensive guide to diagnosing and resolving Redis BUSY errors caused by long-running Lua scripts, including optimization techniques, timeout configuration, and best practices for script development.
+Description: A comprehensive guide to diagnosing and resolving Redis BUSY errors caused by long-running Lua scripts, including optimization techniques, timeout configuration.
 
 ---
 

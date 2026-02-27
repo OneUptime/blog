@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Traces and Logs to Baselime via OTLP for Serverless Stack Observability
+# How to Send OpenTelemetry Traces and Logs to Baselime via OTLP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

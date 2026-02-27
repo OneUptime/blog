@@ -1,4 +1,4 @@
-# How to Fix GKE Preemptible Node Unexpected Termination Causing Workload Disruption
+# Fix GKE Preemptible Node Unexpected Termination Causing Workload Disruption
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

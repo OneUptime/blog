@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kotlin, Firebase, Android, Backend
 
-Description: A comprehensive guide to integrating Firebase with Kotlin for Android development, covering Authentication, Firestore, Realtime Database, Cloud Storage, and Cloud Messaging with practical examples and best practices.
+Description: A comprehensive guide to integrating Firebase with Kotlin for Android development, covering Authentication, Firestore, Realtime Database, Cloud Storage.
 
 ---
 

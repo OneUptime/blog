@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Dashboard, Template Variables, Panels, Conditional Display, UI, Monitoring, Visualization
 
-Description: Learn how to conditionally hide or show Grafana panels based on template variable selections. This guide covers repeat panels, conditional queries, and dynamic dashboard layouts for better user experience.
+Description: Learn how to conditionally hide or show Grafana panels based on template variable selections.
 
 ---
 

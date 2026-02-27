@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Google GKE, Multi-Cluster
 
-Description: Learn how to register a Google Kubernetes Engine cluster with ArgoCD for multi-cluster GitOps management, covering GCP service account authentication, Workload Identity, and secure cluster registration.
+Description: Learn how to register a Google Kubernetes Engine cluster with ArgoCD for multi-cluster GitOps management, covering GCP service account authentication, Workload Identity.
 
 ---
 

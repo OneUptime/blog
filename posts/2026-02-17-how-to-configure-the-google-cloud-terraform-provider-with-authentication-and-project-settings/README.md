@@ -1,4 +1,4 @@
-# How to Configure the Google Cloud Terraform Provider with Authentication and Project Settings
+# How to Configure the Google Cloud Terraform Provider
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

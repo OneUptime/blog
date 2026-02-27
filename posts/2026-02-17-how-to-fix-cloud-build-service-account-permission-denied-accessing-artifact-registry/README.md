@@ -1,4 +1,4 @@
-# How to Fix Cloud Build Service Account Permission Denied Accessing Artifact Registry
+# Fix Cloud Build Service Account Permission Denied Accessing Artifact Registry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Debug Cloud Functions Errors Using Cloud Logging Filters and Error Reporting
+# How to Debug Cloud Functions Errors Using Cloud Logging Filters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

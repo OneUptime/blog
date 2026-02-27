@@ -1,4 +1,4 @@
-# How to Build a GitOps Repository Structure for Multi-Cluster Multi-Environment Deployments
+# How to Build a GitOps Repository Structure for Multi-Cluster Multi-Env
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

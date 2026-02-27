@@ -1,4 +1,4 @@
-# How to Fix Collector Restart Loops Caused by Invalid TLS Certificate Paths in Exporter Configuration
+# How to Fix Collector Restart Loops Caused by Invalid TLS Certificate Paths
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

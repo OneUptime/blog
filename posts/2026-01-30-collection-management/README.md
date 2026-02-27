@@ -1566,9 +1566,6 @@ Collection management is the foundation of a healthy vector database deployment.
 
 ## See Also
 
-- [Vector Database Fundamentals](/blog/post/vector-database-fundamentals/) - Understanding the basics of vector storage and retrieval
-- [Embedding Model Selection Guide](/blog/post/embedding-model-selection/) - Choosing the right embedding model for your use case
-- [Scaling Vector Search](/blog/post/scaling-vector-search/) - Techniques for handling millions of vectors
 
 ---
 

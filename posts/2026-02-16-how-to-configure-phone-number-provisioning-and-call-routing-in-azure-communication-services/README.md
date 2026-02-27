@@ -1,4 +1,4 @@
-# How to Configure Phone Number Provisioning and Call Routing in Azure Communication Services
+# How to Configure Phone Number Provisioning and Call Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

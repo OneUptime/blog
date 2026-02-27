@@ -1,4 +1,4 @@
-# How to Stream BigQuery Results into a Pandas DataFrame for Large Dataset Processing in Python
+# How to Stream BigQuery Results into a Pandas DataFrame for Large Dataset
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

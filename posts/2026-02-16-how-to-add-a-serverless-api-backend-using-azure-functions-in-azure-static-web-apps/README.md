@@ -1,4 +1,4 @@
-# How to Add a Serverless API Backend Using Azure Functions in Azure Static Web Apps
+# How to Add a Serverless API Backend Using Azure Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

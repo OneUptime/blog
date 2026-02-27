@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: VXLAN, Networking, Overlay, SDN
 
-Description: A comprehensive guide to implementing VXLAN overlay networks for scalable multi-tenant data center connectivity. Learn VXLAN architecture, configuration, troubleshooting, and production best practices.
+Description: A comprehensive guide to implementing VXLAN overlay networks for scalable multi-tenant data center connectivity.
 
 ---
 

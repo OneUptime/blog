@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Sync Waves, Troubleshooting
 
-Description: Learn how to identify and resolve circular dependencies in ArgoCD sync waves, where two resources each depend on the other, using practical strategies like decoupling, init containers, and application splitting.
+Description: Learn how to identify and resolve circular dependencies in ArgoCD sync waves, where two resources each depend on the other, using practical strategies like decoupling, init containers.
 
 ---
 

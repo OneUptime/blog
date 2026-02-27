@@ -1,4 +1,4 @@
-# How to Deploy Edge AI Models on Google Coral Edge TPU with Google Cloud Integration
+# How to Deploy Edge AI Models on Google Coral Edge TPU
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

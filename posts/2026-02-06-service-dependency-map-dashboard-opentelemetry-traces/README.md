@@ -1,4 +1,4 @@
-# How to Create a Real-Time Service Dependency Map Dashboard from OpenTelemetry Trace Data
+# How to Create a Real-Time Service Dependency Map Dashboard from OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

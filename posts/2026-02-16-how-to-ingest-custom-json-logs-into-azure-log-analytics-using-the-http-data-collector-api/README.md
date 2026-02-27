@@ -1,4 +1,4 @@
-# How to Ingest Custom JSON Logs into Azure Log Analytics Using the HTTP Data Collector API
+# How to Ingest Custom JSON Logs into Azure Log Analytics Using the HTTP Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Track Third-Party API Dependency Latency Impact on Your Application with OpenTelemetry Traces
+# How to Track Third-Party API Dependency Latency Impact on Your Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

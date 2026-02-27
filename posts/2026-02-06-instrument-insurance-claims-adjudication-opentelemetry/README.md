@@ -1,4 +1,4 @@
-# How to Instrument Insurance Claims Adjudication Pipelines with OpenTelemetry for SLA Tracking
+# How to Instrument Insurance Claims Adjudication Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Telepresence Volume Mounts for Hot-Reloading Local Code Against Remote Kubernetes Services
+# How to Configure Telepresence Volume Mounts for Hot-Reloading Local Code
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

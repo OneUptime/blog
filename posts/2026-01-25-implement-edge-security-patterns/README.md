@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Edge Computing, Security, IoT, Encryption, Authentication, Zero Trust, TLS
 
-Description: Learn essential security patterns for edge computing and IoT deployments. Cover device authentication, secure communication, data encryption, secure boot, and zero-trust architecture for edge environments.
+Description: Learn essential security patterns for edge computing and IoT deployments.
 
 ---
 

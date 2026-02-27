@@ -1,4 +1,4 @@
-# How to Use Config Connector to Create and Manage Pub/Sub Topics and Subscriptions from Kubernetes
+# How to Use Config Connector to Create and Manage Pub/Sub Topics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

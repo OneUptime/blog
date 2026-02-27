@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Splunk, Comparison, Log Management, Open Source, Enterprise, Cost Analysis
 
-Description: A comprehensive comparison of Grafana Loki and Splunk for log management, covering architecture differences, cost analysis, feature comparison, query languages, scalability, and guidance on choosing the right solution for your needs.
+Description: A comprehensive comparison of Grafana Loki and Splunk for log management, covering architecture differences, cost analysis, feature comparison, query languages, scalability.
 
 ---
 

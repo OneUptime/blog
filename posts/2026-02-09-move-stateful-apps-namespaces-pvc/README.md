@@ -1,4 +1,4 @@
-# How to Move Stateful Applications Between Kubernetes Namespaces with PVC Data Intact
+# How to Move Stateful Applications Between Kubernetes Namespaces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

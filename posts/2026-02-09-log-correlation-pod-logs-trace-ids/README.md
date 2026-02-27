@@ -1,4 +1,4 @@
-# How to Build a Log Correlation Pipeline That Links Kubernetes Pod Logs to Trace IDs
+# Build a Log Correlation Pipeline That Links Kubernetes Pod Logs to Trace IDs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

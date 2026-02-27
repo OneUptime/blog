@@ -1,4 +1,4 @@
-# How to Build a Collector Pipeline That Converts Incoming Prometheus Metrics to OTLP and Routes to ClickHouse
+# How to Build a Collector Pipeline That Converts Incoming Prometheus Metrics to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

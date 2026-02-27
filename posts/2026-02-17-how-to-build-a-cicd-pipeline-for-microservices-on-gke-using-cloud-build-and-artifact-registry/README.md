@@ -1,4 +1,4 @@
-# How to Build a CI/CD Pipeline for Microservices on GKE Using Cloud Build and Artifact Registry
+# How to Build a CI/CD Pipeline for Microservices on GKE Using Cloud Build
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

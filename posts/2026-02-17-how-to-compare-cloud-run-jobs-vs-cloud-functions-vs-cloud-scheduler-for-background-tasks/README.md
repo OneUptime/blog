@@ -1,4 +1,4 @@
-# How to Compare Cloud Run Jobs vs Cloud Functions vs Cloud Scheduler for Background Tasks
+# How to Compare Cloud Run Jobs vs Cloud Functions vs Cloud Scheduler
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Distributed Tracing Across GCP Microservices Using Cloud Trace and OpenTelemetry
+# How to Set Up Distributed Tracing Across GCP Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

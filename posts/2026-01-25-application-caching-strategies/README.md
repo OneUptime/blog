@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Caching, Performance, Redis, Memcached, Application Design, Scalability, Backend
 
-Description: Learn how to implement effective caching strategies in your applications. This guide covers cache patterns like cache-aside, write-through, and write-behind, with practical examples for Redis and in-memory caching.
+Description: Learn how to implement effective caching strategies in your applications.
 
 ---
 

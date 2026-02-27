@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, High Availability, Failover, Disaster Recovery, DNS, Load Balancing, Resilience
 
-Description: Learn how to implement network failover to ensure service continuity during outages. This guide covers DNS failover, load balancer failover, and multi-region deployment strategies with practical examples.
+Description: Learn how to implement network failover to ensure service continuity during outages.
 
 ---
 

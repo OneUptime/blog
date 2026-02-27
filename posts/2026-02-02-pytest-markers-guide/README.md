@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, pytest, Testing, Test Automation, Markers, TDD, CI/CD
 
-Description: Learn how to use pytest markers to organize, filter, and control test execution. Covers built-in markers, custom markers, marker registration, parametrization, and advanced patterns for large test suites.
+Description: Learn how to use pytest markers to organize, filter, and control test execution.
 
 ---
 

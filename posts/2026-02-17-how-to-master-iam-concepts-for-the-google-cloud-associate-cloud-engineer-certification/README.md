@@ -1,4 +1,4 @@
-# How to Master IAM Concepts for the Google Cloud Associate Cloud Engineer Certification
+# Master IAM Concepts for the Google Cloud Associate Cloud Engineer Certification
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up a Cloud Function That Triggers on Firebase Authentication User Creation Events
+# How to Set Up a Cloud Function That Triggers on Firebase Auth User Creation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

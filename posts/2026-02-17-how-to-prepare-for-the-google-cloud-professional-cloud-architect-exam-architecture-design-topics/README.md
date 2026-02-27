@@ -1,4 +1,4 @@
-# How to Prepare for the Google Cloud Professional Cloud Architect Exam Architecture Design Topics
+# How to Prepare for the Google Cloud Professional Cloud Architect Exam
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Track Elasticsearch Indexing Rate, Search Latency, and Merge Throughput with the Collector
+# How to Track Elasticsearch Indexing Rate, Search Latency, and Merge Throughput
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

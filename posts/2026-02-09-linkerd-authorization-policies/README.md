@@ -1,4 +1,4 @@
-# How to Implement Linkerd Authorization Policies Using Server and ServerAuthorization Resources
+# How to Use Linkerd Authorization Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

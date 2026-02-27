@@ -1,4 +1,4 @@
-# How to Track and Report on Data Access Patterns in Telemetry Backends for Audit Purposes
+# How to Track and Report on Data Access Patterns in Telemetry Backends
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

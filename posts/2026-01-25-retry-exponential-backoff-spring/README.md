@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Retry, Resilience4j, Fault Tolerance, Microservices
 
-Description: Learn how to implement retry logic with exponential backoff in Spring Boot applications using Spring Retry and Resilience4j. This guide covers configuration, jitter, and best practices for resilient services.
+Description: Learn how to implement retry logic with exponential backoff in Spring Boot applications using Spring Retry and Resilience4j.
 
 ---
 

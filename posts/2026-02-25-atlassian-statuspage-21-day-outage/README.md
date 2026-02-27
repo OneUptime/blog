@@ -1,4 +1,4 @@
-# Atlassian StatusPage Just Had a 21-Day Critical Outage - What It Means for Your Status Page Strategy
+# Atlassian StatusPage Just Had a 21-Day Critical Outage - What It Means
 
 Author: [mallersjamie](https://www.github.com/mallersjamie)
 

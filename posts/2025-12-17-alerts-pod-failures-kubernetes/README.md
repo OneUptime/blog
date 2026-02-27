@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Prometheus, Alerting, Grafana, Pod Monitoring, SRE
 
-Description: Learn how to configure effective alerts for Kubernetes pod failures using Prometheus and Grafana. This guide covers CrashLoopBackOff detection, OOMKilled alerts, and best practices for pod health monitoring.
+Description: Learn how to configure effective alerts for Kubernetes pod failures using Prometheus and Grafana.
 
 ---
 

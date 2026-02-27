@@ -1,4 +1,4 @@
-# How to Debug Cloud Build Trigger Not Firing on GitHub Push or Pull Request Events
+# Debug Cloud Build Trigger Not Firing on GitHub Push or Pull Request Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

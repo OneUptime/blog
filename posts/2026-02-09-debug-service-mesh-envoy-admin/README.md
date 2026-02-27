@@ -1,4 +1,4 @@
-# How to Debug Service Mesh Data Plane Issues Using Envoy Admin Interface in Kubernetes
+# How to Debug Service Mesh Data Plane Issues Using Envoy Admin Interface
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

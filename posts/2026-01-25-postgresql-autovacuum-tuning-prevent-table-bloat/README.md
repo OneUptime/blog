@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Performance, Autovacuum, Table Bloat, Tuning
 
-Description: Learn how to prevent table bloat in PostgreSQL by tuning autovacuum settings. This guide covers monitoring bloat, configuring autovacuum workers, and implementing per-table tuning strategies for optimal database performance.
+Description: Learn how to prevent table bloat in PostgreSQL by tuning autovacuum settings.
 
 ---
 

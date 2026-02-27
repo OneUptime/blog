@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, gRPC, Microservices, Protocol Buffers, API Design, Performance
 
-Description: Learn how to build high-performance gRPC services in Python using grpcio. This guide covers service definitions, server implementation, client usage, streaming patterns, and production deployment tips.
+Description: Learn how to build high-performance gRPC services in Python using grpcio.
 
 ---
 

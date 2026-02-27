@@ -1,10 +1,10 @@
-# How to Implement Automated Rollback in CI/CD When Kubernetes Health Checks Fail Post-Deploy
+# Use Automated Rollback in CI/CD When Kubernetes Health Checks Fail Post-Deploy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CI/CD, Rollback, Health Checks, Reliability
 
-Description: Implement automated rollback mechanisms in CI/CD pipelines that monitor Kubernetes health checks and application metrics after deployment, automatically reverting to previous versions when issues are detected.
+Description: Implement automated rollback mechanisms in CI/CD pipelines that monitor Kubernetes health checks and application metrics after deployment.
 
 ---
 

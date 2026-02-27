@@ -1,4 +1,4 @@
-# How to Train a Frequently Bought Together Recommendation Model with Vertex AI Search for Commerce
+# How to Train a Frequently Bought Together Recommendation Model with Vertex AI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Migrate from OpenTelemetry OTEL_* Environment Variables to Declarative Configuration Files
+# How to Migrate from OpenTelemetry OTEL_* Env Variables to Declarative Config
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot the Unhandled Promise Rejection from OTLPExporterBase on DNS Resolution Failure
+# How to Troubleshoot the Unhandled Promise Rejection from OTLPExporterBase
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

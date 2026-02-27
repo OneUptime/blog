@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Grafana, Mixed Data Source, Observability, Dashboards, Monitoring, Data Visualization, Prometheus, InfluxDB
 
-Description: A practical guide to configuring Grafana mixed data source panels that combine metrics from multiple sources in a single visualization. Learn how to correlate data from Prometheus, InfluxDB, Elasticsearch, and other backends.
+Description: A practical guide to configuring Grafana mixed data source panels that combine metrics from multiple sources in a single visualization.
 
 ---
 

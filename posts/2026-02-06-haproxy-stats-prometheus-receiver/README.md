@@ -1,4 +1,4 @@
-# How to Collect HAProxy Stats Socket Metrics via the Collector Prometheus Receiver Scrape Config
+# How to Collect HAProxy Stats Socket Metrics via the Collector Prometheus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Azure Application Gateway with Web Application Firewall Exclusion Rules
+# How to Configure Azure App Gateway with Web App Firewall Exclusion Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

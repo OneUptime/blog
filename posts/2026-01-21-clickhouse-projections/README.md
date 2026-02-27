@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Projections, Query Optimization, Performance, MergeTree, Indexing, Database, Analytics
 
-Description: A practical guide to using ClickHouse projections to accelerate queries by storing pre-sorted and pre-aggregated data within the same table, covering projection design, use cases, and performance tuning.
+Description: A practical guide to using ClickHouse projections to accelerate queries by storing pre-sorted and pre-aggregated data within the same table, covering projection design, use cases.
 
 ---
 

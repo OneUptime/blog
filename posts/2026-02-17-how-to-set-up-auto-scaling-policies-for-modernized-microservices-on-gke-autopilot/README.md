@@ -1,4 +1,4 @@
-# How to Set Up Auto-Scaling Policies for Modernized Microservices on GKE Autopilot
+# How to Set Up Auto-Scaling Policies for Modernized Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

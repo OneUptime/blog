@@ -1,4 +1,4 @@
-# How to Configure gMSA Credential Spec for Active Directory Integration in Kubernetes
+# How to Configure gMSA Credential Spec for Active Directory Integration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

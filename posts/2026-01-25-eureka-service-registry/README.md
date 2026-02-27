@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Eureka, Netflix, Service Registry, Spring Cloud, Microservices, Java, Service Discovery
 
-Description: Learn how to set up Netflix Eureka as a service registry for your microservices architecture. This guide covers server configuration, client registration, and integration with Spring Boot applications.
+Description: Learn how to set up Netflix Eureka as a service registry for your microservices architecture.
 
 ---
 

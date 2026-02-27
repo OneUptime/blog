@@ -1,4 +1,4 @@
-# How to Implement AKS Container Runtime Security with Microsoft Defender for Containers
+# How to Use AKS Container Runtime Security with Microsoft Defender for Containers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

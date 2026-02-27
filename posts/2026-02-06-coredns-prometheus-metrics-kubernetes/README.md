@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector to Scrape CoreDNS Prometheus Metrics in Kubernetes Clusters
+# How to Configure the OpenTelemetry Collector to Scrape CoreDNS Prometheus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

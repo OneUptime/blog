@@ -1,4 +1,4 @@
-# How to Fix the Mistake of Not Calling Span.End() and Why Your Traces Are Incomplete
+# How to Fix the Mistake of Not Calling Span.End()
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

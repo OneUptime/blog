@@ -1,4 +1,4 @@
-# How to Attach Runbook URLs to OpenTelemetry Pipeline Annotations for Faster Incident Response
+# How to Attach Runbook URLs to OpenTelemetry Pipeline Annotations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

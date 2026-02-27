@@ -1,4 +1,4 @@
-# How to Implement SCIM Provisioning for SaaS Apps with Azure AD and Azure Functions
+# How to Use SCIM Provisioning for SaaS Apps with Azure AD and Azure Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

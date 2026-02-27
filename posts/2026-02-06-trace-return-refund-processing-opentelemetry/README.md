@@ -1,4 +1,4 @@
-# How to Trace Return and Refund Processing Workflows Across Payment and Inventory Services with OpenTelemetry
+# How to Trace Return and Refund Processing Workflows Across Payment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

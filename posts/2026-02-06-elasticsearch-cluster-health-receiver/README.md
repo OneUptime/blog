@@ -1,4 +1,4 @@
-# How to Monitor Elasticsearch Cluster Health (Node Status, Shard Count, Pending Tasks) with the Elasticsearch Receiver
+# How to Monitor Elasticsearch Cluster Health with the Elasticsearch Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

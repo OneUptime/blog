@@ -1,4 +1,4 @@
-# How to Monitor RAN (Radio Access Network) Cell Site Performance with OpenTelemetry Metrics
+# How to Monitor RAN Cell Site Performance with OpenTelemetry Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

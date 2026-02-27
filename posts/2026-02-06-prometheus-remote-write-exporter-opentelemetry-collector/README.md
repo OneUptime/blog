@@ -1,10 +1,10 @@
-# How to Configure the Prometheus Remote Write Exporter in the OpenTelemetry Collector
+# How to Configure the Prometheus Remote Write Exporter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Exporters, Prometheus, Remote Write, Metrics, Observability
 
-Description: A detailed guide to configuring the Prometheus Remote Write exporter in OpenTelemetry Collector for push-based metrics delivery to Prometheus, Cortex, Thanos, Mimir, and VictoriaMetrics with authentication, retry logic, and production patterns.
+Description: A detailed guide to configuring the Prometheus Remote Write exporter in OpenTelemetry Collector for push-based metrics delivery to Prometheus, Cortex, Thanos, Mimir.
 
 ---
 

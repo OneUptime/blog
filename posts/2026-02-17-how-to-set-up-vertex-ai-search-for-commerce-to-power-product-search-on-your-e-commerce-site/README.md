@@ -1,4 +1,4 @@
-# How to Set Up Vertex AI Search for Commerce to Power Product Search on Your E-Commerce Site
+# How to Set Up Vertex AI Search for Commerce to Power Product Search on Your
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

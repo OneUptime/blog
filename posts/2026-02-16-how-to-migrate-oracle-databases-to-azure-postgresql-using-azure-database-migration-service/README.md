@@ -1,4 +1,4 @@
-# How to Migrate Oracle Databases to Azure PostgreSQL Using Azure Database Migration Service
+# How to Migrate Oracle Databases to Azure PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

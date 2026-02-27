@@ -1439,6 +1439,6 @@ Start with a single high-risk flag, validate the correlation logic works, then e
 
 ### Related Reading
 
-- [The Three Pillars of Observability: Logs, Metrics, and Traces](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/)
-- [18 SRE Metrics Worth Tracking](/blog/post/2025-11-28-sre-metrics-to-track/)
-- [What are Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/)
+- [The Three Pillars of Observability: Logs, Metrics, and Traces](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)
+- [18 SRE Metrics Worth Tracking](https://oneuptime.com/blog/post/2025-11-28-sre-metrics-to-track/view)
+- [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)

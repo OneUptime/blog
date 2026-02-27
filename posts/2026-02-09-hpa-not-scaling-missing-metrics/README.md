@@ -1,4 +1,4 @@
-# How to Debug Kubernetes Horizontal Pod Autoscaler Not Scaling from Missing Metrics
+# Debug Kubernetes Horizontal Pod Autoscaler Not Scaling from Missing Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

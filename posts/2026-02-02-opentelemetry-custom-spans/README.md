@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Tracing, Custom Spans, Observability, TypeScript, NodeJS, Python, Instrumentation
 
-Description: A hands-on guide to implementing custom OpenTelemetry spans for granular observability. Learn when to create custom spans, how to add meaningful attributes and events, and best practices for instrumenting business logic beyond auto-instrumentation.
+Description: A hands-on guide to implementing custom OpenTelemetry spans for granular observability.
 
 ---
 

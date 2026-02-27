@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: SQLite, SQLCipher, Encryption, Database Security, Mobile Development, Data Protection
 
-Description: Learn how to implement transparent database encryption with SQLCipher. This guide covers installation, key management, migration strategies, and best practices for securing SQLite databases in your applications.
+Description: Learn how to implement transparent database encryption with SQLCipher.
 
 ---
 

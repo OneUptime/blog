@@ -1,4 +1,4 @@
-# How to Use Azure CLI Batch Commands and JMESPath Queries for Efficient Resource Management
+# How to Use Azure CLI Batch Commands and JMESPath Queries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

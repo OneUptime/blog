@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: FluentBit, Logging, Kubernetes, Containers, Observability, Log Collection, Cloud Native
 
-Description: Learn how to implement FluentBit for lightweight log collection in containerized environments. This guide covers installation, configuration, Kubernetes deployment, and optimization for resource-constrained systems.
+Description: Learn how to implement FluentBit for lightweight log collection in containerized environments.
 
 ---
 

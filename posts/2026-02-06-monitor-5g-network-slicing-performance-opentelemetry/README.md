@@ -1,4 +1,4 @@
-# How to Monitor Network Slicing Performance for 5G Services (eMBB, URLLC, mMTC) with OpenTelemetry
+# How to Monitor Network Slicing Performance for 5G Services with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

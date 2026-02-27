@@ -1,4 +1,4 @@
-# How to Configure Binary Authorization Attestation Policies for Multi-Stage CI/CD Pipelines on GCP
+# How to Configure Binary AuthZ Attestation Policies for Multi-Stage CI/CD
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

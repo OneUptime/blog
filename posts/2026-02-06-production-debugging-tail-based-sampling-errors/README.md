@@ -1,4 +1,4 @@
-# How to Build a Production Debugging Workflow Using OpenTelemetry Tail-Based Sampling of Error Traces
+# How to Build a Production Debugging Workflow Using OpenTelemetry Tail-Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

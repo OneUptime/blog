@@ -1,4 +1,4 @@
-# How to Configure Terraform Lifecycle Rules for Azure Resources to Prevent Accidental Deletion
+# How to Configure Terraform Lifecycle Rules for Azure Resources to Prevent
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

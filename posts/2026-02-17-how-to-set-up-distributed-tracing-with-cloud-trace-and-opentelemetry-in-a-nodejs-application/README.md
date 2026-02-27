@@ -1,4 +1,4 @@
-# How to Set Up Distributed Tracing with Cloud Trace and OpenTelemetry in a Node.js Application
+# How to Set Up Distributed Tracing with Cloud Trace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

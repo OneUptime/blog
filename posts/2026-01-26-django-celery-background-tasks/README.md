@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Django, Celery, Python, Background Tasks, Redis, Web Development, Async
 
-Description: Learn how to build reliable background tasks in Django using Celery. This guide covers setup, task creation, scheduling, error handling, and production deployment patterns for scalable Django applications.
+Description: Learn how to build reliable background tasks in Django using Celery.
 
 ---
 

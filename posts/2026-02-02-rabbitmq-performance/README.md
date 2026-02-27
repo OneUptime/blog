@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Message Queue, Performance, Optimization, AMQP, Microservices, Backend
 
-Description: A comprehensive guide to optimizing RabbitMQ performance for production workloads. Learn about connection pooling, prefetch settings, message batching, clustering strategies, and monitoring techniques to achieve maximum throughput and reliability.
+Description: A comprehensive guide to optimizing RabbitMQ performance for production workloads.
 
 ---
 

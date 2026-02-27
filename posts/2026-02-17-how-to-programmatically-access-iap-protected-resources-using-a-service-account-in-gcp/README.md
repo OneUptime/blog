@@ -1,4 +1,4 @@
-# How to Programmatically Access IAP-Protected Resources Using a Service Account in GCP
+# How to Programmatically Access IAP-Protected Resources Using a Service Account
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Elasticsearch, Comparison, Log Analytics, Search, Cost Analysis
 
-Description: A comprehensive comparison of ClickHouse and Elasticsearch for log analytics, covering search capabilities, aggregation performance, storage costs, and guidance on choosing the right solution for your logging needs.
+Description: A comprehensive comparison of ClickHouse and Elasticsearch for log analytics, covering search capabilities, aggregation performance, storage costs.
 
 ---
 

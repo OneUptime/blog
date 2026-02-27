@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry Logs Not Correlating with Traces in .NET Because ILogger Is Not Bridged to OTel
+# How to Fix OpenTelemetry Logs Not Correlating with Traces in .NET Because
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Passwordless Authentication in Microsoft Entra ID Using FIDO2 Security Keys
+# How to Set Up Passwordless Authentication in Microsoft Entra ID
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot Metrics Not Being Scraped by Prometheus from the OpenTelemetry Collector Endpoint
+# How to Troubleshoot Metrics Not Being Scraped by Prometheus from the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Azure DevOps Project Wikis with CI-Generated Content from Code Documentation
+# How to Configure Azure DevOps Project Wikis with CI-Generated Content from Code
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

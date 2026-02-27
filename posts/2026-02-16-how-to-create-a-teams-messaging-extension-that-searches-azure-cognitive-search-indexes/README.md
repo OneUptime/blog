@@ -1,4 +1,4 @@
-# How to Create a Teams Messaging Extension That Searches Azure Cognitive Search Indexes
+# Create a Teams Messaging Extension That Searches Azure Cognitive Search Indexes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

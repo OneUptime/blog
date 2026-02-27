@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HashiCorp Vault, Security, Secrets Management, DevOps, Encryption, High Availability
 
-Description: A comprehensive guide to understanding and implementing HashiCorp Vault seal and unseal operations, including auto-unseal configurations, key management best practices, and production deployment strategies.
+Description: A comprehensive guide to understanding and implementing HashiCorp Vault seal and unseal operations, including auto-unseal configurations, key management best practices.
 
 ---
 

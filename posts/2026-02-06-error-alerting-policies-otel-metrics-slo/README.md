@@ -1,4 +1,4 @@
-# How to Set Up Error Alerting Policies Based on OpenTelemetry Error Rate Metrics and SLO Thresholds
+# How to Set Up Error Alerting Policies Based on OpenTelemetry Error Rate Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

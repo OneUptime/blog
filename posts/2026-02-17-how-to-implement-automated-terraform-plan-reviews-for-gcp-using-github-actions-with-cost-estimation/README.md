@@ -1,4 +1,4 @@
-# How to Implement Automated Terraform Plan Reviews for GCP Using GitHub Actions with Cost Estimation
+# How to Use Automated Terraform Plan Reviews for GCP Using GitHub Actions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

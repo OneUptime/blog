@@ -1,4 +1,4 @@
-# How to Implement Multi-Cloud Identity Federation Between GCP IAM and AWS IAM Using Workload Identity
+# How to Use Multi-Cloud Identity Federation Between GCP IAM and AWS IAM
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

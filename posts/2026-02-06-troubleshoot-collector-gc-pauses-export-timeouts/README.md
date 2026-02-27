@@ -1,4 +1,4 @@
-# How to Troubleshoot Collector Garbage Collection Pauses Causing Intermittent Span Export Timeouts
+# How to Troubleshoot Collector Garbage Collection Pauses Causing Intermittent
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

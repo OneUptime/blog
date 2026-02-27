@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: eBPF, XDP, Security, DDoS, Networking
 
-Description: Implement eBPF XDP programs for high-performance DDoS protection at the network edge including rate limiting, packet filtering, SYN flood protection, and integration with Kubernetes for cluster defense.
+Description: Implement eBPF XDP programs for high-performance DDoS protection at the network edge including rate limiting, packet filtering, SYN flood protection.
 
 ---
 

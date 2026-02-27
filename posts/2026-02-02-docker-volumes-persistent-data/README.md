@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Volumes, Storage, Containers, DevOps, Persistence
 
-Description: A comprehensive guide to Docker volumes covering creation, management, and best practices for persisting data across container lifecycles, with practical examples for databases, file storage, and production deployments.
+Description: A comprehensive guide to Docker volumes covering creation, management, and best practices for persisting data across container lifecycles, with practical examples for databases, file storage.
 
 Containers are ephemeral by design. When a container stops or is removed, any data written inside it disappears. This works well for stateless applications, but databases, file uploads, configuration files, and application state need to survive container restarts. Docker volumes solve this problem by providing persistent storage that lives independently of container lifecycles.
 

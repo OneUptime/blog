@@ -1,4 +1,4 @@
-# How to Schedule Recurring Cost Exports from Azure Cost Management to a Storage Account
+# Schedule Recurring Cost Exports from Azure Cost Management to a Storage Account
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

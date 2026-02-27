@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Resilience, Retry, Exponential Backoff, Fault Tolerance, Microservices, Reliability
 
-Description: Learn how to implement effective network retry strategies that improve reliability without causing cascading failures. This guide covers exponential backoff, jitter, circuit breakers, and idempotency considerations.
+Description: Learn how to implement effective network retry strategies that improve reliability without causing cascading failures.
 
 ---
 

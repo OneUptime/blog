@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Idempotency, API Design, Redis, FastAPI, Reliability, Distributed Systems
 
-Description: Learn how to implement idempotency in Python APIs to prevent duplicate requests from causing unintended side effects. This guide covers idempotency keys, request fingerprinting, and distributed locking patterns.
+Description: Learn how to implement idempotency in Python APIs to prevent duplicate requests from causing unintended side effects.
 
 ---
 

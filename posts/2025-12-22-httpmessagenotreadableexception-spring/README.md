@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, JSON, REST API, Error Handling, Jackson
 
-Description: Learn how to diagnose and fix HttpMessageNotReadableException errors in Spring Boot. This guide covers common causes including malformed JSON, type mismatches, and missing fields with practical solutions.
+Description: Learn how to diagnose and fix HttpMessageNotReadableException errors in Spring Boot.
 
 ---
 
@@ -517,4 +517,4 @@ With proper configuration and error handling, you can provide meaningful feedbac
 *Need to monitor your API for parsing errors? [OneUptime](https://oneuptime.com) provides comprehensive error tracking and logging for Spring Boot applications with instant alerts.*
 
 **Related Reading:**
-- [How to Handle "Request method not supported" Errors](/blog/post/2025-12-22-request-method-not-supported-spring/view)
+- [How to Handle "Request method not supported" Errors](https://oneuptime.com/blog/post/2025-12-22-request-method-not-supported-spring/view)

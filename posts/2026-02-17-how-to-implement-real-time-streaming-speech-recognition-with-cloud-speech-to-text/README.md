@@ -1,4 +1,4 @@
-# How to Implement Real-Time Streaming Speech Recognition with Cloud Speech-to-Text
+# How to Use Real-Time Streaming Speech Recognition with Cloud Speech-to-Text
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

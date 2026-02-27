@@ -1385,9 +1385,6 @@ Cross-encoder re-ranking transforms good retrieval into excellent search. The ke
 
 ### See Also
 
-- [What is RAG and How Does It Work?](/blog/post/rag-fundamentals/) - Understanding Retrieval-Augmented Generation
-- [Building Vector Search with FAISS](/blog/post/vector-search-faiss/) - First-stage retrieval implementation
-- [Fine-tuning Embedding Models](/blog/post/fine-tuning-embeddings/) - Improving bi-encoder quality
 
 **Related Reading:**
 

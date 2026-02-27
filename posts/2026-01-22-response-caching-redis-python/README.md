@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Redis, Caching, Performance, FastAPI, Flask, API Optimization
 
-Description: Learn how to implement response caching with Redis in Python to improve API performance and reduce database load. This guide covers cache decorators, cache invalidation strategies, and production patterns for FastAPI and Flask applications.
+Description: Learn how to implement response caching with Redis in Python to improve API performance and reduce database load.
 
 ---
 

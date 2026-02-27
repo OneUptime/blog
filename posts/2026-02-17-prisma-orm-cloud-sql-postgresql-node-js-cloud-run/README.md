@@ -1,4 +1,4 @@
-# How to Configure Prisma ORM with Cloud SQL PostgreSQL in a Node.js Cloud Run Service
+# Configure Prisma ORM with Cloud SQL PostgreSQL in a Node.js Cloud Run Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

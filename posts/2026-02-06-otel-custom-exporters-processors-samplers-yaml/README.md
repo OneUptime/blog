@@ -1,4 +1,4 @@
-# How to Define Custom Exporters, Processors, and Samplers in OpenTelemetry Declarative Configuration YAML
+# How to Define Custom Exporters, Processors, and Samplers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

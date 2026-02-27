@@ -1,4 +1,4 @@
-# How to Configure Kubernetes Topology-Aware GPU Scheduling for NVLink Optimization
+# How to Configure Kubernetes Topology-Aware GPU Scheduling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

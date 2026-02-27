@@ -742,4 +742,4 @@ tracker.subscribeToEvents((event) => {
 
 Redis geospatial commands provide an efficient foundation for geofencing systems. By combining GEORADIUS for proximity queries with application-level fence checks, you can build scalable geofencing that handles millions of location updates. The key is maintaining device state to accurately detect enter/exit events.
 
-For more IoT patterns with Redis, check out our guides on [Device State Management](/blog/redis-device-state-management) and [IoT Data Ingestion](/blog/redis-iot-data-ingestion).
+For more IoT patterns with Redis, check out our guides on [Device State Management](https://oneuptime.com/blog/post/2026-01-21-redis-device-state-management/view) and [IoT Data Ingestion](https://oneuptime.com/blog/post/2026-01-21-redis-iot-data-ingestion/view).

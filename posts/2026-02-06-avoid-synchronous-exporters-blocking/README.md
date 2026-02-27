@@ -1,4 +1,4 @@
-# How to Avoid the Anti-Pattern of Using Synchronous Exporters That Block Your Application's Hot Path
+# How to Avoid the Anti-Pattern of Using Synchronous Exporters That Block Your
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

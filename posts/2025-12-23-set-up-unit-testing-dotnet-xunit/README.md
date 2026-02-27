@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, xUnit, Testing, Unit Testing, Best Practices
 
-Description: Learn how to set up comprehensive unit testing in .NET applications using xUnit. This guide covers project configuration, test organization, assertions, mocking with Moq, and best practices for writing maintainable tests.
+Description: Learn how to set up comprehensive unit testing in .NET applications using xUnit.
 
 Unit testing is essential for building reliable .NET applications. xUnit is one of the most popular testing frameworks in the .NET ecosystem, known for its clean syntax, extensibility, and excellent integration with modern .NET tooling. This guide will walk you through setting up xUnit from scratch and writing effective unit tests.
 

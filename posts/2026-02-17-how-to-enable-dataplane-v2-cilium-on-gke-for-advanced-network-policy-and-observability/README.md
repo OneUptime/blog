@@ -1,4 +1,4 @@
-# How to Enable Dataplane V2 Cilium on GKE for Advanced Network Policy and Observability
+# How to Enable Dataplane V2 Cilium on GKE for Advanced Network Policy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

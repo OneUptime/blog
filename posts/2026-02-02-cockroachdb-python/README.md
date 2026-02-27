@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CockroachDB, Python, Database, SQL, Distributed Database, PostgreSQL, Backend
 
-Description: Learn how to connect and work with CockroachDB in Python applications. A comprehensive guide covering connection setup, CRUD operations, transactions, connection pooling, and best practices for building resilient distributed applications.
+Description: Learn how to connect and work with CockroachDB in Python applications.
 
 ---
 

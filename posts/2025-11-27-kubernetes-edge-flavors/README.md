@@ -1,10 +1,10 @@
-# Choosing the Right Kubernetes Edge Flavor: Minikube vs. Kind vs. MicroK8s vs. K3s vs. KubeEdge
+# Choosing the Right K8s Edge Flavor: Minikube vs. Kind vs. MicroK8s vs. K3s vs.
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Edge, DevOps, Cloud, Bare Metal, Automation
 
-Description: A practical buyer's guide to Kubernetes edge distributions-minikube, Kind, MicroK8s, K3s, and KubeEdge-covering their architectures, hardware footprints, online/offline behavior, and the decision criteria that actually matter when you deploy beyond the data center.
+Description: A practical buyer's guide to Kubernetes edge distributions-minikube, Kind, MicroK8s, K3s, and KubeEdge-covering their architectures, hardware footprints, online/offline behavior.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Google Cloud, Pub/Sub, Cloud Functions, Serverless, Event-Driven Architecture, Node.js, Python, DevOps
 
-Description: A comprehensive guide to building event-driven serverless applications using Google Cloud Pub/Sub with Cloud Functions, covering triggers, event parsing, error handling, retries, scaling, and local testing strategies.
+Description: A comprehensive guide to building event-driven serverless applications using Google Cloud Pub/Sub with Cloud Functions, covering triggers, event parsing, error handling, retries, scaling.
 
 ---
 

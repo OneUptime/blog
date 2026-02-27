@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Baggage to Pass Debug Session IDs Across Services for Targeted Tracing
+# How to Use OpenTelemetry Baggage to Pass Debug Session IDs Across Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

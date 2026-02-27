@@ -1,4 +1,4 @@
-# How to Use Environment Variables and Secret Manager with App Engine for Configuration Management
+# How to Use Environment Variables and Secret Manager with App Engine
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

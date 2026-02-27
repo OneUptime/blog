@@ -1,4 +1,4 @@
-# How to Trace Social Media Feed Ranking Algorithm Execution (Relevance Scoring, Content Mixing) with OpenTelemetry
+# How to Trace Social Media Feed Ranking Algorithm Execution with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

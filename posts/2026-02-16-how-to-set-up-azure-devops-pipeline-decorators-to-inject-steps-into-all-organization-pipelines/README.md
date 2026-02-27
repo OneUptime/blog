@@ -1,4 +1,4 @@
-# How to Set Up Azure DevOps Pipeline Decorators to Inject Steps into All Organization Pipelines
+# How to Set Up Azure DevOps Pipeline Decorators to Inject Steps into All
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

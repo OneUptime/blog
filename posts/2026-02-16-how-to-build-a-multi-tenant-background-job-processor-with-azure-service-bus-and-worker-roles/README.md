@@ -1,4 +1,4 @@
-# How to Build a Multi-Tenant Background Job Processor with Azure Service Bus and Worker Roles
+# How to Build a Multi-Tenant Background Job Processor with Azure Service Bus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

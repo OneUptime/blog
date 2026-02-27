@@ -1,4 +1,4 @@
-# How to Perform Sentiment Analysis on Customer Reviews Using the Cloud Natural Language API
+# How to Perform Sentiment Analysis on Customer Reviews Using the Cloud Natural
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

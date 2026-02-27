@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby, Rails, i18n, Internationalization, Localization, Translation
 
-Description: A comprehensive guide to implementing internationalization (i18n) in Ruby on Rails applications. Learn locale configuration, translation files, pluralization, date formatting, and best practices for building multilingual applications.
+Description: A comprehensive guide to implementing internationalization (i18n) in Ruby on Rails applications.
 
 ---
 

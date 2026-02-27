@@ -1,4 +1,4 @@
-# How to Enable and Configure Microsoft Defender for Containers in Azure Kubernetes Service
+# How to Enable and Configure Microsoft Defender for Containers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

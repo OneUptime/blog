@@ -1,4 +1,4 @@
-# How to Implement Per-Tenant Billing and Usage Tracking with Azure API Management and Cosmos DB
+# How to Use Per-Tenant Billing and Usage Tracking with Azure API Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

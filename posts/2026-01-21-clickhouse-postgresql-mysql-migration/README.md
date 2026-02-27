@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, PostgreSQL, MySQL, Migration, Database, Analytics, Data Migration, ETL
 
-Description: A practical guide to migrating analytics workloads from PostgreSQL or MySQL to ClickHouse, covering schema conversion, data migration strategies, query translation, and dual-write patterns for zero-downtime transitions.
+Description: A practical guide to migrating analytics workloads from PostgreSQL or MySQL to ClickHouse, covering schema conversion, data migration strategies, query translation.
 
 ---
 

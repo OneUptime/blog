@@ -1,10 +1,10 @@
-# How to Build Velero Integration with GitOps Workflows for Backup Policy Management
+# How to Build Velero Integration with GitOps Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Velero, GitOps, Automation, ArgoCD
 
-Description: Learn how to build Velero integration with GitOps workflows for backup policy management, enabling version-controlled, auditable, and automated disaster recovery configurations through declarative infrastructure.
+Description: Learn how to build Velero integration with GitOps workflows for backup policy management, enabling version-controlled, auditable.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Publish Your Own Services Using Private Service Connect Producer Endpoints on Google Cloud
+# How to Publish Your Own Services Using Private Service Connect Producer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

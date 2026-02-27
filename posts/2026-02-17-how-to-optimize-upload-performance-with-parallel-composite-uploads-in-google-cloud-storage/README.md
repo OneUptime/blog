@@ -1,4 +1,4 @@
-# How to Optimize Upload Performance with Parallel Composite Uploads in Google Cloud Storage
+# How to Optimize Upload Performance with Parallel Composite Uploads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

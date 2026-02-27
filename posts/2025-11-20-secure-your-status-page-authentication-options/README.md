@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Status Page, Security, Identity
 
-Description: Hardening a OneUptime status page by choosing the right authentication mode - per-user username/password accounts, SSO + SCIM, or the master password - and pairing it with IP whitelisting that keeps sensitive incidents truly private.
+Description: Hardening a OneUptime status page by choosing the right authentication mode - per-user username/password accounts, SSO + SCIM.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Set Up Alertmanager Inhibition Rules to Suppress Cascading Kubernetes Alerts
+# Set Up Alertmanager Inhibition Rules to Suppress Cascading Kubernetes Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

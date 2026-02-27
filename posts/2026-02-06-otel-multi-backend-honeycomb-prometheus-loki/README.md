@@ -1,4 +1,4 @@
-# How to Configure Multi-Backend Export from a Single Collector to Honeycomb, Prometheus, and Loki Simultaneously
+# How to Configure Multi-Backend Export from a Single Collector to Honeycomb,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

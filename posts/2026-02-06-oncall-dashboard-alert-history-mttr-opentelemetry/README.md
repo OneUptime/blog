@@ -1,4 +1,4 @@
-# How to Build an On-Call Dashboard with Alert History and MTTR Trends from OpenTelemetry Data
+# How to Build an On-Call Dashboard with Alert History
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

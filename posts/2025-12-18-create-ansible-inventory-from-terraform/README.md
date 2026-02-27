@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Ansible, Infrastructure as Code, DevOps, Configuration Management, Automation
 
-Description: Learn how to generate Ansible inventory files from Terraform outputs. This guide covers static and dynamic inventory generation, template files, and integration patterns for seamless infrastructure provisioning and configuration.
+Description: Learn how to generate Ansible inventory files from Terraform outputs.
 
 Terraform excels at provisioning infrastructure, while Ansible excels at configuring it. Combining them requires passing infrastructure details from Terraform to Ansible. The most common approach is generating an Ansible inventory file containing the IP addresses and metadata of your provisioned resources.
 

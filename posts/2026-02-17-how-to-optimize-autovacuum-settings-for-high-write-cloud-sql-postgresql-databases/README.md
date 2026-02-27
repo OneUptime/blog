@@ -1,4 +1,4 @@
-# How to Optimize Autovacuum Settings for High-Write Cloud SQL PostgreSQL Databases
+# Optimize Autovacuum Settings for High-Write Cloud SQL PostgreSQL Databases
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

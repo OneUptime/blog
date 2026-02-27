@@ -1,4 +1,4 @@
-# How to Simulate Attack Paths and Identify Toxic Combinations in Security Command Center
+# How to Simulate Attack Paths and Identify Toxic Combinations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

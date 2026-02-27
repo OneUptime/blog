@@ -1,4 +1,4 @@
-# How to Trace Pharmacy Inventory and Drug Interaction Checking APIs with OpenTelemetry
+# How to Trace Pharmacy Inventory and Drug Interaction Checking APIs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

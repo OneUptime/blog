@@ -1,4 +1,4 @@
-# How to Configure Horizontal Pod Autoscaler Based on Custom Prometheus Metrics in GKE
+# How to Configure Horizontal Pod Autoscaler Based on Custom Prometheus Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

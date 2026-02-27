@@ -1,4 +1,4 @@
-# How to Configure Flux Workload Identity for Secure Git Repository Access Without Tokens
+# Configure Flux Workload Identity for Secure Git Repository Access Without Tokens
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

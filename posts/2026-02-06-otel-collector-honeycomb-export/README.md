@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector to Export Data to Honeycomb with Dataset Routing and Team Tokens
+# How to Configure the OpenTelemetry Collector to Export Data to Honeycomb with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

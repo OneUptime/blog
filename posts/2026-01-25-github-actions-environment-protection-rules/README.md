@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, Environment Protection, Security, CI/CD, Deployment, DevOps
 
-Description: Learn how to protect production deployments with GitHub Actions environment rules. This guide covers required reviewers, wait timers, branch restrictions, and deployment gates for secure release pipelines.
+Description: Learn how to protect production deployments with GitHub Actions environment rules.
 
 ---
 

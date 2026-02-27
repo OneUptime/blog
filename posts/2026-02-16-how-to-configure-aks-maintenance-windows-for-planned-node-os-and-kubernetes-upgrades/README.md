@@ -1,4 +1,4 @@
-# How to Configure AKS Maintenance Windows for Planned Node OS and Kubernetes Upgrades
+# How to Configure AKS Maintenance Windows for Planned Node OS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

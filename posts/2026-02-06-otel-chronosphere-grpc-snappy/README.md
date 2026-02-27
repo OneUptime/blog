@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Metrics to Chronosphere via the gRPC OTLP Exporter with API Token and Snappy Compression
+# How to Send OpenTelemetry Metrics to Chronosphere via the gRPC OTLP Exporter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

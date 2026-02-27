@@ -1,4 +1,4 @@
-# How to Set Up BGP Sessions Between Cloud Router and On-Premises Router for Cloud Interconnect in GCP
+# How to Set Up BGP Sessions Between Cloud Router and On-Premises Router
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

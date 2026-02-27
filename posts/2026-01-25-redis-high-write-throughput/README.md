@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Performance Tuning, Write Throughput, AOF, RDB, Memory Optimization
 
-Description: A comprehensive guide to tuning Redis for maximum write throughput. Learn about persistence configuration, memory management, pipelining, and kernel-level optimizations to handle millions of writes per second.
+Description: A comprehensive guide to tuning Redis for maximum write throughput.
 
 ---
 

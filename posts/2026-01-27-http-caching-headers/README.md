@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HTTP, Caching, REST API, Performance, CDN, Web Development, Backend
 
-Description: A comprehensive guide to HTTP caching headers in REST APIs covering Cache-Control directives, ETags, conditional requests, Vary header usage, CDN strategies, and cache invalidation patterns for building high-performance APIs.
+Description: A comprehensive guide to HTTP caching headers in REST APIs covering Cache-Control directives, ETags, conditional requests, Vary header usage, CDN strategies.
 
 ---
 

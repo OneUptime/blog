@@ -1,4 +1,4 @@
-# How to Use Cloud Run with Eventarc to Automatically Process Files Uploaded to Cloud Storage
+# How to Use Cloud Run with Eventarc to Auto Process Files Uploaded to Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

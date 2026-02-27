@@ -1,4 +1,4 @@
-# How to Use Instance Groups with Multiple Instance Templates for Canary Deployments
+# How to Use Instance Groups with Multiple Instance Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

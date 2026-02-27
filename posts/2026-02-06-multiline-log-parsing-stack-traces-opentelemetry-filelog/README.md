@@ -1,4 +1,4 @@
-# How to Build Multi-Line Log Parsing for Stack Traces in the OpenTelemetry Filelog Receiver
+# How to Build Multi-Line Log Parsing for Stack Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

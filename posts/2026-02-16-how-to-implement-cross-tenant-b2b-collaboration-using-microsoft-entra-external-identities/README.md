@@ -1,4 +1,4 @@
-# How to Implement Cross-Tenant B2B Collaboration Using Microsoft Entra External Identities
+# How to Use Cross-Tenant B2B Collaboration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

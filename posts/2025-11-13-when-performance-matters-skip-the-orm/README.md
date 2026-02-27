@@ -4,7 +4,7 @@ Author: [devneelpatel](https://www.github.com/devneelpatel)
 
 Tags: Performance, Latency, Software Development, DevOps
 
-Description: ORMs are great when iteration speed matters more than raw throughput. But once you are optimizing a hot path for performance, the abstraction leaks. Here's how we think about the trade-offs, how to measure the cost, and the pragmatic way to build fast services without an ORM.
+Description: ORMs are great when iteration speed matters more than raw throughput. But once you are optimizing a hot path for performance, the abstraction leaks.
 
 > Performance is a product choice. If you need every millisecond, choose the data access strategy that lets you shape the query, not the tool that writes one for you.
 

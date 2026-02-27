@@ -1,4 +1,4 @@
-# How to Monitor Flash Sale and High-Traffic Event Performance with OpenTelemetry Rate Metrics and Autoscaling Signals
+# How to Monitor Flash Sale and High-Traffic Event Performance with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

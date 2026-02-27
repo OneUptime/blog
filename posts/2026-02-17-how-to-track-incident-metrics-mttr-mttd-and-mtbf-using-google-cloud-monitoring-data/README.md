@@ -1,4 +1,4 @@
-# How to Track Incident Metrics MTTR MTTD and MTBF Using Google Cloud Monitoring Data
+# How to Track Incident Metrics MTTR MTTD and MTBF
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

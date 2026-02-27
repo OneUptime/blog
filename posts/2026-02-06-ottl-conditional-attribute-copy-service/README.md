@@ -1,4 +1,4 @@
-# How to Implement Conditional Attribute Copying with OTTL Where Clauses Based on Service Name
+# How to Use Conditional Attribute Copying with OTTL Where Clauses Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

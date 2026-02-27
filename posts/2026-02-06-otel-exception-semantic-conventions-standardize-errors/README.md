@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Exception Semantic Conventions to Standardize Error Recording Across Services
+# How to Use OpenTelemetry Exception Semantic Conventions to Standardize Error
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

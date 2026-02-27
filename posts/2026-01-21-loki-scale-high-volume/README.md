@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana Loki, Scaling, High Volume, Horizontal Scaling, Sharding, Performance
 
-Description: A comprehensive guide to scaling Grafana Loki for high-volume log ingestion, covering horizontal scaling strategies, component sizing, sharding configuration, and performance optimization for production deployments.
+Description: A comprehensive guide to scaling Grafana Loki for high-volume log ingestion, covering horizontal scaling strategies, component sizing, sharding configuration.
 
 ---
 

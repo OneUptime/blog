@@ -1,4 +1,4 @@
-# How to Implement the Saga Pattern for Distributed Transactions in Azure Service Bus
+# How to Use the Saga Pattern for Distributed Transactions in Azure Service Bus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

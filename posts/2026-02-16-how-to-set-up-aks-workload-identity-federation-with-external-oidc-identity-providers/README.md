@@ -1,4 +1,4 @@
-# How to Set Up AKS Workload Identity Federation with External OIDC Identity Providers
+# How to Set Up AKS Workload Identity Federation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

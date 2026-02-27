@@ -1400,6 +1400,6 @@ Dependency mapping transforms your architecture from folklore into queryable fac
 
 ### See Also
 
-- [Three Pillars of Observability: Logs, Metrics, Traces](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/) - Understand the telemetry that powers dependency discovery.
-- [What are Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/) - Deep dive into the tracing concepts used for dependency mapping.
-- [SRE Best Practices](/blog/post/2025-11-28-sre-best-practices/) - How dependency mapping fits into broader reliability engineering.
+- [Three Pillars of Observability: Logs, Metrics, Traces](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view) - Understand the telemetry that powers dependency discovery.
+- [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Deep dive into the tracing concepts used for dependency mapping.
+- [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view) - How dependency mapping fits into broader reliability engineering.

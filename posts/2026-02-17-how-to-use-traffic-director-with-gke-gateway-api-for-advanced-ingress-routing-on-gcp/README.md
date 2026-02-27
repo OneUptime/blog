@@ -1,4 +1,4 @@
-# How to Use Traffic Director with GKE Gateway API for Advanced Ingress Routing on GCP
+# How to Use Traffic Director with GKE Gateway API for Advanced Ingress Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

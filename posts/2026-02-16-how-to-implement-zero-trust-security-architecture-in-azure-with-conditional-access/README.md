@@ -1,4 +1,4 @@
-# How to Implement Zero Trust Security Architecture in Azure with Conditional Access
+# How to Use Zero Trust Security Architecture in Azure with Conditional Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

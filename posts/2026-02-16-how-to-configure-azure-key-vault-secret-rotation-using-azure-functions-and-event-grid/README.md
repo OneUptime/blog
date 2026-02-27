@@ -1,4 +1,4 @@
-# How to Configure Azure Key Vault Secret Rotation Using Azure Functions and Event Grid
+# How to Configure Azure Key Vault Secret Rotation Using Azure Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

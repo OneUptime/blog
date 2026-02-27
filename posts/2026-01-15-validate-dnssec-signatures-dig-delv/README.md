@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: DNSSEC, DNS, Security, Troubleshooting, Linux, Validation
 
-Description: A comprehensive guide to validating DNSSEC signatures using dig and delv command-line tools, covering validation techniques, troubleshooting broken chains of trust, and interpreting cryptographic signatures.
+Description: A comprehensive guide to validating DNSSEC signatures using dig and delv command-line tools, covering validation techniques, troubleshooting broken chains of trust.
 
 ---
 

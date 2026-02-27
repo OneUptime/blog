@@ -1,4 +1,4 @@
-# How to Integrate Prometheus Metrics with Cloud Monitoring Using Managed Service for Prometheus
+# How to Integrate Prometheus Metrics with Cloud Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

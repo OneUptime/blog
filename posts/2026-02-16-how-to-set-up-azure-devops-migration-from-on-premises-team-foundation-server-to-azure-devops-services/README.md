@@ -1,4 +1,4 @@
-# How to Set Up Azure DevOps Migration from On-Premises Team Foundation Server to Azure DevOps Services
+# How to Set Up Azure DevOps Migration from On-Premises Team Foundation Server to
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

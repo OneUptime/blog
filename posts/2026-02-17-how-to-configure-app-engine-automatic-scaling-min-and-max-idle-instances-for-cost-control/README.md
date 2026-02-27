@@ -1,4 +1,4 @@
-# How to Configure App Engine Automatic Scaling Min and Max Idle Instances for Cost Control
+# How to Configure App Engine Automatic Scaling Min and Max Idle Instances
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

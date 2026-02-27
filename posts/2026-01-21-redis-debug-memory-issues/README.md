@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Memory, Debugging, Performance, Troubleshooting, Operations
 
-Description: A comprehensive guide to debugging Redis memory issues, covering MEMORY DOCTOR, memory analysis techniques, leak detection, fragmentation diagnosis, and optimization strategies for production environments.
+Description: A comprehensive guide to debugging Redis memory issues, covering MEMORY DOCTOR, memory analysis techniques, leak detection, fragmentation diagnosis.
 
 ---
 

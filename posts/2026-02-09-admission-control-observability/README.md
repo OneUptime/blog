@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Admission Control, Observability, Monitoring, Audit Logging
 
-Description: Learn how to implement comprehensive observability for admission control systems, export metrics to Prometheus, configure audit logging, build dashboards, alert on policy violations, and track admission performance and compliance trends.
+Description: Learn how to implement comprehensive observability for admission control systems, export metrics to Prometheus, configure audit logging, build dashboards, alert on policy violations.
 
 ---
 

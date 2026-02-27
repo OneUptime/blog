@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Lists, Queues, Timelines, Data Structures, LPUSH, RPOP, BLPOP, Message Queue
 
-Description: A comprehensive guide to using Redis Lists for building queues and timelines, covering LPUSH, RPOP, BLPOP commands, blocking operations, and practical examples in Python, Node.js, and Go for job queues, activity feeds, and real-time messaging.
+Description: A comprehensive guide to using Redis Lists for building queues and timelines, covering LPUSH, RPOP, BLPOP commands, blocking operations, and practical examples in Python, Node.
 
 ---
 

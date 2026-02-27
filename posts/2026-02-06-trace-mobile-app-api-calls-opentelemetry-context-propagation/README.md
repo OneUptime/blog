@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Mobile, API Calls, Context Propagation, iOS, Android
 
-Description: Master distributed tracing across mobile and backend services using OpenTelemetry context propagation to track complete request flows, correlate errors, and measure end-to-end latency from user action to API response.
+Description: Master distributed tracing across mobile and backend services using OpenTelemetry context propagation to track complete request flows, correlate errors.
 
 Modern mobile applications are distributed systems. User actions trigger API calls that flow through load balancers, API gateways, microservices, and databases. Understanding the complete picture requires tracing requests across these boundaries. OpenTelemetry context propagation enables this by passing trace context from your mobile app to backend services, creating unified traces that span the entire system.
 

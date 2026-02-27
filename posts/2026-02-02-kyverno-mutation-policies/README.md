@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kyverno, Kubernetes, Policy, Mutation, DevOps, Security, Admission Controller, GitOps
 
-Description: Learn how to implement Kyverno mutation policies in Kubernetes to automatically modify resources, inject sidecars, enforce standards, and manage configurations at scale with practical examples and troubleshooting strategies.
+Description: Learn how to implement Kyverno mutation policies in Kubernetes to automatically modify resources, inject sidecars, enforce standards.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Integrate Cloud Workstations with VPC Service Controls for Secure Development Environments
+# How to Integrate Cloud Workstations with VPC Service Controls
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Azure RBAC Deny Assignments to Restrict Specific Actions on Resources
+# How to Configure Azure RBAC Deny Assignments to Restrict Specific Actions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

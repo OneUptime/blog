@@ -1,4 +1,4 @@
-# How to Create a Private GKE Cluster with No Public Endpoint and Access It Through IAP
+# How to Create a Private GKE Cluster with No Public Endpoint
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

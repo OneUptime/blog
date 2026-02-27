@@ -1,4 +1,4 @@
-# How to Troubleshoot Azure Virtual Desktop Connection Issues Using Diagnostics Logs
+# How to Troubleshoot Azure Virtual Desktop Connection Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

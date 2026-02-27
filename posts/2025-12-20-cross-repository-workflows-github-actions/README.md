@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, CI/CD, Cross-Repository, Workflows, Automation, DevOps, Monorepo
 
-Description: Learn how to trigger and coordinate GitHub Actions workflows across multiple repositories for dependent builds, shared libraries, and organization-wide automation using repository dispatch, workflow dispatch, and reusable workflows.
+Description: Learn how to trigger and coordinate GitHub Actions workflows across multiple repositories for dependent builds, shared libraries, and organization-wide automation using repository dispatch.
 
 ---
 

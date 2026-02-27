@@ -1,4 +1,4 @@
-# How to Implement Per-Tenant Observability Isolation in Multi-Tenant SaaS with OpenTelemetry Resource Attributes
+# How to Use Per-Tenant Observability Isolation in Multi-Tenant SaaS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

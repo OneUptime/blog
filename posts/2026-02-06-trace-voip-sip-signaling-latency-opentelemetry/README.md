@@ -1,4 +1,4 @@
-# How to Trace VoIP Call Setup and Teardown (SIP Signaling) Latency with OpenTelemetry Custom Spans
+# How to Trace VoIP Call Setup and Teardown Latency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

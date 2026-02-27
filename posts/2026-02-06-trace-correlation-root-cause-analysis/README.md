@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Trace Correlation to Accelerate Root Cause Analysis During Incidents
+# How to Use OpenTelemetry Trace Correlation to Accelerate Root Cause Analysis
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

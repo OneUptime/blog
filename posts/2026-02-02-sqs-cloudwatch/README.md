@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, CloudWatch, Monitoring, Queues, DevOps, Observability, Metrics, Alarms
 
-Description: Learn how to effectively monitor Amazon SQS queues using CloudWatch. Covers essential metrics, custom dashboards, alerting strategies, and best practices for maintaining healthy queue-based architectures.
+Description: Learn how to effectively monitor Amazon SQS queues using CloudWatch.
 
 ---
 

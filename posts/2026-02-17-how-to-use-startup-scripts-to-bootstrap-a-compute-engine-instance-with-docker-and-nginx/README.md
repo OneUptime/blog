@@ -1,4 +1,4 @@
-# How to Use Startup Scripts to Bootstrap a Compute Engine Instance with Docker and Nginx
+# How to Use Startup Scripts to Bootstrap a Compute Engine Instance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

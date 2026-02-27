@@ -1,4 +1,4 @@
-# How to Monitor API Deprecation Warnings and Sunset Headers Using OpenTelemetry Span Events
+# How to Monitor API Deprecation Warnings and Sunset Headers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

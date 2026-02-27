@@ -1,4 +1,4 @@
-# How to Implement Middleware for Cloud Trace Propagation in a Go HTTP Service on Cloud Run
+# How to Use Middleware for Cloud Trace Propagation in a Go HTTP Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

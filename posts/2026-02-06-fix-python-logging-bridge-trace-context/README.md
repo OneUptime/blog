@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry Python Logging Bridge Not Correlating Logs with Active Trace Context
+# How to Fix OpenTelemetry Python Logging Bridge Not Correlating Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

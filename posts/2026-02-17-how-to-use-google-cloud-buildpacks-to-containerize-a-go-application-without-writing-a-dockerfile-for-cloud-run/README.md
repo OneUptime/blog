@@ -1,4 +1,4 @@
-# How to Use Google Cloud Buildpacks to Containerize a Go Application Without Writing a Dockerfile for Cloud Run
+# How to Use Google Cloud Buildpacks to Containerize a Go App Without Writing a
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

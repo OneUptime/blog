@@ -1,4 +1,4 @@
-# How to Implement Rolling Update Deployment Strategy for GKE Workloads with Zero Downtime
+# How to Use Rolling Update Deployment Strategy for GKE Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

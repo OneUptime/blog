@@ -1,4 +1,4 @@
-# How to Monitor JWT Token Validation Failures and Expired Session Events with OpenTelemetry
+# How to Monitor JWT Token Validation Failures and Expired Session Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

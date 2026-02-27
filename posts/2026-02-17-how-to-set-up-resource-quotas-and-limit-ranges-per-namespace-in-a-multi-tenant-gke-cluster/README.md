@@ -1,4 +1,4 @@
-# How to Set Up Resource Quotas and Limit Ranges per Namespace in a Multi-Tenant GKE Cluster
+# How to Set Up Resource Quotas and Limit Ranges per Namespace in a Multi-Tenant
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

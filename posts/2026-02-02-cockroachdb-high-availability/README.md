@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CockroachDB, High Availability, Distributed Database, SQL, Kubernetes, Replication
 
-Description: Learn how to configure CockroachDB for high availability with multi-region clusters, replication zones, and automated failover. Covers deployment strategies, survival goals, and production best practices.
+Description: Learn how to configure CockroachDB for high availability with multi-region clusters, replication zones, and automated failover.
 
 ---
 

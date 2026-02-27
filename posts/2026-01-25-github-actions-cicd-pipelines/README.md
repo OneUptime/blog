@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, CI/CD, DevOps, Automation, Continuous Integration, Continuous Deployment
 
-Description: Learn how to build production-ready CI/CD pipelines with GitHub Actions from scratch. This guide covers workflow syntax, job orchestration, testing, building, and deploying applications with practical examples.
+Description: Learn how to build production-ready CI/CD pipelines with GitHub Actions from scratch.
 
 ---
 

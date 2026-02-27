@@ -1,4 +1,4 @@
-# How to Build a Customer Service Agent with Vertex AI Agent Builder and Dialogflow CX
+# How to Build a Customer Service Agent with Vertex AI Agent Builder
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

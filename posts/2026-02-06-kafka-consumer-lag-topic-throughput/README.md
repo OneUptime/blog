@@ -1,4 +1,4 @@
-# How to Monitor Kafka Consumer Group Lag and Per-Topic Throughput with the OpenTelemetry Collector
+# How to Monitor Kafka Consumer Group Lag and Per-Topic Throughput
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

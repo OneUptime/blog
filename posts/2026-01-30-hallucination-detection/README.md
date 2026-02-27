@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: LLM, AI Safety, Monitoring, AI
 
-Description: Learn how to build robust hallucination detection systems for LLM applications using semantic similarity, grounding verification, and self-consistency checks to ensure AI outputs remain accurate and trustworthy.
+Description: Learn how to build robust hallucination detection systems for LLM applications using semantic similarity, grounding verification.
 
 ---
 

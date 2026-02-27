@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Security, Package Management, Supply Chain, DevOps, Dependencies, Open Source
 
-Description: Recent npm security incidents reveal fundamental flaws in package manager design. Here's how every package manager should implement security measures to prevent supply chain attacks and protect developers.
+Description: Recent npm security incidents reveal fundamental flaws in package manager design.
 
 The recent compromise of popular npm packages like `chalk`, `debug`, and `duckdb` through phishing attacks has once again highlighted a fundamental truth: **our package management infrastructure is broken by design**. While developers rushed to patch their systems and audit their dependencies, the real question isn't just how to fix this specific incident - it's how to prevent the next one.
 

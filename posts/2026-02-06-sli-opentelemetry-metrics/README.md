@@ -1,4 +1,4 @@
-# How to Define and Measure Service Level Indicators (SLIs) Using OpenTelemetry Metrics
+# How to Define and Measure Service Level Indicators Using OpenTelemetry Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

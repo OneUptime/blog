@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: K3s, Kubernetes, Resource Optimization, DevOps, Edge Computing, Lightweight Kubernetes
 
-Description: Learn how to optimize K3s resource usage for edge deployments and resource-constrained environments. Covers memory tuning, CPU limits, storage optimization, and monitoring strategies for efficient cluster operations.
+Description: Learn how to optimize K3s resource usage for edge deployments and resource-constrained environments.
 
 ---
 

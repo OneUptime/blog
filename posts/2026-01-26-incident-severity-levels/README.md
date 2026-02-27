@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Incident Management, SRE, Reliability, On-Call, Incident Response
 
-Description: A practical guide to implementing incident severity levels that work for your team. Learn how to define, communicate, and operationalize severity classifications to improve incident response times and reduce alert fatigue.
+Description: A practical guide to implementing incident severity levels that work for your team.
 
 Every engineering team eventually faces the same problem: an alert fires at 3 AM, and the on-call engineer has no idea if it requires immediate action or can wait until morning. Without clear severity levels, every incident feels equally urgent, leading to burnout, missed critical issues, and a team that stops trusting their alerting system.
 

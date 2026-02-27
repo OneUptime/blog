@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: LlamaIndex, Data Loaders, RAG, AI, Machine Learning, Python, Vector Databases, LLM
 
-Description: A comprehensive guide to using LlamaIndex data loaders for ingesting documents from various sources. Learn how to load PDFs, web pages, databases, and custom data sources to build powerful retrieval-augmented generation applications.
+Description: A comprehensive guide to using LlamaIndex data loaders for ingesting documents from various sources.
 
 ---
 

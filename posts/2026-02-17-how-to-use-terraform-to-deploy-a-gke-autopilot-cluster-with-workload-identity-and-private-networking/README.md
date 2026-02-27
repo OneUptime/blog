@@ -1,4 +1,4 @@
-# How to Use Terraform to Deploy a GKE Autopilot Cluster with Workload Identity and Private Networking
+# How to Use Terraform to Deploy a GKE Autopilot Cluster with Workload Identity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Optimize On-Call Rotations by Analyzing Alert Patterns from OpenTelemetry Metrics
+# How to Optimize On-Call Rotations by Analyzing Alert Patterns from
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

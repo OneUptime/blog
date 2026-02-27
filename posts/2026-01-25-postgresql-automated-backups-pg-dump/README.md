@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Backup, pg_dump, Automation, Disaster Recovery
 
-Description: Learn how to set up automated PostgreSQL backups using pg_dump. This guide covers backup scripts, retention policies, compression, verification, and cloud storage integration for reliable disaster recovery.
+Description: Learn how to set up automated PostgreSQL backups using pg_dump.
 
 ---
 

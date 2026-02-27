@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Extensions, Kubernetes, High Availability, Leader Election
 
-Description: Master the K8s Leader Elector Extension in OpenTelemetry Collector to ensure only one Collector instance performs cluster-scoped operations, preventing duplicate metrics and race conditions in Kubernetes deployments.
+Description: Master the K8s Leader Elector Extension in OpenTelemetry Collector to ensure only one Collector instance performs cluster-scoped operations.
 
 ---
 

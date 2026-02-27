@@ -1,4 +1,4 @@
-# How to Deploy a React Single Page Application to Azure Static Web Apps with API Backend
+# How to Deploy a React Single Page Application to Azure Static Web Apps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

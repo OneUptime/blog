@@ -1,4 +1,4 @@
-# How to Build a Multi-Architecture Container Image Pipeline for Kubernetes ARM and AMD64 Nodes
+# How to Build a Multi-Architecture Container Image Pipeline for Kubernetes ARM
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure GPU-Accelerated Batch Jobs for ML Training on Google Cloud Batch
+# How to Configure GPU-Accelerated Batch Jobs for ML Training
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

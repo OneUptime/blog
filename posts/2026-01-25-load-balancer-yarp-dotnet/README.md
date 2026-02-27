@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, YARP, Load Balancer, Reverse Proxy, ASP.NET Core, Microservices
 
-Description: Learn how to build a production-ready load balancer in .NET using YARP (Yet Another Reverse Proxy). This guide covers load balancing algorithms, health checks, and configuration patterns for microservices.
+Description: Learn how to build a production-ready load balancer in .NET using YARP (Yet Another Reverse Proxy).
 
 ---
 

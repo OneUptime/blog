@@ -1,4 +1,4 @@
-# How to Build a Go Event-Driven Microservice with Cloud Functions and Eventarc Triggers
+# How to Build a Go Event-Driven Microservice with Cloud Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

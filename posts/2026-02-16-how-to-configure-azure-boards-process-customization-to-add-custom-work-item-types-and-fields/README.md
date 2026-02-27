@@ -1,4 +1,4 @@
-# How to Configure Azure Boards Process Customization to Add Custom Work Item Types and Fields
+# How to Configure Azure Boards Process Customization to Add Custom Work Item
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

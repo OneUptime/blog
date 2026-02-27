@@ -1,4 +1,4 @@
-# How to Configure AKS with Azure NAT Gateway for Predictable Outbound IP Addresses
+# How to Configure AKS with Azure NAT Gateway
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

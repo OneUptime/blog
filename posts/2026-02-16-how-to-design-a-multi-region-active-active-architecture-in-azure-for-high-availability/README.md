@@ -1,4 +1,4 @@
-# How to Design a Multi-Region Active-Active Architecture in Azure for High Availability
+# How to Design a Multi-Region Active-Active Architecture
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

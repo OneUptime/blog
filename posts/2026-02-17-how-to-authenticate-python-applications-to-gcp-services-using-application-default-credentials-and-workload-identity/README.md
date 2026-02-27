@@ -1,4 +1,4 @@
-# How to Authenticate Python Applications to GCP Services Using Application Default Credentials and Workload Identity
+# How to Authenticate Python Apps to GCP Services Using App Default Credentials
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

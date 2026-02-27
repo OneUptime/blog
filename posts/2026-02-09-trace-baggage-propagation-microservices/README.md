@@ -1,4 +1,4 @@
-# How to Use Trace Baggage Propagation to Pass Request Context Across Kubernetes Microservices
+# How to Use Trace Baggage Propagation to Pass Request Context Across K8s
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

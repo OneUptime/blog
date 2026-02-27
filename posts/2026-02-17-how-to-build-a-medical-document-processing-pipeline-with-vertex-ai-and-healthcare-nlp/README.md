@@ -1,4 +1,4 @@
-# How to Build a Medical Document Processing Pipeline with Vertex AI and Healthcare NLP
+# How to Build a Medical Document Processing Pipeline with Vertex AI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

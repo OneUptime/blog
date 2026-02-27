@@ -1,4 +1,4 @@
-# How to Use the Azure Storage Client Library for Python to Upload and Download Blobs
+# How to Use the Azure Storage Client Library for Python to Upload
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

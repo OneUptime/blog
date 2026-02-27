@@ -1,4 +1,4 @@
-# How to Create and Configure a Google Cloud Parallelstore Instance for HPC Workloads
+# How to Configure a Google Cloud Parallelstore Instance for HPC Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

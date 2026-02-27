@@ -1,4 +1,4 @@
-# How to Set Up Azure Boards GitHub Integration to Link Commits and Pull Requests to Work Items
+# How to Set Up Azure Boards GitHub Integration to Link Commits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

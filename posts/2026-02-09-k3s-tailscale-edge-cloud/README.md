@@ -1,4 +1,4 @@
-# How to Configure K3s Cluster with Tailscale for Secure Edge-to-Cloud Connectivity
+# Configure K3s Cluster with Tailscale for Secure Edge-to-Cloud Connectivity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

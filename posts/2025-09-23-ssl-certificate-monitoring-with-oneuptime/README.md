@@ -1,10 +1,10 @@
-# How to monitor SSL Certificate with OneUptime: Never Let a Certificate Expire Again
+# Monitor SSL Certificate with OneUptime: Never Let a Certificate Expire Again
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SSL, TLS, Certificate Monitoring, Security, Monitoring, Infrastructure, DevOps, Reliability, Uptime Monitoring
 
-Description: A comprehensive guide to monitoring SSL certificates with OneUptime - from setup and configuration to advanced monitoring scenarios. Learn how to prevent certificate expiration outages, track certificate health, and set up intelligent alerting for your SSL infrastructure.
+Description: A comprehensive guide to monitoring SSL certificates with OneUptime - from setup and configuration to advanced monitoring scenarios.
 
 ---
 

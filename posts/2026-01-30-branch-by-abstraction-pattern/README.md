@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Software Architecture, Refactoring, Continuous Delivery, Design Patterns, Legacy Code
 
-Description: A hands-on guide to replacing legacy components without feature branches or big-bang deployments. Learn how to implement the Branch by Abstraction pattern with production-ready code examples and step-by-step migration strategies.
+Description: A hands-on guide to replacing legacy components without feature branches or big-bang deployments.
 
 ---
 

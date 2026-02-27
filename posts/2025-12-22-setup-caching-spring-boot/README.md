@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Caching, Performance, Redis, Caffeine
 
-Description: Learn how to implement caching in Spring Boot applications using Spring Cache abstraction. This guide covers in-memory caching with Caffeine, distributed caching with Redis, and best practices for cache management.
+Description: Learn how to implement caching in Spring Boot applications using Spring Cache abstraction.
 
 ---
 
@@ -587,4 +587,4 @@ With proper caching, you can dramatically reduce response times and database loa
 *Need to monitor your cache performance? [OneUptime](https://oneuptime.com) provides comprehensive monitoring for Redis and application metrics with instant alerting.*
 
 **Related Reading:**
-- [How to Configure Spring Boot with Redis](/blog/post/2025-12-22-configure-redis-spring-boot/view)
+- [How to Configure Spring Boot with Redis](https://oneuptime.com/blog/post/2025-12-22-configure-redis-spring-boot/view)

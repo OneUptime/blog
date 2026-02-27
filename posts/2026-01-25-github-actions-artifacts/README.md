@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, Artifacts, CI/CD, Build Management, DevOps, Storage
 
-Description: Learn how to upload, download, and manage build artifacts in GitHub Actions. This guide covers artifact sharing between jobs, retention policies, compression strategies, and patterns for efficient artifact handling.
+Description: Learn how to upload, download, and manage build artifacts in GitHub Actions.
 
 ---
 

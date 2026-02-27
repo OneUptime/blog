@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Entra ID Token Lifetime Policies for Access and Refresh Tokens
+# How to Set Up Microsoft Entra ID Token Lifetime Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

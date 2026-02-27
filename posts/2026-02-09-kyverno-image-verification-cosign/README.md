@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kyverno, Cosign, Image Signing, Security, Supply Chain
 
-Description: Learn how to use Kyverno to verify container image signatures with Cosign, enforce signed images in your cluster, validate attestations, and implement software supply chain security with policy-based image verification.
+Description: Learn how to use Kyverno to verify container image signatures with Cosign, enforce signed images in your cluster, validate attestations.
 
 ---
 

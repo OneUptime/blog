@@ -1,4 +1,4 @@
-# How to Use App Engine Handlers in app.yaml to Serve Static Files Without Application Code
+# How to Use App Engine Handlers in app.yaml to Serve Static Files Without App
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, Kubernetes, GitOps, Notifications, DevOps
 
-Description: A comprehensive guide to building custom ArgoCD notification templates for Slack, email, and webhooks. Learn how to configure triggers, create dynamic templates with Go templating, and implement production-ready notification workflows.
+Description: A comprehensive guide to building custom ArgoCD notification templates for Slack, email, and webhooks.
 
 ---
 

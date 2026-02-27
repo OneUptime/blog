@@ -1,4 +1,4 @@
-# How to Configure the Load Balancing Exporter for Consistent Hashing Across Multiple Collector Gateways
+# How to Configure the Load Balancing Exporter for Consistent Hashing Across
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

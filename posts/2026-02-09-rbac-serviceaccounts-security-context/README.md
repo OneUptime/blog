@@ -1,4 +1,4 @@
-# How to Implement RBAC for ServiceAccounts with Pod-Level Security Context Constraints
+# How to Use RBAC for ServiceAccounts with Pod-Level Security Context Constraints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

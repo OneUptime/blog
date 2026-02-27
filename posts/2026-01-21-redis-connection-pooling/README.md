@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Connection Pooling, Performance, Scalability, Backend, Database, High Availability
 
-Description: A comprehensive guide to implementing connection pooling for Redis, covering pool sizing strategies, health checks, connection reuse patterns, and best practices for building scalable applications with optimal resource utilization.
+Description: A comprehensive guide to implementing connection pooling for Redis, covering pool sizing strategies, health checks, connection reuse patterns.
 
 ---
 

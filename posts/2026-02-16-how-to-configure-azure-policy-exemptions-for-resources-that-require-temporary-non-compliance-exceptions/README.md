@@ -1,4 +1,4 @@
-# How to Configure Azure Policy Exemptions for Resources That Require Temporary Non-Compliance Exceptions
+# How to Configure Azure Policy Exemptions for Resources That Require Temporary
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

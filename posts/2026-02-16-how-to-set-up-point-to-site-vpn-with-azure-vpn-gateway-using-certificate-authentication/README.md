@@ -1,4 +1,4 @@
-# How to Set Up Point-to-Site VPN with Azure VPN Gateway Using Certificate Authentication
+# How to Set Up Point-to-Site VPN with Azure VPN Gateway
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Automated Security Scanning in CI/CD Pipelines Using Cloud Build and Container Analysis
+# How to Set Up Automated Security Scanning in CI/CD Pipelines Using Cloud Build
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

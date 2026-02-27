@@ -1,4 +1,4 @@
-# How to Deploy Azure Functions Using Bicep Templates with Application Insights Integration
+# How to Deploy Azure Functions Using Bicep Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

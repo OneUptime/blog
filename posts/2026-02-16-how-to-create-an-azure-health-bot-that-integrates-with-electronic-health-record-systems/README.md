@@ -1,4 +1,4 @@
-# How to Create an Azure Health Bot That Integrates with Electronic Health Record Systems
+# How to Create an Azure Health Bot That Integrates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

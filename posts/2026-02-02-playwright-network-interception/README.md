@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Playwright, Network Interception, Testing, JavaScript, TypeScript, Web Automation, End-to-End Testing
 
-Description: A comprehensive guide to intercepting, mocking, and modifying network requests in Playwright for robust end-to-end testing. Learn how to stub API responses, simulate network conditions, and debug request flows.
+Description: A comprehensive guide to intercepting, mocking, and modifying network requests in Playwright for robust end-to-end testing.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry to Export to a Local Console During Development and OTLP in Production
+# How to Configure OpenTelemetry to Export to a Local Console During Development
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

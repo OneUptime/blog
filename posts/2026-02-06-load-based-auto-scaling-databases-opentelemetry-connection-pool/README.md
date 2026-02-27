@@ -1,4 +1,4 @@
-# How to Implement Load-Based Auto-Scaling for Databases Using OpenTelemetry Connection Pool Metrics
+# How to Use Load-Based Auto-Scaling for Databases
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

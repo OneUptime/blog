@@ -1,4 +1,4 @@
-# How to Build a Multi-Tenant SaaS Application with Azure App Service and Tenant-Specific Custom Domains
+# How to Build a Multi-Tenant SaaS Application with Azure App Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

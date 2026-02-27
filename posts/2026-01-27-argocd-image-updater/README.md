@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ArgoCD, Image Updater, GitOps, CI/CD, Automation, Container Registry, DevOps
 
-Description: A comprehensive guide to automating container image updates in your GitOps workflow using ArgoCD Image Updater, covering installation, update strategies, registry configuration, and production best practices.
+Description: A comprehensive guide to automating container image updates in your GitOps workflow using ArgoCD Image Updater, covering installation, update strategies, registry configuration.
 
 ---
 

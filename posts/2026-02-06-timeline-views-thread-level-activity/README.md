@@ -1,4 +1,4 @@
-# How to Use Timeline Views Beyond Flame Graphs for Thread-Level Activity Analysis with OpenTelemetry Profiles
+# How to Use Timeline Views Beyond Flame Graphs for Thread-Level Activity Analysis
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

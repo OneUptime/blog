@@ -1,4 +1,4 @@
-# How to Configure dbt Cloud with BigQuery Service Account Authentication and CI/CD
+# How to Configure dbt Cloud with BigQuery Service Account Authentication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

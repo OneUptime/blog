@@ -1,4 +1,4 @@
-# How to Configure Azure Boards to Integrate with GitHub Repositories for Work Item Tracking
+# How to Configure Azure Boards to Integrate with GitHub Repositories
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

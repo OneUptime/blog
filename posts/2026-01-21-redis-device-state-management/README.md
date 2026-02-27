@@ -723,4 +723,4 @@ stateManager.subscribeToPresence((event) => {
 
 Redis provides an excellent foundation for device state management. Its combination of TTL-based expiration, hashes for structured state, and pub/sub for real-time notifications makes it ideal for tracking millions of IoT devices. The device shadow pattern enables reliable state synchronization even when devices are intermittently connected.
 
-For more IoT patterns with Redis, check out our guides on [IoT Data Ingestion](/blog/redis-iot-data-ingestion) and [Command Queues](/blog/redis-iot-command-queues).
+For more IoT patterns with Redis, check out our guides on [IoT Data Ingestion](https://oneuptime.com/blog/post/2026-01-21-redis-iot-data-ingestion/view) and [Command Queues](https://oneuptime.com/blog/post/2026-01-21-redis-iot-command-queues/view).

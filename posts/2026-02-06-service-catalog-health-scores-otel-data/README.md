@@ -1,4 +1,4 @@
-# How to Build a Service Catalog with Automatic Health Scores from OpenTelemetry Data
+# Build a Service Catalog with Automatic Health Scores from OpenTelemetry Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

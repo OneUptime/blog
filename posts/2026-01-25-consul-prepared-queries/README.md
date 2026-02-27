@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Consul, Prepared Queries, Service Discovery, Load Balancing, HashiCorp, DNS
 
-Description: Learn how to use Consul prepared queries for advanced service discovery patterns including failover, filtering, and geographic routing. This guide covers query creation, DNS integration, and common use cases.
+Description: Learn how to use Consul prepared queries for advanced service discovery patterns including failover, filtering, and geographic routing.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Set Up Private Origin Authentication for S3-Compatible Backends with Google Cloud CDN
+# How to Set Up Private Origin Authentication for S3-Compatible Backends
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

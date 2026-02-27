@@ -1,4 +1,4 @@
-# How to Migrate a Compute Engine Instance to a Different Zone with Minimal Downtime
+# How to Migrate a Compute Engine Instance to a Different Zone
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

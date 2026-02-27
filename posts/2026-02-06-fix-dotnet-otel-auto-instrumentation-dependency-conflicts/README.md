@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry .NET Auto-Instrumentation Dependency Version Conflicts with Application Libraries
+# How to Fix OpenTelemetry .NET Auto-Instrumentation Dependency Version Conflicts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

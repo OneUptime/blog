@@ -1,4 +1,4 @@
-# How to Fix 'RequestDisallowedByPolicy' Errors Caused by Azure Policy Restrictions
+# Fix 'RequestDisallowedByPolicy' Errors Caused by Azure Policy Restrictions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

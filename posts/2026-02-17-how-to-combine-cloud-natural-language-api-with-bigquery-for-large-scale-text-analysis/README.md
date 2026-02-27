@@ -1,4 +1,4 @@
-# How to Combine Cloud Natural Language API with BigQuery for Large-Scale Text Analysis
+# Combine Cloud Natural Language API with BigQuery for Large-Scale Text Analysis
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

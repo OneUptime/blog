@@ -1,4 +1,4 @@
-# How to Build a Custom Error Severity Classifier Using OpenTelemetry Span Attributes and Log Severity Levels
+# How to Build a Custom Error Severity Classifier Using OpenTelemetry Span
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Azure Test Plans Test Configurations for Cross-Browser and Cross-Device Testing
+# How to Configure Azure Test Plans Test Configurations for Cross-Browser
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

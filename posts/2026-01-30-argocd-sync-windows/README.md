@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Sync Windows, Scheduling
 
-Description: A practical guide to configuring ArgoCD sync windows in AppProject resources to control when applications can sync, including allow and deny windows, scheduling patterns, and maintenance window strategies.
+Description: A practical guide to configuring ArgoCD sync windows in AppProject resources to control when applications can sync, including allow and deny windows, scheduling patterns.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Implement a Lambda Architecture on GCP Combining Batch and Streaming Layers
+# How to Build a Lambda Architecture on GCP Combining Batch and Streaming Layers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

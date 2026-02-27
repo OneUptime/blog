@@ -1,4 +1,4 @@
-# How to Set Up ko for Fast Go Application Development and Deployment on Kubernetes
+# How to Set Up ko for Fast Go Application Development and Deployment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

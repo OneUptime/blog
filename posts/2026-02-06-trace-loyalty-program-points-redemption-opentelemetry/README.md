@@ -1,4 +1,4 @@
-# How to Trace Loyalty Program Points Calculation and Redemption with OpenTelemetry Span Attributes
+# How to Trace Loyalty Program Points Calculation and Redemption
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

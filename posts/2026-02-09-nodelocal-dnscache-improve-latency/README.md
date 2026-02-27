@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DNS, Performance, NodeLocal
 
-Description: Learn how to deploy and configure NodeLocal DNSCache to reduce CoreDNS server load, improve DNS query latency, and increase reliability by caching DNS responses at the node level in Kubernetes clusters.
+Description: Learn how to deploy and configure NodeLocal DNSCache to reduce CoreDNS server load, improve DNS query latency.
 
 ---
 

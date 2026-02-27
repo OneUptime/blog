@@ -1,4 +1,4 @@
-# How to Implement Semantic Caching with LangChain and Memorystore for Redis on GCP
+# How to Use Semantic Caching with LangChain and Memorystore for Redis on GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

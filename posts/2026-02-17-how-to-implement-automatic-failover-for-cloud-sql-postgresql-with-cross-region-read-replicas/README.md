@@ -1,4 +1,4 @@
-# How to Implement Automatic Failover for Cloud SQL PostgreSQL with Cross-Region Read Replicas
+# Use Automatic Failover for Cloud SQL PostgreSQL with Cross-Region Read Replicas
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

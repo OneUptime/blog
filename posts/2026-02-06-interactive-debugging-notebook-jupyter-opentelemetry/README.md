@@ -1,4 +1,4 @@
-# How to Build an Interactive Production Debugging Notebook Using Jupyter and OpenTelemetry Trace Queries
+# How to Build an Interactive Production Debugging Notebook Using Jupyter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

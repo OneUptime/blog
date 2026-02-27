@@ -1,4 +1,4 @@
-# How to Implement Observability Governance: Enforce Semantic Convention Compliance and Attribute Standards Org-Wide
+# How to Use Observability Governance: Enforce Semantic Convention Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

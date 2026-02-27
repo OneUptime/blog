@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Laravel, PHP, Multi-tenancy, SaaS
 
-Description: A comprehensive guide to implementing multi-tenancy in Laravel applications using the Spatie package, covering tenant identification, database isolation strategies, asset separation, and production deployment patterns.
+Description: A comprehensive guide to implementing multi-tenancy in Laravel applications using the Spatie package, covering tenant identification, database isolation strategies, asset separation.
 
 ---
 

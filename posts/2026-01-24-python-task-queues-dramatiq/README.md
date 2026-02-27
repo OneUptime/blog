@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Dramatiq, Task Queue, Background Jobs, Redis, RabbitMQ, Async Processing, Celery Alternative
 
-Description: Learn how to build reliable task queues in Python using Dramatiq. This guide covers setting up workers, handling retries, scheduling tasks, prioritization, and best practices for production deployments.
+Description: Learn how to build reliable task queues in Python using Dramatiq.
 
 ---
 

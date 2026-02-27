@@ -1,4 +1,4 @@
-# How to Monitor etcd Cluster Health Metrics (Leader Elections, Raft Proposals, DB Size) with the Collector
+# How to Monitor etcd Cluster Health Metrics with the Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

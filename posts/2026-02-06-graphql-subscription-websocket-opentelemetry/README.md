@@ -1,4 +1,4 @@
-# How to Trace GraphQL Subscription WebSocket Connections with OpenTelemetry Custom Spans
+# How to Trace GraphQL Subscription WebSocket Connections
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Forward OpenTelemetry Security Events to AWS Security Hub Using the Collector Exporter Pipeline
+# How to Forward OpenTelemetry Security Events to AWS Security Hub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

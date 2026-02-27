@@ -1,4 +1,4 @@
-# How to Enforce Infrastructure Security with HashiCorp Sentinel Policies for GCP Terraform
+# How to Enforce Infrastructure Security with HashiCorp Sentinel Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

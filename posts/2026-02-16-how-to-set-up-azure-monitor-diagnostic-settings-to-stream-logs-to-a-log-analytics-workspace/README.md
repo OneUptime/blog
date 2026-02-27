@@ -1,4 +1,4 @@
-# How to Set Up Azure Monitor Diagnostic Settings to Stream Logs to a Log Analytics Workspace
+# How to Set Up Azure Monitor Diagnostic Settings to Stream Logs to a Log
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

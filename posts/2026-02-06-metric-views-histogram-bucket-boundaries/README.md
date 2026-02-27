@@ -1,4 +1,4 @@
-# How to Configure Metric Views to Override Default Histogram Bucket Boundaries in the OpenTelemetry SDK
+# How to Configure Metric Views to Override Default Histogram Bucket Boundaries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

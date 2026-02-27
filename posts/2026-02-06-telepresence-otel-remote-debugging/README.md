@@ -1,4 +1,4 @@
-# How to Set Up Telepresence with OpenTelemetry for Debugging Remote Services Locally
+# How to Set Up Telepresence with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

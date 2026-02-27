@@ -1,4 +1,4 @@
-# How to Create a Deterministic Span ID Generator for OpenTelemetry Replay and Testing Scenarios
+# How to Create a Deterministic Span ID Generator for OpenTelemetry Replay
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

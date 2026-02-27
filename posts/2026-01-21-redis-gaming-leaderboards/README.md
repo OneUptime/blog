@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Gaming, Leaderboards, Sorted Sets, Real-Time, Performance
 
-Description: A comprehensive guide to building real-time gaming leaderboards with Redis sorted sets, covering score updates, rankings, pagination, and advanced patterns like time-based and multi-dimensional leaderboards.
+Description: A comprehensive guide to building real-time gaming leaderboards with Redis sorted sets, covering score updates, rankings, pagination.
 
 ---
 

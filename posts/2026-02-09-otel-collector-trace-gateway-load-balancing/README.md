@@ -1,10 +1,10 @@
-# How to Deploy the OpenTelemetry Collector as a Trace Gateway with Load Balancing in Kubernetes
+# How to Deploy the OpenTelemetry Collector as a Trace Gateway
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, OpenTelemetry, Distributed Tracing, Load Balancing, Observability
 
-Description: Learn how to deploy the OpenTelemetry Collector as a centralized trace gateway with load balancing in Kubernetes to handle high-volume trace ingestion and route traces to multiple backends efficiently.
+Description: Learn how to deploy the OpenTelemetry Collector as a centralized trace gateway with load balancing in Kubernetes to handle high-volume trace ingestion and route traces to multiple backends.
 
 ---
 

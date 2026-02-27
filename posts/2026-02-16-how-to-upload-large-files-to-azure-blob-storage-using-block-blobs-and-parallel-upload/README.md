@@ -1,4 +1,4 @@
-# How to Upload Large Files to Azure Blob Storage Using Block Blobs and Parallel Upload
+# How to Upload Large Files to Azure Blob Storage Using Block Blobs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

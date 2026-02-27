@@ -1,4 +1,4 @@
-# How to Configure Microsoft Entra ID Continuous Access Evaluation for Real-Time Token Revocation
+# How to Configure Microsoft Entra ID Continuous Access Evaluation for Real-Time
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

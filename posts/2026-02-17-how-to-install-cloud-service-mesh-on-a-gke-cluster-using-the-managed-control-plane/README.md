@@ -1,4 +1,4 @@
-# How to Install Cloud Service Mesh on a GKE Cluster Using the Managed Control Plane
+# How to Install Cloud Service Mesh on a GKE Cluster
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

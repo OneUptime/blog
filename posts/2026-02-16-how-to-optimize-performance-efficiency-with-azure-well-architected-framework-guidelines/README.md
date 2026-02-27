@@ -1,4 +1,4 @@
-# How to Optimize Performance Efficiency with Azure Well-Architected Framework Guidelines
+# Optimize Performance Efficiency with Azure Well-Architected Framework Guidelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

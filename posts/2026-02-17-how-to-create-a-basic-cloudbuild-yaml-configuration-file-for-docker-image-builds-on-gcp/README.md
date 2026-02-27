@@ -1,4 +1,4 @@
-# How to Create a Basic cloudbuild.yaml Configuration File for Docker Image Builds on GCP
+# How to Create a Basic cloudbuild.yaml Configuration File for Docker Image Builds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kotlin, Spring Boot, DSL, Configuration, Gradle, Beans, Router, Security
 
-Description: Learn how to leverage Kotlin DSL for elegant Spring Boot configuration. This guide covers Gradle build scripts, bean definitions, routing, security configuration, and testing with practical examples and best practices.
+Description: Learn how to leverage Kotlin DSL for elegant Spring Boot configuration.
 
 ---
 

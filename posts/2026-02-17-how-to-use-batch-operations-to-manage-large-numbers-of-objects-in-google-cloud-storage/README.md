@@ -1,4 +1,4 @@
-# How to Use Batch Operations to Manage Large Numbers of Objects in Google Cloud Storage
+# How to Use Batch Operations to Manage Large Numbers of Objects
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

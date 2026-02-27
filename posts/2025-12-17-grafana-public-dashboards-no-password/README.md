@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Public Dashboards, Authentication, Security, Anonymous Access, Configuration
 
-Description: Learn how to configure Grafana for public dashboard access without requiring authentication. This guide covers anonymous access, public dashboard features, snapshot sharing, and security best practices for exposing dashboards publicly.
+Description: Learn how to configure Grafana for public dashboard access without requiring authentication.
 
 Sharing dashboards publicly can be valuable for status pages, community metrics, or open data initiatives. Grafana provides several methods to expose dashboards without requiring users to log in. This guide covers all approaches with their security implications.
 

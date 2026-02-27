@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector to Export to Last9 with SpanConnector for Metrics Derivation
+# How to Configure the OpenTelemetry Collector to Export to Last9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

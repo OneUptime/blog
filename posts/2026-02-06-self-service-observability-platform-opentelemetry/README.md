@@ -1,4 +1,4 @@
-# How to Build a Self-Service Observability Platform Using OpenTelemetry and Internal Developer Portals
+# How to Build a Self-Service Observability Platform Using OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

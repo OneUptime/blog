@@ -1,4 +1,4 @@
-# How to Extract Nested JSON Fields from Log Bodies into Top-Level Attributes Using OTTL Expressions
+# How to Extract Nested JSON Fields from Log Bodies into Top-Level Attributes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

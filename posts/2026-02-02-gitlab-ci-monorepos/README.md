@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: GitLab CI, Monorepo, CI/CD, DevOps, Pipeline Optimization
 
-Description: A comprehensive guide to configuring GitLab CI/CD pipelines for monorepo architectures, covering change detection, parallel builds, caching strategies, and optimization techniques for efficient multi-project workflows.
+Description: A comprehensive guide to configuring GitLab CI/CD pipelines for monorepo architectures, covering change detection, parallel builds, caching strategies.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Implement Crossplane Provider-Kubernetes for Managing In-Cluster Resources Declaratively
+# How to Use Crossplane Provider-K8s for Managing In-Cluster Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Crossplane, Kubernetes, GitOps
 
-Description: Learn how to use Crossplane Provider-Kubernetes to manage Kubernetes resources declaratively across clusters, enabling unified infrastructure management and GitOps workflows for both cloud and in-cluster resources.
+Description: Learn how to use Crossplane Provider-Kubernetes to manage Kubernetes resources declaratively across clusters.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: K3s, Kubernetes, Storage, Longhorn, NFS, DevOps, Bare Metal, Edge Computing
 
-Description: A comprehensive guide to configuring storage classes in K3s, covering the built-in local path provisioner, Longhorn for replicated block storage, NFS for shared filesystems, and dynamic provisioning patterns for production workloads.
+Description: A comprehensive guide to configuring storage classes in K3s, covering the built-in local path provisioner, Longhorn for replicated block storage, NFS for shared filesystems.
 
 ---
 

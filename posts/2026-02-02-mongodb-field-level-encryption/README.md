@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: MongoDB, Encryption, Security, Database, Node.js, Compliance
 
-Description: Learn how to configure MongoDB Client-Side Field Level Encryption (CSFLE) to protect sensitive data at the field level. This guide covers automatic and explicit encryption, key management with AWS KMS, schema validation, and production best practices.
+Description: Learn how to configure MongoDB Client-Side Field Level Encryption (CSFLE) to protect sensitive data at the field level.
 
 ---
 

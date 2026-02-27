@@ -1,4 +1,4 @@
-# How to Set Up Kubernetes Federation v2 with KubeFed for Multi-Cluster Deployments
+# Set Up Kubernetes Federation v2 with KubeFed for Multi-Cluster Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

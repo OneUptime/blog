@@ -1,4 +1,4 @@
-# How to Build a Log Analytics Dashboard from OpenTelemetry Log Signals in Grafana Loki
+# How to Build a Log Analytics Dashboard from OpenTelemetry Log Signals
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

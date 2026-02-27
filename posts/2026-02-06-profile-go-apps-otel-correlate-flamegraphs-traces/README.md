@@ -1,4 +1,4 @@
-# How to Profile Go Applications with OpenTelemetry and Correlate Flame Graphs with Distributed Traces
+# How to Profile Go Applications with OpenTelemetry and Correlate Flame Graphs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

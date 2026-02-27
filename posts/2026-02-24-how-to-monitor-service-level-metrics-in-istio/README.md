@@ -1,4 +1,4 @@
-# How to Monitor Service-Level Metrics (Latency, Traffic, Errors, Saturation) in Istio
+# How to Monitor Service-Level Metrics in Istio
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

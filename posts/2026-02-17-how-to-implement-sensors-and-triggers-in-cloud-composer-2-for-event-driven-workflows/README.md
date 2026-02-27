@@ -1,4 +1,4 @@
-# How to Implement Sensors and Triggers in Cloud Composer 2 for Event-Driven Workflows
+# How to Use Sensors and Triggers in Cloud Composer 2 for Event-Driven Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

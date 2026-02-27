@@ -1,4 +1,4 @@
-# How to Set Up Azure Key Vault Event Grid Notifications for Secret Expiration Warnings
+# How to Set Up Azure Key Vault Event Grid Notifications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

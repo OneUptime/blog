@@ -1,4 +1,4 @@
-# How to Deduplicate Error Reports by Correlating Sentry Issues with OpenTelemetry Trace IDs
+# How to Deduplicate Error Reports by Correlating Sentry Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

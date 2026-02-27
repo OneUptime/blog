@@ -1,4 +1,4 @@
-# How to Automate SSL Certificate Lifecycle Management with Certificate Authority Service
+# How to Automate SSL Certificate Lifecycle Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

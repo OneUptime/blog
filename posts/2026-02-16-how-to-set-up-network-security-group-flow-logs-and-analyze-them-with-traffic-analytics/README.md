@@ -1,4 +1,4 @@
-# How to Set Up Network Security Group Flow Logs and Analyze Them with Traffic Analytics
+# How to Set Up Network Security Group Flow Logs and Analyze Them
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Context Propagation Across Microservices with OpenTelemetry on GCP
+# How to Use Context Propagation Across Microservices with OpenTelemetry on GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

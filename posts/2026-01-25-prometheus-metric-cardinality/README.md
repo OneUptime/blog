@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Cardinality, Metrics, Performance, Optimization, Labels, Memory, Observability
 
-Description: Learn how to identify and control metric cardinality in Prometheus. This guide covers cardinality analysis, label management strategies, relabeling techniques, and practical approaches to prevent cardinality explosions.
+Description: Learn how to identify and control metric cardinality in Prometheus.
 
 ---
 

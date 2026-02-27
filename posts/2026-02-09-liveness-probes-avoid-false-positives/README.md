@@ -1,4 +1,4 @@
-# How to Configure Kubernetes Liveness Probes That Avoid False Positive Pod Restarts
+# Configure Kubernetes Liveness Probes That Avoid False Positive Pod Restarts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

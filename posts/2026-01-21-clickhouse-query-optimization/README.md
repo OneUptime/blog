@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Query Optimization, Performance, Database, EXPLAIN, Profiling, Analytics, Tuning
 
-Description: A comprehensive guide to optimizing ClickHouse query performance, covering EXPLAIN analysis, query profiling, common anti-patterns, and practical optimization techniques that can speed up queries by 10-100x.
+Description: A comprehensive guide to optimizing ClickHouse query performance, covering EXPLAIN analysis, query profiling, common anti-patterns.
 
 ---
 

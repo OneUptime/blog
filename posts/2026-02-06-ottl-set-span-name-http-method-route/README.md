@@ -1,4 +1,4 @@
-# How to Use OTTL to Set span.name Based on HTTP Method and Route Template for Better Trace Grouping
+# How to Use OTTL to Set span.name Based on HTTP Method and Route Template
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

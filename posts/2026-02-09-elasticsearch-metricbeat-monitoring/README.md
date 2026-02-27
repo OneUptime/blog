@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Metricbeat, Monitoring, Kubernetes, Observability
 
-Description: Implement comprehensive Elasticsearch cluster monitoring using Metricbeat on Kubernetes, including node metrics, cluster health, index statistics, and alerting configuration for production deployments.
+Description: Implement comprehensive Elasticsearch cluster monitoring using Metricbeat on Kubernetes, including node metrics, cluster health, index statistics.
 
 ---
 

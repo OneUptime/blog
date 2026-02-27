@@ -1,4 +1,4 @@
-# How to Implement Canary Analysis Automated Rollback Tests with Flagger on Kubernetes
+# How to Use Canary Analysis Automated Rollback Tests with Flagger on Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

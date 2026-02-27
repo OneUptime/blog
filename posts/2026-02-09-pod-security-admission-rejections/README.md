@@ -1,4 +1,4 @@
-# How to Troubleshoot Kubernetes Pod Security Admission Rejections After PSA Migration
+# Troubleshoot Kubernetes Pod Security Admission Rejections After PSA Migration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

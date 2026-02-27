@@ -1,4 +1,4 @@
-# How to Implement Database Per Microservice Pattern on Kubernetes with Separate PVCs
+# How to Use Database Per Microservice Pattern on Kubernetes with Separate PVCs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

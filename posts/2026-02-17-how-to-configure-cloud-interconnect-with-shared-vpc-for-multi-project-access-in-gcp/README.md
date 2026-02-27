@@ -1,4 +1,4 @@
-# How to Configure Cloud Interconnect with Shared VPC for Multi-Project Access in GCP
+# How to Configure Cloud Interconnect with Shared VPC for Multi-Project Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

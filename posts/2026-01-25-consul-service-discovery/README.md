@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Consul, Service Discovery, HashiCorp, Microservices, DevOps, Infrastructure
 
-Description: A practical guide to setting up HashiCorp Consul for service discovery in distributed systems. Learn how to install, configure, and register services with Consul for dynamic service-to-service communication.
+Description: A practical guide to setting up HashiCorp Consul for service discovery in distributed systems.
 
 ---
 

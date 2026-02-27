@@ -1,4 +1,4 @@
-# How to Configure Azure Load Balancer Backend Pool with Virtual Machine Scale Sets
+# How to Configure Azure Load Balancer Backend Pool
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

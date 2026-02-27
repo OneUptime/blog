@@ -1,4 +1,4 @@
-# How to Implement Cost Controls for GCP Infrastructure Using Terraform Budget Alerts and Quotas
+# How to Use Cost Controls for GCP Infrastructure Using Terraform Budget Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

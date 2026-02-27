@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Fluentd, Logging, Parsing, Multi-Line, Configuration
 
-Description: Master Fluentd concat plugin to correctly parse multi-line log entries like stack traces, JSON objects, and application logs that span multiple lines, including pattern matching and timeout configuration.
+Description: Master Fluentd concat plugin to correctly parse multi-line log entries like stack traces, JSON objects, and application logs that span multiple lines.
 
 ---
 

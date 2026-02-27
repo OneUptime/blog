@@ -1406,6 +1406,6 @@ The Grafana plugin ecosystem gives you full control over how data is visualized.
 
 **Related Reading:**
 
-- [Three Pillars of Observability: Logs, Metrics, Traces](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/)
-- [What are Metrics in OpenTelemetry](/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/)
-- [SRE Tools Comparison](/blog/post/2025-11-28-sre-tools-comparison/)
+- [Three Pillars of Observability: Logs, Metrics, Traces](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view)
+- [What are Metrics in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view)
+- [SRE Tools Comparison](https://oneuptime.com/blog/post/2025-11-28-sre-tools-comparison/view)

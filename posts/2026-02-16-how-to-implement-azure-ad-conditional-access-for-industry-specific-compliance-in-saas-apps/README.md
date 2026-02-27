@@ -1,4 +1,4 @@
-# How to Implement Azure AD Conditional Access for Industry-Specific Compliance in SaaS Apps
+# How to Use Azure AD Conditional Access for Industry-Specific Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

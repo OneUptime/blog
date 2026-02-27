@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, Encryption, Security, KMS, Message Queue, Cloud Security
 
-Description: A comprehensive guide to configuring encryption for Amazon SQS queues, covering server-side encryption with AWS KMS, client-side encryption, key management best practices, and security compliance considerations.
+Description: A comprehensive guide to configuring encryption for Amazon SQS queues, covering server-side encryption with AWS KMS, client-side encryption, key management best practices.
 
 ---
 

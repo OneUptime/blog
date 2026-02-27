@@ -1,4 +1,4 @@
-# How to Set Up kube-vip for Control Plane and Service Load Balancing Without Cloud Provider
+# How to Set Up kube-vip for Control Plane and Service Load Balancing Without
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

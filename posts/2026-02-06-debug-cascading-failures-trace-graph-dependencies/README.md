@@ -1,4 +1,4 @@
-# How to Debug Cascading Failures Across Microservices Using OpenTelemetry Trace Graph Dependencies
+# How to Debug Cascading Failures Across Microservices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

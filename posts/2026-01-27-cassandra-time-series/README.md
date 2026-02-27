@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cassandra, Time-Series, Database, NoSQL, Data Modeling, Performance, Observability
 
-Description: A comprehensive guide to modeling, storing, and querying time-series data in Apache Cassandra. Learn partition key design, time-based bucketing strategies, TTL for automatic expiration, and query patterns for high-performance time-series workloads.
+Description: A comprehensive guide to modeling, storing, and querying time-series data in Apache Cassandra.
 
 ---
 

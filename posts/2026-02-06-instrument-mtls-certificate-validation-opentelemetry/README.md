@@ -1,4 +1,4 @@
-# How to Instrument mTLS Certificate Validation and Handshake Failures with OpenTelemetry Metrics
+# How to Instrument mTLS Certificate Validation and Handshake Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

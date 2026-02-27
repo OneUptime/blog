@@ -1,4 +1,4 @@
-# How to Implement Container Image Signing with Cosign and Binary Authorization for GKE Deployments
+# How to Use Container Image Signing with Cosign and Binary Authorization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

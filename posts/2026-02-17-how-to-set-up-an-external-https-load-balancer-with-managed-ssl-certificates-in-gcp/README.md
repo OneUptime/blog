@@ -1,4 +1,4 @@
-# How to Set Up an External HTTP(S) Load Balancer with Managed SSL Certificates in GCP
+# How to Set Up an External HTTP Load Balancer with Managed SSL Certificates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

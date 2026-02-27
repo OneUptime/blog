@@ -1,4 +1,4 @@
-# How to Export Data from Azure Log Analytics Workspace to Azure Storage or Event Hubs
+# Export Data from Azure Log Analytics Workspace to Azure Storage or Event Hubs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

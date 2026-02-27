@@ -1,4 +1,4 @@
-# How to Implement Drift Detection for Security Configurations with Terraform and GCP
+# How to Use Drift Detection for Security Configurations with Terraform and GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

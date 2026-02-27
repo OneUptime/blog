@@ -1,4 +1,4 @@
-# How to Monitor SMS Gateway Message Delivery Latency and Failure Rates with OpenTelemetry
+# How to Monitor SMS Gateway Message Delivery Latency and Failure Rates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

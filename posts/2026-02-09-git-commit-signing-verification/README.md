@@ -1,4 +1,4 @@
-# How to Implement Git Commit Signing Verification in Kubernetes Deployment Pipelines
+# How to Use Git Commit Signing Verification in Kubernetes Deployment Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

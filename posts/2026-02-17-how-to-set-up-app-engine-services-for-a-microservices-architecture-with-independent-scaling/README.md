@@ -1,4 +1,4 @@
-# How to Set Up App Engine Services for a Microservices Architecture with Independent Scaling
+# How to Set Up App Engine Services for a Microservices Architecture
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

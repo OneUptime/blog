@@ -1,4 +1,4 @@
-# How to Trace Lab Information System (LIS) Result Routing Across Hospital Systems with OpenTelemetry
+# How to Trace Lab Information System Result Routing Across Hospital Systems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Azure Test Plans Exploratory Testing Sessions with Chrome Extension
+# How to Set Up Azure Test Plans Exploratory Testing Sessions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

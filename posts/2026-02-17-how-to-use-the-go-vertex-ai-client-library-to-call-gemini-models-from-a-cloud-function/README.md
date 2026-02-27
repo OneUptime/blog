@@ -1,4 +1,4 @@
-# How to Use the Go Vertex AI Client Library to Call Gemini Models from a Cloud Function
+# Use the Go Vertex AI Client Library to Call Gemini Models from a Cloud Function
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Velero Restic Integration for File-Level Backup of Persistent Volumes
+# Configure Velero Restic Integration for File-Level Backup of Persistent Volumes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

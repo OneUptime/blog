@@ -1,4 +1,4 @@
-# How to Run OpenTelemetry Instrumentation Validation Tests in GitHub Actions CI Pipelines
+# How to Run OpenTelemetry Instrumentation Validation Tests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

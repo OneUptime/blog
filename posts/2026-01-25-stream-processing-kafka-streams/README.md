@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, Kafka Streams, Stream Processing, Java, Real-Time Analytics
 
-Description: A practical guide to building real-time stream processing applications with Kafka Streams, covering stateless transformations, stateful aggregations, windowing, and joining streams with practical code examples.
+Description: A practical guide to building real-time stream processing applications with Kafka Streams, covering stateless transformations, stateful aggregations, windowing.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Validation, Bean Validation, REST API, Error Handling
 
-Description: Learn how to properly handle validation errors in Spring Boot applications. This guide covers Bean Validation annotations, custom validators, exception handling, and returning user-friendly error responses.
+Description: Learn how to properly handle validation errors in Spring Boot applications.
 
 ---
 

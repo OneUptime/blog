@@ -1,4 +1,4 @@
-# How to Troubleshoot Go Auto SDK Instrumentation Not Activating Because OTEL_GO_AUTO_TARGET_EXE Is Misconfigured
+# How to Troubleshoot Go Auto SDK Instrumentation Not Activating Because
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

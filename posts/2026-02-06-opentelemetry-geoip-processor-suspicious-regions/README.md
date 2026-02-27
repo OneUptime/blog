@@ -1,4 +1,4 @@
-# How to Use the OpenTelemetry GeoIP Processor to Flag Requests from Suspicious Geographic Regions
+# How to Use the OpenTelemetry GeoIP Processor to Flag Requests from Suspicious
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

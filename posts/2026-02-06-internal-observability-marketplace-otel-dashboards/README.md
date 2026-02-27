@@ -1,4 +1,4 @@
-# How to Build an Internal Observability Marketplace with Pre-Built OpenTelemetry Dashboards and Alerts
+# How to Build an Internal Observability Marketplace with Pre-Built OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

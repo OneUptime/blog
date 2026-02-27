@@ -1,4 +1,4 @@
-# How to Define Cross-Team Telemetry Data Ownership Policies Using OpenTelemetry Resource Attributes
+# How to Define Cross-Team Telemetry Data Ownership Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

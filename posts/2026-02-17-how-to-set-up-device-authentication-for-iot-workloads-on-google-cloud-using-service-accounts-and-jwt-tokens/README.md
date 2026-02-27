@@ -1,4 +1,4 @@
-# How to Set Up Device Authentication for IoT Workloads on Google Cloud Using Service Accounts and JWT Tokens
+# How to Set Up Device Auth for IoT Workloads on Google Cloud Using Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

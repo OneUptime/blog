@@ -1,4 +1,4 @@
-# How to Understand the OpenTelemetry Collector Pipeline Model (Receivers, Processors, Exporters)
+# How to Understand the OpenTelemetry Collector Pipeline Model
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

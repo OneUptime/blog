@@ -1,4 +1,4 @@
-# How to Integrate OpenTelemetry Traces and Logs with Your SIEM Platform (Splunk, Elastic SIEM, Sumo Logic)
+# How to Integrate OpenTelemetry Traces and Logs with Your SIEM Platform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

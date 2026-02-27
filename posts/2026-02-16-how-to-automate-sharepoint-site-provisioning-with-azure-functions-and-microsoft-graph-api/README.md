@@ -1,4 +1,4 @@
-# How to Automate SharePoint Site Provisioning with Azure Functions and Microsoft Graph API
+# How to Automate SharePoint Site Provisioning with Azure Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

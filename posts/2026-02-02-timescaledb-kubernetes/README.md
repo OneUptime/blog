@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: TimescaleDB, Kubernetes, PostgreSQL, Time-Series, DevOps, Database
 
-Description: Learn how to deploy and manage TimescaleDB on Kubernetes for time-series workloads. Covers Helm installation, persistent storage configuration, high availability setup, backup strategies, and performance tuning for production environments.
+Description: Learn how to deploy and manage TimescaleDB on Kubernetes for time-series workloads.
 
 ---
 

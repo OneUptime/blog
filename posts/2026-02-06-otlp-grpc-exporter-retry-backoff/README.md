@@ -1,4 +1,4 @@
-# How to Configure the OTLP/gRPC Exporter with Retry Policies, Backoff, and Timeout for Resilient Telemetry Export
+# How to Configure the OTLP/gRPC Exporter with Retry Policies, Backoff,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

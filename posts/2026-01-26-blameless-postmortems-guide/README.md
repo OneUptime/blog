@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Incident Management, Postmortems, Blameless Culture, Site Reliability Engineering, Team Leadership
 
-Description: Learn how to conduct effective blameless postmortems that help your team learn from incidents without fear. This practical guide covers facilitation techniques, common pitfalls, and real examples from production environments.
+Description: Learn how to conduct effective blameless postmortems that help your team learn from incidents without fear.
 
 Your database just went down for 45 minutes. Customers are upset. Leadership wants answers. And everyone on the team knows exactly who pushed that config change.
 

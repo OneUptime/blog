@@ -1,4 +1,4 @@
-# How to Configure Knative Serving Autoscaler with Custom Concurrency and Scale Bounds
+# How to Configure Knative Serving Autoscaler with Custom Concurrency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

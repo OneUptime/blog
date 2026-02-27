@@ -1,4 +1,4 @@
-# How to Use Microsoft Graph API with Azure AD App Registrations for Delegated Permissions
+# How to Use Microsoft Graph API with Azure AD App Registrations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

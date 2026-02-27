@@ -1,4 +1,4 @@
-# How to Implement Azure Policy to Enforce Diagnostic Settings on All Azure Resources
+# How to Use Azure Policy to Enforce Diagnostic Settings on All Azure Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

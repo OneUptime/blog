@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Eviction Policies, LRU, LFU, Memory Management, Caching, Performance
 
-Description: Learn how to configure Redis eviction policies to manage memory efficiently. This guide covers LRU, LFU, and other eviction strategies with practical examples for choosing the right policy for your use case.
+Description: Learn how to configure Redis eviction policies to manage memory efficiently.
 
 ---
 

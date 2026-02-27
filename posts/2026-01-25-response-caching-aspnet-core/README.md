@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ASP.NET Core, Caching, Performance, .NET, C#, Web API
 
-Description: Learn how to implement response caching in ASP.NET Core to improve application performance. This guide covers in-memory caching, distributed caching with Redis, cache profiles, and cache invalidation strategies.
+Description: Learn how to implement response caching in ASP.NET Core to improve application performance.
 
 ---
 

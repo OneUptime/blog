@@ -1,4 +1,4 @@
-# How to Set Up Trace-Based Testing with Tracetest and the OpenTelemetry Collector in CI/CD
+# How to Set Up Trace-Based Testing with Tracetest
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

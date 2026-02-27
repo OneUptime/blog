@@ -1,4 +1,4 @@
-# How to Monitor Yard Management and Dock Scheduling System Performance with OpenTelemetry
+# How to Monitor Yard Management and Dock Scheduling System Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

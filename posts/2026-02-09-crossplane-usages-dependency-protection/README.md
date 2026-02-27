@@ -1,10 +1,10 @@
-# How to Implement Crossplane Usages for Resource Dependency Protection in Kubernetes
+# How to Use Crossplane Usages for Resource Dependency Protection in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Crossplane, Kubernetes, Infrastructure-as-Code
 
-Description: Learn how to use Crossplane Usage resources to protect infrastructure from accidental deletion by enforcing dependencies between resources, preventing deletion of databases while applications still use them.
+Description: Learn how to use Crossplane Usage resources to protect infrastructure from accidental deletion by enforcing dependencies between resources.
 
 ---
 

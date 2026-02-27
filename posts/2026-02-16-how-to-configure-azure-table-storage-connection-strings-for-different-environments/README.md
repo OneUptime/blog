@@ -1,4 +1,4 @@
-# How to Configure Azure Table Storage Connection Strings for Different Environments
+# How to Configure Azure Table Storage Connection Strings
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

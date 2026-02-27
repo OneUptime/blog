@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Geospatial, Location, GEO Commands, Nearby Search, Maps, Real-time
 
-Description: Learn how to implement location-based features using Redis geospatial indexes. This guide covers storing coordinates, finding nearby locations, calculating distances, and building real-world features like store locators and delivery tracking.
+Description: Learn how to implement location-based features using Redis geospatial indexes.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Implement a Data Masking Pipeline That Redacts PII from Traces, Metrics, and Logs in a Single Collector
+# How to Build a Data Masking Pipeline That Redacts PII from Traces, Metrics,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

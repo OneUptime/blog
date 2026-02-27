@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, OpenTelemetry, Logging, Structured Logging, Observability, Trace Correlation, Logs
 
-Description: Learn how to implement structured logging in Python applications with OpenTelemetry. This guide covers trace correlation, proper log formatting, context enrichment, and integration with popular logging frameworks.
+Description: Learn how to implement structured logging in Python applications with OpenTelemetry.
 
 ---
 

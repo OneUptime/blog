@@ -1,4 +1,4 @@
-# How to Implement the Retry Pattern with Exponential Backoff in Azure Applications
+# How to Use the Retry Pattern with Exponential Backoff in Azure Applications
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

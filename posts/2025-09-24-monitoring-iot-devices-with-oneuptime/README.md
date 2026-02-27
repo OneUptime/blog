@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IoT, Monitoring, Incoming Request, Heartbeat, Devices, Reliability, DevOps
 
-Description: A comprehensive guide to monitoring IoT devices with OneUptime's incoming request monitors. Learn how to set up heartbeat monitoring for your connected devices, configure alerts, and ensure your IoT infrastructure stays reliable.
+Description: A comprehensive guide to monitoring IoT devices with OneUptime's incoming request monitors.
 
 ---
 

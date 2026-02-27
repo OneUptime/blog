@@ -1,4 +1,4 @@
-# How to Configure the OpAMP Supervisor to Manage Collector Lifecycle and Auto-Restart on Crash
+# How to Configure the OpAMP Supervisor to Manage Collector Lifecycle
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure GKE Maintenance Windows to Control When Automatic Upgrades Happen
+# Configure GKE Maintenance Windows to Control When Automatic Upgrades Happen
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

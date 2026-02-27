@@ -1,4 +1,4 @@
-# How to Implement Request Tracing Headers in Local Development Against Kubernetes Staging
+# Use Request Tracing Headers in Local Development Against Kubernetes Staging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

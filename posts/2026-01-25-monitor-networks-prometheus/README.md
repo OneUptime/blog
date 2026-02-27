@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Network Monitoring, SNMP, Blackbox Exporter, Network Devices, Bandwidth, Latency, Observability
 
-Description: Learn how to monitor networks with Prometheus using SNMP Exporter and Blackbox Exporter. This guide covers router and switch monitoring, bandwidth tracking, latency measurement, and alerting for network infrastructure.
+Description: Learn how to monitor networks with Prometheus using SNMP Exporter and Blackbox Exporter.
 
 ---
 

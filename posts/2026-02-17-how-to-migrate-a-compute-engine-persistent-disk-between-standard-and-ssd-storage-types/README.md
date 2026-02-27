@@ -1,4 +1,4 @@
-# How to Migrate a Compute Engine Persistent Disk Between Standard and SSD Storage Types
+# How to Migrate a Compute Engine Persistent Disk Between Standard
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

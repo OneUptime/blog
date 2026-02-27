@@ -1,4 +1,4 @@
-# How to Build Multi-Architecture Container Images Using Docker Buildx for Kubernetes ARM Nodes
+# How to Build Multi-Architecture Container Images Using Docker Buildx
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

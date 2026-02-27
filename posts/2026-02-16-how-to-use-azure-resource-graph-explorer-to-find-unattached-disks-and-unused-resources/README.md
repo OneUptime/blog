@@ -1,4 +1,4 @@
-# How to Use Azure Resource Graph Explorer to Find Unattached Disks and Unused Resources
+# How to Use Azure Resource Graph Explorer to Find Unattached Disks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

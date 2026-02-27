@@ -1,10 +1,10 @@
-# How to Configure ExternalName Services to Map Kubernetes DNS to External CNAME Records
+# Configure ExternalName Services to Map Kubernetes DNS to External CNAME Records
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DNS, Services, Networking
 
-Description: Learn how to use Kubernetes ExternalName services to create DNS aliases that map cluster service names to external CNAME records, enabling seamless integration with external services and cloud resources.
+Description: Learn how to use Kubernetes ExternalName services to create DNS aliases that map cluster service names to external CNAME records.
 
 ---
 

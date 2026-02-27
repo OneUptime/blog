@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: LangChain, Agents, AI, LLM, Python, OpenAI, Autonomous Systems, Machine Learning
 
-Description: A comprehensive guide to building intelligent AI agents with LangChain. Learn agent architectures, tool integration, memory management, error handling, and production deployment patterns with practical code examples.
+Description: A comprehensive guide to building intelligent AI agents with LangChain.
 
 ---
 

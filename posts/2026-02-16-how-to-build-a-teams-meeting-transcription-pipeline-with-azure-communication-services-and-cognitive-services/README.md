@@ -1,4 +1,4 @@
-# How to Build a Teams Meeting Transcription Pipeline with Azure Communication Services and Cognitive Services
+# How to Build a Teams Meeting Transcription Pipeline with Azure Communication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

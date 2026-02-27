@@ -1,4 +1,4 @@
-# How to Use Cloud Monitoring to Track Pub/Sub Subscription Backlog and Processing Latency
+# How to Use Cloud Monitoring to Track Pub/Sub Subscription Backlog
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

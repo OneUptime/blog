@@ -1,4 +1,4 @@
-# How to Use the OpenTelemetry Log Viewer VS Code Extension for Local Trace Debugging
+# How to Use the OpenTelemetry Log Viewer VS Code Extension
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

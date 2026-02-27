@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Services, Networking
 
-Description: Master the differences between ClusterIP, NodePort, and LoadBalancer service types in Kubernetes to choose the right service exposure method for your applications based on access patterns, security requirements, and infrastructure capabilities.
+Description: Master the differences between ClusterIP, NodePort, and LoadBalancer service types in Kubernetes to choose the right service exposure method for your applications based on access patterns.
 
 ---
 

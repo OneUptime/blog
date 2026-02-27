@@ -1,4 +1,4 @@
-# How to Set Up Azure Key Vault Certificate Auto-Renewal with DigiCert and GlobalSign Integration
+# How to Set Up Azure Key Vault Certificate Auto-Renewal
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

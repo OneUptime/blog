@@ -1,4 +1,4 @@
-# How to Understand the Relationship Between OpenTelemetry, OpenTracing, and OpenCensus
+# How to Understand the Relationship Between OpenTelemetry, OpenTracing,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

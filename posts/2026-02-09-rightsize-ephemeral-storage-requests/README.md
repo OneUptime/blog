@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, Resource Management
 
-Description: Learn how to properly size ephemeral storage requests and limits in Kubernetes to prevent pod evictions due to disk pressure while efficiently managing container logs, temporary files, and emptyDir volumes.
+Description: Learn how to properly size ephemeral storage requests and limits in Kubernetes to prevent pod evictions due to disk pressure while efficiently managing container logs, temporary files.
 
 ---
 

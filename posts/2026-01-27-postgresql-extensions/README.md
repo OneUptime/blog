@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, PostGIS, pg_trgm, uuid-ossp, Extensions, SQL, Geospatial, Full-Text Search
 
-Description: Learn how to supercharge your PostgreSQL database with powerful extensions like PostGIS for geospatial data, pg_trgm for fuzzy search, and uuid-ossp for UUID generation. This guide covers installation, configuration, and practical examples.
+Description: Learn how to supercharge your PostgreSQL database with powerful extensions like PostGIS for geospatial data, pg_trgm for fuzzy search, and uuid-ossp for UUID generation.
 
 ---
 

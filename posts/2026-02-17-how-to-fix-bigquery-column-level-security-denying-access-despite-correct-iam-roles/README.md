@@ -1,4 +1,4 @@
-# How to Fix BigQuery Column-Level Security Denying Access Despite Correct IAM Roles
+# Fix BigQuery Column-Level Security Denying Access Despite Correct IAM Roles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

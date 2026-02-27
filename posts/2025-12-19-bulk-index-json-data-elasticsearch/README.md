@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Bulk API, Data Ingestion, Performance, JSON
 
-Description: Learn how to efficiently bulk index JSON data into Elasticsearch using the Bulk API. This guide covers optimal batch sizes, error handling, performance tuning, and practical examples in multiple languages.
+Description: Learn how to efficiently bulk index JSON data into Elasticsearch using the Bulk API.
 
 The Bulk API is essential for efficiently indexing large amounts of data into Elasticsearch. Instead of making individual requests for each document, bulk indexing sends multiple operations in a single request, dramatically improving throughput.
 

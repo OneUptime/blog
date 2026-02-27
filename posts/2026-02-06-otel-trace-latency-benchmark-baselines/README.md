@@ -1,4 +1,4 @@
-# How to Set Up Performance Benchmark Baselines from OpenTelemetry Trace Latency Data
+# Set Up Performance Benchmark Baselines from OpenTelemetry Trace Latency Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

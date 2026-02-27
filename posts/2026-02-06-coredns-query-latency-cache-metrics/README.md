@@ -1,4 +1,4 @@
-# How to Monitor CoreDNS Query Latency, Cache Hit Rates, and DNS Request Types with the Collector
+# How to Monitor CoreDNS Query Latency, Cache Hit Rates, and DNS Request Types
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

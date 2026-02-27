@@ -1,4 +1,4 @@
-# How to Configure Model Monitoring and Data Drift Detection for KServe on Kubernetes
+# How to Configure Model Monitoring and Data Drift Detection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

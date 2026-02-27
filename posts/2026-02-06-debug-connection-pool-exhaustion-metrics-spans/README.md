@@ -1,4 +1,4 @@
-# How to Debug Connection Pool Exhaustion by Correlating OpenTelemetry Pool Metrics with Slow Spans
+# How to Debug Connection Pool Exhaustion by Correlating OpenTelemetry Pool
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

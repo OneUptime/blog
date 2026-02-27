@@ -441,5 +441,5 @@ Start with a managed message broker for production workloads. The patterns in th
 
 **Related Reading:**
 
-- [How to Implement Retry Logic with Exponential Backoff in Node.js](/blog/post/2026-01-06-nodejs-retry-exponential-backoff)
-- [Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry)
+- [How to Implement Retry Logic with Exponential Backoff in Node.js](https://oneuptime.com/blog/post/2026-01-06-nodejs-retry-exponential-backoff/view)
+- [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)

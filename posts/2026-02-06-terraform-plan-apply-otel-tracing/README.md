@@ -1,4 +1,4 @@
-# How to Monitor Terraform Plan and Apply Operations with OpenTelemetry Tracing and Metrics
+# How to Monitor Terraform Plan and Apply Operations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

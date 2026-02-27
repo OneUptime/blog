@@ -1,4 +1,4 @@
-# How to Configure GKE Workload Metrics to Export Prometheus Metrics to Cloud Monitoring
+# Configure GKE Workload Metrics to Export Prometheus Metrics to Cloud Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

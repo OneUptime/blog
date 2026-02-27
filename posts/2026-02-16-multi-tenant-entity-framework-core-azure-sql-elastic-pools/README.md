@@ -1,4 +1,4 @@
-# How to Build a Multi-Tenant Application with Entity Framework Core and Azure SQL Elastic Pools
+# How to Build a Multi-Tenant Application with Entity Framework Core
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

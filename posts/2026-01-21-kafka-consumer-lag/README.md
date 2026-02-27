@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Consumer Lag, Monitoring, Performance, Scaling, Observability
 
-Description: A comprehensive guide to understanding, monitoring, and reducing Kafka consumer lag, covering measurement techniques, alerting strategies, optimization approaches, and scaling patterns for keeping up with message production.
+Description: A comprehensive guide to understanding, monitoring, and reducing Kafka consumer lag, covering measurement techniques, alerting strategies, optimization approaches.
 
 ---
 

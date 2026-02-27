@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cypress, Testing, E2E, Commands
 
-Description: A comprehensive guide to understanding and handling Cypress commands, covering the command queue, asynchronous execution, retry-ability, chaining patterns, and best practices for reliable end-to-end tests.
+Description: A comprehensive guide to understanding and handling Cypress commands, covering the command queue, asynchronous execution, retry-ability, chaining patterns.
 
 ---
 

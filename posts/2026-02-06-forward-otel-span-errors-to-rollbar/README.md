@@ -1,4 +1,4 @@
-# How to Forward OpenTelemetry Span Error Events to Rollbar for Centralized Error Grouping
+# How to Forward OpenTelemetry Span Error Events to Rollbar
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

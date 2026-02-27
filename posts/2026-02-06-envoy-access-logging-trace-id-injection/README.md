@@ -1,4 +1,4 @@
-# How to Configure Envoy Proxy Access Logging with OpenTelemetry Trace ID and Span ID Injection
+# How to Configure Envoy Proxy Access Logging with OpenTelemetry Trace ID
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

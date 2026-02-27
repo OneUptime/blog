@@ -1,4 +1,4 @@
-# How to Use Azure Developer CLI (azd) to Scaffold and Deploy a New Project from a Template
+# How to Use Azure Developer CLI to Scaffold
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

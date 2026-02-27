@@ -1,4 +1,4 @@
-# How to Convert Kustomize Overlays to Helm Charts for Kubernetes Application Packaging
+# How to Convert Kustomize Overlays to Helm Charts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Defender for Cloud Auto-Provisioning of the Azure Monitor Agent
+# Set Up Microsoft Defender for Cloud Auto-Provisioning of the Azure Monitor Agent
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

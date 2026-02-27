@@ -1,4 +1,4 @@
-# How to Instrument Story and Reel Upload, Processing, and Distribution Pipelines with OpenTelemetry
+# How to Instrument Story and Reel Upload, Processing, and Distribution Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

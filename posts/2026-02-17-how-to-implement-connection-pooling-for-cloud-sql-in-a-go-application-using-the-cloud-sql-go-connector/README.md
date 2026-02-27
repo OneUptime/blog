@@ -1,4 +1,4 @@
-# How to Implement Connection Pooling for Cloud SQL in a Go Application Using the Cloud SQL Go Connector
+# How to Use Connection Pooling for Cloud SQL in a Go App Using the Cloud SQL Go
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

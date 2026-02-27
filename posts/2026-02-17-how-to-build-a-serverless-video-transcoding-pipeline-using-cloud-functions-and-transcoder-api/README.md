@@ -1,4 +1,4 @@
-# How to Build a Serverless Video Transcoding Pipeline Using Cloud Functions and Transcoder API
+# How to Build a Serverless Video Transcoding Pipeline Using Cloud Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

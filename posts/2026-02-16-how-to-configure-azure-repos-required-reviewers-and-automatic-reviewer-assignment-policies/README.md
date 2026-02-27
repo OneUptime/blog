@@ -1,4 +1,4 @@
-# How to Configure Azure Repos Required Reviewers and Automatic Reviewer Assignment Policies
+# How to Configure Azure Repos Required Reviewers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

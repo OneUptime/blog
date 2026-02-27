@@ -1,4 +1,4 @@
-# How to Master Machine Learning and Vertex AI Topics for the GCP Professional Data Engineer Exam
+# How to Master Machine Learning and Vertex AI Topics for the GCP Professional
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

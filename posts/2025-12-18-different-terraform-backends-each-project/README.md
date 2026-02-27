@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, DevOps, Backend Configuration, State Management
 
-Description: Learn how to configure different Terraform backends for each project to manage state files separately. This guide covers backend configuration strategies, partial configuration, and workspace patterns for multi-project environments.
+Description: Learn how to configure different Terraform backends for each project to manage state files separately.
 
 Managing Terraform state across multiple projects requires careful planning. Each project may need its own backend configuration for isolation, security, or organizational requirements. This guide shows you how to configure different backends for each project while maintaining a clean, maintainable infrastructure codebase.
 

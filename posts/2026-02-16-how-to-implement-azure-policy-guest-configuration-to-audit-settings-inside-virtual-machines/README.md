@@ -1,4 +1,4 @@
-# How to Implement Azure Policy Guest Configuration to Audit Settings Inside Virtual Machines
+# Use Azure Policy Guest Configuration to Audit Settings Inside Virtual Machines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

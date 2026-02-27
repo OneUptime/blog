@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BullMQ, Node.js, Redis, Deduplication, Idempotency, Job Queue, Best Practices
 
-Description: A comprehensive guide to implementing job deduplication in BullMQ to prevent duplicate job execution, including custom job IDs, deduplication strategies, and patterns for ensuring exactly-once job processing.
+Description: A comprehensive guide to implementing job deduplication in BullMQ to prevent duplicate job execution, including custom job IDs, deduplication strategies.
 
 ---
 

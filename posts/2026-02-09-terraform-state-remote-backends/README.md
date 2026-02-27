@@ -1,4 +1,4 @@
-# Configuring Remote Backends for Terraform State Management in Kubernetes Projects
+# Configuring Remote Backends for Terraform State Management
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

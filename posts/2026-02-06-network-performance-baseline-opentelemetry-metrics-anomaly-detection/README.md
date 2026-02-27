@@ -1,4 +1,4 @@
-# How to Build a Network Performance Baseline from OpenTelemetry Metrics for Anomaly Detection
+# How to Build a Network Performance Baseline from OpenTelemetry Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

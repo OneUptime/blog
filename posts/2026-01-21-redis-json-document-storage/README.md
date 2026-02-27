@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, RedisJSON, Document Storage, JSON, NoSQL, Data Modeling
 
-Description: A comprehensive guide to using RedisJSON for document storage, covering JSONPath queries, nested document operations, indexing with RediSearch, and best practices for building document-oriented applications.
+Description: A comprehensive guide to using RedisJSON for document storage, covering JSONPath queries, nested document operations, indexing with RediSearch.
 
 ---
 

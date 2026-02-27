@@ -1,4 +1,4 @@
-# How to Fix Kubernetes PersistentVolumeClaim Stuck in Pending Due to Storage Class Issues
+# How to Fix K8s PersistentVolumeClaim Stuck in Pending Due to Storage Class
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

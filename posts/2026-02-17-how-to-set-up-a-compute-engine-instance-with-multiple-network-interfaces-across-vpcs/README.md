@@ -1,4 +1,4 @@
-# How to Set Up a Compute Engine Instance with Multiple Network Interfaces Across VPCs
+# Set Up a Compute Engine Instance with Multiple Network Interfaces Across VPCs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

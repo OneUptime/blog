@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, FastAPI, WebSocket, Real-time, Dashboard, SSE, Async
 
-Description: Learn how to build real-time dashboards in Python using FastAPI with WebSocket and Server-Sent Events. This guide covers live data streaming, connection management, and practical patterns for monitoring dashboards.
+Description: Learn how to build real-time dashboards in Python using FastAPI with WebSocket and Server-Sent Events.
 
 ---
 

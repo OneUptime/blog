@@ -1,4 +1,4 @@
-# How to Configure AKS Image Cleaner to Automatically Remove Stale Container Images from Nodes
+# How to Configure AKS Image Cleaner to Auto Remove Stale Container Images from
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

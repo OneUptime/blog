@@ -1,4 +1,4 @@
-# How to Create a Hyperparameter Tuning Job in Vertex AI with Bayesian Optimization
+# How to Create a Hyperparameter Tuning Job in Vertex AI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement RBAC Policies That Restrict PodSecurityPolicy Creation and Binding
+# How to Use RBAC Policies That Restrict PodSecurityPolicy Creation and Binding
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

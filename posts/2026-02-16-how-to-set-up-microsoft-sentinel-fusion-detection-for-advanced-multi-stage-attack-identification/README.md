@@ -1,4 +1,4 @@
-# How to Set Up Microsoft Sentinel Fusion Detection for Advanced Multi-Stage Attack Identification
+# How to Set Up Microsoft Sentinel Fusion Detection for Advanced Multi-Stage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

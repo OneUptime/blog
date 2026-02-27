@@ -1,4 +1,4 @@
-# How to Configure AKS with Bring Your Own CNI Plugin for Custom Networking Solutions
+# How to Configure AKS with Bring Your Own CNI Plugin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

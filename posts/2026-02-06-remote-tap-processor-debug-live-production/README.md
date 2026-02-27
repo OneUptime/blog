@@ -1,4 +1,4 @@
-# How to Use Remote Tap Processor to Debug Live Production Traffic Without Redeploying the Collector
+# How to Use Remote Tap Processor to Debug Live Production Traffic Without
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

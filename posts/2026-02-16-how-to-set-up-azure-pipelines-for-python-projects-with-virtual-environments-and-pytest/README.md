@@ -1,4 +1,4 @@
-# How to Set Up Azure Pipelines for Python Projects with Virtual Environments and pytest
+# How to Set Up Azure Pipelines for Python Projects
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

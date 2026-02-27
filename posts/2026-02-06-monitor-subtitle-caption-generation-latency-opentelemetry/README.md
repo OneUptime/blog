@@ -1,4 +1,4 @@
-# How to Monitor Subtitle and Caption Generation Pipeline Latency with OpenTelemetry
+# How to Monitor Subtitle and Caption Generation Pipeline Latency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure TCP Port Availability Checks Using OpenTelemetry Synthetic Monitoring
+# How to Configure TCP Port Availability Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

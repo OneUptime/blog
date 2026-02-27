@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Security, Secrets, DevOps, Docker Swarm
 
-Description: Protect sensitive data in Docker deployments using Docker secrets, build-time secrets with BuildKit, and external secret managers. Keep passwords, API keys, and certificates out of images and environment variables.
+Description: Protect sensitive data in Docker deployments using Docker secrets, build-time secrets with BuildKit, and external secret managers.
 
 ---
 

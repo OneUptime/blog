@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: WebSocket, Presence Detection, Real-Time, Online Status, Node.js, JavaScript
 
-Description: A comprehensive guide to implementing real-time presence detection with WebSockets. Learn how to track user online/offline status, handle heartbeats, manage presence across multiple tabs, and build scalable presence systems for chat applications and collaboration tools.
+Description: A comprehensive guide to implementing real-time presence detection with WebSockets.
 
 ---
 

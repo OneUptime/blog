@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Ownership, Borrowing, Memory Safety, Programming
 
-Description: Master Rust's ownership and borrowing system to write memory-safe code without a garbage collector. This guide covers the rules, common patterns, and practical examples that will help you think like a Rustacean.
+Description: Master Rust's ownership and borrowing system to write memory-safe code without a garbage collector.
 
 ---
 

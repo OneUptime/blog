@@ -1,4 +1,4 @@
-# How to Deploy a Machine Learning Model as a Real-Time Endpoint in Azure Machine Learning
+# How to Deploy a Machine Learning Model as a Real-Time Endpoint
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

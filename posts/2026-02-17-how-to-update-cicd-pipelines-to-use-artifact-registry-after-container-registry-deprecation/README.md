@@ -1,4 +1,4 @@
-# How to Update CI/CD Pipelines to Use Artifact Registry After Container Registry Deprecation
+# How to Update CI/CD Pipelines to Use Artifact Registry After Container Registry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

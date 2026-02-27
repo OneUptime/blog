@@ -1,10 +1,10 @@
-# How to Implement Kubernetes ExternalTrafficPolicy Local to Preserve Client Source IP
+# How to Use Kubernetes ExternalTrafficPolicy Local to Preserve Client Source IP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Networking, LoadBalancer, Service, IP
 
-Description: Configure Kubernetes ExternalTrafficPolicy Local to preserve client source IP addresses for services, enabling accurate logging, security policies, and geographic routing while understanding the tradeoffs.
+Description: Configure Kubernetes ExternalTrafficPolicy Local to preserve client source IP addresses for services, enabling accurate logging, security policies.
 
 ---
 

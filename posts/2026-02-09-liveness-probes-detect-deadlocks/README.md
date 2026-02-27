@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Health Checks, Deadlocks
 
-Description: Configure liveness probes with heartbeat mechanisms to detect deadlocked application threads and goroutines, enabling automatic recovery from threading issues that leave processes alive but unresponsive.
+Description: Configure liveness probes with heartbeat mechanisms to detect deadlocked application threads and goroutines.
 
 ---
 

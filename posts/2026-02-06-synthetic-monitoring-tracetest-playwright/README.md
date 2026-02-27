@@ -1,4 +1,4 @@
-# How to Build Synthetic Monitoring Tests with Tracetest and Playwright for Continuous Performance Validation
+# How to Build Synthetic Monitoring Tests with Tracetest and Playwright
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Track API Version Usage Metrics Across v1/v2/v3 Endpoints with OpenTelemetry Custom Attributes
+# How to Track API Version Usage Metrics Across v1/v2/v3 Endpoints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

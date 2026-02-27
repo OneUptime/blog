@@ -1,4 +1,4 @@
-# How to Register and Discover Microservices Using Service Directory on Google Cloud
+# How to Register and Discover Microservices Using Service Directory
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

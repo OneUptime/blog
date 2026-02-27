@@ -1,4 +1,4 @@
-# How to Build Real-Time Leaderboards in Firestore Using Distributed Counters and Aggregation
+# How to Build Real-Time Leaderboards in Firestore
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

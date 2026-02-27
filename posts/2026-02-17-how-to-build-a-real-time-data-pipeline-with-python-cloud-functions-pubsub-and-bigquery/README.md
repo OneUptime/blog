@@ -1,4 +1,4 @@
-# How to Build a Real-Time Data Pipeline with Python Cloud Functions Pub/Sub and BigQuery
+# How to Build a Real-Time Data Pipeline with Python Cloud Functions Pub/Sub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

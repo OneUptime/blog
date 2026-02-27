@@ -1,4 +1,4 @@
-# How to Migrate from OTLP/gRPC Exporter to OTel Arrow Exporter Without Pipeline Downtime
+# Migrate from OTLP/gRPC Exporter to OTel Arrow Exporter Without Pipeline Downtime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

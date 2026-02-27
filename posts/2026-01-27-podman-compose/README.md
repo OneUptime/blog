@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Podman Compose, Docker Compose, Containers, DevOps, Multi-Container, Rootless Containers
 
-Description: Learn how to use Podman Compose to manage multi-container applications with Docker Compose compatibility. This guide covers installation, networking, volumes, and migrating from Docker Compose to Podman.
+Description: Learn how to use Podman Compose to manage multi-container applications with Docker Compose compatibility.
 
 ---
 
@@ -993,6 +993,6 @@ Podman Compose brings container orchestration to the Podman ecosystem while main
 
 ### See Also
 
-- [10 Docker Superpowers Developers Forget to Use](/blog/post/2025-11-27-ten-docker-superpowers-youre-probably-not-using/) - Advanced container techniques
-- [Debug Docker Containers Like a Pro](/blog/post/2025-11-27-debug-docker-containers/) - Container debugging strategies
-- [Migrate Legacy VMs to Docker](/blog/post/2025-11-27-migrate-legacy-vms-to-docker/) - Containerization migration guide
+- [10 Docker Superpowers Developers Forget to Use](https://oneuptime.com/blog/post/2025-11-27-ten-docker-superpowers-youre-probably-not-using/view) - Advanced container techniques
+- [Debug Docker Containers Like a Pro](https://oneuptime.com/blog/post/2025-11-27-debug-docker-containers/view) - Container debugging strategies
+- [Migrate Legacy VMs to Docker](https://oneuptime.com/blog/post/2025-11-27-migrate-legacy-vms-to-docker/view) - Containerization migration guide

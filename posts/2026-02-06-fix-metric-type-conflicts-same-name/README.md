@@ -1,4 +1,4 @@
-# How to Fix Metric Type Conflicts When Two Instruments Register the Same Metric Name with Different Types
+# How to Fix Metric Type Conflicts When Two Instruments Register the Same Metric
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

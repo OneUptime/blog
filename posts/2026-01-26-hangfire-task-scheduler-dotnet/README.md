@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, Hangfire, Background Jobs, Task Scheduling, ASP.NET Core
 
-Description: Learn how to implement reliable background job processing and task scheduling in .NET using Hangfire. This guide covers fire-and-forget jobs, scheduled tasks, recurring jobs, and production best practices.
+Description: Learn how to implement reliable background job processing and task scheduling in .NET using Hangfire.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Implement a Custom SpanProcessor That Adds Request-Scoped Attributes at Span End Time
+# How to Build a Custom SpanProcessor That Adds Request-Scoped Attributes at Span
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, High Availability, Shard Allocation, Kubernetes, Redundancy
 
-Description: Implement Elasticsearch shard allocation awareness to distribute primary and replica shards across availability zones, ensuring cluster resilience against zone failures and maintaining data availability.
+Description: Implement Elasticsearch shard allocation awareness to distribute primary and replica shards across availability zones.
 
 ---
 

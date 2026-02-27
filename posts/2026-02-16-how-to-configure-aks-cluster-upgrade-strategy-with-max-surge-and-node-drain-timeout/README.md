@@ -1,4 +1,4 @@
-# How to Configure AKS Cluster Upgrade Strategy with Max Surge and Node Drain Timeout
+# How to Configure AKS Cluster Upgrade Strategy with Max Surge
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

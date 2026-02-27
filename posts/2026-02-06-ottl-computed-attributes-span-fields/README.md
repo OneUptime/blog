@@ -1,4 +1,4 @@
-# How to Write OTTL Statements That Add Computed Attributes Based on Multiple Existing Span Fields
+# How to Write OTTL Statements That Add Computed Attributes Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

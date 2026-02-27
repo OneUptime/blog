@@ -1,4 +1,4 @@
-# How to Build a Developer Self-Service Portal for Kubernetes Namespace Provisioning
+# How to Build a Developer Self-Service Portal
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

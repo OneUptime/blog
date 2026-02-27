@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: LLM, AI, Self-Hosting, Ollama, Moltbot, Machine Learning, Open Source, GPU
 
-Description: A practical guide to running self-hosted open-source LLMs with Moltbot when you need an alternative to Claude or other API-based AI assistants. Covers model selection, hardware requirements, and step-by-step configuration.
+Description: A practical guide to running self-hosted open-source LLMs with Moltbot when you need an alternative to Claude or other API-based AI assistants.
 
 ---
 

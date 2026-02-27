@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, Performance, Tuning, High Throughput, Scalability
 
-Description: A comprehensive guide to tuning Apache Kafka for extreme throughput, covering producer batching, broker configuration, partition strategies, and hardware optimization to achieve millions of messages per second.
+Description: A comprehensive guide to tuning Apache Kafka for extreme throughput, covering producer batching, broker configuration, partition strategies.
 
 ---
 

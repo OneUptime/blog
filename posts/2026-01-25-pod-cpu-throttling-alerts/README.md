@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CPU Throttling, Monitoring, Prometheus, Alerts, Performance
 
-Description: Learn how to detect and alert on CPU throttling in Kubernetes pods. This guide covers understanding throttling metrics, configuring Prometheus alerts, and optimizing CPU limits to prevent performance degradation.
+Description: Learn how to detect and alert on CPU throttling in Kubernetes pods.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Monitor E-Commerce Search Autocomplete and Typeahead Performance with OpenTelemetry Histograms
+# How to Monitor E-Commerce Search Autocomplete and Typeahead Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

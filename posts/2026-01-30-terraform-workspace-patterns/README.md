@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Workspaces, IaC, Multi-Environment
 
-Description: A comprehensive guide to building effective Terraform workspace patterns for managing multi-environment infrastructure. Learn proven architectural patterns, workspace isolation strategies, and production-ready implementations for scaling your IaC practice.
+Description: A comprehensive guide to building effective Terraform workspace patterns for managing multi-environment infrastructure.
 
 Terraform workspaces are a powerful feature that allows you to manage multiple distinct sets of infrastructure resources with the same configuration. However, using workspaces effectively requires thoughtful patterns and architecture. In this guide, we will explore battle-tested workspace patterns that scale from small teams to enterprise deployments.
 

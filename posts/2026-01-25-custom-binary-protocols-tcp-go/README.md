@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, TCP, Binary Protocol, Networking, Low-Level
 
-Description: Learn how to design and implement custom binary protocols over TCP in Go for high-performance network communication, with practical examples covering message framing, serialization, and connection handling.
+Description: Learn how to design and implement custom binary protocols over TCP in Go for high-performance network communication, with practical examples covering message framing, serialization.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Set Up a Streaming Endpoint and Locator for On-Demand Video in Azure Media Services
+# How to Set Up a Streaming Endpoint and Locator for On-Demand Video
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

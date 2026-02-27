@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Azure, Storage, Network Rules, Security, Firewall
 
-Description: Learn how to create Azure Storage accounts and containers with comprehensive network rules using Terraform, including private endpoints, service endpoints, IP restrictions, and virtual network integration.
+Description: Learn how to create Azure Storage accounts and containers with comprehensive network rules using Terraform, including private endpoints, service endpoints, IP restrictions.
 
 Azure Storage accounts often contain sensitive data and require strict network access controls. This guide demonstrates how to create storage containers with comprehensive network rules using Terraform, ensuring your data is protected while remaining accessible to authorized services.
 

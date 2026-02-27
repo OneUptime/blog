@@ -1,4 +1,4 @@
-# How to Fix Cloud SQL Slow Queries by Analyzing and Optimizing with Query Insights
+# How to Fix Cloud SQL Slow Queries by Analyzing and Optimizing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

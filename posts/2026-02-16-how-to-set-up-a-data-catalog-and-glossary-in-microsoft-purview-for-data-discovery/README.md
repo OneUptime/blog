@@ -1,4 +1,4 @@
-# How to Set Up a Data Catalog and Glossary in Microsoft Purview for Data Discovery
+# How to Set Up a Data Catalog and Glossary in Microsoft Purview
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

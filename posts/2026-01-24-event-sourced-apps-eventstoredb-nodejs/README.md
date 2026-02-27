@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Event Sourcing, EventStoreDB, Node.js, TypeScript, CQRS, Event-Driven Architecture, Backend
 
-Description: Learn how to build event-sourced applications in Node.js using EventStoreDB. This guide covers event modeling, stream management, projections, and practical patterns for building reliable event-driven systems.
+Description: Learn how to build event-sourced applications in Node.js using EventStoreDB.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, TimescaleDB, Comparison, Time-Series, Database Selection, Performance
 
-Description: A comprehensive comparison of ClickHouse and TimescaleDB for time-series data, covering architecture differences, performance benchmarks, feature comparison, and guidance on choosing the right database for your use case.
+Description: A comprehensive comparison of ClickHouse and TimescaleDB for time-series data, covering architecture differences, performance benchmarks, feature comparison.
 
 ---
 

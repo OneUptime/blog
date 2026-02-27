@@ -1,4 +1,4 @@
-# How to Configure Workforce Identity Pool Attribute Mappings for Fine-Grained Access
+# Configure Workforce Identity Pool Attribute Mappings for Fine-Grained Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

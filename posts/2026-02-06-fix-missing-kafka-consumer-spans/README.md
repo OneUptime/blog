@@ -1,4 +1,4 @@
-# How to Fix Missing Kafka Consumer Spans When OpenTelemetry Agent Cannot Hook Into the Consumer Group
+# How to Fix Missing Kafka Consumer Spans When OpenTelemetry Agent Cannot Hook
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

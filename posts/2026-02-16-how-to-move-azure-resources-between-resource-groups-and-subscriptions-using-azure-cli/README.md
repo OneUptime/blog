@@ -1,4 +1,4 @@
-# How to Move Azure Resources Between Resource Groups and Subscriptions Using Azure CLI
+# How to Move Azure Resources Between Resource Groups and Subscriptions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

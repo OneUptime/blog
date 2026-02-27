@@ -1,4 +1,4 @@
-# How to Use the google-cloud-vision Python Library for Image Classification in a Cloud Function
+# How to Use the google-cloud-vision Python Library for Image Classification
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

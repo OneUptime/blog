@@ -1,4 +1,4 @@
-# How to Troubleshoot Missing Entity Framework Core Spans When the DiagnosticSource Listener Is Not Registered
+# How to Troubleshoot Missing Entity Framework Core Spans When the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

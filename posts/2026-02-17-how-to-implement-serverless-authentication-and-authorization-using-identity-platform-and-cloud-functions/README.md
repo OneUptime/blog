@@ -1,4 +1,4 @@
-# How to Implement Serverless Authentication and Authorization Using Identity Platform and Cloud Functions
+# How to Use Serverless Authentication and Authorization Using Identity Platform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

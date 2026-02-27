@@ -1,4 +1,4 @@
-# How to Troubleshoot Celery Worker Spans Being Orphaned from Parent Traces Due to Missing Context Headers
+# How to Troubleshoot Celery Worker Spans Being Orphaned from Parent Traces Due
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Data Residency Compliance by Routing Telemetry to Region-Specific Backends Based on Attributes
+# How to Use Data Residency Compliance by Routing Telemetry to Region-Specific
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

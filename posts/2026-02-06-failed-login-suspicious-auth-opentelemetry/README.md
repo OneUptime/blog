@@ -1,4 +1,4 @@
-# How to Track Failed Login Attempts and Suspicious Authentication Patterns with OpenTelemetry Custom Metrics
+# How to Track Failed Login Attempts and Suspicious Authentication Patterns
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

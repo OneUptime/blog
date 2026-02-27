@@ -1,4 +1,4 @@
-# How to Use Cloud Logging Filters to Find Specific Error Patterns Across GCP Services
+# Use Cloud Logging Filters to Find Specific Error Patterns Across GCP Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

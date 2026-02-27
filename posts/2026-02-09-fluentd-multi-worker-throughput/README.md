@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Fluentd, Logging, Performance, Scalability, Configuration
 
-Description: Learn how to configure Fluentd multi-worker architecture to handle high-volume log processing, including worker configuration, load balancing strategies, buffer tuning, and performance optimization techniques.
+Description: Learn how to configure Fluentd multi-worker architecture to handle high-volume log processing, including worker configuration, load balancing strategies, buffer tuning.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Route Telemetry Data by Team Ownership Using Pod Labels and Namespace Attributes
+# How to Route Telemetry Data by Team Ownership Using Pod Labels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

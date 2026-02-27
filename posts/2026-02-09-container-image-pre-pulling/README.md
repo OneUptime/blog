@@ -1,4 +1,4 @@
-# How to Implement Container Image Pre-Pulling Strategies for Faster Kubernetes Deployments
+# How to Use Container Image Pre-Pulling Strategies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

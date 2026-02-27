@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, OpenTelemetry, Distributed Tracing, Observability, Metadata
 
-Description: Learn how to build custom OpenTelemetry span processors that automatically enrich traces with Kubernetes metadata including deployment information, resource quotas, and cluster context for better observability.
+Description: Learn how to build custom OpenTelemetry span processors that automatically enrich traces with Kubernetes metadata including deployment information, resource quotas.
 
 ---
 

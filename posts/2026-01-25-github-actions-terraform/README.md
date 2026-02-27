@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, Terraform, Infrastructure as Code, CI/CD, DevOps, Cloud
 
-Description: Learn how to automate Terraform deployments with GitHub Actions. This guide covers plan and apply workflows, state management, PR comments, security scanning, and patterns for safe infrastructure changes.
+Description: Learn how to automate Terraform deployments with GitHub Actions.
 
 ---
 

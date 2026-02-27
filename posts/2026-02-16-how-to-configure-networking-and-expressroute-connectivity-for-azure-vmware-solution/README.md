@@ -1,4 +1,4 @@
-# How to Configure Networking and ExpressRoute Connectivity for Azure VMware Solution
+# How to Configure Networking and ExpressRoute Connectivity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

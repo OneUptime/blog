@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Podman, Containers, DevOps, Docker, OCI, Security, BuildKit
 
-Description: A comprehensive guide to building container images with Podman, covering Dockerfile/Containerfile basics, multi-stage builds, build arguments, secrets handling, layer caching strategies, and pushing to registries.
+Description: A comprehensive guide to building container images with Podman, covering Dockerfile/Containerfile basics, multi-stage builds, build arguments, secrets handling, layer caching strategies.
 
 ---
 

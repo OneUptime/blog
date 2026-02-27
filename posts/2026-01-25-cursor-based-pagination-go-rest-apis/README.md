@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Pagination, REST API, Cursor, Database
 
-Description: Cursor-based pagination offers better performance and consistency than offset pagination for large datasets. This guide walks through implementing it in Go with practical examples you can adapt to your own APIs.
+Description: Cursor-based pagination offers better performance and consistency than offset pagination for large datasets.
 
 ---
 

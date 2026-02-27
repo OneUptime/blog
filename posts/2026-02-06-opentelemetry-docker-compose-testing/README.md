@@ -1,4 +1,4 @@
-# How to Test OpenTelemetry Instrumentation in Docker Compose Environments Before Kubernetes Deployment
+# How to Test OpenTelemetry Instrumentation in Docker Compose Environments Before
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

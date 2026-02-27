@@ -1,4 +1,4 @@
-# How to Fix Service Account Impersonation Permission Denied Errors Across Projects
+# Fix Service Account Impersonation Permission Denied Errors Across Projects
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

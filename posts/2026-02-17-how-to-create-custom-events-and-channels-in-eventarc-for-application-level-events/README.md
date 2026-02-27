@@ -1,4 +1,4 @@
-# How to Create Custom Events and Channels in Eventarc for Application-Level Events
+# Create Custom Events and Channels in Eventarc for Application-Level Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

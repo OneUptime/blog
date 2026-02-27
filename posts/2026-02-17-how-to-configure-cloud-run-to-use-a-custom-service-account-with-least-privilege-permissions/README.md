@@ -1,4 +1,4 @@
-# How to Configure Cloud Run to Use a Custom Service Account with Least-Privilege Permissions
+# How to Configure Cloud Run to Use a Custom Service Account with Least-Privilege
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

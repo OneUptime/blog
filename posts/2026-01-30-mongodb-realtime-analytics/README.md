@@ -1542,5 +1542,5 @@ Real-time analytics with MongoDB requires thoughtful architecture combining thes
 
 ### See Also
 
-- [Three Pillars of Observability: Logs, Metrics, Traces](/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces) - Understand how real-time analytics fits into your broader observability strategy.
-- [SRE Metrics to Track](/blog/post/2025-11-28-sre-metrics-to-track) - Learn which metrics matter most for operational dashboards.
+- [Three Pillars of Observability: Logs, Metrics, Traces](https://oneuptime.com/blog/post/2025-08-20-three-pillars-of-observability-logs-metrics-traces/view) - Understand how real-time analytics fits into your broader observability strategy.
+- [SRE Metrics to Track](https://oneuptime.com/blog/post/2025-11-28-sre-metrics-to-track/view) - Learn which metrics matter most for operational dashboards.

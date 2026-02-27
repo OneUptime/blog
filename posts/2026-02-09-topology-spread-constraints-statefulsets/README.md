@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, StatefulSets, Topology
 
-Description: Learn how to apply Pod Topology Spread Constraints to StatefulSets for high availability, ensuring stateful workloads are distributed across failure domains while maintaining pod identity and ordering.
+Description: Learn how to apply Pod Topology Spread Constraints to StatefulSets for high availability.
 
 ---
 

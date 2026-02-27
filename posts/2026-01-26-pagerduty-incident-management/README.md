@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PagerDuty, Incident Management, On-Call, Alerting, DevOps, SRE, Monitoring, Escalation Policies
 
-Description: Learn how to set up PagerDuty for incident management from scratch. This guide covers service configuration, escalation policies, on-call schedules, integrations with monitoring tools, and best practices for effective incident response.
+Description: Learn how to set up PagerDuty for incident management from scratch.
 
 ---
 

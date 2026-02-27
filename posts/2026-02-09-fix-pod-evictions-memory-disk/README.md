@@ -1,4 +1,4 @@
-# How to Fix Kubernetes Pod Evictions Caused by Node Memory Pressure and DiskPressure
+# How to Fix Kubernetes Pod Evictions Caused by Node Memory Pressure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Alert Notification Channels with Custom Payloads on Google Cloud Monitoring
+# How to Configure Alert Notification Channels with Custom Payloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

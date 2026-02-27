@@ -1,4 +1,4 @@
-# How to Configure Kubernetes API Server Audit Logging with Advanced Audit Policies
+# How to Configure Kubernetes API Server Audit Logging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

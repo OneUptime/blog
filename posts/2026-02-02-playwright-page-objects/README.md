@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Playwright, Testing, Page Objects, Automation, JavaScript, TypeScript, End-to-End Testing
 
-Description: A practical guide to implementing the Page Object Model in Playwright for maintainable, scalable end-to-end tests. Covers page class design, component abstraction, fixtures integration, and real-world patterns.
+Description: A practical guide to implementing the Page Object Model in Playwright for maintainable, scalable end-to-end tests.
 
 ---
 

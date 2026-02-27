@@ -1,4 +1,4 @@
-# How to Configure cert-manager Issued TLS Certificates for OpenTelemetry Operator Webhook Admission
+# How to Configure cert-manager Issued TLS Certificates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

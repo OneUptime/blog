@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Partitioning, Time Series, Performance, Database Scaling, Data Management
 
-Description: Learn how to implement time-based table partitioning in PostgreSQL to handle billions of rows efficiently. This guide covers partition creation, maintenance automation, query optimization, and data retention strategies.
+Description: Learn how to implement time-based table partitioning in PostgreSQL to handle billions of rows efficiently.
 
 ---
 

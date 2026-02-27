@@ -1,4 +1,4 @@
-# How to Monitor HashiCorp Consul Service Health and Mesh Metrics with the Collector Prometheus Receiver
+# How to Monitor HashiCorp Consul Service Health and Mesh Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

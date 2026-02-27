@@ -1,4 +1,4 @@
-# How to Implement RPO and RTO Targets for Observability Infrastructure Using OpenTelemetry
+# How to Use RPO and RTO Targets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Crossplane Function Pipeline for Complex Kubernetes Resource Composition
+# How to Build a Crossplane Function Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linkerd, Service Mesh, Bare Metal, External Workloads, Kubernetes
 
-Description: Learn how to integrate bare metal services and virtual machines into your Linkerd service mesh using external workload support for unified mTLS, observability, and traffic management across hybrid infrastructures.
+Description: Learn how to integrate bare metal services and virtual machines into your Linkerd service mesh using external workload support for unified mTLS, observability.
 
 ---
 

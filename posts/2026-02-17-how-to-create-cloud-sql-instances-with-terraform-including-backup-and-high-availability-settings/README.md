@@ -1,4 +1,4 @@
-# How to Create Cloud SQL Instances with Terraform Including Backup and High Availability Settings
+# How to Create Cloud SQL Instances with Terraform Including Backup
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

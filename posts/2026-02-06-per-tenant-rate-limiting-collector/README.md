@@ -1,4 +1,4 @@
-# How to Implement Per-Tenant Rate Limiting in the Collector to Prevent Noisy Neighbor Telemetry Storms
+# How to Use Per-Tenant Rate Limiting in the Collector to Prevent Noisy Neighbor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

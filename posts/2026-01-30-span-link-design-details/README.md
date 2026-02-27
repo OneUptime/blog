@@ -1464,6 +1464,6 @@ const links = messages
 
 ### Related Reading
 
-- [Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/) - Foundation concepts for understanding span relationships
-- [How to Reduce Noise in OpenTelemetry](/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/) - Keep your traces clean while maintaining link fidelity
-- [How to Name Spans in OpenTelemetry](/blog/post/2024-11-04-how-to-name-spans-in-opentelemetry/) - Consistent naming makes linked spans easier to navigate
+- [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Foundation concepts for understanding span relationships
+- [How to Reduce Noise in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-25-how-to-reduce-noise-in-opentelemetry/view) - Keep your traces clean while maintaining link fidelity
+- [How to Name Spans in OpenTelemetry](https://oneuptime.com/blog/post/2024-11-04-how-to-name-spans-in-opentelemetry/view) - Consistent naming makes linked spans easier to navigate

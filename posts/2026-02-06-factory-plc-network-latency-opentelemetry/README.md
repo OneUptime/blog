@@ -1,4 +1,4 @@
-# How to Monitor Factory Floor PLC (Programmable Logic Controller) Network Latency with OpenTelemetry
+# How to Monitor Factory Floor PLC Network Latency with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

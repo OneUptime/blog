@@ -1,4 +1,4 @@
-# How to Enforce Service Account Key Creation Restrictions with Organization Policies
+# How to Enforce Service Account Key Creation Restrictions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

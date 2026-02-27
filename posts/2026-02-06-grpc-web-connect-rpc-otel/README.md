@@ -1,4 +1,4 @@
-# How to Instrument gRPC-Web and Connect-RPC Services with OpenTelemetry for Browser-to-Backend Tracing
+# How to Instrument gRPC-Web and Connect-RPC Services with OpenTelemetry for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

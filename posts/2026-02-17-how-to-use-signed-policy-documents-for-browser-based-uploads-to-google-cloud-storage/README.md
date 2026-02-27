@@ -1,4 +1,4 @@
-# How to Use Signed Policy Documents for Browser-Based Uploads to Google Cloud Storage
+# Use Signed Policy Documents for Browser-Based Uploads to Google Cloud Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Sync Dynamics 365 Customer Data with Azure Data Lake Using Data Export Service
+# How to Sync Dynamics 365 Customer Data with Azure Data Lake
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

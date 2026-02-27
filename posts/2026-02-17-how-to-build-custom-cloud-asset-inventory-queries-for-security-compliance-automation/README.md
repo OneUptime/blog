@@ -1,4 +1,4 @@
-# How to Build Custom Cloud Asset Inventory Queries for Security Compliance Automation
+# How to Build Custom Cloud Asset Inventory Queries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Connection Draining and Failover Strategies for Cloud SQL High Availability
+# How to Use Connection Draining and Failover Strategies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

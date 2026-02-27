@@ -1,4 +1,4 @@
-# How to Configure Resource-Constrained Kubernetes Nodes with K3s Memory and CPU Limits
+# How to Configure Resource-Constrained Kubernetes Nodes with K3s Memory
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

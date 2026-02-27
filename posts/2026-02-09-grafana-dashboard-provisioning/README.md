@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Kubernetes, GitOps
 
-Description: Learn how to automate Grafana dashboard deployment using Kubernetes ConfigMaps and provisioning to manage dashboards as code, enable version control, and maintain consistent monitoring across environments.
+Description: Learn how to automate Grafana dashboard deployment using Kubernetes ConfigMaps and provisioning to manage dashboards as code, enable version control.
 
 ---
 

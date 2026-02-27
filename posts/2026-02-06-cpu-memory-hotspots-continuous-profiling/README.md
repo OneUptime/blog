@@ -1,4 +1,4 @@
-# How to Monitor CPU and Memory Allocation Hotspots with OpenTelemetry Continuous Profiling
+# How to Monitor CPU and Memory Allocation Hotspots
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

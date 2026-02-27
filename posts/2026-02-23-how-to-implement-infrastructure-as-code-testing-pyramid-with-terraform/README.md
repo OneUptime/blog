@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Testing, Infrastructure as Code, DevOps, Quality Assurance
 
-Description: Learn how to implement a comprehensive testing pyramid for Terraform infrastructure code, from fast static analysis at the base to slow integration tests at the top, ensuring reliable infrastructure deployments.
+Description: Learn how to implement a comprehensive testing pyramid for Terraform infrastructure code, from fast static analysis at the base to slow integration tests at the top.
 
 ---
 

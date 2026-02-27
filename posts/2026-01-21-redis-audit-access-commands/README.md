@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Audit, Logging, Compliance, Security, Monitoring, Access Control
 
-Description: A comprehensive guide to auditing Redis access and commands, covering logging strategies, monitoring command execution, tracking user activity, and implementing compliance-ready audit trails for production environments.
+Description: A comprehensive guide to auditing Redis access and commands, covering logging strategies, monitoring command execution, tracking user activity.
 
 ---
 

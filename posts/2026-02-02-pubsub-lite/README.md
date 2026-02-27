@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Google Cloud, Pub/Sub Lite, Cost Optimization, Messaging, Event-Driven Architecture, Cloud Infrastructure
 
-Description: Learn how to leverage Google Cloud Pub/Sub Lite to significantly reduce messaging costs while maintaining high throughput. A practical guide covering capacity planning, zonal vs regional deployments, reservation management, and cost optimization strategies.
+Description: Learn how to leverage Google Cloud Pub/Sub Lite to significantly reduce messaging costs while maintaining high throughput.
 
 ---
 

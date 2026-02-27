@@ -1,4 +1,4 @@
-# How to Implement Audio Transcription and Analysis with Gemini Multimodal on Vertex AI
+# How to Use Audio Transcription and Analysis with Gemini Multimodal on Vertex AI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

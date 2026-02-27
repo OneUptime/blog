@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Memcached, Caching, Database, Performance
 
-Description: Implement Memcached on Kubernetes for database query caching to reduce load and improve response times, including deployment strategies, client integration, cache invalidation patterns, and monitoring.
+Description: Implement Memcached on Kubernetes for database query caching to reduce load and improve response times, including deployment strategies, client integration, cache invalidation patterns.
 
 ---
 

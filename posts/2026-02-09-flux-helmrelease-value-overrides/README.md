@@ -1,4 +1,4 @@
-# How to Manage Helm Value Overrides Across Environments Using Flux HelmRelease Patches
+# How to Manage Helm Value Overrides Across Environments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

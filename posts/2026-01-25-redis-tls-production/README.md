@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, TLS, SSL, Security, Production, Encryption, Certificates
 
-Description: A comprehensive guide to securing Redis with TLS encryption in production environments. Learn how to generate certificates, configure the Redis server, and connect securely from various client libraries.
+Description: A comprehensive guide to securing Redis with TLS encryption in production environments.
 
 ---
 

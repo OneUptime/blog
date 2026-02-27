@@ -1,4 +1,4 @@
-# How to Create and Process Cloud Tasks from a Node.js Express Application with Automatic Retry
+# How to Create and Process Cloud Tasks from a Node.js Express Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

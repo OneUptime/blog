@@ -1,4 +1,4 @@
-# How to Handle Errors and Implement Retries in Cloud Workflows Using Try/Except Blocks
+# Handle Errors and Implement Retries in Cloud Workflows Using Try/Except Blocks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Create Azure Bicep Deployment Scripts for Post-Deployment Configuration Tasks
+# Create Azure Bicep Deployment Scripts for Post-Deployment Configuration Tasks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

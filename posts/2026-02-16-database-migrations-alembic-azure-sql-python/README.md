@@ -1,4 +1,4 @@
-# How to Implement Database Migrations with Alembic and Azure SQL Database in Python
+# How to Use Database Migrations with Alembic and Azure SQL Database in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

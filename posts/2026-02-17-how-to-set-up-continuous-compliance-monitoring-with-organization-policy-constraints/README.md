@@ -1,4 +1,4 @@
-# How to Set Up Continuous Compliance Monitoring with Organization Policy Constraints
+# How to Set Up Continuous Compliance Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

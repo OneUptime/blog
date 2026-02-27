@@ -1,4 +1,4 @@
-# How to Build a Machine Learning Prediction API with Vertex AI and FastAPI on Cloud Run
+# How to Build a Machine Learning Prediction API with Vertex AI and FastAPI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

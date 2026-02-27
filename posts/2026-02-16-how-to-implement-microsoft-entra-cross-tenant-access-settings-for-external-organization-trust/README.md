@@ -1,4 +1,4 @@
-# How to Implement Microsoft Entra Cross-Tenant Access Settings for External Organization Trust
+# How to Use Microsoft Entra Cross-Tenant Access Settings
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

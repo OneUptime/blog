@@ -1,4 +1,4 @@
-# How to Implement Connection Resiliency with Entity Framework Core and Azure SQL Database
+# How to Use Connection Resiliency with Entity Framework Core
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

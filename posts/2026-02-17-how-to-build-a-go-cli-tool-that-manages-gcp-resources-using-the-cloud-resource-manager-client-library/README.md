@@ -1,4 +1,4 @@
-# How to Build a Go CLI Tool That Manages GCP Resources Using the Cloud Resource Manager Client Library
+# How to Build a Go CLI Tool That Manages GCP Resources Using the Cloud Resource
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

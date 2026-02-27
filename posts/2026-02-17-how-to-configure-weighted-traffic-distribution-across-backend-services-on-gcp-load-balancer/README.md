@@ -1,4 +1,4 @@
-# How to Configure Weighted Traffic Distribution Across Backend Services on GCP Load Balancer
+# How to Configure Weighted Traffic Distribution Across Backend Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

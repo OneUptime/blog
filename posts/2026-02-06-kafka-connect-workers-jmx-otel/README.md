@@ -1,4 +1,4 @@
-# How to Instrument Kafka Connect Workers and Connector Task Metrics with OpenTelemetry JMX Receiver
+# How to Instrument Kafka Connect Workers and Connector Task Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

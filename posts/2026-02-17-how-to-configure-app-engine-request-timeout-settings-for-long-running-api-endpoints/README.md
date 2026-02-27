@@ -1,4 +1,4 @@
-# How to Configure App Engine Request Timeout Settings for Long-Running API Endpoints
+# Configure App Engine Request Timeout Settings for Long-Running API Endpoints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linkerd, Service Mesh, Kubernetes, Traffic Management, Authorization, HTTPRoute, Security, DevOps
 
-Description: A comprehensive guide to configuring Linkerd traffic policies including server authorization, traffic splits, route-based policies, and HTTPRoute resources for fine-grained control over your service mesh traffic.
+Description: A comprehensive guide to configuring Linkerd traffic policies including server authorization, traffic splits, route-based policies.
 
 ---
 

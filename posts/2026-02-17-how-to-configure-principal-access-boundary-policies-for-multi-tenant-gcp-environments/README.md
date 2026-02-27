@@ -1,4 +1,4 @@
-# How to Configure Principal Access Boundary Policies for Multi-Tenant GCP Environments
+# Configure Principal Access Boundary Policies for Multi-Tenant GCP Environments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

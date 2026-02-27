@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Swift, Dependency Injection, iOS, Architecture, Design Patterns, Testing, SOLID
 
-Description: Learn how to implement dependency injection in Swift for cleaner, more testable iOS applications. This guide covers constructor injection, property injection, DI containers, and best practices for building maintainable Swift code.
+Description: Learn how to implement dependency injection in Swift for cleaner, more testable iOS applications.
 
 ---
 

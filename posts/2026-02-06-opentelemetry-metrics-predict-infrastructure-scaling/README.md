@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry Metrics to Predict Infrastructure Scaling Needs Before Traffic Spikes
+# How to Use OpenTelemetry Metrics to Predict Infra Scaling Needs Before Traffic
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Spring Integration, Message Channels, Java, Enterprise Integration
 
-Description: Comprehensive guide to instrumenting Spring Integration message channels, service activators, gateways, and transformers with OpenTelemetry for distributed tracing across enterprise integration patterns.
+Description: Comprehensive guide to instrumenting Spring Integration message channels, service activators, gateways.
 
 Spring Integration implements Enterprise Integration Patterns through message channels, enabling asynchronous, loosely coupled communication between application components. When messages flow through complex integration topologies, understanding message routing, transformation, and processing becomes challenging. OpenTelemetry tracing provides visibility into message flows from source to destination.
 

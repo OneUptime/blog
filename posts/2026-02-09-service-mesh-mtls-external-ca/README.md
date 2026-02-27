@@ -1,10 +1,10 @@
-# How to Set Up Service Mesh mTLS with External Certificate Authority Using cert-manager
+# Set Up Service Mesh mTLS with External Certificate Authority Using cert-manager
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Service Mesh, mTLS, cert-manager, PKI, Security
 
-Description: Learn how to configure Istio or Linkerd service mesh to use an external Certificate Authority managed by cert-manager for issuing mTLS certificates, enabling integration with enterprise PKI systems and custom certificate policies.
+Description: Learn how to configure Istio or Linkerd service mesh to use an external Certificate Authority managed by cert-manager for issuing mTLS certificates.
 
 ---
 

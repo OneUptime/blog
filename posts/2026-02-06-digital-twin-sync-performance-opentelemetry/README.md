@@ -1,4 +1,4 @@
-# How to Instrument Digital Twin Synchronization Performance with OpenTelemetry Metrics
+# How to Instrument Digital Twin Synchronization Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

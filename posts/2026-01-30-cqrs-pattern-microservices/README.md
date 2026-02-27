@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: CQRS, Microservices, Event-Driven Architecture, Distributed Systems, Node.js, TypeScript, Domain-Driven Design, System Design
 
-Description: A production-ready guide to implementing Command Query Responsibility Segregation (CQRS) across microservices, covering inter-service communication, event synchronization, eventual consistency handling, and deployment strategies.
+Description: A production-ready guide to implementing Command Query Responsibility Segregation (CQRS) across microservices, covering inter-service communication, event synchronization.
 
 ---
 

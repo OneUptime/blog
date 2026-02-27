@@ -1,4 +1,4 @@
-# How to Configure the Probabilistic Sampler Processor in the OpenTelemetry Collector
+# How to Configure the Probabilistic Sampler Processor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

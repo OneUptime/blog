@@ -1,4 +1,4 @@
-# How to Implement Serverless WebSocket Connections Using Cloud Run and Firebase Realtime Database
+# How to Use Serverless WebSocket Connections Using Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

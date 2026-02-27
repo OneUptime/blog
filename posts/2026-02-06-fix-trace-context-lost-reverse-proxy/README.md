@@ -1,4 +1,4 @@
-# How to Fix Trace Context Being Lost When Requests Pass Through a Reverse Proxy That Strips traceparent Headers
+# How to Fix Trace Context Being Lost When Requests Pass Through a Reverse Proxy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

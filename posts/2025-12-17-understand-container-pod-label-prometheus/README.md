@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Kubernetes, cAdvisor, Containers, Metrics, Monitoring, POD, Labels, Observability
 
-Description: Learn what the container='POD' label means in Prometheus metrics from Kubernetes. This guide explains the pause container concept, how to filter metrics correctly, and best practices for container-level monitoring.
+Description: Learn what the container='POD' label means in Prometheus metrics from Kubernetes.
 
 ---
 

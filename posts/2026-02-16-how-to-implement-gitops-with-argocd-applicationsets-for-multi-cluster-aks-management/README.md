@@ -1,4 +1,4 @@
-# How to Implement GitOps with ArgoCD ApplicationSets for Multi-Cluster AKS Management
+# How to Use GitOps with ArgoCD ApplicationSets for Multi-Cluster AKS Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

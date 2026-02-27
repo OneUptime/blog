@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Fluentd, Log Collection, Logging, Kubernetes, Observability, Data Pipeline, DevOps
 
-Description: Learn how to configure Fluentd for log collection across distributed systems. This guide covers installation, input plugins, filters, output routing, and production best practices for reliable log aggregation.
+Description: Learn how to configure Fluentd for log collection across distributed systems.
 
 ---
 

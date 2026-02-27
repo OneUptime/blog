@@ -1,4 +1,4 @@
-# How to Troubleshoot Kubernetes StatefulSet Pod Not Starting Due to Volume Mount Ordering
+# How to Troubleshoot K8s StatefulSet Pod Not Starting Due to Volume Mount
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

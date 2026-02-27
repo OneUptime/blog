@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OPA, Gatekeeper, Kubernetes, Policy
 
-Description: A comprehensive guide to installing OPA Gatekeeper on Kubernetes for policy enforcement. Learn installation methods, configuration options, verification steps, troubleshooting, and production best practices.
+Description: A comprehensive guide to installing OPA Gatekeeper on Kubernetes for policy enforcement.
 
 ---
 

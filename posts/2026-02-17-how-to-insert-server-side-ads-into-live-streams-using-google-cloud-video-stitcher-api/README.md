@@ -1,4 +1,4 @@
-# How to Insert Server-Side Ads into Live Streams Using Google Cloud Video Stitcher API
+# Insert Server-Side Ads into Live Streams Using Google Cloud Video Stitcher API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

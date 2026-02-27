@@ -1,4 +1,4 @@
-# How to Fix iam.serviceAccounts.actAs Permission Denied When Deploying Cloud Functions
+# Fix iam.serviceAccounts.actAs Permission Denied When Deploying Cloud Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

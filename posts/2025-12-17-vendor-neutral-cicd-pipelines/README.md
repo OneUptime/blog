@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CI/CD, DevOps, Bash, Vendor Lock-in, Automation, GitHub Actions, GitLab CI, Jenkins
 
-Description: Build portable CI/CD pipelines by putting your logic in bash scripts instead of vendor-specific syntax. When platforms change pricing, policies, or disappear entirely, migrate in hours instead of weeks.
+Description: Build portable CI/CD pipelines by putting your logic in bash scripts instead of vendor-specific syntax.
 
 > Your build logic belongs in scripts you control, not YAML dialects owned by vendors who can rug-pull you tomorrow.
 

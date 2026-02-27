@@ -1,4 +1,4 @@
-# How to Troubleshoot Collector Memory Growth Over Days Caused by the Prometheus Receiver Metric Accumulation
+# How to Troubleshoot Collector Memory Growth Over Days Caused by the Prometheus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

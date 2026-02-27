@@ -1,4 +1,4 @@
-# How to Implement Telemetry Data Retention Policies That Satisfy SOC 2 and ISO 27001 Requirements
+# How to Use Telemetry Data Retention Policies That Satisfy SOC 2
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

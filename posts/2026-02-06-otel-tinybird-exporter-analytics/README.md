@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Data to Tinybird via the Tinybird Exporter for Real-Time Analytics Queries
+# How to Send OpenTelemetry Data to Tinybird via the Tinybird Exporter for
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

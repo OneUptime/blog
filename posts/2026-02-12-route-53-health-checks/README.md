@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Route 53, DNS, Monitoring, High Availability
 
-Description: A comprehensive guide to setting up Route 53 health checks for monitoring endpoint availability, configuring health check types, CloudWatch alarms, calculated health checks, and integrating with DNS failover.
+Description: A comprehensive guide to setting up Route 53 health checks for monitoring endpoint availability, configuring health check types, CloudWatch alarms, calculated health checks.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure Workforce Identity Federation for SSO-Based Access to GCP Console
+# Configure Workforce Identity Federation for SSO-Based Access to GCP Console
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

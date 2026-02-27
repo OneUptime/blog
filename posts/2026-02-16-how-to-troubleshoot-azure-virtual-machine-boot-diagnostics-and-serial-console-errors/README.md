@@ -1,4 +1,4 @@
-# How to Troubleshoot Azure Virtual Machine Boot Diagnostics and Serial Console Errors
+# How to Troubleshoot Azure Virtual Machine Boot Diagnostics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

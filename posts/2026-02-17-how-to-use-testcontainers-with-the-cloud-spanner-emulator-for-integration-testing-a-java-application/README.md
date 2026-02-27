@@ -1,4 +1,4 @@
-# How to Use Testcontainers with the Cloud Spanner Emulator for Integration Testing a Java Application
+# How to Use Testcontainers with the Cloud Spanner Emulator for Integration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,10 +1,10 @@
-# How to Configure Istio Waypoint Proxies for L7 Traffic Management in Ambient Mesh
+# How to Configure Istio Waypoint Proxies for L7 Traffic Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Istio, Ambient Mesh, Kubernetes, Traffic Management, Layer 7
 
-Description: Learn how to deploy and configure Istio waypoint proxies in Ambient Mesh to enable Layer 7 traffic management features like header-based routing, retries, and circuit breakers without sidecar overhead.
+Description: Learn how to deploy and configure Istio waypoint proxies in Ambient Mesh to enable Layer 7 traffic management features like header-based routing, retries.
 
 ---
 

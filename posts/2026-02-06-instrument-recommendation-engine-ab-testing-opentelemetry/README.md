@@ -1,4 +1,4 @@
-# How to Instrument Content Recommendation Engine A/B Testing with OpenTelemetry Baggage and Span Attributes
+# How to Instrument Content Recommendation Engine A/B Testing with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

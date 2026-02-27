@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Crossplane, Kubernetes, Go
 
-Description: Learn how to build custom Crossplane providers that integrate internal platform APIs and services with Crossplane compositions, enabling unified infrastructure management across cloud and on-premise systems.
+Description: Learn how to build custom Crossplane providers that integrate internal platform APIs and services with Crossplane compositions.
 
 ---
 

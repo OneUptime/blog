@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Serverless, AWS Lambda, Azure Functions, Cloud Functions, Cold Start, Observability
 
-Description: Learn how to configure OpenTelemetry for serverless functions including AWS Lambda, Azure Functions, and Google Cloud Functions. This guide covers cold start handling, context propagation, and efficient telemetry export.
+Description: Learn how to configure OpenTelemetry for serverless functions including AWS Lambda, Azure Functions, and Google Cloud Functions.
 
 ---
 

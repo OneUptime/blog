@@ -1,4 +1,4 @@
-# How to Implement Message Correlation Across Azure Service Bus and Azure Functions
+# How to Use Message Correlation Across Azure Service Bus and Azure Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up OpenTelemetry Auto-Instrumentation in Django with Zero Code Changes
+# How to Set Up OpenTelemetry Auto-Instrumentation in Django
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

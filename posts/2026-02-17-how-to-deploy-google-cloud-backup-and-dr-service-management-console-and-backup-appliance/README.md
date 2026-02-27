@@ -1,4 +1,4 @@
-# How to Deploy Google Cloud Backup and DR Service Management Console and Backup Appliance
+# How to Deploy Google Cloud Backup and DR Service Management Console
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

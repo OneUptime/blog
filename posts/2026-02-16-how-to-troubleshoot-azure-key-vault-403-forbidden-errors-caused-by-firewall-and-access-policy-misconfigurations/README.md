@@ -1,4 +1,4 @@
-# How to Troubleshoot Azure Key Vault 403 Forbidden Errors Caused by Firewall and Access Policy Misconfigurations
+# How to Troubleshoot Azure Key Vault 403 Forbidden Errors Caused by Firewall
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

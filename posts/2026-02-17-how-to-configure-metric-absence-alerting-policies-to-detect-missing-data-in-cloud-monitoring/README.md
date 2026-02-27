@@ -1,4 +1,4 @@
-# How to Configure Metric-Absence Alerting Policies to Detect Missing Data in Cloud Monitoring
+# How to Configure Metric-Absence Alerting Policies to Detect Missing Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

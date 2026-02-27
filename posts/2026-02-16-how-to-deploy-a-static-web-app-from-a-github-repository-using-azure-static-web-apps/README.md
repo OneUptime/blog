@@ -1,4 +1,4 @@
-# How to Deploy a Static Web App from a GitHub Repository Using Azure Static Web Apps
+# How to Deploy a Static Web App from a GitHub Repository
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

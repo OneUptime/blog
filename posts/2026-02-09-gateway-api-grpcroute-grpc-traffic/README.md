@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, gRPC
 
-Description: Configure GRPCRoute resources in the Kubernetes Gateway API to route gRPC traffic with method-based matching, header filters, and traffic splitting for modern microservices using Protocol Buffers and HTTP/2.
+Description: Configure GRPCRoute resources in the Kubernetes Gateway API to route gRPC traffic with method-based matching, header filters.
 
 ---
 

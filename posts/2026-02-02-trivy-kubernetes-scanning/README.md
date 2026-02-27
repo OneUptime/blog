@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Trivy, Security, Container Security, Vulnerability Scanning, DevSecOps, Compliance
 
-Description: A hands-on guide to scanning Kubernetes clusters with Trivy for vulnerabilities, misconfigurations, and compliance issues. Learn how to integrate Trivy into your security workflow and automate cluster-wide scanning.
+Description: A hands-on guide to scanning Kubernetes clusters with Trivy for vulnerabilities, misconfigurations, and compliance issues.
 
 ---
 

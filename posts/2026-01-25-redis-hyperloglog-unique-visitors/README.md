@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, HyperLogLog, Analytics, Cardinality, Unique Visitors, Performance
 
-Description: Learn how to use Redis HyperLogLog to count unique visitors and other high-cardinality sets with minimal memory. This guide covers the algorithm basics, practical implementation, and real-world analytics use cases.
+Description: Learn how to use Redis HyperLogLog to count unique visitors and other high-cardinality sets with minimal memory.
 
 ---
 

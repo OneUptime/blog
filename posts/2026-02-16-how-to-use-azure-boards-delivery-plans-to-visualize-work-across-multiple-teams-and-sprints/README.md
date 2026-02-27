@@ -1,4 +1,4 @@
-# How to Use Azure Boards Delivery Plans to Visualize Work Across Multiple Teams and Sprints
+# How to Use Azure Boards Delivery Plans to Visualize Work Across Multiple Teams
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

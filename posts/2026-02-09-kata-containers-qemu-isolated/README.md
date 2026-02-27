@@ -1,4 +1,4 @@
-# How to Set Up Kata Containers with QEMU Hypervisor for Hardware-Isolated Kubernetes Pods
+# How to Set Up Kata Containers with QEMU Hypervisor for Hardware-Isolated K8s
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

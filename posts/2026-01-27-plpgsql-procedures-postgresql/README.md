@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, PL/pgSQL, Stored Procedures, Functions, Database Programming, SQL
 
-Description: Learn how to write business logic with PL/pgSQL procedures and functions in PostgreSQL. This guide covers function creation, control flow, error handling, transactions, and performance patterns for database-side programming.
+Description: Learn how to write business logic with PL/pgSQL procedures and functions in PostgreSQL.
 
 ---
 

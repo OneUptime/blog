@@ -1,4 +1,4 @@
-# How to implement allowPrivilegeEscalation false for preventing privilege escalation
+# How to Use allowPrivilegeEscalation false for preventing privilege escalation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

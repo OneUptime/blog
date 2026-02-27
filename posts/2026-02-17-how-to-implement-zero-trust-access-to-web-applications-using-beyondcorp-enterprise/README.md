@@ -1,4 +1,4 @@
-# How to Implement Zero Trust Access to Web Applications Using BeyondCorp Enterprise
+# How to Use Zero Trust Access to Web Applications Using BeyondCorp Enterprise
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

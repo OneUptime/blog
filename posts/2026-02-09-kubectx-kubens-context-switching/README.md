@@ -1,4 +1,4 @@
-# How to Implement Kubernetes Context Switching and Namespace Management with Kubectx and Kubens
+# How to Use Kubernetes Context Switching and Namespace Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

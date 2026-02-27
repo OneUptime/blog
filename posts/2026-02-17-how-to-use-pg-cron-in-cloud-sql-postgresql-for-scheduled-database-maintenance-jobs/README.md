@@ -1,4 +1,4 @@
-# How to Use pg_cron in Cloud SQL PostgreSQL for Scheduled Database Maintenance Jobs
+# How to Use pg_cron in Cloud SQL PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

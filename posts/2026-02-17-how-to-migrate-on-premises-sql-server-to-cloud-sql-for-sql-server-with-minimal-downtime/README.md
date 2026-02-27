@@ -1,4 +1,4 @@
-# How to Migrate On-Premises SQL Server to Cloud SQL for SQL Server with Minimal Downtime
+# How to Migrate On-Premises SQL Server to Cloud SQL for SQL Server
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

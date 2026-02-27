@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: EVPN, Networking, Data Center, BGP
 
-Description: A comprehensive guide to configuring Ethernet VPN (EVPN) in modern data centers. Learn EVPN fundamentals, VXLAN integration, BGP configuration, and practical implementation patterns for Layer 2 and Layer 3 connectivity.
+Description: A comprehensive guide to configuring Ethernet VPN (EVPN) in modern data centers.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Build a GitOps Workflow for GKE Using ArgoCD with Cloud Source Repositories
+# How to Build a GitOps Workflow for GKE Using ArgoCD
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

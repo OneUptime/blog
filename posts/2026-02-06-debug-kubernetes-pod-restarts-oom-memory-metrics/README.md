@@ -1,4 +1,4 @@
-# How to Debug Kubernetes Pod Restarts by Correlating OOM Kill Events with OpenTelemetry Memory Metrics
+# How to Debug Kubernetes Pod Restarts by Correlating OOM Kill Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

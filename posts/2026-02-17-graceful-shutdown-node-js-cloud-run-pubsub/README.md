@@ -1,4 +1,4 @@
-# How to Implement Graceful Shutdown in a Node.js Cloud Run Service with Active Pub/Sub Connections
+# How to Use Graceful Shutdown in a Node.js Cloud Run Service with Active Pub/Sub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

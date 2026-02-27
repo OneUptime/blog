@@ -1,4 +1,4 @@
-# How to Use the Redaction Processor allowed_keys List to Whitelist Safe Attributes and Block Everything Else
+# How to Use the Redaction Processor allowed_keys List to Whitelist Safe
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

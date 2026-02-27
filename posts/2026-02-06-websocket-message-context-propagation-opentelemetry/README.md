@@ -1,4 +1,4 @@
-# How to Trace WebSocket Message Flows with Per-Message OpenTelemetry Context Propagation
+# Trace WebSocket Message Flows with Per-Message OpenTelemetry Context Propagation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

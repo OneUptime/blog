@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, RBAC, Security
 
-Description: Learn how to configure proper Kubernetes RBAC when adding clusters to ArgoCD, covering least-privilege roles, namespace-scoped access, custom ClusterRoles, and security hardening for multi-cluster environments.
+Description: Learn how to configure proper Kubernetes RBAC when adding clusters to ArgoCD, covering least-privilege roles, namespace-scoped access, custom ClusterRoles.
 
 ---
 

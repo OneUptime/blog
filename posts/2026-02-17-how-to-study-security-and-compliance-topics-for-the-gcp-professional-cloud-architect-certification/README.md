@@ -1,4 +1,4 @@
-# How to Study Security and Compliance Topics for the GCP Professional Cloud Architect Certification
+# How to Study Security and Compliance Topics for the GCP Professional Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

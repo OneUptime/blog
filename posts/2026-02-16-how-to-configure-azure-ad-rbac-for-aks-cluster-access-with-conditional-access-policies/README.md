@@ -1,4 +1,4 @@
-# How to Configure Azure AD RBAC for AKS Cluster Access with Conditional Access Policies
+# How to Configure Azure AD RBAC for AKS Cluster Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

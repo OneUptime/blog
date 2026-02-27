@@ -1,4 +1,4 @@
-# How to Implement Runbook Automation Triggered by OpenTelemetry Alerting Pipelines
+# How to Use Runbook Automation Triggered by OpenTelemetry Alerting Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

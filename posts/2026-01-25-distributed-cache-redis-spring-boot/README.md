@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Redis, Caching, Distributed Cache
 
-Description: A hands-on guide to implementing a distributed cache with Redis in Spring Boot applications. Covers configuration, cache annotations, custom serialization, and cache eviction strategies for production systems.
+Description: A hands-on guide to implementing a distributed cache with Redis in Spring Boot applications.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Install and Configure the MARS Agent for On-Premises Windows Server Backup to Azure
+# How to Configure the MARS Agent for On-Premises Windows Server Backup to Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up AKS Cluster Autoscaler with Custom Scale-Down Delay and Utilization Thresholds
+# How to Set Up AKS Cluster Autoscaler with Custom Scale-Down Delay
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

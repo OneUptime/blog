@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, PostgreSQL, Diesel, ORM, Database
 
-Description: Learn how to connect your Rust applications to PostgreSQL using Diesel ORM. This guide covers setup, schema management, CRUD operations, and best practices for building type-safe database-driven applications.
+Description: Learn how to connect your Rust applications to PostgreSQL using Diesel ORM.
 
 ---
 

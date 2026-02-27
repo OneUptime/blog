@@ -1,4 +1,4 @@
-# How to Set Up Error Budget Burn Rate Alerts That Page On-Call Engineers via OpenTelemetry
+# How to Set Up Error Budget Burn Rate Alerts That Page On-Call Engineers via
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build a Real-Time Trading Data Platform with Azure Event Hubs and Cosmos DB
+# How to Build a Real-Time Trading Data Platform with Azure Event Hubs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

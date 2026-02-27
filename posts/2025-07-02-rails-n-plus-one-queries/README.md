@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ruby, Rails, N+1, Performance, ActiveRecord, Database
 
-Description: Learn how to identify, prevent, and fix N+1 query problems in Ruby on Rails applications. This guide covers eager loading strategies, query optimization techniques, and tools for detecting N+1 queries in development and production.
+Description: Learn how to identify, prevent, and fix N+1 query problems in Ruby on Rails applications.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, SQS, Message Queue, Node.js, Python, Serverless, Cloud
 
-Description: Learn how to send messages to Amazon SQS with practical examples in Node.js and Python. Covers standard and FIFO queues, batch operations, message attributes, and best practices for reliable message delivery.
+Description: Learn how to send messages to Amazon SQS with practical examples in Node.js and Python.
 
 ---
 

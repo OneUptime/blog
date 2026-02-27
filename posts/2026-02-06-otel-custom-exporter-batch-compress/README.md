@@ -1,4 +1,4 @@
-# How to Create a Custom OpenTelemetry Exporter That Batches and Compresses Data for a Non-Standard Backend
+# How to Create a Custom OpenTelemetry Exporter That Batches
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

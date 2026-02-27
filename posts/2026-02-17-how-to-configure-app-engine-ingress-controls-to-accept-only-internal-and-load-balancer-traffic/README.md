@@ -1,4 +1,4 @@
-# How to Configure App Engine Ingress Controls to Accept Only Internal and Load Balancer Traffic
+# How to Configure App Engine Ingress Controls to Accept Only Internal
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

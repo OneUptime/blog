@@ -1,4 +1,4 @@
-# How to Build Minimal Container Images with Distroless and Chainguard for Kubernetes
+# How to Build Minimal Container Images with Distroless and Chainguard
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Upgrade, Zero Downtime, Database, DevOps, Rolling Upgrade, Operations, High Availability
 
-Description: A step-by-step guide to upgrading ClickHouse clusters with zero downtime using rolling upgrades, covering version compatibility, pre-upgrade checks, rollback procedures, and best practices for production deployments.
+Description: A step-by-step guide to upgrading ClickHouse clusters with zero downtime using rolling upgrades, covering version compatibility, pre-upgrade checks, rollback procedures.
 
 ---
 

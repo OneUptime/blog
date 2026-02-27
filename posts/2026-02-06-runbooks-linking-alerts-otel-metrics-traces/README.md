@@ -1,4 +1,4 @@
-# How to Write Runbooks That Link Alerting Rules to Specific OpenTelemetry Metrics and Trace Queries
+# How to Write Runbooks That Link Alerting Rules to Specific OpenTelemetry Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

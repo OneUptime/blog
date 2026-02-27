@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, Circuit Breaker, Resilience, Service Mesh, Microservices, DevOps, Observability, Istio
 
-Description: A comprehensive guide to implementing circuit breakers in Envoy Proxy, covering circuit breaker settings, outlier detection, connection pool configuration, and monitoring strategies for building resilient microservices.
+Description: A comprehensive guide to implementing circuit breakers in Envoy Proxy, covering circuit breaker settings, outlier detection, connection pool configuration.
 
 ---
 

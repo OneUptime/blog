@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab CI, Include, Extend, YAML, CI/CD, DRY, Configuration
 
-Description: Learn how to use include and extend keywords in GitLab CI to create reusable, maintainable pipeline configurations. This guide covers local includes, remote templates, extends inheritance, and anchors.
+Description: Learn how to use include and extend keywords in GitLab CI to create reusable, maintainable pipeline configurations.
 
 > The include and extend keywords are the foundation of maintainable GitLab CI configurations, allowing you to share pipeline logic across projects and reduce duplication.
 

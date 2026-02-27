@@ -1,4 +1,4 @@
-# How to Run Geospatial Analytics on Google Maps Data in BigQuery Using ST_GEOGPOINT
+# How to Run Geospatial Analytics on Google Maps Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

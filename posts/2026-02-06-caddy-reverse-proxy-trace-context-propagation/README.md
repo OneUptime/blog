@@ -1,4 +1,4 @@
-# How to Configure Caddy as a Reverse Proxy with W3C Trace Context and Baggage Header Propagation
+# How to Configure Caddy as a Reverse Proxy with W3C Trace Context
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

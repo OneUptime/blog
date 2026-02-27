@@ -1,4 +1,4 @@
-# How to Implement Workload Migration Between Clusters with Velero Cross-Cluster Restore
+# How to Use Workload Migration Between Clusters with Velero Cross-Cluster Restore
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

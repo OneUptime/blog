@@ -1,4 +1,4 @@
-# How to Use Compute Engine Instance Metadata to Dynamically Configure Application Settings
+# How to Use Compute Engine Instance Metadata to Dynamically Configure App
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

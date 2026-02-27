@@ -1,4 +1,4 @@
-# How to Implement Azure Key Vault Integration in Spring Boot with azure-spring-boot-starter-keyvault-secrets
+# How to Use Azure Key Vault Integration in Spring Boot with
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

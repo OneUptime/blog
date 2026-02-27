@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Strings, Caching, Counters, Data Structures, Atomic Operations, TTL
 
-Description: A comprehensive guide to using Redis Strings for caching and counters, covering GET, SET, INCR, EXPIRE commands, atomic operations, and practical examples in Python, Node.js, and Go for building high-performance applications.
+Description: A comprehensive guide to using Redis Strings for caching and counters, covering GET, SET, INCR, EXPIRE commands, atomic operations, and practical examples in Python, Node.
 
 ---
 

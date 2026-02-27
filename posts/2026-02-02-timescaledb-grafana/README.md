@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TimescaleDB, Grafana, Time-Series, PostgreSQL, Monitoring, Visualization, Database
 
-Description: Learn how to connect TimescaleDB with Grafana for powerful time-series visualization. Covers installation, data source configuration, dashboard creation, and best practices for building production-ready monitoring dashboards.
+Description: Learn how to connect TimescaleDB with Grafana for powerful time-series visualization.
 
 Time-series data powers modern observability. Metrics, IoT sensor readings, financial tick data, and application logs all share a common trait: they arrive in time-ordered streams that grow continuously. PostgreSQL can handle time-series workloads, but it wasn't designed for them. Enter TimescaleDB, a PostgreSQL extension that transforms your favorite relational database into a time-series powerhouse, and Grafana, the visualization layer that turns raw data into actionable insights.
 

@@ -1,4 +1,4 @@
-# How to Build a Serverless REST API with Azure Functions and Prisma ORM in TypeScript
+# How to Build a Serverless REST API with Azure Functions and Prisma ORM
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

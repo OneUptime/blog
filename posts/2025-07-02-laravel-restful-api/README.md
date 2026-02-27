@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PHP, Laravel, REST, API, JSON, HTTP
 
-Description: A comprehensive guide to building production-ready RESTful APIs with Laravel. Learn resource controllers, API resources, authentication, validation, error handling, and best practices for creating scalable PHP APIs.
+Description: A comprehensive guide to building production-ready RESTful APIs with Laravel.
 
 ---
 

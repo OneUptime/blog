@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, Kafka Connect, Java, Data Integration, Streaming, ETL, Connectors, Apache Kafka
 
-Description: A comprehensive guide to building custom Kafka Connect connectors in Java, covering source and sink connectors, configuration, schemas, Single Message Transforms (SMTs), and production deployment patterns.
+Description: A comprehensive guide to building custom Kafka Connect connectors in Java, covering source and sink connectors, configuration, schemas, Single Message Transforms (SMTs).
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, Reusable Workflows, CI/CD, DRY, Automation, DevOps
 
-Description: Learn how to create and use reusable workflows in GitHub Actions to eliminate duplication across repositories. This guide covers workflow inputs, outputs, secrets, and patterns for building a shared CI/CD library.
+Description: Learn how to create and use reusable workflows in GitHub Actions to eliminate duplication across repositories.
 
 ---
 

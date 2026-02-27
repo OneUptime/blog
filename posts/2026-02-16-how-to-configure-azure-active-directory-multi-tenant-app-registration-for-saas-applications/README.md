@@ -1,4 +1,4 @@
-# How to Configure Azure Active Directory Multi-Tenant App Registration for SaaS Applications
+# How to Configure Azure Active Directory Multi-Tenant App Registration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

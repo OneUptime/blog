@@ -1,4 +1,4 @@
-# How to Fix the Mistake of Mixing OpenTelemetry API and SDK Versions in Java Multi-Module Projects
+# How to Fix the Mistake of Mixing OpenTelemetry API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

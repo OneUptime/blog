@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CockroachDB, Serverless, Database, SQL, Cloud, PostgreSQL, Distributed Database
 
-Description: A comprehensive guide to using CockroachDB Serverless for scalable, distributed SQL databases. Learn cluster setup, connection management, schema design, query optimization, and best practices for production workloads.
+Description: A comprehensive guide to using CockroachDB Serverless for scalable, distributed SQL databases.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: .NET, Polly, Retry Policies, Resilience, C#, Error Handling
 
-Description: Learn how to implement custom retry policies with Polly in .NET applications. This guide covers exponential backoff, jitter, conditional retries, and production-ready patterns for handling transient failures.
+Description: Learn how to implement custom retry policies with Polly in .NET applications.
 
 ---
 

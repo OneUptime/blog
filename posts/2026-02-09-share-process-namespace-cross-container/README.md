@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Debugging, Containers
 
-Description: Learn how to enable shareProcessNamespace in Kubernetes pods to share process namespaces between containers, enabling advanced debugging, monitoring, and sidecar patterns with cross-container visibility.
+Description: Learn how to enable shareProcessNamespace in Kubernetes pods to share process namespaces between containers, enabling advanced debugging, monitoring.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Elasticsearch, Search, Full-Text Search, Spring Data
 
-Description: Learn how to implement full-text search in Spring Boot applications using Elasticsearch. This guide covers indexing, querying, fuzzy matching, highlighting, autocomplete, and pagination for building powerful search features.
+Description: Learn how to implement full-text search in Spring Boot applications using Elasticsearch.
 
 ---
 

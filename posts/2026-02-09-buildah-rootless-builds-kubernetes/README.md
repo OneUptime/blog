@@ -1,4 +1,4 @@
-# How to Set Up Buildah for Rootless Container Image Builds in Kubernetes CI Pipelines
+# How to Set Up Buildah for Rootless Container Image Builds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

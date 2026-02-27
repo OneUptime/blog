@@ -1,4 +1,4 @@
-# How to Choose Between Cloud Run Cloud Functions App Engine and GKE for Your Workload
+# How to Choose Between Cloud Run Cloud Functions App Engine and GKE
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

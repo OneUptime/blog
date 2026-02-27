@@ -1,4 +1,4 @@
-# How to Use Buildpacks with Procfile to Deploy a Django Application to Cloud Run Without a Dockerfile
+# How to Use Buildpacks with Procfile to Deploy a Django App to Cloud Run Without
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

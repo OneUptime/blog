@@ -1,4 +1,4 @@
-# How to Troubleshoot Cloud SQL High Availability Failover Not Completing Successfully
+# Troubleshoot Cloud SQL High Availability Failover Not Completing Successfully
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

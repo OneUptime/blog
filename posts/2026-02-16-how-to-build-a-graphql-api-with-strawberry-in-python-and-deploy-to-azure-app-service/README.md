@@ -1,4 +1,4 @@
-# How to Build a GraphQL API with Strawberry in Python and Deploy to Azure App Service
+# How to Build a GraphQL API with Strawberry in Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Audit Logging, Compliance, Immutability
 
-Description: Configure immutable audit trails for Kubernetes API server events using write-once storage, cryptographic verification, and tamper-evident logging to meet compliance requirements and ensure forensic integrity.
+Description: Configure immutable audit trails for Kubernetes API server events using write-once storage, cryptographic verification.
 
 ---
 

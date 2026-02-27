@@ -518,4 +518,4 @@ Understanding how Spring discovers configuration helps you structure tests corre
 *Need to monitor your Spring Boot tests and CI/CD pipeline? [OneUptime](https://oneuptime.com) provides build monitoring, test tracking, and instant alerts for your development workflow.*
 
 **Related Reading:**
-- [How to Set Up Integration Testing in Spring Boot](/blog/post/2025-12-22-integration-testing-spring-boot/view)
+- [How to Set Up Integration Testing in Spring Boot](https://oneuptime.com/blog/post/2025-12-22-integration-testing-spring-boot/view)

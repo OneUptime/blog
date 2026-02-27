@@ -1,4 +1,4 @@
-# How to Troubleshoot Operator Sidecar Injection Not Working Due to Wrong Annotation Language Mismatch
+# How to Troubleshoot Operator Sidecar Injection Not Working Due to Wrong
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

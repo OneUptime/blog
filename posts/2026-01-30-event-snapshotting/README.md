@@ -464,4 +464,4 @@ Start simple with a fixed event threshold, add schema versioning from the beginn
 
 - [Event Sourcing Basics](https://martinfowler.com/eaaDev/EventSourcing.html)
 - [CQRS and Event Sourcing](https://docs.microsoft.com/en-us/azure/architecture/patterns/cqrs)
-- [Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/) - Monitor your event sourcing system with distributed tracing
+- [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Monitor your event sourcing system with distributed tracing

@@ -1,4 +1,4 @@
-# How to Configure Resource Merging Strategies When Combining Environment Variable and Host Resource Detectors
+# How to Configure Resource Merging Strategies When Combining Environment Variable
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

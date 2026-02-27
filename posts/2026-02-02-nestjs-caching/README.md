@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NestJS, Caching, Redis, Node.js
 
-Description: A comprehensive guide to implementing caching in NestJS applications. Learn about in-memory caching, Redis integration, cache invalidation strategies, and best practices for building high-performance APIs with proper caching patterns.
+Description: A comprehensive guide to implementing caching in NestJS applications.
 
 ---
 

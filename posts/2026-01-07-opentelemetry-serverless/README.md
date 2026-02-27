@@ -1,4 +1,4 @@
-# How to Instrument Serverless Functions with OpenTelemetry (AWS Lambda, Azure Functions)
+# How to Instrument Serverless Functions with OpenTelemetry
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

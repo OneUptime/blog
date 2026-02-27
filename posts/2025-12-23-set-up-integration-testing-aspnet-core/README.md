@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, ASP.NET Core, C#, Integration Testing, Testing, WebApplicationFactory, Entity Framework
 
-Description: Learn how to set up comprehensive integration testing in ASP.NET Core applications using WebApplicationFactory. This guide covers test server configuration, database setup, authentication mocking, and best practices for reliable integration tests.
+Description: Learn how to set up comprehensive integration testing in ASP.NET Core applications using WebApplicationFactory.
 
 Integration tests verify that different components of your application work together correctly. Unlike unit tests that isolate individual components, integration tests exercise the full request pipeline, including middleware, routing, model binding, and database access. This guide shows you how to set up effective integration testing in ASP.NET Core.
 

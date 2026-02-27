@@ -1,4 +1,4 @@
-# How to Track Recommendation Engine Performance (Collaborative Filtering Latency, CTR Metrics) with OpenTelemetry
+# How to Track Recommendation Engine Performance with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot Attribute Value Truncation When Span Attribute Length Exceeds the SDK Default Limit
+# How to Troubleshoot Attribute Value Truncation When Span Attribute Length
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

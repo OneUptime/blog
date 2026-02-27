@@ -1,4 +1,4 @@
-# How to Deploy the Fluent Operator for Declarative Log Pipeline Management in Kubernetes
+# How to Deploy the Fluent Operator for Declarative Log Pipeline Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

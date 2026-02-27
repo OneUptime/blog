@@ -1,4 +1,4 @@
-# How to Version Control OpenTelemetry Sampling Rules and Pipeline Configuration as Code
+# How to Version Control OpenTelemetry Sampling Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

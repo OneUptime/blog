@@ -1,4 +1,4 @@
-# How to Build a Scheduled Python Cloud Function That Exports Firestore Collections to Cloud Storage as JSON
+# How to Build a Scheduled Python Cloud Function That Exports Firestore
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

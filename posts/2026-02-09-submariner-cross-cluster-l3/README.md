@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Multi-Cluster, Networking
 
-Description: Learn how to deploy Submariner to establish Layer 3 connectivity and service discovery between Kubernetes clusters across different networks, clouds, or data centers for true multi-cluster applications.
+Description: Learn how to deploy Submariner to establish Layer 3 connectivity and service discovery between Kubernetes clusters across different networks, clouds.
 
 ---
 

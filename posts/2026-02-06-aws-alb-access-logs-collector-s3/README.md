@@ -1,4 +1,4 @@
-# How to Ingest AWS Application Load Balancer (ALB) Access Logs into the OpenTelemetry Collector via S3
+# How to Ingest AWS App Load Balancer Access Logs into the OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix the Operator Finalizer Blocking Namespace Deletion When Cluster RBAC Is Not Properly Configured
+# How to Fix the Operator Finalizer Blocking Namespace Deletion When Cluster RBAC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

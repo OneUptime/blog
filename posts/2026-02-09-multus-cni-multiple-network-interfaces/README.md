@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Multus, Networking
 
-Description: Configure Multus CNI to attach multiple network interfaces to Kubernetes pods, enabling separation of management, data, and storage traffic for applications requiring network segmentation and specialized network configurations.
+Description: Configure Multus CNI to attach multiple network interfaces to Kubernetes pods, enabling separation of management, data.
 
 ---
 

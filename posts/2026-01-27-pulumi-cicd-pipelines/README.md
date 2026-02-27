@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, CI/CD, Infrastructure as Code, DevOps, GitHub Actions, GitLab CI, Automation, Cloud Infrastructure
 
-Description: A comprehensive guide to implementing Pulumi CI/CD pipelines, covering GitHub Actions, GitLab CI, preview environments, Pulumi Cloud integration, and secret management for automated infrastructure deployments.
+Description: A comprehensive guide to implementing Pulumi CI/CD pipelines, covering GitHub Actions, GitLab CI, preview environments, Pulumi Cloud integration.
 
 ---
 

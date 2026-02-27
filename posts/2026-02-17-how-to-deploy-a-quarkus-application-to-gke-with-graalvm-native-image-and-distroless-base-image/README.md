@@ -1,4 +1,4 @@
-# How to Deploy a Quarkus Application to GKE with GraalVM Native Image and Distroless Base Image
+# How to Deploy a Quarkus Application to GKE with GraalVM Native Image
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

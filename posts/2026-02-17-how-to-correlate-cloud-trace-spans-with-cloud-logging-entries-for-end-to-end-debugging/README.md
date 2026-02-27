@@ -1,4 +1,4 @@
-# How to Correlate Cloud Trace Spans with Cloud Logging Entries for End-to-End Debugging
+# Correlate Cloud Trace Spans with Cloud Logging Entries for End-to-End Debugging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Set Up GPU Time-Slicing and MIG Partitioning for ML Workloads on Kubernetes
+# How to Set Up GPU Time-Slicing and MIG Partitioning
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

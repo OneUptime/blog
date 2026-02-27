@@ -1,4 +1,4 @@
-# How to Export Dialogflow CX Conversation Logs to BigQuery for Contact Center Analytics
+# How to Export Dialogflow CX Conversation Logs to BigQuery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

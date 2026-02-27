@@ -1,4 +1,4 @@
-# How to Use OpenTelemetry eBPF Profiler for Cross-Language Profiling Without Code Changes (C++, Rust, Python, Node.js)
+# How to Use OpenTelemetry eBPF Profiler for Cross-Language Profiling Without
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

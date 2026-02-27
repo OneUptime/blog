@@ -1,4 +1,4 @@
-# How to Set Up a Managed Instance Group with Autohealing Health Checks on Compute Engine
+# How to Set Up a Managed Instance Group with Autohealing Health Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

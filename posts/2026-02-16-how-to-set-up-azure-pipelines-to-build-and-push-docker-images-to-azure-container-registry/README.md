@@ -1,4 +1,4 @@
-# How to Set Up Azure Pipelines to Build and Push Docker Images to Azure Container Registry
+# How to Set Up Azure Pipelines to Build and Push Docker Images to Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

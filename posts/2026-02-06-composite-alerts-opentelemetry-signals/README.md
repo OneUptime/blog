@@ -1,4 +1,4 @@
-# How to Build Composite Alerts That Combine Multiple OpenTelemetry Signals (Traces + Metrics + Logs)
+# How to Build Composite Alerts That Combine Multiple OpenTelemetry Signals
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

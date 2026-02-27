@@ -1,4 +1,4 @@
-# How to Parse JSON-Formatted Application Logs with the json_parser Operator and Timestamp Extraction
+# How to Parse JSON-Formatted Application Logs with the json_parser Operator
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

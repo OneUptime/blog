@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, StatefulSets, Databases, Stateful Applications, Storage, DevOps
 
-Description: Learn how to configure Kubernetes StatefulSets for stateful applications like databases and message queues. This guide covers stable network identities, persistent storage, ordered deployment, and production best practices.
+Description: Learn how to configure Kubernetes StatefulSets for stateful applications like databases and message queues.
 
 ---
 

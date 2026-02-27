@@ -1,4 +1,4 @@
-# How to Configure the NGINX ngx_otel_module for Distributed Tracing with OTLP gRPC Export
+# How to Configure the NGINX ngx_otel_module for Distributed Tracing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

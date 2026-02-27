@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Data to Groundcover via OTLP for Kubernetes-Native eBPF-Enhanced Observability
+# How to Send OpenTelemetry Data to Groundcover via OTLP for K8s-Native
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

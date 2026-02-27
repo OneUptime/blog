@@ -1,4 +1,4 @@
-# How to Convert Docker Compose Multi-Service Applications to Kubernetes Manifests Step by Step
+# How to Convert Docker Compose Multi-Service Apps to K8s Manifests Step by Step
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Structured Logging in a Go Application on Cloud Run Using the Cloud Logging Client Library
+# How to Use Structured Logging in a Go App on Cloud Run Using the Cloud Logging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

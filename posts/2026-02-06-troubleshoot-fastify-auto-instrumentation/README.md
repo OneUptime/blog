@@ -1,4 +1,4 @@
-# How to Troubleshoot Fastify Instrumentation Not Being Applied by getNodeAutoInstrumentations
+# How to Troubleshoot Fastify Instrumentation Not Being Applied by
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

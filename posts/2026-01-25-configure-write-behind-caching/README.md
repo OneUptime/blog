@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Caching, Database, Performance, Redis, Backend
 
-Description: Learn how to implement write-behind caching to improve write performance by buffering writes in cache and asynchronously persisting to the database. This guide covers implementation patterns, durability considerations, and failure handling.
+Description: Learn how to implement write-behind caching to improve write performance by buffering writes in cache and asynchronously persisting to the database.
 
 ---
 

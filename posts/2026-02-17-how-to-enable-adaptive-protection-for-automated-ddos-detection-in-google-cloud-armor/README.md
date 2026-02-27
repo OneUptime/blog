@@ -1,4 +1,4 @@
-# How to Enable Adaptive Protection for Automated DDoS Detection in Google Cloud Armor
+# How to Enable Adaptive Protection for Automated DDoS Detection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

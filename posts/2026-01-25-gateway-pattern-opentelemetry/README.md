@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Gateway Pattern, Collector, Architecture, Observability, Scalability, Telemetry Pipeline
 
-Description: Learn how to configure the gateway pattern in OpenTelemetry for centralized telemetry collection. This guide covers architecture decisions, load balancing, and configuration examples for production deployments.
+Description: Learn how to configure the gateway pattern in OpenTelemetry for centralized telemetry collection.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Parse Legacy Unstructured Logs into OpenTelemetry Structured Format Using the Filelog Receiver
+# How to Parse Legacy Unstructured Logs into OpenTelemetry Structured Format
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

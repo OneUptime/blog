@@ -1,4 +1,4 @@
-# How to Set Up Azure Pipelines OIDC Authentication to Eliminate Stored Service Principal Secrets
+# How to Set Up Azure Pipelines OIDC Auth to Eliminate Stored Service Principal
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

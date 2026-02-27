@@ -1,4 +1,4 @@
-# How to Choose Between GKE Autopilot and Standard Mode for Your Workload Requirements
+# How to Choose Between GKE Autopilot and Standard Mode
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

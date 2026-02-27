@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, OIDC, AWS, Security, CI/CD, IAM, DevOps, Authentication
 
-Description: A complete guide to implementing GitHub Actions OIDC authentication with AWS, covering identity provider setup, IAM role configuration, trust policies, workflow integration, and security best practices.
+Description: A complete guide to implementing GitHub Actions OIDC authentication with AWS, covering identity provider setup, IAM role configuration, trust policies, workflow integration.
 
 ---
 

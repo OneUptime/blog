@@ -1,4 +1,4 @@
-# How to Set Up Automated Test Execution in Azure Test Plans with Selenium and Azure Pipelines
+# How to Set Up Automated Test Execution in Azure Test Plans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

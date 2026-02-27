@@ -1,4 +1,4 @@
-# How to Auto-Instrument Java, Python, and Node.js Apps in Kubernetes Without Code Changes
+# How to Auto-Instrument Java, Python, and Node.js Apps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Correlate Sentry Error Events with OpenTelemetry Distributed Traces for Full Request Path Visibility
+# How to Correlate Sentry Error Events with OpenTelemetry Distributed Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

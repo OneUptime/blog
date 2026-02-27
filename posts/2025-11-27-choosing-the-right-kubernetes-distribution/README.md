@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Cloud, Bare Metal, DevOps, Self-Hosting, Infrastructure
 
-Description: A pragmatic guide to Kubernetes flavors-upstream DIY, managed clouds, opinionated platforms, and lightweight edge distros-with crisp heuristics on when each option is the fastest, cheapest, or safest bet.
+Description: A pragmatic guide to Kubernetes flavors-upstream DIY, managed clouds, opinionated platforms, and lightweight edge distros-with crisp heuristics on when each option is the fastest, cheapest.
 
 ---
 

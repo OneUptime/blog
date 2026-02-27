@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flutter, State Management, Mobile, Dart
 
-Description: Learn how to handle state management in Flutter applications, from basic setState to advanced solutions like Provider, Riverpod, and Bloc. This guide covers practical patterns, best practices, and when to use each approach.
+Description: Learn how to handle state management in Flutter applications, from basic setState to advanced solutions like Provider, Riverpod, and Bloc.
 
 ---
 

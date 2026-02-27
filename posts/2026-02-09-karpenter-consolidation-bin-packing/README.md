@@ -1,4 +1,4 @@
-# How to Configure Karpenter Consolidation Policies for Optimal Kubernetes Node Bin Packing
+# How to Configure Karpenter Consolidation Policies for Optimal K8s Node Bin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

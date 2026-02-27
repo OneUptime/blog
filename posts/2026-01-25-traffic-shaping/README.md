@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Traffic Shaping, QoS, Bandwidth Management, Linux tc, Rate Limiting, Performance
 
-Description: Learn how to implement traffic shaping to control bandwidth allocation, prioritize critical traffic, and prevent network congestion. This guide covers Linux tc, application-level shaping, and practical configurations.
+Description: Learn how to implement traffic shaping to control bandwidth allocation, prioritize critical traffic, and prevent network congestion.
 
 ---
 

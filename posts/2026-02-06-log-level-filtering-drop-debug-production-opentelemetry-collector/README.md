@@ -1,4 +1,4 @@
-# How to Implement Log Level Filtering (Drop DEBUG in Production) in the OpenTelemetry Collector
+# How to Use Log Level Filtering in the OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

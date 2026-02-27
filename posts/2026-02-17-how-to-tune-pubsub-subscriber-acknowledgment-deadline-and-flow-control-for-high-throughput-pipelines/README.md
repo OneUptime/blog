@@ -1,4 +1,4 @@
-# How to Tune Pub/Sub Subscriber Acknowledgment Deadline and Flow Control for High-Throughput Pipelines
+# How to Tune Pub/Sub Subscriber Acknowledgment Deadline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

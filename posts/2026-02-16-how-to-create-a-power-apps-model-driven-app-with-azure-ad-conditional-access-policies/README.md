@@ -1,4 +1,4 @@
-# How to Create a Power Apps Model-Driven App with Azure AD Conditional Access Policies
+# Create a Power Apps Model-Driven App with Azure AD Conditional Access Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

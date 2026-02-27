@@ -1,4 +1,4 @@
-# How to Set Up Proxy Protocol on Kubernetes Load Balancers to Preserve Client IP Through L4 Proxies
+# How to Set Up Proxy Protocol on K8s Load Balancers to Preserve Client IP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix Kubernetes Pod DNS Resolution Failures from CoreDNS Configuration Errors
+# Fix Kubernetes Pod DNS Resolution Failures from CoreDNS Configuration Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

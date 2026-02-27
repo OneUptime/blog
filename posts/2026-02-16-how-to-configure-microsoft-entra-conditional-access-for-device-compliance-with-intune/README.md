@@ -1,4 +1,4 @@
-# How to Configure Microsoft Entra Conditional Access for Device Compliance with Intune
+# How to Configure Microsoft Entra Conditional Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

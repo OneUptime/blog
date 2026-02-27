@@ -1,4 +1,4 @@
-# How to Implement Intelligent Error Grouping Strategies Based on OpenTelemetry Span Fingerprints
+# How to Use Intelligent Error Grouping Strategies Based
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

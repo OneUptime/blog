@@ -1,4 +1,4 @@
-# How to Implement API Gateway Observability with Prometheus and Distributed Tracing
+# How to Use API Gateway Observability with Prometheus and Distributed Tracing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

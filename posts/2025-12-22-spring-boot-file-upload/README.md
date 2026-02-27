@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, File Upload, REST API, Multipart, Storage
 
-Description: Learn how to handle file uploads in Spring Boot applications. This guide covers multipart configuration, validation, storage strategies, progress tracking, and security best practices for handling user-uploaded files.
+Description: Learn how to handle file uploads in Spring Boot applications.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, PromQL, Query Optimization, Performance, Recording Rules, Cardinality, Observability, Grafana
 
-Description: Learn how to write efficient PromQL queries that scale. This guide covers query optimization techniques, recording rules, common anti-patterns to avoid, and practical tips for improving dashboard performance.
+Description: Learn how to write efficient PromQL queries that scale.
 
 ---
 

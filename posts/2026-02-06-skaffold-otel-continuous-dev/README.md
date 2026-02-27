@@ -1,4 +1,4 @@
-# How to Use Skaffold with OpenTelemetry for Continuous Development with Automatic Trace Collection
+# How to Use Skaffold with OpenTelemetry for Continuous Development
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

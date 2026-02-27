@@ -1,4 +1,4 @@
-# How to Build a Custom Power Apps Connector for Azure Blob Storage with OAuth 2.0 Authentication
+# How to Build a Custom Power Apps Connector for Azure Blob Storage with OAuth
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

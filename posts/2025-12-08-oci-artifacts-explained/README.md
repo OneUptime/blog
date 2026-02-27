@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Containers, DevOps, Supply Chain, Security, OCI
 
-Description: OCI artifacts are just structured manifests in a registry, but they unlock consistent distribution for anything from Helm charts to SBOMs and AI models. This post breaks down how they work, why they matter, and how to publish your own.
+Description: OCI artifacts are just structured manifests in a registry, but they unlock consistent distribution for anything from Helm charts to SBOMs and AI models.
 
 > OCI artifacts give every deliverable code, policies, datasets, attestations the same portability guarantees Docker images enjoy.
 

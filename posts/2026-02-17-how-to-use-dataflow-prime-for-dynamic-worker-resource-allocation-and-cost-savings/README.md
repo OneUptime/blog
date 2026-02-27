@@ -1,4 +1,4 @@
-# How to Use Dataflow Prime for Dynamic Worker Resource Allocation and Cost Savings
+# How to Use Dataflow Prime for Dynamic Worker Resource Allocation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

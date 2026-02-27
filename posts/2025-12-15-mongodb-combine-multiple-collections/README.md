@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Database, Aggregation, $lookup, Data Modeling
 
-Description: Master techniques to combine data from multiple MongoDB collections using $lookup, $unionWith, and other aggregation operators. Learn join patterns, performance optimization, and when to denormalize instead.
+Description: Master techniques to combine data from multiple MongoDB collections using $lookup, $unionWith, and other aggregation operators.
 
 ---
 

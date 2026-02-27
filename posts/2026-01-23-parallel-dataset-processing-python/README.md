@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Parallel Processing, Multiprocessing, Data Processing, Performance, Concurrency
 
-Description: Learn how to process large datasets efficiently using parallel jobs in Python. This guide covers multiprocessing, concurrent.futures, joblib, and practical patterns for CPU-bound and I/O-bound workloads.
+Description: Learn how to process large datasets efficiently using parallel jobs in Python. This guide covers multiprocessing, concurrent.
 
 ---
 

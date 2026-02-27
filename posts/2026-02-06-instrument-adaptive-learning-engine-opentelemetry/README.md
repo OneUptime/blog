@@ -1,4 +1,4 @@
-# How to Instrument Adaptive Learning Engine Response Time and Recommendation Quality with OpenTelemetry
+# How to Instrument Adaptive Learning Engine Response Time
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

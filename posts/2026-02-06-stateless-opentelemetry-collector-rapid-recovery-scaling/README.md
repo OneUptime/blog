@@ -1,4 +1,4 @@
-# How to Design Stateless OpenTelemetry Collector Architectures for Rapid Recovery and Scaling
+# How to Design Stateless OpenTelemetry Collector Architectures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

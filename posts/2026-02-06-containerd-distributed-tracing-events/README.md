@@ -1,4 +1,4 @@
-# How to Enable OpenTelemetry Distributed Tracing in containerd for Container Create, Start, and Stop Events
+# How to Enable OpenTelemetry Distributed Tracing in containerd for Container
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

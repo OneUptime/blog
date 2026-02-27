@@ -1,4 +1,4 @@
-# How to Set Up MongoDB Sharded Clusters on Kubernetes Using the Community Operator
+# How to Set Up MongoDB Sharded Clusters on Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

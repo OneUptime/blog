@@ -1,4 +1,4 @@
-# How to Create an Effective Azure Resource Naming Convention for Your Organization
+# How to Create an Effective Azure Resource Naming Convention
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

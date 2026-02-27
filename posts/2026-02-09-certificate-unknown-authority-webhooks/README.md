@@ -1,4 +1,4 @@
-# How to Fix Kubernetes Certificate Signed by Unknown Authority Errors in Webhook Calls
+# How to Fix Kubernetes Certificate Signed by Unknown Authority Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

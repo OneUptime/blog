@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry Auto-Instrumentation Breaking Flask Apps When Debug Mode Enables the Reloader
+# How to Fix OpenTelemetry Auto-Instrumentation Breaking Flask Apps When Debug
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

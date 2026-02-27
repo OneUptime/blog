@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: BGP, Networking, Routing, Communities
 
-Description: A comprehensive guide to implementing BGP communities for traffic engineering, route filtering, and policy management. Learn how to use standard, extended, and large communities with practical configuration examples for Cisco, Juniper, and FRRouting.
+Description: A comprehensive guide to implementing BGP communities for traffic engineering, route filtering, and policy management.
 
 BGP communities are one of the most powerful tools in a network engineer's arsenal. They allow you to tag routes with metadata, enabling sophisticated traffic engineering, route filtering, and policy decisions across your network and with your peers. This guide covers everything you need to know to implement BGP communities effectively in production environments.
 

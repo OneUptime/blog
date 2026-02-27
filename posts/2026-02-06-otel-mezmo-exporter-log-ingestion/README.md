@@ -1,4 +1,4 @@
-# How to Configure the Mezmo Exporter in the OpenTelemetry Collector for Log Ingestion with Hostname Metadata
+# How to Configure the Mezmo Exporter in the OpenTelemetry Collector for Log
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

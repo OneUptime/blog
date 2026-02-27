@@ -1,4 +1,4 @@
-# How to Extract Text and OCR from Video Frames with Video Intelligence API Text Detection
+# How to Extract Text and OCR from Video Frames with Video Intelligence API Text
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

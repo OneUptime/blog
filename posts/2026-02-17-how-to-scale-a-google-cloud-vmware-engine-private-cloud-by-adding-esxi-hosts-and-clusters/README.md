@@ -1,4 +1,4 @@
-# How to Scale a Google Cloud VMware Engine Private Cloud by Adding ESXi Hosts and Clusters
+# How to Scale a Google Cloud VMware Engine Private Cloud by Adding ESXi Hosts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

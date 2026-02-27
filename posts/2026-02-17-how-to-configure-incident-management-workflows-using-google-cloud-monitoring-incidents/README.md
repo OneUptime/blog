@@ -1,4 +1,4 @@
-# How to Configure Incident Management Workflows Using Google Cloud Monitoring Incidents
+# How to Configure Incident Management Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

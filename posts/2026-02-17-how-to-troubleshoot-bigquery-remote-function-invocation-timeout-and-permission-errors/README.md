@@ -1,4 +1,4 @@
-# How to Troubleshoot BigQuery Remote Function Invocation Timeout and Permission Errors
+# How to Troubleshoot BigQuery Remote Function Invocation Timeout
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

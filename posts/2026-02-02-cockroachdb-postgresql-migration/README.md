@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, CockroachDB, Database Migration, Distributed Database, SQL, DevOps
 
-Description: A comprehensive guide to migrating from PostgreSQL to CockroachDB, covering schema conversion, data migration strategies, application compatibility changes, and best practices for a successful transition.
+Description: A comprehensive guide to migrating from PostgreSQL to CockroachDB, covering schema conversion, data migration strategies, application compatibility changes.
 
 ---
 

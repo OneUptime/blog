@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Analytics, OLAP, Performance Tuning, Data Warehouse, Parallel Query
 
-Description: A comprehensive guide to tuning PostgreSQL for analytics and OLAP workloads, covering memory optimization, parallel query configuration, partitioning strategies, and query optimization for large scans and aggregations.
+Description: A comprehensive guide to tuning PostgreSQL for analytics and OLAP workloads, covering memory optimization, parallel query configuration, partitioning strategies.
 
 ---
 

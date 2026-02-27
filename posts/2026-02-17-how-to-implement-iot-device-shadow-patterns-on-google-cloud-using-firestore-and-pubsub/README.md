@@ -1,4 +1,4 @@
-# How to Implement IoT Device Shadow Patterns on Google Cloud Using Firestore and Pub/Sub
+# How to Use IoT Device Shadow Patterns on Google Cloud Using Firestore
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

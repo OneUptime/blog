@@ -1,4 +1,4 @@
-# How to Monitor Industrial IoT Sensor Data Ingestion Pipelines (MQTT to Cloud) with OpenTelemetry
+# How to Monitor Industrial IoT Sensor Data Ingestion Pipelines with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

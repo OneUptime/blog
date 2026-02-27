@@ -1,4 +1,4 @@
-# How to Build a Custom ID Generator for Trace and Span IDs That Integrates with Your Existing Correlation System
+# How to Build a Custom ID Generator for Trace and Span IDs That Integrates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

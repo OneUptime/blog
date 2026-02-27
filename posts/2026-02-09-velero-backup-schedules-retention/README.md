@@ -1,4 +1,4 @@
-# How to Configure Velero Backup Schedules with Retention Policies for Kubernetes Resources
+# How to Configure Velero Backup Schedules with Retention Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

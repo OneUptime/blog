@@ -1,4 +1,4 @@
-# How to Schedule Automatic Snapshots for Compute Engine Boot Disks Using Snapshot Policies
+# How to Schedule Automatic Snapshots for Compute Engine Boot Disks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

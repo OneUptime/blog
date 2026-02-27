@@ -1,4 +1,4 @@
-# How to Build an OpenTelemetry Pipeline with Apache Pulsar for Multi-Region Telemetry Distribution
+# How to Build an OpenTelemetry Pipeline with Apache Pulsar for Multi-Region
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

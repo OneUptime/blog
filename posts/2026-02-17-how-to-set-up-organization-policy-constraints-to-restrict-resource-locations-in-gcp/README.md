@@ -1,4 +1,4 @@
-# How to Set Up Organization Policy Constraints to Restrict Resource Locations in GCP
+# How to Set Up Organization Policy Constraints to Restrict Resource Locations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, HCL, for_each, Sets, Infrastructure as Code
 
-Description: Learn how to use the Terraform for_each meta-argument with sets of strings to create multiple resources, understand the difference between sets and maps in for_each, and handle common conversion patterns.
+Description: Learn how to use the Terraform for_each meta-argument with sets of strings to create multiple resources, understand the difference between sets and maps in for_each.
 
 ---
 

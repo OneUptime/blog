@@ -1,4 +1,4 @@
-# How to Configure Artifact Registry Cleanup Policies with Dry Run Mode Before Applying
+# Configure Artifact Registry Cleanup Policies with Dry Run Mode Before Applying
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

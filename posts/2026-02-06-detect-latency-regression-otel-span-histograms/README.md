@@ -1,4 +1,4 @@
-# How to Detect Latency Regression Between Deployments by Comparing OpenTelemetry Span Duration Histograms
+# How to Detect Latency Regression Between Deployments by Comparing OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

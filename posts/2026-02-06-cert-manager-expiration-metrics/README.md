@@ -1,4 +1,4 @@
-# How to Monitor cert-manager Certificate Expiration, Issuance Latency, and Renewal Events with OpenTelemetry
+# How to Monitor cert-manager Certificate Expiration, Issuance Latency,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

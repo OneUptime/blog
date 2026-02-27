@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, ASP.NET Core, C#, Middleware, Request Pipeline, Web Development
 
-Description: Learn how to configure and create middleware in ASP.NET Core applications. This guide covers built-in middleware, custom middleware development, middleware ordering, and common patterns for request/response processing.
+Description: Learn how to configure and create middleware in ASP.NET Core applications.
 
 Middleware is the foundation of request processing in ASP.NET Core. Each middleware component can inspect, modify, or short-circuit requests as they flow through the pipeline. Understanding how to configure and create middleware is essential for building robust web applications.
 

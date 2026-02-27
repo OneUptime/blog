@@ -1,4 +1,4 @@
-# How to Monitor Game Server Autoscaling Decisions and Player Density Metrics with OpenTelemetry
+# How to Monitor Game Server Autoscaling Decisions and Player Density Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

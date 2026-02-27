@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Time Series, IoT, Data Collection, InfluxDB, TimescaleDB, Metrics, Telemetry
 
-Description: Learn how to configure time-series data collection for IoT and edge deployments. Cover data modeling, collection strategies, storage optimization, and querying patterns for efficient telemetry management.
+Description: Learn how to configure time-series data collection for IoT and edge deployments.
 
 ---
 

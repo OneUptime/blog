@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Quarkus, Java, Tracing, Cloud-Native, GraalVM
 
-Description: Complete guide to implementing OpenTelemetry distributed tracing in Quarkus applications, including automatic instrumentation, native image support, and reactive programming patterns for cloud-native Java microservices.
+Description: Complete guide to implementing OpenTelemetry distributed tracing in Quarkus applications, including automatic instrumentation, native image support.
 
 Quarkus represents the next generation of Java frameworks, designed specifically for cloud-native, containerized workloads. With its focus on fast startup times, low memory footprint, and native compilation support through GraalVM, Quarkus enables Java applications to compete with Go and Rust in resource-constrained environments. OpenTelemetry integration in Quarkus leverages these advantages while providing comprehensive distributed tracing that works identically in both JVM and native modes.
 

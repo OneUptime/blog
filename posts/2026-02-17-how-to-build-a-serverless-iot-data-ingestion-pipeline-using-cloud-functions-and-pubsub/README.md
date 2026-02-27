@@ -1,4 +1,4 @@
-# How to Build a Serverless IoT Data Ingestion Pipeline Using Cloud Functions and Pub/Sub
+# How to Build a Serverless IoT Data Ingestion Pipeline Using Cloud Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

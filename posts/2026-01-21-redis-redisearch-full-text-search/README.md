@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, RediSearch, Full-Text Search, Search Engine, Indexing, Database
 
-Description: A comprehensive guide to implementing full-text search with RediSearch, covering indexing, querying, aggregations, and advanced search features for building powerful search functionality in your applications.
+Description: A comprehensive guide to implementing full-text search with RediSearch, covering indexing, querying, aggregations.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Performance, Linux, TCP, DevOps
 
-Description: Learn how to configure TCP optimization for better network performance. This guide covers TCP parameters, congestion control algorithms, and kernel tuning for high-throughput and low-latency applications.
+Description: Learn how to configure TCP optimization for better network performance.
 
 ---
 

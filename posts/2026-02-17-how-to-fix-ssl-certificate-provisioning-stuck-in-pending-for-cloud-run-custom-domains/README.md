@@ -1,4 +1,4 @@
-# How to Fix SSL Certificate Provisioning Stuck in Pending for Cloud Run Custom Domains
+# How to Fix SSL Certificate Provisioning Stuck in Pending
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

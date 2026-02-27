@@ -1,4 +1,4 @@
-# How to Configure Azure ExpressRoute with Redundant Connections for High Availability
+# How to Configure Azure ExpressRoute with Redundant Connections
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

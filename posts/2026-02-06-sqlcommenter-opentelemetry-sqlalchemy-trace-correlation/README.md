@@ -1,4 +1,4 @@
-# How to Enable SQLCommenter in OpenTelemetry SQLAlchemy for Query-Level Trace Correlation
+# How to Enable SQLCommenter in OpenTelemetry SQLAlchemy for Query-Level Trace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

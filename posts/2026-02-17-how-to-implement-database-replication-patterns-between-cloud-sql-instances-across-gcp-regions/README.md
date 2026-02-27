@@ -1,4 +1,4 @@
-# How to Implement Database Replication Patterns Between Cloud SQL Instances Across GCP Regions
+# Use Database Replication Patterns Between Cloud SQL Instances Across GCP Regions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

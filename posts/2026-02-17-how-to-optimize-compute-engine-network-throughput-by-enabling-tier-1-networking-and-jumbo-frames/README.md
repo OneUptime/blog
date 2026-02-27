@@ -1,4 +1,4 @@
-# How to Optimize Compute Engine Network Throughput by Enabling Tier 1 Networking and Jumbo Frames
+# How to Optimize Compute Engine Network Throughput by Enabling Tier 1 Networking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

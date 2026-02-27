@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Google Cloud, Pub/Sub, Messaging, Event-Driven Architecture, Node.js, Python, Go, Backend
 
-Description: Learn how to publish messages to Google Cloud Pub/Sub with practical examples in Node.js, Python, and Go. Covers basic publishing, batch operations, message ordering, error handling, and production best practices.
+Description: Learn how to publish messages to Google Cloud Pub/Sub with practical examples in Node.js, Python, and Go.
 
 ---
 

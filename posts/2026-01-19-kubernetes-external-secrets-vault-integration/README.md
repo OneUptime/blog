@@ -1,4 +1,4 @@
-# How to Secure Kubernetes Secrets with External Secrets Operator and HashiCorp Vault
+# How to Secure Kubernetes Secrets with External Secrets Operator
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

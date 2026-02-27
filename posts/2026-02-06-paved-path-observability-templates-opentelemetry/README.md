@@ -1,4 +1,4 @@
-# How to Create Paved-Path Observability Templates for Developer Teams with OpenTelemetry
+# How to Create Paved-Path Observability Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

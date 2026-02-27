@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Observability, Monitoring, OpenTelemetry, eBPF, Traffic Analysis, Infrastructure
 
-Description: A practical guide to implementing network observability in your infrastructure. Learn how to capture, analyze, and visualize network traffic patterns to identify bottlenecks and troubleshoot issues faster.
+Description: A practical guide to implementing network observability in your infrastructure.
 
 ---
 

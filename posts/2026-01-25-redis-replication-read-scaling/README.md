@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Replication, Read Scaling, High Availability, Master-Replica, Performance
 
-Description: Learn how to configure Redis replication to scale read operations and improve availability. This guide covers master-replica setup, automatic failover with Sentinel, and best practices for production deployments.
+Description: Learn how to configure Redis replication to scale read operations and improve availability.
 
 ---
 

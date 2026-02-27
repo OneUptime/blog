@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kibana, KQL, Search, Logs, Query Language
 
-Description: Master Kibana Query Language (KQL) in Discover to search and filter logs effectively, including field queries, wildcards, logical operators, range queries, and nested field syntax for complex log analysis.
+Description: Master Kibana Query Language (KQL) in Discover to search and filter logs effectively, including field queries, wildcards, logical operators, range queries.
 
 ---
 

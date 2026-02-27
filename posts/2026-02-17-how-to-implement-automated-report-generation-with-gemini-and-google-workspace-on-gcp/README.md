@@ -1,4 +1,4 @@
-# How to Implement Automated Report Generation with Gemini and Google Workspace on GCP
+# How to Use Automated Report Generation with Gemini and Google Workspace on GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

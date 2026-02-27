@@ -1,4 +1,4 @@
-# How to Instrument Customs Declaration and Trade Compliance Validation with OpenTelemetry
+# How to Instrument Customs Declaration and Trade Compliance Validation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

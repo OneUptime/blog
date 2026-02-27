@@ -1,4 +1,4 @@
-# How to Configure OpenTelemetry to Capture HTTP 4xx vs 5xx Errors with Different Span Status Strategies
+# How to Configure OpenTelemetry to Capture HTTP 4xx vs 5xx Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

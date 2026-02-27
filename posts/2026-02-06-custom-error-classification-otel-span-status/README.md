@@ -1,4 +1,4 @@
-# How to Build Custom Error Classification Logic Using OpenTelemetry Span Status Codes and Exception Attributes
+# How to Build Custom Error Classification Logic Using OpenTelemetry Span Status
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure the Filelog Receiver for Log Collection in the OpenTelemetry Collector
+# How to Configure the Filelog Receiver for Log Collection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

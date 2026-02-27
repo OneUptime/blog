@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Laravel, PostgreSQL, PHP, Database, Backend, Full-Text Search, JSONB
 
-Description: A comprehensive guide to using Laravel with PostgreSQL, covering database configuration, PostgreSQL-specific features like JSONB and arrays, full-text search implementation, and migrations with native PostgreSQL types.
+Description: A comprehensive guide to using Laravel with PostgreSQL, covering database configuration, PostgreSQL-specific features like JSONB and arrays, full-text search implementation.
 
 ---
 

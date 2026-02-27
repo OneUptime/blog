@@ -1,4 +1,4 @@
-# How to Parse Apache Combined Access Logs with the Filelog Receiver regex_parser and Named Capture Groups
+# How to Parse Apache Combined Access Logs with the Filelog Receiver regex_parser
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

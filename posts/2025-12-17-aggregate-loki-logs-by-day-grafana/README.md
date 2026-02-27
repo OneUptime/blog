@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Loki, LogQL, Log Aggregation, Observability
 
-Description: Learn how to aggregate Loki logs by day in Grafana for trend analysis, daily reports, and capacity planning. This guide covers LogQL aggregation functions, time bucketing, and visualization techniques.
+Description: Learn how to aggregate Loki logs by day in Grafana for trend analysis, daily reports, and capacity planning.
 
 ---
 

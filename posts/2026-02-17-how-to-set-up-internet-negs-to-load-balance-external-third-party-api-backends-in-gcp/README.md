@@ -1,4 +1,4 @@
-# How to Set Up Internet NEGs to Load Balance External Third-Party API Backends in GCP
+# How to Set Up Internet NEGs to Load Balance External Third-Party API Backends
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

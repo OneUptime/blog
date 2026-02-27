@@ -1,4 +1,4 @@
-# How to Build a Terraform Module for Cloud SQL with Private IP Automated Backups and Read Replicas
+# How to Build a Terraform Module for Cloud SQL with Private IP Automated Backups
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

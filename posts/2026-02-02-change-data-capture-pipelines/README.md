@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CDC, Data Engineering, Debezium, Streaming, Kafka, PostgreSQL, Real-Time Data, Event-Driven Architecture
 
-Description: A comprehensive guide to implementing Change Data Capture (CDC) pipelines for real-time data synchronization. Learn CDC patterns, Debezium setup, Kafka integration, and production best practices for building reliable streaming data pipelines.
+Description: A comprehensive guide to implementing Change Data Capture (CDC) pipelines for real-time data synchronization.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, SLO, SLI, Error Budget, Site Reliability Engineering, Observability, Alerting, Recording Rules
 
-Description: Learn how to implement Service Level Objective (SLO) monitoring with Prometheus. This guide covers defining SLIs, creating recording rules for error budgets, and setting up multi-window multi-burn-rate alerts.
+Description: Learn how to implement Service Level Objective (SLO) monitoring with Prometheus.
 
 ---
 

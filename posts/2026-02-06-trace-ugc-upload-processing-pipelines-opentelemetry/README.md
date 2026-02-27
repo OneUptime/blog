@@ -1,4 +1,4 @@
-# How to Trace User-Generated Content Upload and Processing Pipelines with OpenTelemetry
+# How to Trace User-Generated Content Upload and Processing Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement Data Encryption at Rest for StatefulSet Persistent Volumes on Kubernetes
+# How to Use Data Encryption at Rest for StatefulSet Persistent Volumes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

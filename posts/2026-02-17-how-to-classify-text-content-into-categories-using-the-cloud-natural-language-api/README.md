@@ -1,4 +1,4 @@
-# How to Classify Text Content into Categories Using the Cloud Natural Language API
+# Classify Text Content into Categories Using the Cloud Natural Language API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

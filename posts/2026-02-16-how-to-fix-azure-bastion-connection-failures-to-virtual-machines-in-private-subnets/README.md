@@ -1,4 +1,4 @@
-# How to Fix Azure Bastion Connection Failures to Virtual Machines in Private Subnets
+# How to Fix Azure Bastion Connection Failures to Virtual Machines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

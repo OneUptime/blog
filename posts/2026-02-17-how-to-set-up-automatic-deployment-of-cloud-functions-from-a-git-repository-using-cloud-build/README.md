@@ -1,4 +1,4 @@
-# How to Set Up Automatic Deployment of Cloud Functions from a Git Repository Using Cloud Build
+# How to Set Up Automatic Deployment of Cloud Functions from a Git Repository
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

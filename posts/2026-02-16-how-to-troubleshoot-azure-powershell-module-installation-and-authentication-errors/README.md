@@ -1,4 +1,4 @@
-# How to Troubleshoot Azure PowerShell Module Installation and Authentication Errors
+# How to Troubleshoot Azure PowerShell Module Installation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

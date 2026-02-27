@@ -1,4 +1,4 @@
-# How to Build an OpenTelemetry Training Curriculum with Hands-On Labs Using the OTel Demo
+# How to Build an OpenTelemetry Training Curriculum with Hands-On Labs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

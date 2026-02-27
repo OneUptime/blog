@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Prometheus, Micrometer, Metrics, Observability, Monitoring
 
-Description: Learn how to expose Prometheus metrics from Spring Boot applications using Micrometer. This guide covers counters, gauges, timers, histograms, custom metrics, and best practices for production monitoring.
+Description: Learn how to expose Prometheus metrics from Spring Boot applications using Micrometer.
 
 ---
 

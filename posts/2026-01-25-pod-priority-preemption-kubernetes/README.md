@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Pod Priority, Preemption, Scheduling, Resource Management, DevOps
 
-Description: Learn how to configure pod priority and preemption in Kubernetes to ensure critical workloads get scheduled first. This guide covers PriorityClasses, preemption behavior, and best practices for production clusters.
+Description: Learn how to configure pod priority and preemption in Kubernetes to ensure critical workloads get scheduled first.
 
 ---
 

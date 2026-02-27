@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Prometheus Operator, Kubernetes, ServiceMonitor, PodMonitor, AlertmanagerConfig, CRDs, GitOps, Observability
 
-Description: Learn how to deploy and manage Prometheus on Kubernetes using the Prometheus Operator. This guide covers Custom Resource Definitions, ServiceMonitors, PodMonitors, and declarative alerting configuration.
+Description: Learn how to deploy and manage Prometheus on Kubernetes using the Prometheus Operator.
 
 ---
 

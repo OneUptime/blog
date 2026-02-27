@@ -1,4 +1,4 @@
-# How to Set Up Azure Pipelines Deployment Gates with Azure Monitor Alert Integration
+# How to Set Up Azure Pipelines Deployment Gates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

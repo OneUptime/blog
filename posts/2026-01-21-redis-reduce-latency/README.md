@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Latency, Performance, Production, Network, TCP, Connection Pooling, Optimization
 
-Description: A comprehensive guide to reducing Redis latency in production environments. Learn to diagnose latency sources, optimize network settings, tune connections, and implement best practices for sub-millisecond response times.
+Description: A comprehensive guide to reducing Redis latency in production environments.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Monitor Docker Container Metrics with the OpenTelemetry Docker Stats Receiver
+# Monitor Docker Container Metrics with the OpenTelemetry Docker Stats Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

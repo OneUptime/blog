@@ -1,4 +1,4 @@
-# How to Use the Go Cloud Tasks Client Library to Enqueue HTTP Requests with Delayed Execution
+# How to Use the Go Cloud Tasks Client Library to Enqueue HTTP Requests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

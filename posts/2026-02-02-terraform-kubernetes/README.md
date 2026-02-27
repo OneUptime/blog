@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Kubernetes, IaC, Infrastructure, DevOps, Cloud Native, Automation
 
-Description: A comprehensive guide to using Terraform for Kubernetes infrastructure management. Learn how to provision clusters, deploy workloads, manage resources, and implement best practices for production-ready Kubernetes environments.
+Description: A comprehensive guide to using Terraform for Kubernetes infrastructure management.
 
 ---
 

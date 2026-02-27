@@ -1,10 +1,10 @@
-# How efficient are containers vs virtual machines? A deep dive into density advantages
+# How efficient are containers vs virtual machines? A deep dive into density
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Containers, Virtual Machines, Docker, Kubernetes, Infrastructure, Performance, DevOps, Virtualization, Linux
 
-Description: A deep technical dive into why you can run 10x more containers than VMs on identical hardware. We explore kernel sharing, memory architecture, CPU overhead, and the fundamental design decisions that make containers dramatically more efficient.
+Description: A deep technical dive into why you can run 10x more containers than VMs on identical hardware.
 
 ---
 

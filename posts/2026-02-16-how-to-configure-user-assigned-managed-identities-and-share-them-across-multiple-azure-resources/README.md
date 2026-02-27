@@ -1,4 +1,4 @@
-# How to Configure User-Assigned Managed Identities and Share Them Across Multiple Azure Resources
+# How to Configure User-Assigned Managed Identities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

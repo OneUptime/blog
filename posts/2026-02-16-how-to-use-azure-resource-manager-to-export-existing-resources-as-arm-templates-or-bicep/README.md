@@ -1,4 +1,4 @@
-# How to Use Azure Resource Manager to Export Existing Resources as ARM Templates or Bicep
+# How to Use Azure Resource Manager to Export Existing Resources as ARM Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

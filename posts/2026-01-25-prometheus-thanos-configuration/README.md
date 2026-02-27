@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, Thanos, Long-term Storage, High Availability, Global View, Object Storage, Kubernetes, Observability
 
-Description: A complete guide to configuring Thanos with Prometheus for unlimited retention, global querying, and high availability. Learn how to set up Thanos components including Sidecar, Query, Store Gateway, Compactor, and Ruler.
+Description: A complete guide to configuring Thanos with Prometheus for unlimited retention, global querying, and high availability.
 
 ---
 

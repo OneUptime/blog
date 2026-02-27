@@ -1,4 +1,4 @@
-# How to Build a Shared Augmented Reality Experience with Azure Spatial Anchors and Unity
+# How to Build a Shared Augmented Reality Experience with Azure Spatial Anchors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

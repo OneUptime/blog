@@ -1,4 +1,4 @@
-# How to Build a Cost-Optimized Data Platform on GCP Using Committed Use Discounts and Slot Reservations
+# How to Build a Cost-Optimized Data Platform on GCP Using Committed Use Discounts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Rate Limiting, Sliding Window, Redis, API Security, Performance
 
-Description: Learn how to implement sliding window rate limiting in Python for smoother traffic control than fixed windows. This guide covers in-memory and Redis-based implementations with practical examples for FastAPI and Flask.
+Description: Learn how to implement sliding window rate limiting in Python for smoother traffic control than fixed windows.
 
 ---
 

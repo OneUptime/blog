@@ -1,4 +1,4 @@
-# How to Configure GKE Autopilot Resource Requests to Avoid Pod Scheduling Failures
+# Configure GKE Autopilot Resource Requests to Avoid Pod Scheduling Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

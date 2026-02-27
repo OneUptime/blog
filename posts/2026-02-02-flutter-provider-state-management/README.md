@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flutter, Provider, State Management, Mobile Development, Dart
 
-Description: A hands-on guide to using Provider for state management in Flutter applications. Learn how to set up providers, manage complex state, handle async operations, and build scalable apps with clean architecture.
+Description: A hands-on guide to using Provider for state management in Flutter applications.
 
 ---
 

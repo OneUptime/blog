@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Memory Leaks, Debugging, tracemalloc, objgraph, Performance, Garbage Collection
 
-Description: Learn how to identify, debug, and fix memory leaks in Python applications using tracemalloc, objgraph, and garbage collector debugging. This guide covers common leak patterns and production-safe debugging techniques.
+Description: Learn how to identify, debug, and fix memory leaks in Python applications using tracemalloc, objgraph, and garbage collector debugging.
 
 ---
 

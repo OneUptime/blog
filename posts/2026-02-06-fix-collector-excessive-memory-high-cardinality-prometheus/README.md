@@ -1,4 +1,4 @@
-# How to Fix the Collector Using Excessive Memory When Processing High-Cardinality Prometheus Metrics
+# How to Fix the Collector Using Excessive Memory When Processing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

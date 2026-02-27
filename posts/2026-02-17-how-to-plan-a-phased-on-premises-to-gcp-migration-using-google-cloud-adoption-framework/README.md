@@ -1,4 +1,4 @@
-# How to Plan a Phased On-Premises to GCP Migration Using Google Cloud Adoption Framework
+# How to Plan a Phased On-Premises to GCP Migration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

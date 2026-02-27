@@ -1,4 +1,4 @@
-# How to Build a Medical Imaging Analysis Pipeline with Azure Health Data Services and DICOM
+# How to Build a Medical Imaging Analysis Pipeline with Azure Health Data Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Trace Subscription Billing and Invoice Generation Workflows (Stripe/Chargebee Integration) with OpenTelemetry
+# How to Trace Subscription Billing and Invoice Generation Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

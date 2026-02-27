@@ -1,4 +1,4 @@
-# How to Create and Manage DICOM Stores for Medical Imaging in Google Cloud Healthcare API
+# How to Manage DICOM Stores for Medical Imaging in Google Cloud Healthcare API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use Terraform to Deploy Cloud Endpoints with OpenAPI Specification and API Key Authentication
+# How to Use Terraform to Deploy Cloud Endpoints with OpenAPI Specification
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

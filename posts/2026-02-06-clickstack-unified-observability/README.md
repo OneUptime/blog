@@ -1,4 +1,4 @@
-# How to Use ClickStack (ClickHouse + OpenTelemetry) for Unified Logs, Traces, Metrics, and Session Replay
+# How to Use ClickStack for Unified Logs, Traces, Metrics, and Session Replay
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

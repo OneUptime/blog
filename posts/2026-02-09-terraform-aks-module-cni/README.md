@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AKS, Azure CNI, Kubernetes, Networking
 
-Description: A complete guide to deploying Azure Kubernetes Service clusters with Azure CNI networking using Terraform modules, covering VNet integration, IP planning, network policies, and production configurations.
+Description: A complete guide to deploying Azure Kubernetes Service clusters with Azure CNI networking using Terraform modules, covering VNet integration, IP planning, network policies.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Configure Caching Strategies for Container Image Layers in Kubernetes CI Pipelines
+# How to Configure Caching Strategies for Container Image Layers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

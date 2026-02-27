@@ -1171,5 +1171,5 @@ Choreography is not always the right choice. For complex workflows with many con
 
 **Related Reading:**
 
-- [What are Traces and Spans in OpenTelemetry](/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/)
-- [SRE Best Practices](/blog/post/2025-11-28-sre-best-practices/)
+- [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)
+- [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view)

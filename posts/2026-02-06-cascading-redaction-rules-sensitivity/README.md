@@ -1,4 +1,4 @@
-# How to Configure Cascading Redaction Rules (Block, Hash, Mask) for Different Sensitivity Levels in the Collector
+# How to Configure Cascading Redaction Rules for Different Sensitivity Levels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

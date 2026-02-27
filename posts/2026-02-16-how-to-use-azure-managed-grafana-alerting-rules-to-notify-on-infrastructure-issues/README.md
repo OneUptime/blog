@@ -1,4 +1,4 @@
-# How to Use Azure Managed Grafana Alerting Rules to Notify on Infrastructure Issues
+# How to Use Azure Managed Grafana Alerting Rules to Notify
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

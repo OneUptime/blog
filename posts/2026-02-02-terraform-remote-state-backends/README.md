@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Remote State, Backend, IaC
 
-Description: Learn how to configure and use remote state backends in Terraform for secure, collaborative infrastructure management. This comprehensive guide covers S3, Azure Blob, GCS, and Terraform Cloud backends with practical examples.
+Description: Learn how to configure and use remote state backends in Terraform for secure, collaborative infrastructure management.
 
 ---
 

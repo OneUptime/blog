@@ -1,4 +1,4 @@
-# How to Optimize Azure Log Analytics Workspace Costs with Data Retention and Archiving Policies
+# How to Optimize Azure Log Analytics Workspace Costs with Data Retention
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

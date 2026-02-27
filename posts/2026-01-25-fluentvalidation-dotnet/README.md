@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, FluentValidation, Validation, ASP.NET Core
 
-Description: Learn how to implement request validation in .NET using FluentValidation. This guide covers basic validators, custom rules, conditional validation, and automatic integration with ASP.NET Core's model binding pipeline.
+Description: Learn how to implement request validation in .NET using FluentValidation. This guide covers basic validators, custom rules, conditional validation, and automatic integration with ASP.
 
 ---
 

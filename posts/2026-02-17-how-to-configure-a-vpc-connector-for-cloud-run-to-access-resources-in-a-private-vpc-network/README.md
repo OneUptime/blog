@@ -1,10 +1,10 @@
-# How to Configure a VPC Connector for Cloud Run to Access Resources in a Private VPC Network
+# How to Configure a VPC Connector for Cloud Run to Access Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Run, VPC Connector, Private Networking, Cloud Infrastructure
 
-Description: A step-by-step guide to setting up a Serverless VPC Access connector for Cloud Run to securely communicate with resources inside a private VPC network like databases, Redis instances, and internal APIs.
+Description: A step-by-step guide to setting up a Serverless VPC Access connector for Cloud Run to securely communicate with resources inside a private VPC network like databases, Redis instances.
 
 ---
 

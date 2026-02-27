@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: GraphQL, N+1 Problem, DataLoader, Performance, API Design, Backend Development
 
-Description: A comprehensive guide to understanding and preventing the N+1 query problem in GraphQL resolvers, covering DataLoader implementation, field-level resolvers, caching strategies, and query optimization techniques for production-ready APIs.
+Description: A comprehensive guide to understanding and preventing the N+1 query problem in GraphQL resolvers, covering DataLoader implementation, field-level resolvers, caching strategies.
 
 ---
 

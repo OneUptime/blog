@@ -1,4 +1,4 @@
-# How to Use the JetBrains Rider OpenTelemetry Plugin for In-IDE Trace and Metric Visualization
+# How to Use the JetBrains Rider OpenTelemetry Plugin for In-IDE Trace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Data to Observe Inc via the Observe Agent OTLP gRPC and HTTP Endpoints
+# How to Send OpenTelemetry Data to Observe Inc via the Observe Agent OTLP gRPC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

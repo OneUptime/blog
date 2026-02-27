@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab CI, Terraform, Infrastructure as Code, IaC, CI/CD, DevOps
 
-Description: Learn how to set up a Terraform pipeline in GitLab CI for infrastructure as code deployments. This guide covers state management, plan/apply workflows, environment separation, and security best practices.
+Description: Learn how to set up a Terraform pipeline in GitLab CI for infrastructure as code deployments.
 
 > A well-designed Terraform pipeline automates infrastructure changes while maintaining safety through plan reviews and approval gates.
 

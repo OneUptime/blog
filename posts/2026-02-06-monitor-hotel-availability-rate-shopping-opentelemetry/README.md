@@ -1,4 +1,4 @@
-# How to Monitor Hotel Room Availability and Rate Shopping Engine Performance with OpenTelemetry
+# How to Monitor Hotel Room Availability and Rate Shopping Engine Performance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

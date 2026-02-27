@@ -1,4 +1,4 @@
-# How to Build a CI/CD Pipeline for Cloud Functions Using Cloud Build with Automated Integration Tests
+# How to Build a CI/CD Pipeline for Cloud Functions Using Cloud Build
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

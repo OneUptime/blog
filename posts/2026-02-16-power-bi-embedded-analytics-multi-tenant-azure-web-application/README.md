@@ -1,4 +1,4 @@
-# How to Create a Power BI Embedded Analytics Solution in a Multi-Tenant Azure Web Application
+# How to Create a Power BI Embedded Analytics Solution in a Multi-Tenant Azure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

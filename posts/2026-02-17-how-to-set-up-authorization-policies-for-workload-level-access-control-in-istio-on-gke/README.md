@@ -1,4 +1,4 @@
-# How to Set Up Authorization Policies for Workload-Level Access Control in Istio on GKE
+# How to Set Up Authorization Policies for Workload-Level Access Control
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

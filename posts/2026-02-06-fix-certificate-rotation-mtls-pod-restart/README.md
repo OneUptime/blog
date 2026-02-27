@@ -1,4 +1,4 @@
-# How to Fix Certificate Rotation Breaking the Collector mTLS Connection Until Pod Restart
+# How to Fix Certificate Rotation Breaking the Collector mTLS Connection Until
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

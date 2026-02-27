@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Database, Aggregation, Data Analysis, Performance
 
-Description: Master the MongoDB aggregation pipeline with practical examples covering $match, $group, $lookup, $project, and advanced stages. Learn to build efficient data processing pipelines for analytics and reporting.
+Description: Master the MongoDB aggregation pipeline with practical examples covering $match, $group, $lookup, $project, and advanced stages.
 
 ---
 

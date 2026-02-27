@@ -1,4 +1,4 @@
-# How to Achieve PCI DSS Compliance for Payment Processing Workloads on Google Cloud
+# How to Achieve PCI DSS Compliance for Payment Processing Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

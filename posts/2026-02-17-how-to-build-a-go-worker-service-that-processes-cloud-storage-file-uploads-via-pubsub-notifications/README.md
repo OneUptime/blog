@@ -1,4 +1,4 @@
-# How to Build a Go Worker Service That Processes Cloud Storage File Uploads via Pub/Sub Notifications
+# How to Build a Go Worker Service That Processes Cloud Storage File Uploads via
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

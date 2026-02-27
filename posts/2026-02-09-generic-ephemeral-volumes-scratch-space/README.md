@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, EphemeralVolume, TemporaryStorage
 
-Description: Learn how to use generic ephemeral volumes in Kubernetes to provide temporary scratch space for pods with automatic cleanup, better performance than emptyDir, and support for storage features like snapshots and cloning.
+Description: Learn how to use generic ephemeral volumes in Kubernetes to provide temporary scratch space for pods with automatic cleanup, better performance than emptyDir.
 
 ---
 

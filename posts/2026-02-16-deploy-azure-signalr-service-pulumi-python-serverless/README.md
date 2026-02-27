@@ -1,4 +1,4 @@
-# How to Deploy Azure SignalR Service with Pulumi Python and Serverless Integration
+# How to Deploy Azure SignalR Service with Pulumi Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

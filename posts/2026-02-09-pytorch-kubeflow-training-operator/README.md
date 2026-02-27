@@ -1,4 +1,4 @@
-# How to Deploy PyTorch Training Jobs Using the Kubeflow Training Operator on Kubernetes
+# How to Deploy PyTorch Training Jobs Using the Kubeflow Training Operator
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

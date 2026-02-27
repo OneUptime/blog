@@ -1,4 +1,4 @@
-# How to Fix Internal TCP/UDP Load Balancer Health Check Failing Despite Healthy Backends
+# Fix Internal TCP/UDP Load Balancer Health Check Failing Despite Healthy Backends
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

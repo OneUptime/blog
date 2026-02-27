@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, VolumePopulator, DataSource
 
-Description: Learn how to use volume populators to pre-fill persistent volumes with data from custom sources like object storage, HTTP endpoints, and git repositories, enabling automated data initialization for applications.
+Description: Learn how to use volume populators to pre-fill persistent volumes with data from custom sources like object storage, HTTP endpoints, and git repositories.
 
 ---
 

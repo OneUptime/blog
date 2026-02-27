@@ -1,4 +1,4 @@
-# How to Configure the Cumulative to Delta Processor in the OpenTelemetry Collector
+# How to Configure the Cumulative to Delta Processor
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Implement FinOps for Observability: Enforce Cost Budgets Per Service and Team with Pre-Deployment Gates
+# How to Use FinOps for Observability: Enforce Cost Budgets Per Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

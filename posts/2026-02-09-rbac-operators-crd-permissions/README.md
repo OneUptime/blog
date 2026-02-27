@@ -1,4 +1,4 @@
-# How to Build Custom RBAC Roles for Kubernetes Operators with CRD Management Permissions
+# How to Build Custom RBAC Roles for Kubernetes Operators
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

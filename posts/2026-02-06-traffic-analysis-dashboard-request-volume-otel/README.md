@@ -1,4 +1,4 @@
-# How to Build a Traffic Analysis Dashboard with Request Volume and Endpoint Breakdowns from OpenTelemetry
+# How to Build a Traffic Analysis Dashboard with Request Volume
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

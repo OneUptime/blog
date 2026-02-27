@@ -1,4 +1,4 @@
-# How to Set Up cert-manager on AKS for Automatic Let's Encrypt TLS Certificate Management
+# How to Set Up cert-manager on AKS for Auto Let's Encrypt TLS Certificate Mgmt
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

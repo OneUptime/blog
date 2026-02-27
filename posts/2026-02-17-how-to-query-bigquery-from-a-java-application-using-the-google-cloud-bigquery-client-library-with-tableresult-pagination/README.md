@@ -1,4 +1,4 @@
-# How to Query BigQuery from a Java Application Using the google-cloud-bigquery Client Library with TableResult Pagination
+# How to Query BigQuery from a Java App Using the google-cloud-bigquery Client
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

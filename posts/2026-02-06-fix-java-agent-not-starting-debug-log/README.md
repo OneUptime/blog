@@ -1,4 +1,4 @@
-# How to Fix the OpenTelemetry Java Agent Not Starting by Checking the OTEL_JAVAAGENT_DEBUG Log Output
+# How to Fix the OpenTelemetry Java Agent Not Starting by Checking the
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

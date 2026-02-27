@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, Go, Infrastructure as Code, IaC, DevOps, Cloud, AWS, Kubernetes
 
-Description: A comprehensive guide to using Pulumi with Go for infrastructure as code. Learn how to provision cloud resources, manage state, create reusable components, and deploy to AWS, Azure, GCP, and Kubernetes using Go.
+Description: A comprehensive guide to using Pulumi with Go for infrastructure as code.
 
 ---
 

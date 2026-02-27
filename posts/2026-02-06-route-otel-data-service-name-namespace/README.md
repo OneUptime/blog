@@ -1,4 +1,4 @@
-# How to Route OpenTelemetry Data to Different Backends Based on service.name or k8s.namespace Resource Attributes
+# How to Route OpenTelemetry Data to Different Backends Based on service.name or
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

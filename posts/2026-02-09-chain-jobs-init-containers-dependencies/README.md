@@ -1,4 +1,4 @@
-# How to Chain Multiple Jobs in Sequence Using Init Containers and Job Dependencies
+# How to Chain Multiple Jobs in Sequence Using Init Containers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

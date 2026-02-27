@@ -1,4 +1,4 @@
-# How to Monitor High-Frequency Trading System Latency at Microsecond Granularity with OpenTelemetry Custom Exporters
+# How to Monitor High-Frequency Trading System Latency at Microsecond Granularity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, DevOps, Resource Management, Best Practices
 
-Description: Learn how to dynamically vary resource attributes based on count.index in Terraform. This guide covers using lists, maps, conditionals, and lookup functions to create flexible, DRY infrastructure code.
+Description: Learn how to dynamically vary resource attributes based on count.index in Terraform.
 
 When creating multiple similar resources in Terraform using `count`, you often need each instance to have slightly different attributes. The `count.index` value gives you the index of the current resource (starting at 0), which you can use to vary names, sizes, configurations, and more. Let's explore different patterns for this common scenario.
 

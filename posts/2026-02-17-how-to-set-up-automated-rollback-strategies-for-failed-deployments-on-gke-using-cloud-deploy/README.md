@@ -1,4 +1,4 @@
-# How to Set Up Automated Rollback Strategies for Failed Deployments on GKE Using Cloud Deploy
+# How to Set Up Automated Rollback Strategies for Failed Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

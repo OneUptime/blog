@@ -1428,6 +1428,6 @@ Remember: the best feature flag is one you eventually remove. Treat temporary fl
 
 **Related Reading:**
 
-- [The Five Stages of SRE Maturity](/blog/post/2025-09-01-the-five-stages-of-sre-maturity/view)
-- [SRE Best Practices](/blog/post/2025-11-28-sre-best-practices/view)
-- [What is Toil and How to Eliminate It](/blog/post/2025-10-01-what-is-toil-and-how-to-eliminate-it/view)
+- [The Five Stages of SRE Maturity](https://oneuptime.com/blog/post/2025-09-01-the-five-stages-of-sre-maturity/view)
+- [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view)
+- [What is Toil and How to Eliminate It](https://oneuptime.com/blog/post/2025-10-01-what-is-toil-and-how-to-eliminate-it/view)

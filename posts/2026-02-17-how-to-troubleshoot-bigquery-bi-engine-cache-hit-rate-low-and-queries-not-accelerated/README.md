@@ -1,4 +1,4 @@
-# How to Troubleshoot BigQuery BI Engine Cache Hit Rate Low and Queries Not Accelerated
+# How to Troubleshoot BigQuery BI Engine Cache Hit Rate Low
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

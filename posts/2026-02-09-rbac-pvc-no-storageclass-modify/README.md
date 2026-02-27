@@ -1,4 +1,4 @@
-# How to Configure RBAC to Allow PersistentVolume Claim Creation Without Storage Class Modification
+# How to Configure RBAC to Allow PersistentVolume Claim Creation Without Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

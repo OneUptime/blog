@@ -1,4 +1,4 @@
-# How to Mount an In-Memory Volume on Cloud Run for Sharing Files Between Sidecar Containers
+# How to Mount an In-Memory Volume on Cloud Run for Sharing Files Between Sidecar
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

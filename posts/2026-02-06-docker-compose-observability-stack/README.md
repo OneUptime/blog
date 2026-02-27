@@ -1,4 +1,4 @@
-# How to Set Up a Complete Docker Compose Observability Stack with Collector, Tempo, Loki, Prometheus, and Grafana
+# How to Set Up a Complete Docker Compose Observability Stack with Collector,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

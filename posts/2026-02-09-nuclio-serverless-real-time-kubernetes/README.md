@@ -1,4 +1,4 @@
-# How to Deploy Nuclio Serverless Platform on Kubernetes for Real-Time Data Processing
+# Deploy Nuclio Serverless Platform on Kubernetes for Real-Time Data Processing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

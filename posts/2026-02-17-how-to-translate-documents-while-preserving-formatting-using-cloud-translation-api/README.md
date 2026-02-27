@@ -1,4 +1,4 @@
-# How to Translate Documents While Preserving Formatting Using Cloud Translation API
+# How to Translate Documents While Preserving Formatting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

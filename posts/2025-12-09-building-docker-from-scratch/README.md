@@ -1,10 +1,10 @@
-# Building Your Own Container Engine: A Step-by-Step Guide to Understanding Docker Internals
+# Building Your Own Container Engine: A Step-by-Step Guide to Understanding
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Containers, Linux, DevOps, Learning Resource
 
-Description: Learn how containers actually work under the hood by building a basic container engine from scratch. This hands-on guide demystifies Docker by walking through namespaces, cgroups, and filesystem isolation.
+Description: Learn how containers actually work under the hood by building a basic container engine from scratch.
 
 Docker revolutionized how we build, ship, and run applications. But have you ever wondered what's actually happening when you run `docker run`? Behind the friendly CLI lies a fascinating combination of Linux kernel features that have existed for years. Understanding these fundamentals doesn't just satisfy curiosity- it makes you a better engineer when debugging container issues, optimizing performance, or designing secure systems.
 

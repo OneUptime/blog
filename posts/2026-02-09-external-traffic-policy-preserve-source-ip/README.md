@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Networking, Security
 
-Description: Configure externalTrafficPolicy Local on Kubernetes services to preserve client source IP addresses for accurate logging, security enforcement, and geolocation while understanding the trade-offs in load distribution and availability.
+Description: Configure externalTrafficPolicy Local on Kubernetes services to preserve client source IP addresses for accurate logging, security enforcement.
 
 ---
 

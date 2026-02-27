@@ -1,4 +1,4 @@
-# How to Implement Unary, Server-Streaming, Client-Streaming, and Bidirectional gRPC Calls
+# How to Use Unary, Server-Streaming, Client-Streaming,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

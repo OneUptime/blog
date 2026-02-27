@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, Kubernetes, GitOps, DevOps, Security, Multi-tenancy, RBAC
 
-Description: A comprehensive guide to ArgoCD Projects covering multi-tenant isolation, RBAC configuration, source and destination restrictions, role-based access control, and production best practices for secure GitOps workflows.
+Description: A comprehensive guide to ArgoCD Projects covering multi-tenant isolation, RBAC configuration, source and destination restrictions, role-based access control.
 
 ---
 

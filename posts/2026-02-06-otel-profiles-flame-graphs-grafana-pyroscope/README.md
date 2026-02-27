@@ -1,4 +1,4 @@
-# How to Visualize OpenTelemetry Profiles as Flame Graphs and Icicle Charts in Grafana Pyroscope
+# How to Visualize OpenTelemetry Profiles as Flame Graphs and Icicle Charts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Trace Loan Origination System Workflows (Application, Underwriting, Approval) with OpenTelemetry
+# How to Trace Loan Origination System Workflows with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

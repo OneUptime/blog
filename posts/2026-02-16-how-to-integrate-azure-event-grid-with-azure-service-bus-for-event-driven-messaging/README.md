@@ -1,4 +1,4 @@
-# How to Integrate Azure Event Grid with Azure Service Bus for Event-Driven Messaging
+# Integrate Azure Event Grid with Azure Service Bus for Event-Driven Messaging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

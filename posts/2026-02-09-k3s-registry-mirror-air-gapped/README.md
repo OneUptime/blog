@@ -1,4 +1,4 @@
-# How to Configure K3s with Embedded Registry Mirror for Air-Gapped Edge Deployments
+# Configure K3s with Embedded Registry Mirror for Air-Gapped Edge Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

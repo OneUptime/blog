@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitHub Actions, CI/CD, Environment Variables, Configuration, DevOps, Automation
 
-Description: Learn how to effectively use environment variables in GitHub Actions workflows, including workflow-level, job-level, and step-level variables, dynamic values, and best practices for configuration management.
+Description: Learn how to effectively use environment variables in GitHub Actions workflows, including workflow-level, job-level, and step-level variables, dynamic values.
 
 ---
 

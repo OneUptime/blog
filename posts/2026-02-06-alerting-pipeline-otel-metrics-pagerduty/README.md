@@ -1,4 +1,4 @@
-# How to Build an End-to-End Alerting Pipeline from OpenTelemetry Metrics to PagerDuty
+# Build an End-to-End Alerting Pipeline from OpenTelemetry Metrics to PagerDuty
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

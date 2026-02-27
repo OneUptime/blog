@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Prometheus, GCP, Service Discovery, Monitoring
 
-Description: A comprehensive guide to configuring Prometheus GCE Service Discovery for automatic target detection in Google Cloud Platform. Learn how to dynamically discover and monitor GCE instances without manual configuration.
+Description: A comprehensive guide to configuring Prometheus GCE Service Discovery for automatic target detection in Google Cloud Platform.
 
 Managing monitoring targets manually is like trying to keep track of grains of sand on a beach. In dynamic cloud environments where instances spin up and down constantly, static target lists become outdated the moment you save them. This is where Prometheus GCE Service Discovery (GCE SD) becomes essential.
 

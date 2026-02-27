@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Android, Kotlin, Java, Mobile, Tracing
 
-Description: A comprehensive guide to instrumenting Android applications with OpenTelemetry, covering setup, automatic instrumentation, custom spans, and best practices for tracking app performance and user behavior.
+Description: A comprehensive guide to instrumenting Android applications with OpenTelemetry, covering setup, automatic instrumentation, custom spans.
 
 Monitoring Android applications presents unique challenges. Unlike backend services running in controlled environments, Android apps execute on diverse devices with varying capabilities, network conditions, and user behaviors. OpenTelemetry provides a vendor-neutral way to capture telemetry data from your Android app, giving you insights into performance, errors, and user experience across your entire user base.
 

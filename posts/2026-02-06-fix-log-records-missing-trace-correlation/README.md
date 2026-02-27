@@ -1,4 +1,4 @@
-# How to Fix Log Records Missing Trace Correlation Because the Logging Framework Does Not Inject span_id Automatically
+# How to Fix Log Records Missing Trace Correlation Because the Logging Framework
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure Terraform State Management for Kubernetes Resources Using S3 and DynamoDB
+# How to Configure Terraform State Management for Kubernetes Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

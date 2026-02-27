@@ -1,4 +1,4 @@
-# How to Use Azure Logic Apps Connectors to Integrate with Salesforce and Dynamics 365
+# How to Use Azure Logic Apps Connectors to Integrate
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

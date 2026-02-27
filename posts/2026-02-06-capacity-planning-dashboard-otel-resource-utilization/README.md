@@ -1,4 +1,4 @@
-# How to Create a Capacity Planning Dashboard from OpenTelemetry Resource Utilization Metrics
+# How to Create a Capacity Planning Dashboard from OpenTelemetry Resource
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

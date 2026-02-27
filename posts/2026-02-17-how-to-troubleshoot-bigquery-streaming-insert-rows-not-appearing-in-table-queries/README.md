@@ -1,4 +1,4 @@
-# How to Troubleshoot BigQuery Streaming Insert Rows Not Appearing in Table Queries
+# How to Troubleshoot BigQuery Streaming Insert Rows Not Appearing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

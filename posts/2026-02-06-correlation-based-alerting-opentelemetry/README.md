@@ -1,4 +1,4 @@
-# How to Implement Correlation-Based Alerting That Links Related Alerts Across OpenTelemetry Services
+# How to Use Correlation-Based Alerting That Links Related Alerts Across
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

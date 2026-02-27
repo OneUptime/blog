@@ -1,4 +1,4 @@
-# How to Use Skaffold with Cloud Build and GKE for a Local-to-Cloud Development Workflow
+# Use Skaffold with Cloud Build and GKE for a Local-to-Cloud Development Workflow
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

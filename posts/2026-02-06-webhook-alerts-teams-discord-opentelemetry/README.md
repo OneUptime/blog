@@ -1,4 +1,4 @@
-# How to Set Up Webhook-Based Alert Integrations from OpenTelemetry to Microsoft Teams and Discord
+# How to Set Up Webhook-Based Alert Integrations from OpenTelemetry to Microsoft
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

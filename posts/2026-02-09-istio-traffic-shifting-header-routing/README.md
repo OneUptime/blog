@@ -1,4 +1,4 @@
-# How to Configure Istio Traffic Shifting with Header-Based Routing for Kubernetes A/B Tests
+# How to Configure Istio Traffic Shifting with Header-Based Routing for K8s A/B
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

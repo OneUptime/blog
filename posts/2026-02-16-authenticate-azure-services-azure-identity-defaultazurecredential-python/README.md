@@ -1,4 +1,4 @@
-# How to Authenticate with Azure Services Using azure-identity DefaultAzureCredential in Python
+# How to Authenticate with Azure Services Using azure-identity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

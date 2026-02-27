@@ -1,4 +1,4 @@
-# How to Configure Knative Serving with Custom Domain Mapping and TLS on Kubernetes
+# How to Configure Knative Serving with Custom Domain Mapping and TLS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build Custom Kubectl Plugins Using Go for Team-Specific Kubernetes Workflows
+# Build Custom Kubectl Plugins Using Go for Team-Specific Kubernetes Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

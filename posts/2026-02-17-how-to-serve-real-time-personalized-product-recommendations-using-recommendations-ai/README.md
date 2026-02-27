@@ -1,4 +1,4 @@
-# How to Serve Real-Time Personalized Product Recommendations Using Recommendations AI
+# How to Serve Real-Time Personalized Product Recommendations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

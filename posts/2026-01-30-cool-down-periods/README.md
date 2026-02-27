@@ -770,6 +770,6 @@ Get cool-down periods right, and your autoscaler becomes a reliable partner. Get
 ---
 
 **Related Reading:**
-- [How to Autoscale Deployments with the Horizontal Pod Autoscaler](/blog/post/2025-11-27-hpa-autoscale/view)
-- [How to Implement Pod Disruption Budgets for Zero-Downtime Updates](/blog/post/2026-01-06-kubernetes-pod-disruption-budgets/view)
-- [SRE Metrics to Track](/blog/post/2025-11-28-sre-metrics-to-track/view)
+- [How to Autoscale Deployments with the Horizontal Pod Autoscaler](https://oneuptime.com/blog/post/2025-11-27-hpa-autoscale/view)
+- [How to Implement Pod Disruption Budgets for Zero-Downtime Updates](https://oneuptime.com/blog/post/2026-01-06-kubernetes-pod-disruption-budgets/view)
+- [SRE Metrics to Track](https://oneuptime.com/blog/post/2025-11-28-sre-metrics-to-track/view)

@@ -1,4 +1,4 @@
-# How to Fix Cloud VPN Tunnel Status Stuck in Allocating Resources or No Incoming Packets
+# Fix Cloud VPN Tunnel Status Stuck in Allocating Resources or No Incoming Packets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

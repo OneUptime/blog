@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elixir, Phoenix Framework, REST API, Backend Development, Functional Programming, Web Development
 
-Description: Learn how to build a production-ready REST API with Phoenix Framework and Elixir. This guide covers project setup, database configuration with Ecto, context modules, controllers, authentication, error handling, and testing.
+Description: Learn how to build a production-ready REST API with Phoenix Framework and Elixir.
 
 ---
 

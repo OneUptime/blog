@@ -1,4 +1,4 @@
-# How to Troubleshoot Kubernetes API Server Timeout Errors from etcd Latency Spikes
+# Troubleshoot Kubernetes API Server Timeout Errors from etcd Latency Spikes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

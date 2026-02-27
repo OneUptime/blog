@@ -1,4 +1,4 @@
-# How to Debug App Engine Deployment Failures Caused by Organization Policy Changes
+# Debug App Engine Deployment Failures Caused by Organization Policy Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

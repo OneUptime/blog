@@ -1,4 +1,4 @@
-# How to Troubleshoot NestJS Failing to Initialize OpenTelemetry Before Module Loading
+# Troubleshoot NestJS Failing to Initialize OpenTelemetry Before Module Loading
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

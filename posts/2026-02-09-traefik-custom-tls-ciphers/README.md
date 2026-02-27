@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Traefik, TLS
 
-Description: Master TLS configuration in Traefik Ingress Controller including custom cipher suites, protocol versions, client certificate authentication, and advanced security options for production Kubernetes environments.
+Description: Master TLS configuration in Traefik Ingress Controller including custom cipher suites, protocol versions, client certificate authentication.
 
 ---
 

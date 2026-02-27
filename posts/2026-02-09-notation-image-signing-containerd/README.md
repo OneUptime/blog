@@ -1,4 +1,4 @@
-# How to Implement Container Image Signing with Notation and containerd in Kubernetes
+# How to Use Container Image Signing with Notation and containerd in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

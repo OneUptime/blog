@@ -1,4 +1,4 @@
-# How to Build a Cost-Effective Observability Pipeline with OpenTelemetry Collector and Object Storage
+# How to Build a Cost-Effective Observability Pipeline with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

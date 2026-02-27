@@ -1,4 +1,4 @@
-# How to Monitor Collector Agent Telemetry (CPU, Memory, Throughput) via OpAMP Status Reports
+# How to Monitor Collector Agent Telemetry via OpAMP Status Reports
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

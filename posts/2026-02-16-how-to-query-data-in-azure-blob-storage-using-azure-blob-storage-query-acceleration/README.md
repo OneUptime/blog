@@ -1,4 +1,4 @@
-# How to Query Data in Azure Blob Storage Using Azure Blob Storage Query Acceleration
+# Query Data in Azure Blob Storage Using Azure Blob Storage Query Acceleration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

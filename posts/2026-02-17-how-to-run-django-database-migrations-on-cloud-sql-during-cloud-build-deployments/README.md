@@ -1,4 +1,4 @@
-# How to Run Django Database Migrations on Cloud SQL During Cloud Build Deployments
+# Run Django Database Migrations on Cloud SQL During Cloud Build Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

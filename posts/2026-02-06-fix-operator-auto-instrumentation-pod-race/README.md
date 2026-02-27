@@ -1,4 +1,4 @@
-# How to Fix OpenTelemetry Operator Auto-Instrumentation Injection Failing Because the Pod Started Before the Operator
+# How to Fix OpenTelemetry Operator Auto-Instrumentation Injection Failing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

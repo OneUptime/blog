@@ -1,4 +1,4 @@
-# How to Implement Centralized Log Collection from Kubernetes Pods Using OpenTelemetry DaemonSet
+# How to Use Centralized Log Collection from Kubernetes Pods
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

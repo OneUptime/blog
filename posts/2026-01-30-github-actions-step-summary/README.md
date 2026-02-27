@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: GitHub Actions, CI/CD, Reports, Automation
 
-Description: Learn how to create rich, informative job summaries in GitHub Actions using the GITHUB_STEP_SUMMARY environment file. This guide covers markdown formatting, tables, charts, and practical patterns for test results, deployment reports, and build metrics.
+Description: Learn how to create rich, informative job summaries in GitHub Actions using the GITHUB_STEP_SUMMARY environment file.
 
 ---
 

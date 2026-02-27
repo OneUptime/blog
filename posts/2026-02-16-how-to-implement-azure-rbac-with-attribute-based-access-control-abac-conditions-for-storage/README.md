@@ -1,4 +1,4 @@
-# How to Implement Azure RBAC with Attribute-Based Access Control (ABAC) Conditions for Storage
+# How to Use Azure RBAC with Attribute-Based Access Control Conditions for Storage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

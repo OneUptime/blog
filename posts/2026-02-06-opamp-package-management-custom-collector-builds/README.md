@@ -1,4 +1,4 @@
-# How to Implement OpAMP Package Management for Distributing Custom Collector Builds
+# How to Use OpAMP Package Management for Distributing Custom Collector Builds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

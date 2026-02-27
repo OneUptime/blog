@@ -1,4 +1,4 @@
-# How to Build Your First ETL Pipeline in Cloud Data Fusion with the Visual Designer
+# How to Build Your First ETL Pipeline in Cloud Data Fusion
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

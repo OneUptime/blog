@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, RabbitMQ, Message Queue, Metrics, Observability, Microservices
 
-Description: Configure the RabbitMQ receiver in OpenTelemetry Collector to monitor message queues, track queue depths, measure consumer performance, and export comprehensive RabbitMQ telemetry for your distributed systems.
+Description: Configure the RabbitMQ receiver in OpenTelemetry Collector to monitor message queues, track queue depths, measure consumer performance.
 
 RabbitMQ is a widely adopted message broker that enables asynchronous communication between microservices. Monitoring RabbitMQ is essential for ensuring reliable message delivery, preventing queue backlogs, and maintaining system throughput. The RabbitMQ receiver in the OpenTelemetry Collector provides native integration with RabbitMQ's management API, automatically collecting metrics about queues, exchanges, connections, channels, and overall broker health.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Partial Search, Wildcard, NGram, Search, Text Analysis
 
-Description: Learn multiple techniques to search for partial words in Elasticsearch including wildcards, ngrams, edge ngrams, and prefix queries. Understand the trade-offs and choose the right approach for your use case.
+Description: Learn multiple techniques to search for partial words in Elasticsearch including wildcards, ngrams, edge ngrams, and prefix queries.
 
 ---
 

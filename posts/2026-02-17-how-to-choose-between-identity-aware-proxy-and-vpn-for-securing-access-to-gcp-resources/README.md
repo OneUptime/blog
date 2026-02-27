@@ -1,4 +1,4 @@
-# How to Choose Between Identity-Aware Proxy and VPN for Securing Access to GCP Resources
+# How to Choose Between Identity-Aware Proxy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

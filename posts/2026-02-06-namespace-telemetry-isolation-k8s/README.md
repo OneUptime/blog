@@ -1,4 +1,4 @@
-# How to Set Up Namespace-Based Telemetry Isolation in Kubernetes for Multi-Tenant Observability
+# How to Set Up Namespace-Based Telemetry Isolation in K8s for Multi-Tenant
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

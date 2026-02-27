@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Bulkhead Pattern, Resilience, Fault Isolation, asyncio, Design Patterns, Microservices
 
-Description: Learn how to implement the bulkhead pattern in Python to isolate failures and prevent cascading outages. This guide covers semaphore-based bulkheads, thread pool isolation, and patterns for building resilient systems.
+Description: Learn how to implement the bulkhead pattern in Python to isolate failures and prevent cascading outages.
 
 ---
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Distributed Locks, Redlock, Concurrency, Distributed Systems, Mutex
 
-Description: A comprehensive guide to implementing distributed locks with Redis using the Redlock algorithm, including lock safety, automatic expiration, and production-ready patterns for preventing race conditions.
+Description: A comprehensive guide to implementing distributed locks with Redis using the Redlock algorithm, including lock safety, automatic expiration.
 
 ---
 

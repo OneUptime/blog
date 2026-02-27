@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elasticsearch, Data Replication, ETL, Data Sync, Logstash, Search
 
-Description: Learn how to replicate data from databases, message queues, and other systems to Elasticsearch for powerful search capabilities. Covers real-time sync, batch processing, and change data capture patterns.
+Description: Learn how to replicate data from databases, message queues, and other systems to Elasticsearch for powerful search capabilities.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Set Up Azure Repos Git LFS for Managing Large Binary Files in Repositories
+# How to Set Up Azure Repos Git LFS for Managing Large Binary Files
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Configure the OpenTelemetry Collector to Scrape etcd Prometheus Metrics Endpoint in Kubernetes
+# How to Configure the OpenTelemetry Collector to Scrape etcd Prometheus Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

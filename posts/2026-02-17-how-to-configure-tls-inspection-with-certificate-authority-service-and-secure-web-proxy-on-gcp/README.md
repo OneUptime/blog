@@ -1,4 +1,4 @@
-# How to Configure TLS Inspection with Certificate Authority Service and Secure Web Proxy on GCP
+# How to Configure TLS Inspection with Certificate Authority Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

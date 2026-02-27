@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Azure, Azure Monitor, Metrics, Observability, Cloud
 
-Description: Learn how to configure the Azure Monitor Receiver in OpenTelemetry Collector to pull metrics and logs from Azure Monitor with authentication setup, query patterns, and production deployment strategies.
+Description: Learn how to configure the Azure Monitor Receiver in OpenTelemetry Collector to pull metrics and logs from Azure Monitor with authentication setup, query patterns.
 
 ---
 

@@ -1,4 +1,4 @@
-# How to Deploy a High-Performance WordPress Site on Azure App Service with Azure CDN
+# How to Deploy a High-Performance WordPress Site on Azure App Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

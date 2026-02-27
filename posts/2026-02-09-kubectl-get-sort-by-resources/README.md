@@ -1,4 +1,4 @@
-# How to Use kubectl get --sort-by to Sort Resources by Age, Restarts, or Custom Fields
+# Use kubectl get --sort-by to Sort Resources by Age, Restarts, or Custom Fields
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use Azure Active Directory Authentication in a React Application with MSAL.js
+# Use Azure Active Directory Authentication in a React Application with MSAL.js
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

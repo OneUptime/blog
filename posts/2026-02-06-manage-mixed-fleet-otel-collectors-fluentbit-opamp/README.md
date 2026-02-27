@@ -1,4 +1,4 @@
-# How to Manage a Mixed Fleet of OpenTelemetry Collectors and Fluent Bit Agents with OpAMP
+# How to Manage a Mixed Fleet of OpenTelemetry Collectors and Fluent Bit Agents
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

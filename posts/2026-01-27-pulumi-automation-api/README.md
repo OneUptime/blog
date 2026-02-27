@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Pulumi, Infrastructure as Code, Automation API, DevOps, Dynamic Infrastructure, Self-Service, Platform Engineering
 
-Description: Learn how to use the Pulumi Automation API to build programmatic infrastructure deployments, self-service platforms, and dynamic infrastructure provisioning systems using familiar programming languages.
+Description: Learn how to use the Pulumi Automation API to build programmatic infrastructure deployments, self-service platforms.
 
 ---
 

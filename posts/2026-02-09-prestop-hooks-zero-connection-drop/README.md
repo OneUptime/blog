@@ -1,4 +1,4 @@
-# How to Implement Pre-Stop Hooks for Zero-Connection-Drop Deployments in Kubernetes
+# How to Use Pre-Stop Hooks for Zero-Connection-Drop Deployments in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

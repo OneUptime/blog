@@ -1,4 +1,4 @@
-# How to Monitor Multiplayer Game Server Tick Rate and Frame Processing Latency with OpenTelemetry Custom Metrics
+# How to Monitor Multiplayer Game Server Tick Rate and Frame Processing Latency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

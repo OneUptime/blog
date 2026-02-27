@@ -1,4 +1,4 @@
-# How to Configure the Google Cloud Operations Exporter in the OpenTelemetry Collector
+# How to Configure the Google Cloud Operations Exporter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

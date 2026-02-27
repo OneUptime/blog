@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Request Coalescing, Caching, Performance, Thundering Herd, Single Flight, Concurrency
 
-Description: A comprehensive guide to implementing request coalescing with Redis, covering single-flight patterns, distributed deduplication, cache stampede prevention, and practical implementations for high-concurrency applications.
+Description: A comprehensive guide to implementing request coalescing with Redis, covering single-flight patterns, distributed deduplication, cache stampede prevention.
 
 ---
 

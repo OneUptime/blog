@@ -1,4 +1,4 @@
-# How to Configure Retry Policies and Timeout Settings on Google Cloud Application Load Balancer
+# How to Configure Retry Policies and Timeout Settings on Google Cloud App Load
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

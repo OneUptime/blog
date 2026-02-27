@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Log Correlation, Distributed Tracing, OpenTelemetry, Observability, Traces, Spans, Context Propagation
 
-Description: Learn how to correlate logs with distributed traces for complete request visibility. This guide covers trace context injection, OpenTelemetry integration, and techniques for connecting logs to traces across microservices.
+Description: Learn how to correlate logs with distributed traces for complete request visibility.
 
 ---
 

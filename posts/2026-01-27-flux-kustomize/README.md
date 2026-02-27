@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Flux, Kustomize, GitOps, CI/CD, DevOps, Automation
 
-Description: A comprehensive guide to using Flux with Kustomize for GitOps-driven Kubernetes deployments. Learn how to configure Kustomization resources, use post-build variable substitution, implement health checks, manage dependencies, and target specific paths in your Git repositories.
+Description: A comprehensive guide to using Flux with Kustomize for GitOps-driven Kubernetes deployments.
 
 ---
 

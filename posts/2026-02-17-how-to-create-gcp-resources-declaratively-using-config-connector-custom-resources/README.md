@@ -1,4 +1,4 @@
-# How to Create GCP Resources Declaratively Using Config Connector Custom Resources
+# How to Create GCP Resources Declaratively
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

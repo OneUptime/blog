@@ -1,4 +1,4 @@
-# How to Write Node.js Cloud Functions Gen 2 with TypeScript and the Functions Framework
+# How to Write Node.js Cloud Functions Gen 2 with TypeScript
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

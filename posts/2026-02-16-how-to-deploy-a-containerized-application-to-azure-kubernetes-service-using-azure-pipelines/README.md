@@ -1,4 +1,4 @@
-# How to Deploy a Containerized Application to Azure Kubernetes Service Using Azure Pipelines
+# How to Deploy a Containerized Application to Azure Kubernetes Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

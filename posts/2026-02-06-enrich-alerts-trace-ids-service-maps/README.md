@@ -1,4 +1,4 @@
-# How to Enrich Alert Payloads with OpenTelemetry Trace IDs, Service Maps, and Dashboard Links
+# How to Enrich Alert Payloads with OpenTelemetry Trace IDs, Service Maps,
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

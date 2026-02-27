@@ -1,4 +1,4 @@
-# How to Export OpenTelemetry Data to Sumo Logic Using the Sumo Logic Exporter with HTTP Source URL
+# How to Export OpenTelemetry Data to Sumo Logic Using the Sumo Logic Exporter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

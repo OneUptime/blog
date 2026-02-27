@@ -1,4 +1,4 @@
-# How to Resolve Cloud SQL Instance Storage Full and Automatic Storage Increase Failures
+# How to Resolve Cloud SQL Instance Storage Full
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

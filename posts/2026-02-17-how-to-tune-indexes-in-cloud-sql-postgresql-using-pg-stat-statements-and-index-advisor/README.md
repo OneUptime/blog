@@ -1,4 +1,4 @@
-# How to Tune Indexes in Cloud SQL PostgreSQL Using pg_stat_statements and Index Advisor
+# How to Tune Indexes in Cloud SQL PostgreSQL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

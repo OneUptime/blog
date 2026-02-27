@@ -1,4 +1,4 @@
-# How to Build a Supply Chain Analytics Dashboard with Supply Chain Twin and Looker
+# How to Build a Supply Chain Analytics Dashboard with Supply Chain Twin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

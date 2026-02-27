@@ -1,4 +1,4 @@
-# How to Query BigQuery Datasets from Python Using the google-cloud-bigquery Library and Pandas DataFrames
+# How to Query BigQuery Datasets from Python Using the google-cloud-bigquery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

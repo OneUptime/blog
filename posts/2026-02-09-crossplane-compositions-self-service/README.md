@@ -1,10 +1,10 @@
-# How to Set Up Crossplane Compositions for Self-Service Kubernetes Infrastructure Provisioning
+# How to Set Up Crossplane Compositions for Self-Service K8s Infra Provisioning
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Crossplane, Kubernetes, Infrastructure-as-Code
 
-Description: Learn how to build Crossplane Compositions that enable self-service infrastructure provisioning, allowing developers to create databases, storage, and other resources using simple Kubernetes custom resources.
+Description: Learn how to build Crossplane Compositions that enable self-service infrastructure provisioning, allowing developers to create databases, storage.
 
 ---
 

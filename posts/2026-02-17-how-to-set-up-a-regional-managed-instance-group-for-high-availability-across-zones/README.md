@@ -1,4 +1,4 @@
-# How to Set Up a Regional Managed Instance Group for High Availability Across Zones
+# How to Set Up a Regional Managed Instance Group
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

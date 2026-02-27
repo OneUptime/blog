@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache Kafka, Security, SASL, SSL, TLS, Authentication, Encryption, DevOps
 
-Description: A comprehensive guide to securing Apache Kafka with SSL/TLS encryption and SASL authentication, covering certificate generation, broker configuration, client setup, and security best practices for production deployments.
+Description: A comprehensive guide to securing Apache Kafka with SSL/TLS encryption and SASL authentication, covering certificate generation, broker configuration, client setup.
 
 ---
 

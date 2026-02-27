@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Binary Logs, CDC, Change Data Capture, Database Replication, Auditing, mysqlbinlog, Python, Go, Data Streaming
 
-Description: A comprehensive guide to implementing MySQL binary log parsing for change data capture (CDC), auditing, and real-time data streaming. Covers the mysqlbinlog tool, row-based vs statement-based formats, and parsing with popular libraries.
+Description: A comprehensive guide to implementing MySQL binary log parsing for change data capture (CDC), auditing, and real-time data streaming.
 
 ---
 

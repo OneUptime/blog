@@ -1,4 +1,4 @@
-# How to Enable and Review Microsoft Defender for Cloud Workload Protection for Virtual Machines
+# How to Enable and Review Microsoft Defender for Cloud Workload Protection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

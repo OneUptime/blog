@@ -1,4 +1,4 @@
-# How to Configure Managed Identity for Azure App Service to Access Key Vault Secrets Without Credentials
+# How to Configure Managed Identity for Azure App Service to Access Key Vault
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

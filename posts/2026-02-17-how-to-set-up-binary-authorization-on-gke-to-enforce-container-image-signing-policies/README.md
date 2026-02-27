@@ -1,4 +1,4 @@
-# How to Set Up Binary Authorization on GKE to Enforce Container Image Signing Policies
+# Set Up Binary Authorization on GKE to Enforce Container Image Signing Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

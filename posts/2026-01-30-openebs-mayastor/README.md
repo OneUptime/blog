@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenEBS, Kubernetes, Storage, Mayastor
 
-Description: A comprehensive guide to deploying and configuring OpenEBS Mayastor for high-performance, replicated storage in Kubernetes clusters. Learn how to set up NVMe-over-TCP storage pools, create storage classes, and run production workloads with enterprise-grade reliability.
+Description: A comprehensive guide to deploying and configuring OpenEBS Mayastor for high-performance, replicated storage in Kubernetes clusters.
 
 ---
 

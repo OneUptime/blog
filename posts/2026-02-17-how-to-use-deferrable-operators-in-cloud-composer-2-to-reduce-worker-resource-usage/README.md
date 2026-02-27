@@ -1,4 +1,4 @@
-# How to Use Deferrable Operators in Cloud Composer 2 to Reduce Worker Resource Usage
+# Use Deferrable Operators in Cloud Composer 2 to Reduce Worker Resource Usage
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

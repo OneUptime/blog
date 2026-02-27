@@ -1,4 +1,4 @@
-# How to Implement End-to-End Distributed Tracing Across GKE Cloud Run and Cloud Functions on GCP
+# How to Use End-to-End Distributed Tracing Across GKE Cloud Run
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

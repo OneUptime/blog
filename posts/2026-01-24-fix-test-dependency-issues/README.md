@@ -500,5 +500,5 @@ def track_modifications(request):
 *Need to monitor test stability and catch flaky tests? [OneUptime](https://oneuptime.com) provides CI/CD monitoring with test result tracking and trend analysis.*
 
 **Related Reading:**
-- [How to Fix "Assertion" Failures in Tests](/blog/post/2026-01-24-fix-assertion-failures-tests/view)
-- [How to Configure pytest for Python Testing](/blog/post/2026-01-24-configure-pytest-python-testing/view)
+- [How to Fix "Assertion" Failures in Tests](https://oneuptime.com/blog/post/2026-01-24-fix-assertion-failures-tests/view)
+- [How to Configure pytest for Python Testing](https://oneuptime.com/blog/post/2026-01-24-configure-pytest-python-testing/view)

@@ -1,4 +1,4 @@
-# How to Instrument Proof-of-Delivery (POD) Capture and Verification Workflows with OpenTelemetry
+# How to Instrument Proof-of-Delivery Capture and Verification Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

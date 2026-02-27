@@ -1,4 +1,4 @@
-# How to Use Cilium Hubble UI to Visualize Real-Time Network Traffic Between Kubernetes Pods
+# How to Use Cilium Hubble UI to Visualize Real-Time Network Traffic Between K8s
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

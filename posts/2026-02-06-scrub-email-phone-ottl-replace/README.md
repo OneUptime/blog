@@ -1,4 +1,4 @@
-# How to Scrub Email Addresses and Phone Numbers from Log Bodies Using OTTL replace_pattern Function
+# How to Scrub Email Addresses and Phone Numbers from Log Bodies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

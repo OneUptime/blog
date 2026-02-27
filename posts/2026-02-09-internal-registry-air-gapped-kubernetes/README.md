@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Registry, Air-Gapped
 
-Description: Learn how to deploy and configure an internal container registry for air-gapped Kubernetes environments, including registry setup, image synchronization, and cluster configuration for offline operation.
+Description: Learn how to deploy and configure an internal container registry for air-gapped Kubernetes environments, including registry setup, image synchronization.
 
 ---
 

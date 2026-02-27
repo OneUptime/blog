@@ -1,4 +1,4 @@
-# How to Configure GKE Connect Gateway to Access Remote Clusters from the Google Cloud Console
+# How to Configure GKE Connect Gateway to Access Remote Clusters from the Google
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

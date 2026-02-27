@@ -1,4 +1,4 @@
-# How to Use Artillery with OpenTelemetry for Load Testing Distributed Systems with Trace Correlation
+# How to Use Artillery with OpenTelemetry for Load Testing Distributed Systems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

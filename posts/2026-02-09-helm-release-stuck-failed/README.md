@@ -1,4 +1,4 @@
-# How to Fix Kubernetes Helm Release Stuck in Failed State from Conflicting Resources
+# Fix Kubernetes Helm Release Stuck in Failed State from Conflicting Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

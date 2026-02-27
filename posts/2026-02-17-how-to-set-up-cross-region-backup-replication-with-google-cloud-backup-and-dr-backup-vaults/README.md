@@ -1,4 +1,4 @@
-# How to Set Up Cross-Region Backup Replication with Google Cloud Backup and DR Backup Vaults
+# How to Set Up Cross-Region Backup Replication with Google Cloud Backup
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

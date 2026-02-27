@@ -1,4 +1,4 @@
-# How to Instrument Health Insurance Claims (EDI 837/835) Processing Pipelines with OpenTelemetry
+# How to Instrument Health Insurance Claims Processing Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

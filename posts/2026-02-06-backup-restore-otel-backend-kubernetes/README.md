@@ -1,4 +1,4 @@
-# How to Back Up and Restore OpenTelemetry Backend Data (Prometheus, Loki, Tempo) in Kubernetes
+# How to Back Up and Restore OpenTelemetry Backend Data in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
