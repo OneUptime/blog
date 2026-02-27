@@ -24,8 +24,8 @@
  * 18. AUTO-FIX: Replaces double quotes with single quotes in titles and descriptions
  * 19. AUTO-FIX: Replaces em dashes (—) with regular dashes (-) in entire blog post content
  * 20. Duplicate titles — Flag posts with identical or near-identical titles
- * 21. Title max length — Cap at ~70 chars for SEO/rendering
- * 22. Description max length — Cap at ~160 chars for SEO (meta description best practice)
+ * 21. Title max length — Hard limit at 80 chars for SEO/rendering
+ * 22. Description max length — Hard limit at 200 chars for SEO
  * 23. Broken image references — Check that ![alt](path) images actually exist in the post directory
  * 24. Orphaned images — Files in the post directory not referenced in README.md (besides social-media.png)
  * 25. Missing image alt text — Flag ![](...) with empty alt text (accessibility)
@@ -50,8 +50,8 @@ const BLOGS_JSON = 'Blogs.json';
 const AUTHORS_JSON = 'Authors.json';
 const TAGS_MD = 'Tags.md';
 const MIN_DESCRIPTION_LENGTH = 50;
-const MAX_TITLE_LENGTH = 70;
-const MAX_DESCRIPTION_LENGTH = 160;
+const MAX_TITLE_LENGTH = 80;
+const MAX_DESCRIPTION_LENGTH = 200;
 const SOCIAL_MEDIA_EXPECTED_WIDTH = 1280;
 const SOCIAL_MEDIA_EXPECTED_HEIGHT = 720;
 const DATE_PREFIX_REGEX = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])-/;
@@ -1402,25 +1402,25 @@ function checkDuplicateTitles(blogsJson: BlogEntry[]): void {
 }
 
 /**
- * Check that titles do not exceed the SEO-recommended maximum length (~70 chars).
+ * Check that titles do not exceed the SEO hard limit (~80 chars).
  */
 function checkTitleMaxLength(blogsJson: BlogEntry[]): void {
-  logHeader(`Checking title length (SEO max ~${MAX_TITLE_LENGTH} chars)`);
+  logHeader(`Checking title length (max ${MAX_TITLE_LENGTH} chars)`);
 
   const tooLong = blogsJson.filter((b) => b.title && b.title.length > MAX_TITLE_LENGTH);
 
   if (tooLong.length > 0) {
-    hasWarnings = true;
+    hasErrors = true;
     console.log(
-      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${tooLong.length} title${tooLong.length === 1 ? '' : 's'} exceeding ${MAX_TITLE_LENGTH} characters:\n`
+      `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${tooLong.length} title${tooLong.length === 1 ? '' : 's'} exceeding ${MAX_TITLE_LENGTH} characters:\n`
     );
     for (const blog of tooLong) {
       console.log(
-        `  - ${colors.yellow}${blog.post}${colors.reset}: ${blog.title.length} chars - "${blog.title}"`
+        `  - ${colors.red}${blog.post}${colors.reset}: ${blog.title.length} chars - "${blog.title}"`
       );
     }
     console.log(
-      `\n${colors.bold}How to fix:${colors.reset}\n  Shorten titles to ${MAX_TITLE_LENGTH} characters or fewer for optimal SEO and rendering.\n`
+      `\n${colors.bold}How to fix:${colors.reset}\n  Shorten titles to ${MAX_TITLE_LENGTH} characters or fewer.\n`
     );
   } else {
     logSuccess(`All titles are within ${MAX_TITLE_LENGTH} character limit`);
@@ -1428,23 +1428,23 @@ function checkTitleMaxLength(blogsJson: BlogEntry[]): void {
 }
 
 /**
- * Check that descriptions do not exceed the SEO-recommended maximum length (~160 chars).
+ * Check that descriptions do not exceed the SEO hard limit (~200 chars).
  */
 function checkDescriptionMaxLength(blogsJson: BlogEntry[]): void {
-  logHeader(`Checking description length (SEO max ~${MAX_DESCRIPTION_LENGTH} chars)`);
+  logHeader(`Checking description length (max ${MAX_DESCRIPTION_LENGTH} chars)`);
 
   const tooLong = blogsJson.filter((b) => b.description && b.description.length > MAX_DESCRIPTION_LENGTH);
 
   if (tooLong.length > 0) {
-    hasWarnings = true;
+    hasErrors = true;
     console.log(
-      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${tooLong.length} description${tooLong.length === 1 ? '' : 's'} exceeding ${MAX_DESCRIPTION_LENGTH} characters:\n`
+      `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${tooLong.length} description${tooLong.length === 1 ? '' : 's'} exceeding ${MAX_DESCRIPTION_LENGTH} characters:\n`
     );
     for (const blog of tooLong) {
-      console.log(`  - ${colors.yellow}${blog.post}${colors.reset}: ${blog.description.length} chars`);
+      console.log(`  - ${colors.red}${blog.post}${colors.reset}: ${blog.description.length} chars`);
     }
     console.log(
-      `\n${colors.bold}How to fix:${colors.reset}\n  Shorten descriptions to ${MAX_DESCRIPTION_LENGTH} characters or fewer for optimal SEO meta descriptions.\n`
+      `\n${colors.bold}How to fix:${colors.reset}\n  Shorten descriptions to ${MAX_DESCRIPTION_LENGTH} characters or fewer.\n`
     );
   } else {
     logSuccess(`All descriptions are within ${MAX_DESCRIPTION_LENGTH} character limit`);
