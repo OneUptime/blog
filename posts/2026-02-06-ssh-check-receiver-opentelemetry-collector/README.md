@@ -2,49 +2,50 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, SSH Check, Synthetic Monitoring, Infrastructure Monitoring, Remote Execution
+Tags: OpenTelemetry, Collector, SSH Check, Synthetic Monitoring, Infrastructure Monitoring
 
-Description: Comprehensive guide to configuring the SSH Check receiver in OpenTelemetry Collector for monitoring SSH connectivity, executing remote commands, and generating infrastructure health metrics.
+Description: Comprehensive guide to configuring the SSH Check receiver in OpenTelemetry Collector for monitoring SSH and SFTP connectivity, tracking connection latency, and generating infrastructure health metrics.
 
 ---
 
-The SSH Check receiver in the OpenTelemetry Collector enables you to perform synthetic monitoring of SSH endpoints by establishing SSH connections and optionally executing remote commands. This receiver is essential for monitoring server accessibility, verifying SSH service availability, and running health checks on remote systems without deploying agents.
+The SSH Check receiver in the OpenTelemetry Collector enables you to perform synthetic monitoring of SSH endpoints by periodically establishing SSH connections and generating metrics based on connection success, latency, and errors. This receiver is essential for monitoring server accessibility and verifying SSH service availability within your OpenTelemetry observability pipeline.
 
-By deploying the SSH Check receiver, you can monitor SSH connectivity to critical infrastructure, execute remote diagnostic commands, track connection latency, and generate metrics for uptime monitoring, all within your OpenTelemetry observability pipeline.
+By deploying the SSH Check receiver, you can monitor SSH connectivity to critical infrastructure, track connection latency, optionally verify SFTP availability, and generate metrics for uptime monitoring — all within your existing OpenTelemetry pipeline.
+
+> **Important note:** The SSH Check receiver monitors **SSH and SFTP connectivity only**. It does **not** support remote command execution or output validation. If you need to run commands on remote servers, consider using the OpenTelemetry Collector's script-based processors or deploying OpenTelemetry agents directly on target hosts.
 
 ---
 
 ## What is the SSH Check Receiver?
 
-The SSH Check receiver is an OpenTelemetry Collector component that acts as an SSH client, periodically connecting to configured SSH servers and generating metrics based on connection success, latency, and command execution results. Unlike passive receivers that accept incoming telemetry, the SSH Check receiver actively probes SSH endpoints to assess their availability and health.
+The SSH Check receiver is an OpenTelemetry Collector component that acts as an SSH client, periodically connecting to a configured SSH server and generating metrics based on connection success, latency, and errors. Unlike passive receivers that accept incoming telemetry, the SSH Check receiver actively probes an SSH endpoint to assess its availability.
 
 The receiver generates several key metrics:
-- **Connection status** - Whether SSH connection succeeded or failed
-- **Connection time** - Time taken to establish SSH connection
-- **Authentication status** - Whether authentication succeeded
-- **Command execution result** - Exit code and execution time of remote commands
-- **Command output validation** - Pattern matching against command output
+- **Connection status** — Whether the SSH connection succeeded or failed
+- **Connection duration** — Time taken to establish the SSH connection
+- **Connection errors** — Error details when connections fail
+- **SFTP status** — Whether an SFTP connection succeeded (optional)
+- **SFTP duration** — Time taken to establish the SFTP connection (optional)
+- **SFTP errors** — Error details when SFTP connections fail (optional)
 
 **Primary use cases:**
 
 - SSH service availability monitoring
-- Remote server health checks without agents
 - Infrastructure access verification
 - Connection latency tracking
-- Remote command execution for diagnostics
+- SFTP service availability monitoring
 - SSH key rotation validation
 
 ---
 
 ## Architecture Overview
 
-The SSH Check receiver runs within the Collector and actively establishes SSH connections to configured servers, generating metrics that flow through your observability pipeline:
+The SSH Check receiver runs within the Collector and actively establishes SSH connections to a configured server, generating metrics that flow through your observability pipeline:
 
 ```mermaid
 graph LR
-    A[SSH Check Receiver] -->|SSH Connect| B[Server 1]
-    A -->|SSH Connect| C[Server 2]
-    A -->|SSH + Command| D[Server 3]
+    A[SSH Check Receiver] -->|SSH Connect| B[SSH Server]
+    A -->|SFTP Connect optional| B
 
     A -->|Generate Metrics| E[Processors]
     E -->|OTLP Metrics| F[(OneUptime)]
@@ -52,11 +53,11 @@ graph LR
 
     style A fill:#f9f,stroke:#333,stroke-width:2px
     style B fill:#9f9,stroke:#333,stroke-width:2px
-    style C fill:#9f9,stroke:#333,stroke-width:2px
-    style D fill:#9f9,stroke:#333,stroke-width:2px
 ```
 
-This architecture allows you to monitor SSH accessibility from within your infrastructure, ensuring you have visibility into server connectivity and basic health.
+This architecture allows you to monitor SSH accessibility from within your infrastructure, ensuring you have visibility into server connectivity.
+
+> **Note:** Each `sshcheck` receiver instance monitors a **single endpoint**. To monitor multiple servers, define multiple named receiver instances (e.g., `sshcheck/server1`, `sshcheck/server2`).
 
 ---
 
@@ -64,37 +65,60 @@ This architecture allows you to monitor SSH accessibility from within your infra
 
 Before configuring the SSH Check receiver, ensure you have:
 
-1. **OpenTelemetry Collector** version 0.80.0 or later with the SSH Check receiver component (requires `otelcol-contrib` distribution)
-2. **SSH access credentials** for target servers (SSH keys or passwords)
-3. **Network connectivity** from the Collector to all monitored SSH endpoints
+1. **OpenTelemetry Collector Contrib** (`otelcol-contrib`) distribution — the SSH Check receiver is not included in the core distribution
+2. **SSH access credentials** for the target server (SSH key or password)
+3. **Network connectivity** from the Collector to the monitored SSH endpoint
 4. **SSH keys or passwords** securely stored (preferably using environment variables or secrets management)
-5. **Understanding of expected command outputs** for validation
+5. **Known hosts file** configured (unless `ignore_host_key` is explicitly set to true)
+
+---
+
+## Configuration Reference
+
+The SSH Check receiver supports the following configuration options:
+
+**Required settings:**
+
+| Setting | Description |
+|---------|-------------|
+| `endpoint` | SSH server address in `host:port` format |
+| `username` | SSH username for authentication |
+| `password` or `key_file` | Authentication credential (at least one required) |
+
+> If both `password` and `key_file` are set, the password is treated as the **passphrase** for an encrypted key file.
+
+**Optional settings:**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `collection_interval` | `60s` | How often to perform SSH checks |
+| `timeout` | `10s` | Connection timeout duration |
+| `known_hosts` | SSH defaults | Path to known_hosts file for host key verification |
+| `ignore_host_key` | `false` | Skip host key verification (not recommended for production) |
+| `check_sftp` | `false` | Also check SFTP connectivity after SSH connection |
+| `metrics` | (all SSH enabled) | Enable or disable individual metrics |
 
 ---
 
 ## Basic Configuration
 
-The SSH Check receiver requires configuring target endpoints, authentication credentials, and check intervals. Here's a minimal working configuration:
+Here is a minimal working configuration for monitoring a single SSH endpoint:
 
 ```yaml
 # RECEIVERS: Define how telemetry enters the Collector
 receivers:
-  # SSH Check receiver performs synthetic monitoring of SSH endpoints
+  # SSH Check receiver performs synthetic monitoring of an SSH endpoint
   sshcheck:
-    # Targets to monitor
-    targets:
-      # Monitor SSH connectivity to a server
-      - endpoint: server1.example.com:22
-        username: monitoring
-        # Use SSH key for authentication
-        key_file: /etc/ssh/keys/monitoring_key
+    # SSH server to monitor (host:port format)
+    endpoint: server1.example.com:22
 
-      # Monitor another server with password authentication
-      - endpoint: server2.example.com:22
-        username: monitoring
-        password: ${SSH_PASSWORD}
+    # SSH authentication
+    username: monitoring
 
-    # How often to perform checks (in seconds)
+    # Use SSH key for authentication (recommended)
+    key_file: /etc/ssh/keys/monitoring_key
+
+    # How often to perform checks
     collection_interval: 60s
 
 # EXPORTERS: Define where metrics are sent
@@ -116,97 +140,103 @@ service:
 
 **Configuration breakdown:**
 
-- `targets`: List of SSH endpoints to monitor with authentication details
-- `endpoint`: Server address and port (default SSH port is 22)
+- `endpoint`: SSH server address and port (default SSH port is 22)
 - `username`: SSH username for authentication
 - `key_file` or `password`: Authentication method (key-based is recommended)
 - `collection_interval`: How often to perform SSH checks (default: 60s)
 
 ---
 
-## Production Configuration with Remote Command Execution
+## Monitoring Multiple SSH Servers
 
-For production deployments, configure remote command execution, output validation, and proper secret management:
+Since each `sshcheck` receiver instance monitors a single endpoint, use **named receiver instances** to monitor multiple servers:
 
 ```yaml
 receivers:
-  sshcheck:
-    # List of SSH endpoints to monitor
-    targets:
-      # Basic connectivity check with command execution
-      - endpoint: web-server-01.internal:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-
-        # Execute a remote command to verify health
-        command: "systemctl is-active nginx"
-
-        # Expected output pattern (regex)
-        expected_output: "active"
-
-        # Connection and command timeout
-        timeout: 10s
-
-      # Database server health check
-      - endpoint: db-server-01.internal:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-
-        # Check if PostgreSQL is responding
-        command: "pg_isready -h localhost"
-
-        # Expected output for healthy database
-        expected_output: "accepting connections"
-
-        timeout: 15s
-
-      # Application server with multi-line check
-      - endpoint: app-server-01.internal:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-
-        # Check application process and memory usage
-        command: "ps aux | grep -c '[j]ava.*myapp' && free -m | grep Mem | awk '{print $3/$2 * 100.0}'"
-
-        # Validate process is running and memory usage is reasonable
-        expected_output: "^1"
-
-        timeout: 10s
-
-      # External server with password auth (stored in environment)
-      - endpoint: external-server.example.com:2222
-        username: monitoring
-        password: ${SSH_PASSWORD_EXTERNAL}
-
-        # Simple connectivity check (no command)
-        timeout: 20s
-
-      # Server with custom SSH port
-      - endpoint: server-custom-port.internal:2200
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-
-        # Verify disk space
-        command: "df -h / | tail -1 | awk '{print $5}' | sed 's/%//'"
-
-        # Alert if disk usage above 90%
-        expected_output: "^[0-8][0-9]$|^90$"
-
-        timeout: 10s
-
-    # Check interval for all targets
+  # Monitor web server SSH connectivity
+  sshcheck/web-server:
+    endpoint: web-server-01.internal:22
+    username: monitoring
+    key_file: /etc/ssh/keys/monitoring_key
     collection_interval: 60s
 
-    # SSH client configuration
-    ssh_client_config:
-      # Timeout for SSH connection establishment
-      connection_timeout: 10s
+  # Monitor database server SSH connectivity
+  sshcheck/db-server:
+    endpoint: db-server-01.internal:22
+    username: monitoring
+    key_file: /etc/ssh/keys/monitoring_key
+    collection_interval: 60s
 
-      # Known hosts file for host key verification
-      known_hosts_file: /etc/ssh/known_hosts
+  # Monitor external server with password auth
+  sshcheck/external-server:
+    endpoint: external-server.example.com:2222
+    username: monitoring
+    password: ${SSH_PASSWORD_EXTERNAL}
+    collection_interval: 120s
+    timeout: 20s
 
-      # Skip host key verification (not recommended for production)
-      insecure_ignore_host_key: false
+  # Monitor SFTP server (with SFTP check enabled)
+  sshcheck/sftp-server:
+    endpoint: sftp.example.com:22
+    username: monitoring
+    key_file: /etc/ssh/keys/monitoring_key
+    check_sftp: true
+    collection_interval: 60s
+
+exporters:
+  otlphttp:
+    endpoint: https://oneuptime.com/otlp
+    headers:
+      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+
+service:
+  pipelines:
+    metrics:
+      receivers:
+        - sshcheck/web-server
+        - sshcheck/db-server
+        - sshcheck/external-server
+        - sshcheck/sftp-server
+      exporters: [otlphttp]
+```
+
+Each named instance (`sshcheck/web-server`, `sshcheck/db-server`, etc.) independently monitors its configured endpoint and reports metrics separately.
+
+---
+
+## Production Configuration
+
+For production deployments, add proper secret management, SFTP checks, processors, and retry logic:
+
+```yaml
+receivers:
+  # Production web server monitoring
+  sshcheck/web-prod:
+    endpoint: web-server-01.internal:22
+    username: monitoring
+    key_file: /etc/otel/ssh_monitoring_key
+    collection_interval: 30s
+    timeout: 5s
+    known_hosts: /etc/otel/known_hosts
+
+  # Production database server monitoring
+  sshcheck/db-prod:
+    endpoint: db-server-01.internal:22
+    username: monitoring
+    key_file: /etc/otel/ssh_monitoring_key
+    collection_interval: 30s
+    timeout: 10s
+    known_hosts: /etc/otel/known_hosts
+
+  # SFTP server monitoring with SFTP checks
+  sshcheck/sftp-prod:
+    endpoint: sftp.internal:22
+    username: monitoring
+    key_file: /etc/otel/ssh_monitoring_key
+    check_sftp: true
+    collection_interval: 60s
+    timeout: 15s
+    known_hosts: /etc/otel/known_hosts
 
 processors:
   # Protect Collector from memory exhaustion
@@ -225,21 +255,10 @@ processors:
         value: datacenter-us-east
         action: upsert
 
-  # Transform metrics for better organization
-  metricstransform:
-    transforms:
-      # Rename metrics to follow naming conventions
-      - include: sshcheck.duration
-        action: update
-        new_name: ssh.check.duration_ms
-
-      - include: sshcheck.status
-        action: update
-        new_name: ssh.check.success
-
-      - include: sshcheck.command_exit_code
-        action: update
-        new_name: ssh.check.command.exit_code
+  # Batch metrics for efficient export
+  batch:
+    timeout: 10s
+    send_batch_size: 100
 
 exporters:
   # Export to OneUptime with retry configuration
@@ -265,52 +284,122 @@ service:
 
   pipelines:
     metrics:
-      receivers: [sshcheck]
-      processors: [memory_limiter, resource, metricstransform]
+      receivers:
+        - sshcheck/web-prod
+        - sshcheck/db-prod
+        - sshcheck/sftp-prod
+      processors: [memory_limiter, resource, batch]
       exporters: [otlphttp]
 ```
 
-**Advanced features:**
+**Key production considerations:**
 
-1. **Remote command execution:** Run commands to verify application and system health
-2. **Output validation:** Use regex patterns to validate command output
-3. **Custom timeouts:** Configure different timeouts for different servers
-4. **Host key verification:** Verify SSH host keys for security
-5. **Multiple authentication methods:** Support both key-based and password authentication
+1. **Host key verification:** Always use `known_hosts` in production — never set `ignore_host_key: true`
+2. **SSH key authentication:** Prefer `key_file` over `password` for stronger security
+3. **Appropriate timeouts:** Set `timeout` to match expected network conditions
+4. **Memory limiting:** Use `memory_limiter` processor to protect the Collector from resource exhaustion
+5. **Retry logic:** Configure `retry_on_failure` on your exporter for resilience
+
+---
+
+## SFTP Check Configuration
+
+The SSH Check receiver can optionally verify SFTP connectivity in addition to SSH. SFTP checks can be enabled in two ways:
+
+**Option 1: Using the `check_sftp` flag:**
+
+```yaml
+receivers:
+  sshcheck:
+    endpoint: sftp.example.com:22
+    username: monitoring
+    key_file: /path/to/private_key
+    check_sftp: true
+    collection_interval: 60s
+```
+
+**Option 2: Enabling SFTP metrics individually:**
+
+```yaml
+receivers:
+  sshcheck:
+    endpoint: sftp.example.com:22
+    username: monitoring
+    key_file: /path/to/private_key
+    collection_interval: 60s
+    metrics:
+      sshcheck.sftp_duration:
+        enabled: true
+      sshcheck.sftp_status:
+        enabled: true
+      sshcheck.sftp_error:
+        enabled: true
+```
+
+When SFTP checks are enabled, the receiver establishes an SFTP connection after a successful SSH connection. Note that SFTP checks require a successful SSH connection first — if the SSH connection fails, SFTP metrics will not be generated.
+
+---
+
+## Metric Enable/Disable Configuration
+
+Individual metrics can be enabled or disabled using the `metrics` section. By default, all SSH metrics are enabled and all SFTP metrics are disabled:
+
+```yaml
+receivers:
+  sshcheck:
+    endpoint: server.example.com:22
+    username: monitoring
+    key_file: /path/to/key
+    metrics:
+      # SSH metrics (enabled by default)
+      sshcheck.duration:
+        enabled: true    # Default: true
+      sshcheck.status:
+        enabled: true    # Default: true
+      sshcheck.error:
+        enabled: true    # Default: true
+
+      # SFTP metrics (disabled by default)
+      sshcheck.sftp_duration:
+        enabled: false   # Default: false
+      sshcheck.sftp_status:
+        enabled: false   # Default: false
+      sshcheck.sftp_error:
+        enabled: false   # Default: false
+```
 
 ---
 
 ## Generated Metrics
 
-The SSH Check receiver generates several metrics for each target:
+The SSH Check receiver produces the following metrics:
 
-**Core metrics:**
-
-| Metric Name | Type | Description |
-|-------------|------|-------------|
-| `sshcheck.duration` | Gauge | Time taken to establish SSH connection (milliseconds) |
-| `sshcheck.status` | Gauge | 1 if connection succeeded, 0 if failed |
-| `sshcheck.auth_status` | Gauge | 1 if authentication succeeded, 0 if failed |
-| `sshcheck.command_duration` | Gauge | Time taken to execute command (milliseconds) |
-| `sshcheck.command_exit_code` | Gauge | Exit code of executed command |
-| `sshcheck.command_success` | Gauge | 1 if command output matches expected pattern, 0 otherwise |
-
-**Metric labels:**
-
-Each metric includes labels for filtering and aggregation:
-- `endpoint`: The SSH server being checked
-- `username`: SSH username used for connection
-- `command`: Command executed (if any)
+| Metric Name | Type | Description | Unit | Default |
+|-------------|------|-------------|------|---------|
+| `sshcheck.duration` | Gauge | Time taken to establish SSH connection | ms | Enabled |
+| `sshcheck.status` | Sum | 1 if SSH connection succeeded, 0 if failed | 1 | Enabled |
+| `sshcheck.error` | Sum | Records errors occurring during SSH check | {error} | Enabled |
+| `sshcheck.sftp_duration` | Gauge | Time taken to establish SFTP connection | ms | Disabled |
+| `sshcheck.sftp_status` | Sum | 1 if SFTP connection succeeded, 0 if failed | 1 | Disabled |
+| `sshcheck.sftp_error` | Sum | Records errors occurring during SFTP check | {error} | Disabled |
 
 **Example metric output:**
 
 ```
-sshcheck.duration{endpoint="server1.example.com:22",username="monitoring"} 245.7
-sshcheck.status{endpoint="server1.example.com:22",username="monitoring"} 1
-sshcheck.auth_status{endpoint="server1.example.com:22",username="monitoring"} 1
-sshcheck.command_duration{endpoint="server1.example.com:22",username="monitoring",command="systemctl is-active nginx"} 89.3
-sshcheck.command_exit_code{endpoint="server1.example.com:22",username="monitoring",command="systemctl is-active nginx"} 0
-sshcheck.command_success{endpoint="server1.example.com:22",username="monitoring",command="systemctl is-active nginx"} 1
+sshcheck_duration{} 245.7
+sshcheck_status{} 1
+sshcheck_error{} 0
+```
+
+With SFTP checks enabled:
+
+```
+sshcheck_duration{} 245.7
+sshcheck_status{} 1
+sshcheck_error{} 0
+sshcheck_sftp_duration{} 312.4
+sshcheck_sftp_status{} 1
+sshcheck_sftp_error{} 0
 ```
 
 ---
@@ -338,24 +427,35 @@ chmod 644 /etc/ssh/keys/monitoring_key.pub
 ```yaml
 receivers:
   sshcheck:
-    targets:
-      - endpoint: server1.example.com:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
+    endpoint: server1.example.com:22
+    username: monitoring
+    key_file: /etc/ssh/keys/monitoring_key
 ```
 
-**Secure password storage (if SSH keys aren't possible):**
+**Using an encrypted key file with a passphrase:**
+
+When both `password` and `key_file` are set, the password is treated as the passphrase for the encrypted key:
+
+```yaml
+receivers:
+  sshcheck:
+    endpoint: server1.example.com:22
+    username: monitoring
+    key_file: /etc/ssh/keys/monitoring_key_encrypted
+    password: ${SSH_KEY_PASSPHRASE}
+```
+
+**Secure password storage (if SSH keys are not possible):**
 
 Use environment variables and secrets management:
 
 ```yaml
 receivers:
   sshcheck:
-    targets:
-      - endpoint: server1.example.com:22
-        username: monitoring
-        # Password from environment variable
-        password: ${SSH_PASSWORD}
+    endpoint: server1.example.com:22
+    username: monitoring
+    # Password from environment variable
+    password: ${SSH_PASSWORD}
 ```
 
 ```bash
@@ -368,7 +468,7 @@ export SSH_PASSWORD=$(aws secretsmanager get-secret-value --secret-id ssh-monito
 
 **Dedicated monitoring user:**
 
-Create a dedicated user with minimal privileges for SSH checks:
+Create a dedicated user with minimal privileges for SSH connectivity checks:
 
 ```bash
 # On target servers, create monitoring user
@@ -380,275 +480,53 @@ sudo cat monitoring_key.pub | sudo tee /home/monitoring/.ssh/authorized_keys
 sudo chmod 700 /home/monitoring/.ssh
 sudo chmod 600 /home/monitoring/.ssh/authorized_keys
 sudo chown -R monitoring:monitoring /home/monitoring/.ssh
-
-# Grant only necessary permissions (e.g., read-only commands via sudoers)
-sudo visudo
-# Add: monitoring ALL=(ALL) NOPASSWD: /usr/bin/systemctl is-active *, /usr/bin/pg_isready
 ```
-
----
-
-## Health Check Command Examples
-
-**Web server health checks:**
-
-```yaml
-receivers:
-  sshcheck:
-    targets:
-      # Check Nginx is running
-      - endpoint: web-server-01:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "systemctl is-active nginx"
-        expected_output: "active"
-
-      # Check Apache is running and responding
-      - endpoint: web-server-02:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "curl -s -o /dev/null -w '%{http_code}' http://localhost:80"
-        expected_output: "200"
-
-      # Check HAProxy backend servers
-      - endpoint: lb-server-01:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "echo 'show stat' | socat stdio /var/run/haproxy/admin.sock | grep -c 'UP'"
-        expected_output: "[2-9]"  # At least 2 backends UP
-```
-
-**Database health checks:**
-
-```yaml
-receivers:
-  sshcheck:
-    targets:
-      # PostgreSQL health
-      - endpoint: db-server-01:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "pg_isready -h localhost -U postgres"
-        expected_output: "accepting connections"
-
-      # MySQL health
-      - endpoint: db-server-02:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "mysqladmin ping -h localhost"
-        expected_output: "mysqld is alive"
-
-      # Redis health
-      - endpoint: cache-server-01:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "redis-cli ping"
-        expected_output: "PONG"
-
-      # MongoDB health
-      - endpoint: mongo-server-01:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "mongo --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
-        expected_output: "1"
-```
-
-**Application health checks:**
-
-```yaml
-receivers:
-  sshcheck:
-    targets:
-      # Check Java application is running
-      - endpoint: app-server-01:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "ps aux | grep -c '[j]ava.*myapp.jar'"
-        expected_output: "^1$"
-
-      # Check Node.js application
-      - endpoint: app-server-02:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "pm2 list | grep -c 'online'"
-        expected_output: "[1-9]"
-
-      # Check Docker container
-      - endpoint: docker-host-01:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "docker ps --filter 'name=myapp' --filter 'status=running' --format '{{.Names}}'"
-        expected_output: "myapp"
-```
-
-**System health checks:**
-
-```yaml
-receivers:
-  sshcheck:
-    targets:
-      # Check disk space
-      - endpoint: server-01:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "df -h / | tail -1 | awk '{print $5}' | sed 's/%//'"
-        expected_output: "^[0-8][0-9]$"  # Less than 90%
-
-      # Check memory usage
-      - endpoint: server-02:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "free -m | grep Mem | awk '{printf \"%.0f\", $3/$2 * 100}'"
-        expected_output: "^[0-8][0-9]$"  # Less than 90%
-
-      # Check load average
-      - endpoint: server-03:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "uptime | awk -F'load average:' '{print $2}' | awk -F',' '{print $1}' | xargs"
-        expected_output: "^[0-4]\\."  # Load < 5.0
-
-      # Check critical process count
-      - endpoint: server-04:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "ps aux | grep -c '[c]ritical-daemon'"
-        expected_output: "^[1-9]"  # At least 1 running
-```
-
----
-
-## Multi-Server Fleet Monitoring
-
-Monitor large server fleets by configuring multiple targets with labels:
-
-```yaml
-receivers:
-  sshcheck:
-    targets:
-      # Web servers
-      - endpoint: web-01.internal:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "systemctl is-active nginx"
-        expected_output: "active"
-        labels:
-          server_role: web
-          environment: production
-          region: us-east
-
-      - endpoint: web-02.internal:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "systemctl is-active nginx"
-        expected_output: "active"
-        labels:
-          server_role: web
-          environment: production
-          region: us-east
-
-      # Database servers
-      - endpoint: db-01.internal:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "pg_isready -h localhost"
-        expected_output: "accepting connections"
-        labels:
-          server_role: database
-          environment: production
-          region: us-east
-
-      - endpoint: db-02.internal:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "pg_isready -h localhost"
-        expected_output: "accepting connections"
-        labels:
-          server_role: database
-          environment: production
-          region: us-east
-
-    collection_interval: 60s
-
-processors:
-  resource:
-    attributes:
-      - key: monitoring.type
-        value: ssh-fleet
-        action: upsert
-
-exporters:
-  otlphttp:
-    endpoint: https://oneuptime.com/otlp
-    headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
-
-service:
-  pipelines:
-    metrics:
-      receivers: [sshcheck]
-      processors: [resource]
-      exporters: [otlphttp]
-```
-
-Labels enable aggregation and filtering in your observability backend (e.g., "show me all failed web servers in us-east").
 
 ---
 
 ## Alerting on SSH Check Failures
 
-Configure your observability backend to alert when SSH checks fail or commands return unexpected results.
+Configure your observability backend to alert when SSH checks fail.
 
 **Example alert conditions:**
 
-1. **SSH connection failed:** `sshcheck.status == 0`
-2. **Authentication failed:** `sshcheck.auth_status == 0`
-3. **Command failed:** `sshcheck.command_exit_code != 0`
-4. **Output validation failed:** `sshcheck.command_success == 0`
-5. **Slow SSH connection:** `sshcheck.duration > 5000` (5 seconds)
+1. **SSH connection failed:** `sshcheck_status == 0`
+2. **SFTP connection failed:** `sshcheck_sftp_status == 0`
+3. **Slow SSH connection:** `sshcheck_duration > 5000` (5 seconds)
+4. **Slow SFTP connection:** `sshcheck_sftp_duration > 10000` (10 seconds)
 
 **OneUptime alert configuration example:**
 
 ```yaml
 # Alert when SSH connection fails
 - alert: SSHConnectionFailed
-  expr: sshcheck.status == 0
+  expr: sshcheck_status == 0
   for: 2m
   labels:
     severity: critical
   annotations:
-    summary: "SSH connection to {{ $labels.endpoint }} failed"
-    description: "Unable to establish SSH connection to {{ $labels.endpoint }} for 2 minutes"
+    summary: "SSH connection failed"
+    description: "Unable to establish SSH connection for 2 minutes"
 
-# Alert when authentication fails
-- alert: SSHAuthenticationFailed
-  expr: sshcheck.auth_status == 0
-  for: 5m
-  labels:
-    severity: warning
-  annotations:
-    summary: "SSH authentication to {{ $labels.endpoint }} failed"
-    description: "SSH authentication failed for {{ $labels.username }}@{{ $labels.endpoint }}"
-
-# Alert when health check command fails
-- alert: SSHHealthCheckFailed
-  expr: sshcheck.command_success == 0
+# Alert when SFTP connection fails
+- alert: SFTPConnectionFailed
+  expr: sshcheck_sftp_status == 0
   for: 2m
   labels:
     severity: critical
   annotations:
-    summary: "Health check failed on {{ $labels.endpoint }}"
-    description: "Command '{{ $labels.command }}' failed or produced unexpected output on {{ $labels.endpoint }}"
+    summary: "SFTP connection failed"
+    description: "Unable to establish SFTP connection for 2 minutes"
 
 # Alert when SSH connection is slow
 - alert: SSHConnectionSlow
-  expr: sshcheck.duration > 5000
+  expr: sshcheck_duration > 5000
   for: 10m
   labels:
     severity: warning
   annotations:
-    summary: "Slow SSH connection to {{ $labels.endpoint }}"
-    description: "SSH connection to {{ $labels.endpoint }} taking {{ $value }}ms (threshold: 5000ms)"
+    summary: "Slow SSH connection"
+    description: "SSH connection taking {{ $value }}ms (threshold: 5000ms)"
 ```
 
 ---
@@ -657,16 +535,15 @@ Configure your observability backend to alert when SSH checks fail or commands r
 
 **1. Principle of least privilege:**
 
-The monitoring user should have minimal permissions:
+The monitoring user only needs to establish an SSH connection — it does not need to execute any commands:
 
 ```bash
-# Create monitoring user with restricted shell
-sudo useradd -m -s /bin/rbash monitoring
+# Create monitoring user with a restricted shell
+sudo useradd -m -s /usr/sbin/nologin monitoring
 
-# Limit allowed commands using sudoers
-sudo visudo
-# Add specific commands only
-monitoring ALL=(ALL) NOPASSWD: /usr/bin/systemctl is-active *, /usr/bin/pg_isready
+# If you need the user to also support SFTP checks, use:
+sudo useradd -m -s /bin/false monitoring
+# And configure the SSH server to allow SFTP-only access
 ```
 
 **2. SSH key security:**
@@ -678,8 +555,7 @@ Protect SSH keys used by the Collector:
 chmod 600 /etc/ssh/keys/monitoring_key
 chown otel-collector:otel-collector /etc/ssh/keys/monitoring_key
 
-# Use key rotation
-# Regularly generate new keys and update target servers
+# Regularly rotate keys and update target servers
 ```
 
 **3. Network segmentation:**
@@ -688,14 +564,21 @@ Run the Collector in a secure network segment with firewall rules limiting outbo
 
 **4. Host key verification:**
 
-Enable host key verification to prevent man-in-the-middle attacks:
+Always enable host key verification in production to prevent man-in-the-middle attacks:
 
 ```yaml
 receivers:
   sshcheck:
-    ssh_client_config:
-      known_hosts_file: /etc/ssh/known_hosts
-      insecure_ignore_host_key: false
+    endpoint: server.example.com:22
+    username: monitoring
+    key_file: /etc/ssh/keys/monitoring_key
+    known_hosts: /etc/otel/known_hosts
+    ignore_host_key: false  # This is the default; never set to true in production
+```
+
+```bash
+# Add host keys to known_hosts
+ssh-keyscan -H server.example.com >> /etc/otel/known_hosts
 ```
 
 **5. Audit logging:**
@@ -717,29 +600,33 @@ LogLevel VERBOSE
 
 Balance between monitoring granularity and resource usage:
 
-- **Critical servers:** 30-60 seconds
-- **Standard servers:** 120 seconds
+- **Critical servers:** 30–60 seconds
+- **Standard servers:** 60–120 seconds
 - **Non-critical servers:** 300 seconds (5 minutes)
 
 **Resource usage:**
 
-Each SSH check consumes:
-- Network bandwidth for SSH handshake and command execution
+Each SSH check creates a new SSH connection. Consider:
+- Network bandwidth for the SSH handshake
 - CPU for encryption/decryption
 - Memory for connection state
 
-For high-volume monitoring (50+ servers), consider:
-- Running multiple Collector instances with server sharding
-- Increasing `collection_interval` for non-critical checks
-- Using connection pooling (if supported by future receiver versions)
+For monitoring many servers, distribute checks across multiple Collector instances to avoid overloading a single Collector.
 
-**Example configuration for large fleets:**
+**Example configuration with memory limits:**
 
 ```yaml
 receivers:
-  sshcheck:
-    targets:
-      # ... many servers ...
+  sshcheck/server1:
+    endpoint: server1.internal:22
+    username: monitoring
+    key_file: /etc/otel/ssh_key
+    collection_interval: 120s
+
+  sshcheck/server2:
+    endpoint: server2.internal:22
+    username: monitoring
+    key_file: /etc/otel/ssh_key
     collection_interval: 120s
 
 processors:
@@ -750,7 +637,7 @@ processors:
 service:
   pipelines:
     metrics:
-      receivers: [sshcheck]
+      receivers: [sshcheck/server1, sshcheck/server2]
       processors: [memory_limiter]
       exporters: [otlphttp]
 ```
@@ -759,18 +646,15 @@ service:
 
 ## Combining with Other Monitoring
 
-SSH Check works well alongside other monitoring methods:
+The SSH Check receiver works well alongside other receivers for comprehensive monitoring:
 
 ```yaml
 receivers:
-  # SSH connectivity and command checks
-  sshcheck:
-    targets:
-      - endpoint: server1.internal:22
-        username: monitoring
-        key_file: /etc/ssh/keys/monitoring_key
-        command: "systemctl is-active myapp"
-        expected_output: "active"
+  # SSH connectivity checks
+  sshcheck/web:
+    endpoint: server1.internal:22
+    username: monitoring
+    key_file: /etc/ssh/keys/monitoring_key
     collection_interval: 60s
 
   # HTTP endpoint checks
@@ -799,7 +683,7 @@ service:
   pipelines:
     # SSH synthetic checks
     metrics/ssh:
-      receivers: [sshcheck]
+      receivers: [sshcheck/web]
       processors: [batch]
       exporters: [otlphttp]
 
@@ -816,7 +700,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration provides comprehensive monitoring: SSH connectivity, HTTP availability, and detailed host metrics.
+This configuration provides comprehensive monitoring: SSH connectivity, HTTP availability, and detailed host metrics. By combining the SSH Check receiver with HTTP checks, you can detect whether a server is reachable at the network level (SSH) even if the application layer (HTTP) is failing.
 
 ---
 
@@ -828,16 +712,16 @@ SSH checks consistently fail with authentication errors.
 
 **Solution:**
 - Verify SSH key permissions (should be 600)
-- Ensure public key is in target server's `~/.ssh/authorized_keys`
-- Check username is correct
+- Ensure the public key is in the target server's `~/.ssh/authorized_keys`
+- Check that the username is correct
 - Test manually: `ssh -i /etc/ssh/keys/monitoring_key monitoring@server1.example.com`
 
 **2. Connection timeouts:**
 
-SSH checks timeout without establishing connection.
+SSH checks timeout without establishing a connection.
 
 **Solution:**
-- Verify network connectivity from Collector host
+- Verify network connectivity from the Collector host
 - Check firewall rules allowing outbound SSH (port 22 or custom)
 - Increase `timeout` in configuration
 - Test manually: `nc -zv server1.example.com 22`
@@ -847,23 +731,32 @@ SSH checks timeout without establishing connection.
 Checks fail with "host key verification failed" errors.
 
 **Solution:**
-- Add host keys to known_hosts file
-- Or temporarily set `insecure_ignore_host_key: true` (not recommended for production)
+- Add host keys to the known_hosts file:
 
 ```bash
 # Add host key to known_hosts
-ssh-keyscan -H server1.example.com >> /etc/ssh/known_hosts
+ssh-keyscan -H server1.example.com >> /etc/otel/known_hosts
 ```
 
-**4. Command execution failures:**
+- Or temporarily set `ignore_host_key: true` for testing (not recommended for production)
 
-Commands execute but return unexpected results.
+**4. SFTP check failures when SSH succeeds:**
+
+SSH connection succeeds but SFTP check fails.
 
 **Solution:**
-- Test command manually via SSH
-- Check that monitoring user has necessary permissions
-- Verify expected output regex pattern is correct
-- Use debug logging to see actual command output
+- Verify the SSH server has SFTP subsystem enabled
+- Check that the monitoring user has SFTP access
+- Test manually: `sftp monitoring@server1.example.com`
+
+**5. High resource usage:**
+
+Collector consumes excessive resources when running many SSH checks.
+
+**Solution:**
+- Increase `collection_interval` to reduce check frequency
+- Distribute checks across multiple Collector instances
+- Use `memory_limiter` processor to cap resource usage
 
 ```yaml
 service:
@@ -872,15 +765,7 @@ service:
       level: debug
 ```
 
-**5. High CPU usage:**
-
-Collector consumes excessive CPU when running SSH checks.
-
-**Solution:**
-- Increase `collection_interval` to reduce check frequency
-- Reduce number of targets per Collector instance
-- Avoid running commands that produce large output
-- Split checks across multiple Collector instances
+Enable debug logging to see detailed information about connection attempts and errors.
 
 ---
 
@@ -899,15 +784,15 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [sshcheck]
+      receivers: [sshcheck/web, sshcheck/db]
       processors: [resource, batch]
       exporters: [otlphttp]
 ```
 
 Once metrics flow into OneUptime, you can:
 - Create dashboards showing SSH connectivity status across your fleet
-- Configure alerts for connection failures or health check failures
-- Track SSH connection latency trends
+- Configure alerts for connection failures
+- Track SSH connection latency trends over time
 - Correlate SSH checks with application metrics and logs
 - Identify patterns in server accessibility issues
 
@@ -926,8 +811,8 @@ For more information on OpenTelemetry Collector receivers and infrastructure mon
 
 ## Conclusion
 
-The SSH Check receiver transforms the OpenTelemetry Collector into an SSH connectivity monitor and remote command executor, enabling proactive infrastructure monitoring without deploying agents on every server. By periodically establishing SSH connections and executing health check commands, it provides early warning of connectivity issues and service failures.
+The SSH Check receiver transforms the OpenTelemetry Collector into an SSH connectivity monitor, enabling proactive infrastructure monitoring without deploying agents on every server. By periodically establishing SSH connections, it provides early warning of connectivity issues, authentication failures, and network problems.
 
-Configure checks with appropriate intervals and timeouts, use SSH keys for authentication, execute meaningful health check commands, and export metrics to backends like OneUptime for visualization and alerting. This approach delivers comprehensive infrastructure monitoring within your existing OpenTelemetry pipeline.
+Configure checks with appropriate intervals and timeouts, use SSH keys for authentication, enable SFTP checks where needed, and export metrics to backends like OneUptime for visualization and alerting. For monitoring multiple servers, use named receiver instances (`sshcheck/server1`, `sshcheck/server2`, etc.) to check each endpoint independently.
 
-Whether you're monitoring server accessibility, verifying service health through remote commands, or tracking SSH connection performance across your fleet, the SSH Check receiver provides the flexibility and control needed for modern infrastructure observability.
+Whether you are monitoring server accessibility, verifying SFTP service availability, or tracking SSH connection performance, the SSH Check receiver provides a lightweight and reliable approach to infrastructure observability within your existing OpenTelemetry pipeline.

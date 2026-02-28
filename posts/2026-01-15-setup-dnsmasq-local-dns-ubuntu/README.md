@@ -932,7 +932,7 @@ resolvconf[...]: Dropped protocol specifier '.dnsmasq' from 'lo.dnsmasq'. Using 
 resolvconf[...]: Failed to set DNS configuration: Unit dbus-org.freedesktop.network1.service not found.
 ```
 
-**This is common on Kubuntu, Xubuntu, Ubuntu MATE, and other Ubuntu desktop variants** that use **NetworkManager** instead of **systemd-networkd**. The error occurs because dnsmasq's startup script (`ExecStartPost`) runs `start-resolvconf`, which tries to register itself with `systemd-networkd` via D-Bus — but that service does not exist on systems using NetworkManager.
+**This is common on Kubuntu, Xubuntu, Ubuntu MATE, and other Ubuntu desktop variants** that use **NetworkManager** instead of **systemd-networkd**. The error occurs because dnsmasq's startup script (`ExecStartPost`) runs `start-resolvconf`, which tries to register itself with `systemd-networkd` via D-Bus - but that service does not exist on systems using NetworkManager.
 
 **The good news:** dnsmasq is actually running correctly despite this error. DNS resolution should work fine. However, if you want to suppress these messages, you have several options:
 
