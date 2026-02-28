@@ -923,6 +923,62 @@ done
 # Comment out: strict-order
 ```
 
+#### Issue 6: "Failed to set DNS configuration: Unit dbus-org.freedesktop.network1.service not found"
+
+When running `sudo systemctl status dnsmasq`, you may see error messages like:
+
+```
+resolvconf[...]: Dropped protocol specifier '.dnsmasq' from 'lo.dnsmasq'. Using 'lo' (ifindex=1).
+resolvconf[...]: Failed to set DNS configuration: Unit dbus-org.freedesktop.network1.service not found.
+```
+
+**This is common on Kubuntu, Xubuntu, Ubuntu MATE, and other Ubuntu desktop variants** that use **NetworkManager** instead of **systemd-networkd**. The error occurs because dnsmasq's startup script (`ExecStartPost`) runs `start-resolvconf`, which tries to register itself with `systemd-networkd` via D-Bus — but that service does not exist on systems using NetworkManager.
+
+**The good news:** dnsmasq is actually running correctly despite this error. DNS resolution should work fine. However, if you want to suppress these messages, you have several options:
+
+**Option A: Disable resolvconf integration in dnsmasq (Recommended)**
+
+Edit `/etc/default/dnsmasq`:
+
+```bash
+sudo nano /etc/default/dnsmasq
+```
+
+Add or uncomment the following line:
+
+```bash
+IGNORE_RESOLVCONF=yes
+```
+
+Then restart dnsmasq:
+
+```bash
+sudo systemctl restart dnsmasq
+```
+
+This tells dnsmasq not to try registering itself with resolvconf at all, which eliminates the error.
+
+**Option B: Replace systemd-resolvconf with the traditional resolvconf package**
+
+If other services on your system also depend on resolvconf, you can install the traditional (non-systemd) implementation:
+
+```bash
+# Remove the systemd-resolvconf package
+sudo apt remove systemd-resolvconf -y
+
+# Install the traditional resolvconf package
+sudo apt install resolvconf -y
+
+# Restart dnsmasq
+sudo systemctl restart dnsmasq
+```
+
+This replaces the `resolvconf` binary that depends on `systemd-networkd` with one that works independently.
+
+**Option C: Simply ignore it**
+
+Since dnsmasq works correctly despite the error, you can safely ignore these messages. They do not affect DNS resolution or DHCP functionality. The `start-resolvconf` step is only for automatically updating the system's DNS configuration, which is unnecessary if you have already configured `/etc/resolv.conf` manually (as described in the "Resolving the systemd-resolved Conflict" section above).
+
 ### Useful Diagnostic Commands
 
 ```bash
