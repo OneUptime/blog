@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, SSH Check, Synthetic Monitoring, Infrastructure Monitoring
+Tags: OpenTelemetry, Collector, SSH Check, Synthetic Monitoring, Infrastructure Monitoring, Remote Execution
 
-Description: Comprehensive guide to configuring the SSH Check receiver in OpenTelemetry Collector for monitoring SSH and SFTP connectivity, tracking connection latency, and generating infrastructure health metrics.
+Description: Comprehensive guide to configuring the SSH Check receiver in OpenTelemetry Collector for monitoring SSH and SFTP connectivity, tracking connection latency, and generating infrastructure health metrics
 
 ---
 
 The SSH Check receiver in the OpenTelemetry Collector enables you to perform synthetic monitoring of SSH endpoints by periodically establishing SSH connections and generating metrics based on connection success, latency, and errors. This receiver is essential for monitoring server accessibility and verifying SSH service availability within your OpenTelemetry observability pipeline.
 
-By deploying the SSH Check receiver, you can monitor SSH connectivity to critical infrastructure, track connection latency, optionally verify SFTP availability, and generate metrics for uptime monitoring — all within your existing OpenTelemetry pipeline.
+By deploying the SSH Check receiver, you can monitor SSH connectivity to critical infrastructure, track connection latency, optionally verify SFTP availability, and generate metrics for uptime monitoring - all within your existing OpenTelemetry pipeline.
 
 > **Important note:** The SSH Check receiver monitors **SSH and SFTP connectivity only**. It does **not** support remote command execution or output validation. If you need to run commands on remote servers, consider using the OpenTelemetry Collector's script-based processors or deploying OpenTelemetry agents directly on target hosts.
 
@@ -21,12 +21,12 @@ By deploying the SSH Check receiver, you can monitor SSH connectivity to critica
 The SSH Check receiver is an OpenTelemetry Collector component that acts as an SSH client, periodically connecting to a configured SSH server and generating metrics based on connection success, latency, and errors. Unlike passive receivers that accept incoming telemetry, the SSH Check receiver actively probes an SSH endpoint to assess its availability.
 
 The receiver generates several key metrics:
-- **Connection status** — Whether the SSH connection succeeded or failed
-- **Connection duration** — Time taken to establish the SSH connection
-- **Connection errors** — Error details when connections fail
-- **SFTP status** — Whether an SFTP connection succeeded (optional)
-- **SFTP duration** — Time taken to establish the SFTP connection (optional)
-- **SFTP errors** — Error details when SFTP connections fail (optional)
+- **Connection status** - Whether the SSH connection succeeded or failed
+- **Connection duration** - Time taken to establish the SSH connection
+- **Connection errors** - Error details when connections fail
+- **SFTP status** - Whether an SFTP connection succeeded (optional)
+- **SFTP duration** - Time taken to establish the SFTP connection (optional)
+- **SFTP errors** - Error details when SFTP connections fail (optional)
 
 **Primary use cases:**
 
@@ -65,7 +65,7 @@ This architecture allows you to monitor SSH accessibility from within your infra
 
 Before configuring the SSH Check receiver, ensure you have:
 
-1. **OpenTelemetry Collector Contrib** (`otelcol-contrib`) distribution — the SSH Check receiver is not included in the core distribution
+1. **OpenTelemetry Collector Contrib** (`otelcol-contrib`) distribution - the SSH Check receiver is not included in the core distribution
 2. **SSH access credentials** for the target server (SSH key or password)
 3. **Network connectivity** from the Collector to the monitored SSH endpoint
 4. **SSH keys or passwords** securely stored (preferably using environment variables or secrets management)
@@ -294,7 +294,7 @@ service:
 
 **Key production considerations:**
 
-1. **Host key verification:** Always use `known_hosts` in production — never set `ignore_host_key: true`
+1. **Host key verification:** Always use `known_hosts` in production - never set `ignore_host_key: true`
 2. **SSH key authentication:** Prefer `key_file` over `password` for stronger security
 3. **Appropriate timeouts:** Set `timeout` to match expected network conditions
 4. **Memory limiting:** Use `memory_limiter` processor to protect the Collector from resource exhaustion
@@ -336,7 +336,7 @@ receivers:
         enabled: true
 ```
 
-When SFTP checks are enabled, the receiver establishes an SFTP connection after a successful SSH connection. Note that SFTP checks require a successful SSH connection first — if the SSH connection fails, SFTP metrics will not be generated.
+When SFTP checks are enabled, the receiver establishes an SFTP connection after a successful SSH connection. Note that SFTP checks require a successful SSH connection first - if the SSH connection fails, SFTP metrics will not be generated.
 
 ---
 
@@ -535,7 +535,7 @@ Configure your observability backend to alert when SSH checks fail.
 
 **1. Principle of least privilege:**
 
-The monitoring user only needs to establish an SSH connection — it does not need to execute any commands:
+The monitoring user only needs to establish an SSH connection - it does not need to execute any commands:
 
 ```bash
 # Create monitoring user with a restricted shell

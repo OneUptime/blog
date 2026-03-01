@@ -60,11 +60,11 @@ Before you can send telemetry data to OneUptime, you need to create an ingestion
 2. Click on "More" in the Navigation bar and click on "Project Settings".
 3. On the Telemetry Ingestion Key page, click on "Create Ingestion Key" to create a token.
     
-![](https://oneuptime.com/docs/static/images/TelemetryIngestionKeys.png)
+![Telemetry Ingestion Keys page in OneUptime](https://oneuptime.com/docs/static/images/TelemetryIngestionKeys.png)
 
 4. Once you created a token, click on "View" to view and copy the token.
 
-![](https://oneuptime.com/docs/static/images/TelemetryIngestionKeyView.png)
+![Viewing a Telemetry Ingestion Key in OneUptime](https://oneuptime.com/docs/static/images/TelemetryIngestionKeyView.png)
 
 #### Step 3: Set Environment Variables
 
@@ -156,8 +156,8 @@ The trace captured by OpenLIT includes:
 ## Visualizing Data with OneUptime
 Once your LLM application is instrumented, you should see the traces and metrics in the OneUptime telemetry traces page. Please contact support@oneuptime.com if you need any help.
 
-![](https://github.com/openlit/openlit/blob/main/docs/images/oneuptime-dashboard-1.png?raw=true)
-![](https://github.com/openlit/openlit/blob/main/docs/images/oneuptime-dashboard-2.png?raw=true)
+![OneUptime LLM monitoring dashboard overview](https://github.com/openlit/openlit/blob/main/docs/images/oneuptime-dashboard-1.png?raw=true)
+![OneUptime LLM monitoring dashboard details](https://github.com/openlit/openlit/blob/main/docs/images/oneuptime-dashboard-2.png?raw=true)
 
 ## Conclusion
 Effective LLM observability is essential for the efficient and reliable operation of LLM applications. By leveraging OpenTelemetry's open standards and broad compatibility, OneUptime's robust analytical tools, and OpenLIT's seamless auto-instrumentation for over 20 GenAI tools ranging from LLMs, VectorDBs and GPUs, developers can achieve comprehensive visibility into their LLM performance. This integrated approach ensures that all aspects of your LLM systems are transparent, actionable, and optimized for peak efficiency and reliability.
