@@ -2004,25 +2004,25 @@ function checkTagNormalization(blogsJson: BlogEntry[]): void {
   const hasIssues = caseVariants.length > 0 || pluralGroups.length > 0;
 
   if (hasIssues) {
-    hasWarnings = true;
+    hasErrors = true;
 
     if (caseVariants.length > 0) {
       console.log(
-        `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${caseVariants.length} tag${caseVariants.length === 1 ? '' : 's'} with inconsistent casing:\n`
+        `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${caseVariants.length} tag${caseVariants.length === 1 ? '' : 's'} with inconsistent casing:\n`
       );
       for (const [_, variants] of caseVariants) {
         const variantList = Array.from(variants);
-        console.log(`  - ${colors.yellow}${variantList.join(' vs ')}${colors.reset}`);
+        console.log(`  - ${colors.red}${variantList.join(' vs ')}${colors.reset}`);
       }
       console.log('');
     }
 
     if (pluralGroups.length > 0) {
       console.log(
-        `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${pluralGroups.length} potential singular/plural tag duplicate${pluralGroups.length === 1 ? '' : 's'}:\n`
+        `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${pluralGroups.length} potential singular/plural tag duplicate${pluralGroups.length === 1 ? '' : 's'}:\n`
       );
       for (const group of pluralGroups) {
-        console.log(`  - ${colors.yellow}${group.variants.join(' vs ')}${colors.reset}`);
+        console.log(`  - ${colors.red}${group.variants.join(' vs ')}${colors.reset}`);
       }
       console.log('');
     }
