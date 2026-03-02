@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Memory Management, Performance Tuning, Linux, Kernel
 
-Description: Learn how to configure Transparent Huge Pages (THP) on Ubuntu to improve or reduce memory performance, including when to enable or disable THP for different workloads like databases and Java applications.
+Description: Learn how to configure Transparent Huge Pages (THP) on Ubuntu to optimize memory performance, including when to enable or disable THP for workloads like databases and Java applications.
 
 ---
 

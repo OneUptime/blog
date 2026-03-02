@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, AIDE, Security, Intrusion Detection, File Integrity
 
-Description: Complete guide to installing and configuring AIDE (Advanced Intrusion Detection Environment) on Ubuntu for file integrity monitoring, including database management, custom rules, and automated reporting.
+Description: Guide to installing and configuring AIDE (Advanced Intrusion Detection Environment) on Ubuntu for file integrity monitoring, including database management, custom rules, and automated reporting.
 
 ---
 

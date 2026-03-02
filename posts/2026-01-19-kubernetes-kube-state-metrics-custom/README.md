@@ -866,4 +866,4 @@ spec:
 
 - [How to Set Up Prometheus and Grafana on Kubernetes from Scratch](https://oneuptime.com/blog/post/2026-01-19-kubernetes-prometheus-grafana-setup/view) - Basic monitoring setup
 - [How to Monitor Kubernetes etcd Health and Performance](https://oneuptime.com/blog/post/2026-01-19-kubernetes-etcd-monitoring-health/view) - etcd metrics
-- [How to Right-Size Kubernetes Resource Requests and Limits](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-requests-limits-rightsizing/view) - Resource optimization
+- [How to Right-Size Kubernetes Resource Requests and Limits](https://oneuptime.com/blog/post/2026-02-20-kubernetes-resource-requests-limits/view) - Resource optimization

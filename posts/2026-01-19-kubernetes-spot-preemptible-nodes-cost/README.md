@@ -863,6 +863,6 @@ Start with non-critical workloads and gradually expand spot usage as you gain co
 
 ## Related Posts
 
-- [How to Right-Size Kubernetes Resource Requests and Limits](https://oneuptime.com/blog/post/2026-01-19-kubernetes-resource-requests-limits-rightsizing/view) - Optimize resource allocation alongside cost
+- [How to Right-Size Kubernetes Resource Requests and Limits](https://oneuptime.com/blog/post/2026-02-20-kubernetes-resource-requests-limits/view) - Optimize resource allocation alongside cost
 - [How to Configure Pod Priority and Preemption in Kubernetes](https://oneuptime.com/blog/post/2026-01-19-kubernetes-pod-priority-preemption/view) - Prioritize workloads during resource contention
 - [How to Use Kubernetes Taints and Tolerations Effectively](https://oneuptime.com/blog/post/2026-01-19-kubernetes-taints-tolerations-scheduling/view) - Control scheduling to spot nodes

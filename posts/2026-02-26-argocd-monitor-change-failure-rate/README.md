@@ -343,4 +343,4 @@ If your CFR is high, consider:
 
 Monitoring change failure rate in ArgoCD requires looking beyond simple sync failures. Track post-deployment health transitions, rollback events, and incident correlations to get an accurate picture. Combine ArgoCD Notifications with a custom tracking service for the most reliable CFR measurement. Use the resulting data to drive improvements in your testing and validation processes.
 
-For the complete DORA picture, also track [deployment lead time](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-deployment-lead-time/view) and [mean time to recovery](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-mean-time-to-recovery/view).
+For the complete DORA picture, also track [deployment lead time](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-deployment-lead-time/view) and [mean time to recovery](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-mean-time-recovery/view).

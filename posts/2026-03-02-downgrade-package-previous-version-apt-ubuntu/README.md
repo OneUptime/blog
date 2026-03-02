@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, APT, Package Management, Troubleshooting, System Administration
 
-Description: Learn how to downgrade a package to a specific previous version on Ubuntu using APT, including finding available versions, pinning to prevent re-upgrade, and handling dependency issues during downgrade.
+Description: Learn how to downgrade a package to a previous version on Ubuntu using APT, including finding available versions, pinning to prevent re-upgrade, and handling dependency issues.
 
 ---
 

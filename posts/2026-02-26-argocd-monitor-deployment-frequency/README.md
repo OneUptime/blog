@@ -313,4 +313,4 @@ When analyzing your ArgoCD deployment frequency, consider:
 
 Monitoring deployment frequency in ArgoCD is essential for understanding your delivery velocity. Use `argocd_app_sync_total` as your foundation, filter out self-heal operations for accurate DORA metrics, and build dashboards that give both team-level and application-level views. Tracking this metric over time helps you spot delivery pipeline issues early and measure the impact of process improvements.
 
-For related DORA metrics, check out our guides on [monitoring change failure rate](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-change-failure-rate/view) and [monitoring mean time to recovery](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-mean-time-to-recovery/view).
+For related DORA metrics, check out our guides on [monitoring change failure rate](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-change-failure-rate/view) and [monitoring mean time to recovery](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-mean-time-recovery/view).

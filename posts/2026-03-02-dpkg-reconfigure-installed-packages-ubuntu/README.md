@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, dpkg, Package Management, System Administration, Configuration
 
-Description: Learn how to use dpkg-reconfigure to re-run the post-installation configuration wizard for installed packages on Ubuntu, with practical examples for timezone, locale, and other commonly reconfigured packages.
+Description: Learn how to use dpkg-reconfigure to re-run post-installation configuration for installed packages on Ubuntu, with examples for timezone, locale, and other commonly reconfigured packages.
 
 ---
 

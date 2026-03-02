@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Performance Tuning, Linux, System Administration, CPU
 
-Description: Learn how to monitor context switches on Ubuntu using vmstat, pidstat, and perf, understand voluntary versus involuntary switches, and reduce excessive context switching to improve application performance.
+Description: Learn how to monitor context switches on Ubuntu using vmstat, pidstat, and perf, understand voluntary vs involuntary switches, and reduce excessive context switching for better performance.
 
 ---
 

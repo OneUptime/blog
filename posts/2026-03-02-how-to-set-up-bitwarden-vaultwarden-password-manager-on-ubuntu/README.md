@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Vaultwarden, Security, Self-Hosted, Password Manager
 
-Description: Install Vaultwarden (the self-hosted Bitwarden-compatible server) on Ubuntu using Docker, configure HTTPS with Nginx, and connect Bitwarden browser extensions and mobile apps to your self-hosted instance.
+Description: Install Vaultwarden (a self-hosted Bitwarden-compatible server) on Ubuntu using Docker, configure HTTPS with Nginx, and connect Bitwarden browser extensions and mobile apps to your instance.
 
 ---
 

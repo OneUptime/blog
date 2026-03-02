@@ -444,7 +444,6 @@
 - Apache Superset
 - Apache TinkerPop
 - Apache Traffic Server
-- Apache Zookeeper
 - Apache-Camel
 - API
 - API Abuse
@@ -1083,7 +1082,6 @@
 - azure-keyvault-secrets
 - azure-mgmt
 - azure-servicebus
-- azure-storage-blob
 - Azure.Messaging.ServiceBus
 - Azure.Storage.Blobs
 - AzureRM
@@ -1560,7 +1558,6 @@
 - Cache Tags
 - Cache-Aside
 - Cache-Aside Pattern
-- Cache-Control
 - Caching
 - Caching Patterns
 - Cacti
@@ -2278,7 +2275,6 @@
 - Conditional Deployments
 - Conditional Display
 - Conditional Forwarding
-- Conditional Jobs
 - Conditional Logic
 - Conditional Resources
 - Conditional Writes
@@ -4839,7 +4835,6 @@
 - Git Objects
 - Git Optimization
 - Git Staging
-- Git Submodules
 - Git Subtrees
 - Git Tags
 - Git Webhooks
@@ -5347,7 +5342,6 @@
 - HTTP APIs
 - HTTP Backend
 - HTTP Cache
-- HTTP Caching
 - HTTP Check
 - HTTP Client
 - HTTP Data Collector API
@@ -7707,7 +7701,6 @@
 - Object Hold
 - Object Mapping
 - Object Oriented
-- Object Pool
 - Object Pooling
 - Object Replication
 - Object Safety
@@ -7750,7 +7743,6 @@
 - Offline-First
 - Offset
 - Offset Management
-- Offset Tracking
 - Offset-Based Consumption
 - OffsetOutOfRangeException
 - Offsets
@@ -8256,7 +8248,6 @@
 - pg_repack
 - pg_resetwal
 - pg_restore
-- pg_search
 - pg_stat_statements
 - pg_trgm
 - PGAdapter
@@ -8327,7 +8318,6 @@
 - Pipeline Health
 - Pipeline History
 - Pipeline Isolation
-- Pipeline Logic
 - Pipeline Monitoring
 - Pipeline Optimization
 - Pipeline Orchestration
@@ -8989,7 +8979,6 @@
 - Queue Architecture
 - Queue Chaining
 - Queue Configuration
-- Queue Depth
 - Queue Groups
 - Queue Management
 - Queue Mirroring
@@ -9975,7 +9964,6 @@
 - Security Standards
 - Security Testing
 - security tools
-- Security Updates
 - securityContext
 - sed
 - Seedbox
@@ -10947,7 +10935,6 @@
 - Supply Chain Security
 - Supply Chain Twin
 - Supply-Chain
-- SupplyChain
 - Support
 - Suppression
 - Surge Upgrades
@@ -10986,7 +10973,6 @@
 - Sync Windows
 - sync.Map
 - sync.Once
-- sync.Pool
 - sync/atomic
 - Synchronization
 - Synchronize
@@ -11779,7 +11765,6 @@
 - Umami
 - Umbrella Charts
 - Unassigned Shards
-- Unattended Upgrades
 - Unauthorized
 - Unauthorized Access
 - Unbound

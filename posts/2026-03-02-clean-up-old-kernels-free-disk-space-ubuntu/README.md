@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Kernel, System Administration, Disk Cleanup, APT
 
-Description: Learn how to safely remove old kernel versions on Ubuntu to free disk space on /boot, including manual removal with apt, using purge-old-kernels, and automating cleanup to prevent /boot from filling up.
+Description: Learn how to safely remove old kernel versions on Ubuntu to free disk space on /boot, including manual removal with apt, using purge-old-kernels, and automating cleanup.
 
 ---
 

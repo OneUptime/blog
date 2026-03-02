@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, TCP Wrappers, Security, Access Control, Networking
 
-Description: Guide to configuring TCP Wrappers on Ubuntu using /etc/hosts.allow and /etc/hosts.deny for network access control, including syntax, precedence rules, logging, and integration with modern security tools.
+Description: Guide to configuring TCP Wrappers on Ubuntu using /etc/hosts.allow and /etc/hosts.deny for network access control, including syntax, precedence rules, logging, and modern security integration.
 
 ---
 
