@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elixir, Supervisors, OTP, Fault Tolerance, Concurrency
+Tags: Elixir, Supervisor, OTP, Fault Tolerance, Concurrency
 
 Description: Learn how to use Supervisors in Elixir for building fault-tolerant applications. This guide covers supervision trees, strategies, and recovery patterns.
 

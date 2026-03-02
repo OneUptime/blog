@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Capacity Planning, Traffic Spikes, Scaling, Performance, Auto-scaling, Caching, Rate Limiting, Load Testing, Site Reliability Engineering
+Tags: Capacity Planning, Traffic Spikes, Scaling, Performance, Auto-Scaling, Caching, Rate Limiting, Load Testing, Site Reliability Engineering
 
 Description: A practical guide to preparing your infrastructure for sudden traffic surges through auto-scaling, caching, rate limiting, and proactive load testing.
 

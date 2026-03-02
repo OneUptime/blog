@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Btrfs, Storage, File Systems, Performance
+Tags: Ubuntu, Btrfs, Storage, File System, Performance
 
 Description: Learn how to balance and defragment Btrfs volumes on Ubuntu to optimize storage utilization and maintain file system performance.
 

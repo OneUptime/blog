@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Reserved Instances, Cost Optimization, Compute, FinOps, Cloud Costs, Budgeting
+Tags: Azure, Reserved Instances, Cost Optimization, Compute, FinOps, Cloud Cost, Budgeting
 
 Description: Learn how to use Azure Reserved Instances effectively to reduce compute costs by up to 72% with practical purchasing strategies.
 

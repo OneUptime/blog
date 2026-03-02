@@ -2,7 +2,7 @@
 
 Author: [devneelpatel](https://www.github.com/devneelpatel)
 
-Tags: Incident Management, Postmortems, Templates, Reliability
+Tags: Incident Management, Postmortem, Template, Reliability
 
 Description: Master incident postmortems with these ready-to-use templates. Learn how to structure effective postmortems to improve reliability and prevent future incidents.
 

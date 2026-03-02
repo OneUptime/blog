@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Volumes, Cleanup, Maintenance, Disk Space, DevOps
+Tags: Docker, VOLUME, Cleanup, Maintenance, Disk Space, DevOps
 
 Description: Learn how to find, analyze, and safely remove orphaned Docker volumes that waste disk space on your servers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Variables, Playbooks, DevOps
+Tags: Ansible, Variables, Playbook, DevOps
 
 Description: Learn every way to define variables in Ansible playbooks including inline vars, var files, extra vars, inventory vars, and registered variables.
 

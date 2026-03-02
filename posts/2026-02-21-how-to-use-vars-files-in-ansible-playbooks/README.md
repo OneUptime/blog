@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Variables, Playbooks, Configuration Management
+Tags: Ansible, Variables, Playbook, Configuration Management
 
 Description: A practical guide to using vars_files in Ansible playbooks to organize and load variables from external YAML files at the play level.
 

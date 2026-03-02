@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Microsoft Sentinel, Playbooks, Logic Apps, SOAR, Automated Response, Incident Response
+Tags: Azure, Microsoft Sentinel, Playbook, Logic Apps, SOAR, Automated Response, Incident Response
 
 Description: Learn how to create Microsoft Sentinel playbooks using Azure Logic Apps to automate incident response actions like blocking IPs, disabling accounts, and sending notifications.
 

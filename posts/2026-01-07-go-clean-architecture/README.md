@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Clean Architecture, Hexagonal Architecture, Design Patterns, Testing
+Tags: Go, Clean Architecture, Hexagonal Architecture, Design Pattern, Testing
 
 Description: Implement clean architecture in Go using ports and adapters pattern for testable, maintainable services with clear separation of concerns.
 

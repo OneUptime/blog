@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nomad, Rolling Deployments, CI/CD, Reliability, DevOps
+Tags: Nomad, Rolling Deployment, CI/CD, Reliability, DevOps
 
 Description: Learn how to configure rolling updates in Nomad with update stanzas, health checks, and canary deployments for safe releases.
 

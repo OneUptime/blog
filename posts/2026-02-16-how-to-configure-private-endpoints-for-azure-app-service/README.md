@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, App Service, Private Endpoints, Networking, Security, Private Link
+Tags: Azure, App Service, Private Endpoint, Networking, Security, Private Link
 
 Description: Learn how to configure private endpoints for Azure App Service to restrict inbound access to your VNet and eliminate public internet exposure.
 

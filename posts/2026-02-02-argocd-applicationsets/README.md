@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, Kubernetes, GitOps, ApplicationSets, DevOps, Continuous Delivery
+Tags: ArgoCD, Kubernetes, GitOps, ApplicationSet, DevOps, Continuous Delivery
 
 Description: Learn how to use ArgoCD ApplicationSets to manage multiple applications from a single definition with generators and templates.
 

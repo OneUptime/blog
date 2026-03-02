@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, Memory Leaks, Profiling, Heap Snapshots, Chrome DevTools, Performance, Debugging
+Tags: Node.js, Memory Leak, Profiling, Heap Snapshots, Chrome DevTools, Performance, Debugging
 
 Description: A hands-on guide to profiling Node.js applications for memory leaks using heap snapshots, allocation timelines, and systematic comparison techniques.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Debugging, Node.js, Socket.IO, Real-time, Troubleshooting
+Tags: WebSocket, Debugging, Node.js, Socket.IO, Real-Time, Troubleshooting
 
 Description: Diagnose and fix common issues where WebSocket disconnect events fail to trigger, including network failures, improper cleanup, and missing heartbeat configurations.
 

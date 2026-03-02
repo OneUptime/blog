@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Outputs
+Tags: Terraform, Kubernetes, Output
 
 Description: Master Terraform output values to export Kubernetes cluster endpoints, service URLs, and connection information for use in other modules and external tools.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Temporal, Kubernetes, Workflows, Serverless, Orchestration
+Tags: Temporal, Kubernetes, Workflow, Serverless, Orchestration
 
 Description: Deploy Temporal workflow engine on Kubernetes to build durable, fault-tolerant serverless workflows with automatic retries, timeouts, and long-running process orchestration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Platform Engineering, Developer Experience, DevOps, IDP
+Tags: Platform Engineering, Developer Experience, DevOps, IdP
 
 Description: Golden Paths are opinionated, well-supported workflows that help developers ship faster while maintaining consistency across your organization.
 

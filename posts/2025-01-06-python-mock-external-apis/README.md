@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Testing, Mocking, pytest, HTTP, APIs, responses, Integration Tests
+Tags: Python, Testing, Mocking, pytest, HTTP, API, Response, Integration Tests
 
 Description: Learn how to mock external API calls in Python tests using the responses library and pytest. This guide covers eliminating flaky tests, recording real responses, and testing error scenarios.
 

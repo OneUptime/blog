@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, Performance, ethtool, Ring Buffers
+Tags: Ubuntu, Networking, Performance, ethtool, Ring Buffer
 
 Description: Learn how to tune network ring buffer sizes on Ubuntu to reduce packet drops under high traffic load and optimize NIC performance for your workload.
 

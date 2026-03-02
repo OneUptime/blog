@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, open webui, chatgpt, ollama, llm, self-hosted, ai, docker compose
+Tags: Docker, open webui, chatgpt, Ollama, LLM, Self-Hosted, AI, Docker Compose
 
 Description: Set up Open WebUI in Docker as a self-hosted ChatGPT alternative with Ollama integration for running local language models privately.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Terraform, Infrastructure, Data Sources
+Tags: AWS, Terraform, Infrastructure, Data Source
 
 Description: Learn how to use Terraform data sources to look up and reference existing AWS resources like VPCs, subnets, AMIs, and secrets without managing them in your state.
 

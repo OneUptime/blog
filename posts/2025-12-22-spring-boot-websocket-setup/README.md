@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, WebSocket, STOMP, Real-time, Messaging
+Tags: Java, Spring Boot, WebSocket, STOMP, Real-Time, Messaging
 
 Description: Learn how to set up WebSocket connections in Spring Boot for real-time bidirectional communication.
 

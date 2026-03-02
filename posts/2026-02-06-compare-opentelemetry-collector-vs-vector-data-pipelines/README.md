@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Vector, Data Pipelines, Observability, Telemetry Processing
+Tags: OpenTelemetry, Vector, Data Pipeline, Observability, Telemetry Processing
 
 Description: A practical comparison of OpenTelemetry Collector and Vector for building observability data pipelines, covering configuration, transforms, and routing.
 

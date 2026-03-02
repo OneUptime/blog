@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, BuildKit, Caching, Package Managers, DevOps, Optimization
+Tags: Docker, Dockerfile, BuildKit, Caching, Package Manager, DevOps, Optimization
 
 Description: Speed up Docker builds by caching package manager downloads with RUN --mount=type=cache for apt, pip, npm, and more.
 

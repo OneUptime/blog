@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, ChromaDB, Vector Database, AI, Embeddings, Machine Learning
+Tags: Docker, ChromaDB, Vector Database, AI, Embedding, Machine Learning
 
 Description: Run ChromaDB in Docker for storing and querying embeddings with practical examples for RAG and semantic search
 

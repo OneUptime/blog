@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Airflow, Sensors, Data Pipelines, Workflow Orchestration, Python, ETL, Data Engineering
+Tags: Apache Airflow, Sensors, Data Pipeline, Workflow Orchestration, Python, ETL, Data Engineering
 
 Description: A comprehensive guide to implementing Airflow sensors for building event-driven data pipelines that wait for external conditions before proceeding.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployments, Max Unavailable, Availability
+Tags: Kubernetes, Deployment, Max Unavailable, Availability
 
 Description: Learn to build max unavailable configuration for maintaining service availability during updates.
 

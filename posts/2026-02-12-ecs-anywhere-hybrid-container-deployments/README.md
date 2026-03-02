@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, ECS Anywhere, Hybrid Cloud, On-Premises, Containers
+Tags: AWS, ECS, ECS Anywhere, Hybrid Cloud, On-Premise, Container
 
 Description: Deploy and manage containers on your on-premises servers and edge locations using Amazon ECS Anywhere with the same ECS APIs and tooling
 

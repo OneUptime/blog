@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, langflow, llm, langchain, visual pipelines, ai, docker compose, workflow
+Tags: Docker, langflow, LLM, LangChain, visual pipelines, AI, Docker Compose, Workflow
 
 Description: Deploy LangFlow in Docker to build and test LangChain-based LLM pipelines through an interactive visual flow editor with drag-and-drop components.
 

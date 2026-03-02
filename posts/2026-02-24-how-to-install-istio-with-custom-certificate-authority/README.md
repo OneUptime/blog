@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, TLS, Security, Service Mesh, PKI
+Tags: Istio, Certificate, TLS, Security, Service Mesh, PKI
 
 Description: How to configure Istio with your own Certificate Authority for mTLS instead of using the default self-signed CA, including integration with external PKI systems.
 

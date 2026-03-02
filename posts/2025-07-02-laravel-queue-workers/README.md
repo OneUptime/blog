@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PHP, Laravel, Queue, Workers, Jobs, Redis
+Tags: PHP, Laravel, Queue, Worker, Jobs, Redis
 
 Description: A comprehensive guide to implementing queue workers in Laravel.
 

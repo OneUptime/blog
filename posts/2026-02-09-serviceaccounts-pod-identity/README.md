@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ServiceAccounts, Security
+Tags: Kubernetes, ServiceAccount, Security
 
 Description: Learn how to create and configure Kubernetes ServiceAccounts to establish secure pod identities for API server authentication and workload authorization.
 

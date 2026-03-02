@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Cluster Autoscaler, Cloud Providers
+Tags: Kubernetes, Cluster Autoscaler, Cloud Provider
 
 Description: Configure Cluster Autoscaler node group auto-discovery to automatically detect and manage cloud provider autoscaling groups without manual configuration.
 

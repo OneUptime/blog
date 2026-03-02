@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Controllers, Operators, Go
+Tags: Kubernetes, Controller, Operator, Go
 
 Description: Build custom Kubernetes controllers using controller-runtime to manage resources with reconciliation loops and custom business logic.
 

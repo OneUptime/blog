@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elixir, Ecto, Database, Migrations, PostgreSQL
+Tags: Elixir, Ecto, Database, Migration, PostgreSQL
 
 Description: Learn how to create, run, and manage database migrations in Elixir applications using Ecto, including rollbacks, data migrations, and production deployment strategies.
 

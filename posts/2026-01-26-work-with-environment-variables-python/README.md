@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Environment Variables, Configuration, Security, DevOps, Best Practices
+Tags: Python, Environment Variable, Configuration, Security, DevOps, Best Practices
 
 Description: Learn how to read, set, and manage environment variables in Python applications. This guide covers os.environ, python-dotenv, validation strategies, and security best practices.
 

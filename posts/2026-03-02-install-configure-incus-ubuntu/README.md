@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Incus, Containers, Virtualization, System Administration
+Tags: Ubuntu, Incus, Container, Virtualization, System Administration
 
 Description: Install and configure Incus on Ubuntu for system container and virtual machine management, the community fork of LXD maintained after Canonical's project changes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kustomize, Kubernetes, Configuration, Overlays, Deployment
+Tags: Kustomize, Kubernetes, Configuration, Overlay, Deployment
 
 Description: Learn how to use Kustomize for managing Kubernetes configurations with bases, overlays, and patches without templates.
 

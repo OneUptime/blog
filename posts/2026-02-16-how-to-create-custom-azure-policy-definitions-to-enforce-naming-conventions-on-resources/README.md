@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Policy, Naming Conventions, Governance, Infrastructure as Code, Compliance, Resource Management
+Tags: Azure, Azure Policy, Naming Convention, Governance, Infrastructure as Code, Compliance, Resource Management
 
 Description: Step-by-step instructions for creating custom Azure Policy definitions that enforce consistent naming conventions across your Azure resources.
 

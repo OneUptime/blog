@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Network Segmentation, Security, VLANs, Firewall, Kubernetes, DevOps
+Tags: Network Segmentation, Security, VLAN, Firewall, Kubernetes, DevOps
 
 Description: A practical guide to implementing network segmentation for security and compliance, covering VLAN configuration, firewall rules, Kubernetes network policies, and zero-trust microsegmentation.
 

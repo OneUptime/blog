@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Embeddings, Vector Search, RAG, Performance Monitoring, LLM
+Tags: OpenTelemetry, Embedding, Vector Search, RAG, Performance Monitoring, LLM
 
 Description: A hands-on guide to instrumenting embedding generation and vector search operations with OpenTelemetry to identify latency bottlenecks in RAG pipelines.
 

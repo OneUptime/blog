@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Resource Quotas, Capacity Planning, DevOps, Multi-tenancy
+Tags: Kubernetes, Resource Quota, Capacity Planning, DevOps, Multi-Tenancy
 
 Description: Learn how to configure Kubernetes ResourceQuotas and LimitRanges to control resource consumption, enforce fair usage across namespaces, and prevent resource exhaustion in multi-tenant clusters.
 

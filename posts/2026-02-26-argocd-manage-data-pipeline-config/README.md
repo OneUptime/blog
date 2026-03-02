@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Data Pipelines, Data Engineering
+Tags: ArgoCD, GitOps, Kubernetes, Data Pipeline, Data Engineering
 
 Description: Learn how to use ArgoCD to manage data pipeline configurations across multiple tools and environments with GitOps for consistent, auditable data infrastructure.
 

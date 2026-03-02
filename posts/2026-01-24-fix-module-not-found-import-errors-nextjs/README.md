@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Next.js, JavaScript, TypeScript, Debugging, Imports, Modules, Web Development
+Tags: Next.js, JavaScript, TypeScript, Debugging, Import, Modules, Web Development
 
 Description: A comprehensive troubleshooting guide for resolving module not found and import errors in Next.js applications.
 

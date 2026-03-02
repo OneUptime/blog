@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Tags, Playbooks, DevOps
+Tags: Ansible, Tags, Playbook, DevOps
 
 Description: Learn how to use the ansible-playbook --list-tags flag to discover available tags in a playbook and selectively run specific parts of your automation.
 

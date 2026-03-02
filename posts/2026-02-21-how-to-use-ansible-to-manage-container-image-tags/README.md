@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Container Images, Tags, DevOps
+Tags: Ansible, Docker, Container Image, Tags, DevOps
 
 Description: Manage Docker container image tagging strategies with Ansible including semantic versioning, git-based tags, and promotion workflows.
 

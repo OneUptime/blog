@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Plugins, Storage Drivers, Network Plugins, Volume Plugins, DevOps
+Tags: Docker, Docker Plugins, Storage Driver, Network Plugins, Volume Plugins, DevOps
 
 Description: Extend Docker with storage and network plugins to integrate cloud volumes, distributed filesystems, and advanced networking.
 

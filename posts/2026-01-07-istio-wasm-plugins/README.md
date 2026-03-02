@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WASM, WebAssembly, Plugins, Service Mesh, Extensibility
+Tags: Istio, WASM, WebAssembly, Plugin, Service Mesh, Extensibility
 
 Description: A guide to building and deploying WebAssembly plugins for Istio.
 

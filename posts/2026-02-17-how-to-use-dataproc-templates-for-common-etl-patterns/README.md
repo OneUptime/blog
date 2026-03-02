@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Dataproc, ETL, Spark, Templates
+Tags: GCP, Dataproc, ETL, Spark, Template
 
 Description: Use Dataproc Templates to quickly deploy pre-built ETL pipelines for common data movement patterns without writing Spark code from scratch.
 

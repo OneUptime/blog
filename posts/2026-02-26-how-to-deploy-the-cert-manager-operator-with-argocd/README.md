@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Cert-Manager, TLS
+Tags: ArgoCD, GitOps, Kubernetes, cert-manager, TLS
 
 Description: Learn how to deploy cert-manager with ArgoCD for automated TLS certificate management, including CRD handling, ClusterIssuers, and Let's Encrypt integration.
 

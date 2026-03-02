@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Prefect, Data Pipelines, Orchestration, Python, ETL, Docker Compose, Automation
+Tags: Docker, Prefect, Data Pipeline, Orchestration, Python, ETL, Docker Compose, Automation
 
 Description: Deploy Prefect in Docker to orchestrate data pipelines, ETL workflows, and scheduled Python tasks with built-in retry and monitoring.
 

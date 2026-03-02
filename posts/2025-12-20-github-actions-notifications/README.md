@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, CI/CD, Notifications, Slack, Teams, DevOps, Monitoring
+Tags: GitHub Actions, CI/CD, Notifications, Slack, Team, DevOps, Monitoring
 
 Description: Learn how to configure notifications in GitHub Actions for Slack, Microsoft Teams, email, and custom webhooks to keep your team informed about build and deployment status.
 

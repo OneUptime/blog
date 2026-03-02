@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CronJobs, Monitoring, Observability
+Tags: Kubernetes, CronJob, Monitoring, Observability
 
 Description: Learn how to monitor Kubernetes CronJobs for missed schedules and failed runs using metrics, events, and custom alerting to ensure critical batch jobs execute reliably.
 

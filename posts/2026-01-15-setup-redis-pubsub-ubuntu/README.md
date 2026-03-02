@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Redis, Pub/Sub, Messaging, Real-time, Tutorial
+Tags: Ubuntu, Redis, Pub/Sub, Messaging, Real-Time, Tutorial
 
 Description: Complete guide to using Redis publish/subscribe messaging on Ubuntu.
 

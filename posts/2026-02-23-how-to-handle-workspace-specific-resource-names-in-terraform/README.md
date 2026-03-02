@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, Resource Naming, Infrastructure as Code, Best Practices
+Tags: Terraform, Workspace, Resource Naming, Infrastructure as Code, Best Practices
 
 Description: Learn practical patterns for generating unique, workspace-aware resource names in Terraform that work within cloud provider naming constraints and stay readable across environments.
 

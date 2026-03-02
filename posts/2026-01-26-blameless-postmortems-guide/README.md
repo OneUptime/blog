@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Incident Management, Postmortems, Blameless Culture, Site Reliability Engineering, Team Leadership
+Tags: Incident Management, Postmortem, Blameless Culture, Site Reliability Engineering, Team Leadership
 
 Description: Learn how to conduct effective blameless postmortems that help your team learn from incidents without fear.
 

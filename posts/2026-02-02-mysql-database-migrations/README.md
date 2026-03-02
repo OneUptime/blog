@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MySQL, Database, Migrations, Schema Management, DevOps, CI/CD
+Tags: MySQL, Database, Migration, Schema Management, DevOps, CI/CD
 
 Description: Learn how to handle database migrations in MySQL using tools like Flyway, Liquibase, and native SQL scripts.
 

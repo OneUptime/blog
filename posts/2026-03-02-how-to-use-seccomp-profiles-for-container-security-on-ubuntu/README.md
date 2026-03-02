@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Docker, Containers, Linux
+Tags: Ubuntu, Security, Docker, Container, Linux
 
 Description: Learn how to use seccomp profiles to restrict system calls available to containers on Ubuntu, reducing your attack surface and hardening container workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Capped Collections, Logging, Buffers, Performance
+Tags: MongoDB, Capped Collections, Logging, Buffer, Performance
 
 Description: Learn how to use MongoDB capped collections to build efficient log buffers, event streams, and circular queues with automatic size management.
 

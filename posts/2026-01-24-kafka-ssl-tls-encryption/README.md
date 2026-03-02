@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kafka, Apache Kafka, SSL, TLS, Security, Encryption, Certificates, DevOps
+Tags: Kafka, Apache Kafka, SSL, TLS, Security, Encryption, Certificate, DevOps
 
 Description: Learn how to configure SSL/TLS encryption for Apache Kafka to secure data in transit between clients and brokers with step-by-step certificate generation and configuration.
 

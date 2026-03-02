@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, meta, Playbook Control, Handlers, DevOps
+Tags: Ansible, Meta, Playbook Control, Handlers, DevOps
 
 Description: Control Ansible playbook execution flow with the meta module for flushing handlers, clearing facts, and managing host state.
 

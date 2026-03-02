@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, apt, Ubuntu, Repositories
+Tags: Ansible, APT, Ubuntu, Repositories
 
 Description: A practical guide to adding, removing, and managing APT repositories using the Ansible apt_repository module on Debian and Ubuntu.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Compute Engine, Custom Images, Golden Image, DevOps
+Tags: GCP, Compute Engine, Custom Image, Golden Image, DevOps
 
 Description: A practical guide to creating golden images from existing Compute Engine VMs using custom images, including preparation steps and best practices for image management.
 

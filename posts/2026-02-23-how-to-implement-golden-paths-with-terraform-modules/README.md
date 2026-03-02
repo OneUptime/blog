@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Golden Paths, Platform Engineering, Modules, DevOps
+Tags: Terraform, Golden Path, Platform Engineering, Modules, DevOps
 
 Description: Learn how to implement golden paths using Terraform modules that provide opinionated, production-ready infrastructure patterns teams can adopt to accelerate delivery while maintaining best practices.
 

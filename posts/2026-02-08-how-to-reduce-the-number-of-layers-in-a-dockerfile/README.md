@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, Layers, Image Optimization, Build Performance, DevOps
+Tags: Docker, Dockerfile, Layer, Image Optimization, Build Performance, DevOps
 
 Description: Practical techniques for reducing Docker image layers to improve build performance, reduce image size, and simplify debugging.
 

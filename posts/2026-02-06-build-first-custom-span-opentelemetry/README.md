@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Spans, Custom Instrumentation, Tracing, Tutorial
+Tags: OpenTelemetry, Span, Custom Instrumentation, Tracing, Tutorial
 
 Description: A practical guide to creating your first custom span in OpenTelemetry with real code examples across multiple languages.
 

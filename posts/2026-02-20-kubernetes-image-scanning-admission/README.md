@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Container Scanning, Admission Controllers, Vulnerability
+Tags: Kubernetes, Security, Container Scanning, Admission Controller, Vulnerability
 
 Description: Learn how to use Kubernetes admission controllers to block vulnerable container images from being deployed to your cluster.
 

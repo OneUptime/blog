@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, RBAC, Security, ServiceAccounts, Authorization
+Tags: Kubernetes, RBAC, Security, ServiceAccount, Authorization
 
 Description: Learn how to configure Role-Based Access Control for ServiceAccounts in Kubernetes, including creating roles, role bindings, and implementing least-privilege access for your workloads.
 

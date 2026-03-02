@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NATS, Messaging, JetStream, Consumers, Go, Node.js, Distributed Systems
+Tags: NATS, Messaging, JetStream, Consumer, Go, Node.js, Distributed Systems
 
 Description: Learn how to build robust NATS consumers using JetStream. Covers push and pull consumers, delivery policies, acknowledgment strategies, error handling, and production best practices.
 

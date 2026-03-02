@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Kafka, Kafka Connect, Connectors, Data Integration, Error Handling, DevOps, Monitoring
+Tags: Apache Kafka, Kafka Connect, Connector, Data Integration, Error Handling, DevOps, Monitoring
 
 Description: Learn strategies for handling Kafka Connect connector failures, including error tolerance, dead letter queues, monitoring, and automatic recovery.
 

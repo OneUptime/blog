@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, ConfigMaps, Configuration Management, Infrastructure as Code
+Tags: Terraform, Kubernetes, ConfigMap, Configuration Management, Infrastructure as Code
 
 Description: Learn how to create and manage Kubernetes ConfigMaps with Terraform for externalizing application configuration from container images.
 

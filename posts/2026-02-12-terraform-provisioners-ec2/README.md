@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Terraform, EC2, Provisioners, Infrastructure as Code
+Tags: AWS, Terraform, EC2, Provisioner, Infrastructure as Code
 
 Description: A practical guide to Terraform provisioners for EC2 instances, covering remote-exec, local-exec, and file provisioners, plus better alternatives for configuration management.
 

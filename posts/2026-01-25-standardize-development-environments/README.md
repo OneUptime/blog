@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Developer Experience, Development Environments, DevOps, Standardization, Tooling
+Tags: Developer Experience, Development Environment, DevOps, Standardization, Tooling
 
 Description: Learn how to create consistent development environments across your team using configuration files, automation, and containerization to eliminate environment-related issues.
 

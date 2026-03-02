@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Custom Types, Data Modeling, Composite Types, Enums, Domains
+Tags: PostgreSQL, Custom Types, Data Modeling, Composite Types, Enums, Domain
 
 Description: Learn how to create custom data types in PostgreSQL including enums, composite types, domains with constraints, and range types for better data modeling and validation.
 

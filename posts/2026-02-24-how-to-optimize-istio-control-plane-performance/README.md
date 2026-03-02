@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Control Plane, istiod, Performance, Optimization
+Tags: Istio, Control Plane, Istiod, Performance, Optimization
 
 Description: How to tune the Istio control plane for better performance, faster configuration delivery, and lower resource usage.
 

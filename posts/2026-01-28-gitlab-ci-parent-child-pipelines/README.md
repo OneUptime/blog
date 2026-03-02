@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, CI/CD, Pipelines, Automation, DevOps
+Tags: GitLab CI, CI/CD, Pipeline, Automation, DevOps
 
 Description: Learn how to structure GitLab CI parent-child pipelines for modular builds, parallel stages, and reusable pipeline templates.
 

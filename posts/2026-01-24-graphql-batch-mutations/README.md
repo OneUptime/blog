@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GraphQL, Mutations, Batch Operations, Performance, DataLoader, Transactions
+Tags: GraphQL, Mutation, Batch Operations, Performance, DataLoader, Transactions
 
 Description: Learn how to implement efficient batch mutations in GraphQL for bulk create, update, and delete operations while maintaining data consistency and performance.
 

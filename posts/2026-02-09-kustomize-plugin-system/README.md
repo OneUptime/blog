@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kustomize, Plugins
+Tags: Kubernetes, Kustomize, Plugin
 
 Description: Master the Kustomize plugin system to create custom generators and transformers that extend Kustomize capabilities for organization-specific configuration requirements.
 

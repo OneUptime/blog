@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: FinOps, Cloud Costs, Cost Optimization, Culture, Cloud Finance, DevOps, Engineering
+Tags: FinOps, Cloud Cost, Cost Optimization, Culture, Cloud Finance, DevOps, Engineering
 
 Description: Learn how to implement FinOps culture for cloud cost optimization, including team structure, processes, and collaboration between finance and engineering teams.
 

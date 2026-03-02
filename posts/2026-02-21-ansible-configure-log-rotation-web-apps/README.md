@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Log Rotation, Logrotate, Monitoring, DevOps
+Tags: Ansible, Log Rotation, logrotate, Monitoring, DevOps
 
 Description: Configure log rotation for web applications using Ansible with logrotate, custom rotation policies, and disk space management.
 

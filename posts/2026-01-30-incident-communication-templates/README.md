@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: SRE, IncidentManagement, Communication, Templates
+Tags: SRE, IncidentManagement, Communication, Template
 
 Description: Learn how to build effective incident communication templates that keep stakeholders informed during outages and service disruptions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OTA Updates, Firmware, Edge Computing, IoT, Security, DevOps, Deployment
+Tags: OTA Update, Firmware, Edge Computing, IoT, Security, DevOps, Deployment
 
 Description: Learn how to implement secure over-the-air (OTA) updates for edge devices. Cover update architectures, delta updates, rollback mechanisms, staged rollouts, and security best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Configuration, Environments
+Tags: Helm, Kubernetes, DevOps, Configuration, Environment
 
 Description: Master Helm values files to manage dev, staging, and production configurations with values file layering, --set overrides, and secrets management.
 

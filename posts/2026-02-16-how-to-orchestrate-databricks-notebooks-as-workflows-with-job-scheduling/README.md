@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Databricks, Workflows, Job Scheduling, Notebook Orchestration, Data Pipelines, Azure
+Tags: Azure Databricks, Workflow, Job Scheduling, Notebook Orchestration, Data Pipeline, Azure
 
 Description: Learn how to orchestrate Databricks notebooks as production workflows using Databricks Jobs with scheduling, dependencies, and error handling.
 

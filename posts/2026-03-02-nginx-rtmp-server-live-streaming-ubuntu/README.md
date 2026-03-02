@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Nginx, Streaming, RTMP, Video
+Tags: Ubuntu, NGINX, Streaming, RTMP, Video
 
 Description: Learn how to install and configure the Nginx RTMP module on Ubuntu to host your own live streaming server with HLS and DASH output.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Budgets, Cost Management, Automation
+Tags: AWS, Budget, Cost Management, Automation
 
 Description: Learn how to set up AWS Budget Actions to automatically respond when spending exceeds thresholds, including IAM policy changes and service control policies.
 

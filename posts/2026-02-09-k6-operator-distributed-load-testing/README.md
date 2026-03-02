@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, K6, Load Testing, Performance Testing, Distributed Testing
+Tags: Kubernetes, k6, Load Testing, Performance Testing, Distributed Testing
 
 Description: Learn how to deploy and configure the K6 operator for running distributed load tests against Kubernetes services, scaling test execution across multiple pods for high-throughput testing.
 

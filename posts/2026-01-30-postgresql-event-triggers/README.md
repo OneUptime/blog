@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: PostgreSQL, Triggers, DDL, Database
+Tags: PostgreSQL, Trigger, DDL, Database
 
 Description: Learn how to use PostgreSQL event triggers for tracking DDL changes and schema management.
 

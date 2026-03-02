@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenTofu, Terraform, Providers, Infrastructure as Code, Configuration
+Tags: OpenTofu, Terraform, Provider, Infrastructure as Code, Configuration
 
 Description: A comprehensive guide to configuring providers in OpenTofu, covering provider blocks, authentication, version constraints, aliases, and the OpenTofu registry.
 

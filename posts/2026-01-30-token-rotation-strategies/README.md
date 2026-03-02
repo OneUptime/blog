@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Security, Tokens, JWT, Refresh Tokens
+Tags: Security, Token, JWT, Refresh Tokens
 
 Description: Learn to build token rotation strategies for secure session management with refresh tokens.
 

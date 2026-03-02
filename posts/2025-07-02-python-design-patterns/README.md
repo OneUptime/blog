@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Design Patterns, OOP, Software Architecture, Factory, Singleton
+Tags: Python, Design Pattern, OOP, Software Architecture, Factory, Singleton
 
 Description: A practical guide to implementing classic design patterns in Python. Learn creational, structural, and behavioral patterns with idiomatic Python examples.
 

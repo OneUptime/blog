@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Notification Hubs, Push Notifications, Mobile Development, Cross-Platform
+Tags: Azure, Notification Hub, Push Notifications, Mobile Development, Cross-Platform
 
 Description: Learn how to set up Azure Notification Hubs to deliver cross-platform push notifications to iOS, Android, and Windows mobile apps from a single backend.
 

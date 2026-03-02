@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, SRE, Postmortems, Incident Management, Google Cloud, DevOps
+Tags: GCP, SRE, Postmortem, Incident Management, Google Cloud, DevOps
 
 Description: A practical guide to running blameless postmortems for Google Cloud incidents using structured templates that focus on learning and system improvement.
 

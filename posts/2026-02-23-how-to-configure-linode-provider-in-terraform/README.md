@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Linode, Akamai Cloud, Infrastructure as Code
+Tags: Terraform, Provider, Linode, Akamai Cloud, Infrastructure as Code
 
 Description: A step-by-step guide to configuring the Linode (Akamai Cloud) provider in Terraform for managing instances, databases, Kubernetes, and networking.
 

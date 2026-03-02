@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Reqwest, HTTP Client, REST API, Async Rust, Web Development, Networking
+Tags: Rust, reqwest, HTTP Client, REST API, Async Rust, Web Development, Networking
 
 Description: A practical guide to building HTTP clients in Rust using the reqwest library, covering GET, POST, headers, JSON handling, and error management.
 

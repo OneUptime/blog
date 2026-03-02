@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, React, React Router, SPA, Frontend, DevOps
+Tags: NGINX, React, React Router, SPA, Frontend, DevOps
 
 Description: Learn how to configure Nginx to properly serve React applications with client-side routing, including handling direct URL access, 404 pages, API proxying, and production deployment strategies.
 

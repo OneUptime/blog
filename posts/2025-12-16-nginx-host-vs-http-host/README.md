@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, Web Server, Configuration, Proxy, HTTP Headers
+Tags: NGINX, Web Server, Configuration, Proxy, HTTP Headers
 
 Description: Learn the critical differences between $host and $http_host variables in Nginx, when to use each one, and how they affect proxy configurations, SSL termination, and application routing.
 

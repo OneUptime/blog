@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, File Upload, Configuration, DevOps, Troubleshooting
+Tags: NGINX, File Upload, Configuration, DevOps, Troubleshooting
 
 Description: Learn how to configure client_max_body_size in Nginx to allow larger file uploads, including context-specific settings, timeout adjustments, and backend coordination.
 

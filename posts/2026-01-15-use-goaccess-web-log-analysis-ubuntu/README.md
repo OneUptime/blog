@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GoAccess, Log Analysis, Ubuntu, Nginx, Apache, Web Server, Monitoring, DevOps, Linux
+Tags: GoAccess, Log Analysis, Ubuntu, NGINX, Apache, Web Server, Monitoring, DevOps, Linux
 
 Description: A comprehensive guide to installing and using GoAccess for real-time web log analysis on Ubuntu, covering terminal dashboards, HTML reports, custom log formats, and GeoIP integration.
 

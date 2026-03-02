@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Tasks, Python, Task Queues, Serverless
+Tags: GCP, Cloud Tasks, Python, Task Queue, Serverless
 
 Description: Learn how to create and manage Cloud Tasks queues using the google-cloud-tasks Python library for reliable task scheduling and execution on GCP.
 

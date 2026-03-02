@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, WebSocket, Troubleshooting, Real-time, DevOps
+Tags: NGINX, WebSocket, Troubleshooting, Real-Time, DevOps
 
 Description: Learn how to diagnose and fix WebSocket 400 Bad Request errors when using Nginx as a reverse proxy, including proper upgrade headers, timeouts, and connection handling.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, IoT, Command Queue, Device Control, Firmware Updates, Streams, Reliable Messaging
+Tags: Redis, IoT, Command Queue, Device Control, Firmware Update, Streams, Reliable Messaging
 
 Description: A comprehensive guide to building command queues for IoT devices with Redis, covering device control, firmware updates, command acknowledgment, and reliable delivery patterns.
 

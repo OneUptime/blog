@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CDKTF, Stacks, Infrastructure as Code, Deployment
+Tags: Terraform, CDKTF, Stack, Infrastructure as Code, Deployment
 
 Description: Learn how to organize your CDKTF infrastructure into stacks as independent deployment units, enabling modular and manageable infrastructure deployments.
 

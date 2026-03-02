@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, Deployment, Environments, CI/CD, DevOps, Staging, Production
+Tags: GitHub Actions, Deployment, Environment, CI/CD, DevOps, Staging, Production
 
 Description: Learn how to configure GitHub Actions for multi-environment deployments with proper approval gates, environment-specific secrets, and promotion workflows from development through production.
 

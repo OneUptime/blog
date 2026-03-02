@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Parallel Execution, Forks, Scaling
+Tags: Ansible, Parallel Execution, Fork, Scaling
 
 Description: Learn how to run Ansible commands across multiple hosts in parallel using forks, serial, async, and free strategy.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, String Manipulation, Jinja2, Automation
+Tags: Ansible, Filter, String Manipulation, Jinja2, Automation
 
 Description: Learn how to use the split filter in Ansible to break strings into lists for parsing command output, CSV data, and configuration values.
 

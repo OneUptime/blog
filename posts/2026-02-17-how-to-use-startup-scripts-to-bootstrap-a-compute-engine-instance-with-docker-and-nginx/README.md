@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Compute Engine, Startup Scripts, Docker, Nginx
+Tags: GCP, Compute Engine, Startup Scripts, Docker, NGINX
 
 Description: Learn how to use GCP Compute Engine startup scripts to automatically bootstrap instances with Docker and Nginx, including practical examples and debugging tips.
 

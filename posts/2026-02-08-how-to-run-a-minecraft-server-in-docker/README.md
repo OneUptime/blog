@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Minecraft, Game Server, Java, Containers, Self-Hosted, Gaming, DevOps
+Tags: Docker, Minecraft, Game Server, Java, Container, Self-Hosted, Gaming, DevOps
 
 Description: Set up and run a Minecraft Java Edition dedicated server in Docker with custom world settings, mod support, and automated backups.
 

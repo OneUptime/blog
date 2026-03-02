@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Dynamic Blocks, AWS, IAM, Policy Documents, Infrastructure as Code
+Tags: Terraform, Dynamic Blocks, AWS, IAM, Policy Document, Infrastructure as Code
 
 Description: Learn how to build AWS IAM and resource policy documents dynamically in Terraform using the aws_iam_policy_document data source with dynamic statement blocks.
 

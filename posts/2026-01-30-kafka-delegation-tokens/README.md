@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kafka, Security, Authentication, Tokens
+Tags: Kafka, Security, Authentication, Token
 
 Description: A comprehensive guide to implementing Kafka delegation tokens for secure, scalable authentication in distributed environments.
 

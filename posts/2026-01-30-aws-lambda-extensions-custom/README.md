@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Lambda, Extensions, Serverless
+Tags: AWS, Lambda, Extension, Serverless
 
 Description: A practical guide to building custom Lambda extensions for telemetry collection, secrets caching, and lifecycle hooks in your serverless applications.
 

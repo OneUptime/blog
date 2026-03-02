@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Authentication, Security, JavaScript, Node.js, Real-time
+Tags: WebSocket, Authentication, Security, JavaScript, Node.js, Real-Time
 
 Description: A practical guide to implementing secure authentication for WebSocket connections using tokens, cookies, and custom handshake protocols.
 

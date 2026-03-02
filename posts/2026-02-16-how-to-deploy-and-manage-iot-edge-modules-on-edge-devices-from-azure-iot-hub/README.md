@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure IoT Edge, IoT Hub, Edge Modules, Edge Computing, Containers, Deployment Manifests, IoT
+Tags: Azure IoT Edge, IoT Hub, Edge Modules, Edge Computing, Container, Deployment Manifests, IoT
 
 Description: Learn how to deploy and manage containerized IoT Edge modules on edge devices from Azure IoT Hub, including deployment manifests, layered deployments, and monitoring.
 

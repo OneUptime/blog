@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ceph, Storage, Quotas, Security, Multi-tenancy, Cloud Native
+Tags: Ceph, Storage, Quota, Security, Multi-Tenancy, Cloud Native
 
 Description: Learn how to configure storage quotas and manage users in Ceph for multi-tenant environments.
 

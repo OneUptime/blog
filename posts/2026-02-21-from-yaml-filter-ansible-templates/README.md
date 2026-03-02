@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, YAML
+Tags: Ansible, Jinja2, Filter, YAML
 
 Description: Learn how to use the from_yaml filter in Ansible to parse YAML strings into native data structures for dynamic configuration management.
 

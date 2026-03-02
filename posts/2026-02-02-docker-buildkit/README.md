@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, BuildKit, Containers, DevOps, CI/CD, Multi-platform
+Tags: Docker, BuildKit, Container, DevOps, CI/CD, Multi-Platform
 
 Description: Master Docker BuildKit features including multi-platform builds, custom frontends, output formats, here-documents, and advanced build configurations for modern container workflows.
 

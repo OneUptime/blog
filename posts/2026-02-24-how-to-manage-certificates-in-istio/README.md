@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, mTLS, Security, Kubernetes
+Tags: Istio, Certificate, mTLS, Security, Kubernetes
 
 Description: A comprehensive guide to understanding and managing certificates in Istio, covering the CA, workload certificates, and certificate lifecycle.
 

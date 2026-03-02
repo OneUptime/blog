@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, troubleshooting, container, unresponsive, health check, debugging, performance
+Tags: Docker, Troubleshooting, Container, unresponsive, Health Check, Debugging, Performance
 
 Description: Diagnose and fix Docker containers that show as running but do not respond to requests, covering health checks, resource limits, and debugging techniques.
 

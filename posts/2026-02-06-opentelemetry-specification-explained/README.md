@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Specification, Standards, CNCF, Observability
+Tags: OpenTelemetry, Specification, Standard, CNCF, Observability
 
 Description: An exploration of the OpenTelemetry specification, its role in standardizing observability, and how it enables vendor-neutral instrumentation across languages and platforms.
 

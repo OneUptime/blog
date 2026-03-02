@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud DNS, Inbound Forwarding, Hybrid DNS, On-Premises
+Tags: GCP, Cloud DNS, Inbound Forwarding, Hybrid DNS, On-Premise
 
 Description: Learn how to configure inbound DNS forwarding in GCP so on-premises systems can resolve Cloud DNS private zone records through VPN or Interconnect connections.
 

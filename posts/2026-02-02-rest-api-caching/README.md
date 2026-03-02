@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: REST API, Caching, HTTP, ETags, Performance
+Tags: REST API, Caching, HTTP, ETag, Performance
 
 Description: Learn REST API caching strategies including HTTP cache headers, ETags, Cache-Control, and server-side caching patterns for optimal performance.
 

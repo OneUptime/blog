@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, Backend, State Management, S3, Infrastructure as Code
+Tags: Terraform, Workspace, Backend, State Management, S3, Infrastructure as Code
 
 Description: Learn how different Terraform backends handle workspaces and how to configure them for proper state isolation and management.
 

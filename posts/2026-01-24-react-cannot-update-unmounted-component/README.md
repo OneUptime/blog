@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: React, JavaScript, Debugging, Memory Leaks, Async, Hooks
+Tags: React, JavaScript, Debugging, Memory Leak, Async, Hooks
 
 Description: Learn how to identify and fix the React warning about updating state on unmounted components, including proper cleanup patterns for async operations.
 

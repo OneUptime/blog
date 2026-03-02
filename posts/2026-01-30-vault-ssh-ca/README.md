@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Vault, Security, SSH, Certificates
+Tags: Vault, Security, SSH, Certificate
 
 Description: A complete guide to implementing certificate-based SSH authentication using HashiCorp Vault as your SSH Certificate Authority.
 

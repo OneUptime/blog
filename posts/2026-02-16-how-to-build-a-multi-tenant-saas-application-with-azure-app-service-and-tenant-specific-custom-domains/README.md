@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure App Service, Multi-Tenant, SaaS, Custom Domains, Cloud Architecture, TLS, DNS
+Tags: Azure App Service, Multi-Tenant, SaaS, Custom Domain, Cloud Architecture, TLS, DNS
 
 Description: A practical guide to building a multi-tenant SaaS application on Azure App Service with tenant-specific custom domains and automated TLS certificates.
 

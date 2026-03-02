@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Linux Mint, Ubuntu, Linux, Installation, DevOps, Containers, Desktop Linux
+Tags: Docker, Linux Mint, Ubuntu, Linux, Installation, DevOps, Container, Desktop Linux
 
 Description: Step-by-step Docker installation on Linux Mint, addressing the Ubuntu base codename mapping issue and post-install developer workflow tips.
 

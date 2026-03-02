@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Site Reliability Engineering, SRE, Observability, SLOs, Error Budgets, Reliability
+Tags: Site Reliability Engineering, SRE, Observability, SLO, Error Budget, Reliability
 
 Description: Error budgets are a fundamental concept in Site Reliability Engineering that help teams balance innovation with reliability.
 

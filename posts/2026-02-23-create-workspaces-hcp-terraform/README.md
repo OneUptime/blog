@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Workspaces, DevOps, Infrastructure as Code
+Tags: Terraform, HCP Terraform, Workspace, DevOps, Infrastructure as Code
 
 Description: Learn how to create and configure workspaces in HCP Terraform using the UI, CLI, API, and Terraform provider, with guidance on workspace strategy and settings.
 

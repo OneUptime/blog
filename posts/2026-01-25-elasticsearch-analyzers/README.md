@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Analyzers, Text Analysis, Tokenizers, Filters, Search
+Tags: Elasticsearch, Analyzers, Text Analysis, Tokenizers, Filter, Search
 
 Description: Learn how to configure and customize Elasticsearch analyzers for optimal text search, covering tokenizers, character filters, token filters, and building custom analysis pipelines.
 

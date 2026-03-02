@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Aggregations, Top Hits, Group By, Query Optimization, Data Analysis
+Tags: Elasticsearch, Aggregation, Top Hits, GROUP BY, Query Optimization, Data Analysis
 
 Description: Learn how to retrieve the most recent document for each group in Elasticsearch using top_hits aggregation, collapse, and composite aggregations for efficient latest-value queries.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, Chain Validation, mTLS, PKI, Security
+Tags: Istio, Certificate, Chain Validation, mTLS, PKI, Security
 
 Description: Understand how certificate chain validation works in Istio, how to troubleshoot chain issues, and how to configure custom certificate chains for your service mesh.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Budgets, Cost Management, Alerts
+Tags: AWS, Budget, Cost Management, Alerts
 
 Description: A practical guide to setting up AWS Budgets with cost alerts to get notified before your cloud spending gets out of control.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, DevOps, Secrets, Environment Variables
+Tags: Ubuntu, Security, DevOps, Secret, Environment Variable
 
 Description: Practical techniques for managing .env files securely on Ubuntu, covering file permissions, encryption, Git protection, and production deployment patterns.
 

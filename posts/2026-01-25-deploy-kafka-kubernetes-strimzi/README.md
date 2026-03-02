@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kafka, Kubernetes, Strimzi, Cloud Native, Operators
+Tags: Kafka, Kubernetes, Strimzi, Cloud Native, Operator
 
 Description: A step-by-step guide to deploying Apache Kafka on Kubernetes using the Strimzi operator, including cluster configuration, topic management, user authentication, and production best practices.
 

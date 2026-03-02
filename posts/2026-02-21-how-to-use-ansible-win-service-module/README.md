@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Windows, Services, Automation, DevOps
+Tags: Ansible, Windows, Service, Automation, DevOps
 
 Description: Control Windows services with the Ansible win_service module including starting, stopping, configuring startup types, and managing service accounts.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Load Balancing, Rate Limiting, HAProxy, Nginx, AWS ALB, WAF, Traffic Management, DDoS Protection, API Security
+Tags: Load Balancing, Rate Limiting, HAProxy, NGINX, AWS ALB, WAF, Traffic Management, DDoS Protection, API Security
 
 Description: A comprehensive guide to implementing rate limiting at the load balancer level using HAProxy, Nginx, AWS ALB with WAF rules, and other cloud load balancer options.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Federation, Security, mTLS, Certificates, Kubernetes
+Tags: Istio, Federation, Security, mTLS, Certificate, Kubernetes
 
 Description: Learn how to establish mutual trust between separate Istio meshes so services can communicate securely across federation boundaries.
 

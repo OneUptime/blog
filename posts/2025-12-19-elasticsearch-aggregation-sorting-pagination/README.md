@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Aggregations, Pagination, Sorting, Analytics, Performance
+Tags: Elasticsearch, Aggregation, Pagination, Sorting, Analytics, Performance
 
 Description: Learn how to implement sorted and paginated aggregations in Elasticsearch using composite aggregations, bucket_sort, and partition-based approaches for large-scale analytics.
 

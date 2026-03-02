@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Multicluster, Kubernetes, Service Mesh, Federation
+Tags: Istio, MultiCluster, Kubernetes, Service Mesh, Federation
 
 Description: A practical guide to deploying Istio across multiple Kubernetes clusters with shared trust and cross-cluster service discovery.
 

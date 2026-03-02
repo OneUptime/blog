@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Platform Engineering, Templates, Infrastructure, Developer Experience
+Tags: Platform Engineering, Template, Infrastructure, Developer Experience
 
 Description: Learn to implement template management for internal developer platforms with versioning, parameterization, and inheritance for consistent service provisioning.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Regex
+Tags: Ansible, Jinja2, Filter, Regex
 
 Description: Learn how to use the regex_findall filter in Ansible to extract all occurrences of a pattern from strings for processing.
 

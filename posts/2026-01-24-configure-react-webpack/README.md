@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, Webpack, JavaScript, Build Tools, Configuration, Frontend
+Tags: React, Webpack, JavaScript, Build Tool, Configuration, Frontend
 
 Description: A comprehensive guide to configuring Webpack for React applications, covering development and production setups, loaders, plugins, and optimization techniques.
 

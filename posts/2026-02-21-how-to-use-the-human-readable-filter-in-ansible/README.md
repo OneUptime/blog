@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Formatting, Storage, DevOps
+Tags: Ansible, Filter, Formatting, Storage, DevOps
 
 Description: Learn how to use the human_readable filter in Ansible to convert byte values into readable formats like KB, MB, and GB for reports and alerts.
 

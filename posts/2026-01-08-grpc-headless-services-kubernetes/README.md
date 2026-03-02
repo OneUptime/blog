@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Kubernetes, Headless Services, Client-Side Load Balancing, DNS, Service Discovery, Microservices
+Tags: gRPC, Kubernetes, Headless Service, Client-Side Load Balancing, DNS, Service Discovery, Microservices
 
 Description: Learn how to configure Kubernetes headless services for gRPC to enable client-side load balancing and direct pod-to-pod communication with DNS-based service discovery.
 

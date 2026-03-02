@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Express.js, Node.js, WebSockets, Real-time, Web Development, Backend
+Tags: Express.js, Node.js, WebSocket, Real-Time, Web Development, Backend
 
 Description: A comprehensive guide to implementing WebSocket connections in Express.
 

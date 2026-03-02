@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, WebSocket, Async, Real-time, Networking, websockets
+Tags: Python, WebSocket, Async, Real-Time, Networking
 
 Description: Learn how to build robust WebSocket clients in Python using the websockets library, covering connections, message handling, reconnection logic, and real-world patterns.
 

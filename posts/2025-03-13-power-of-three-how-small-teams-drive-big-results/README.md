@@ -2,7 +2,7 @@
 
 Author: [devneelpatel](https://www.github.com/devneelpatel)
 
-Tags: Team Management, Startups
+Tags: Team Management, Startup
 
 Description: At OneUptime, we’ve cracked the code: teams of three.
 

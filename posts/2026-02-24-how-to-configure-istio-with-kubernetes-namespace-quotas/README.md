@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Resource Quotas, Namespaces, Capacity Planning
+Tags: Istio, Kubernetes, Resource Quota, Namespace, Capacity Planning
 
 Description: How to configure Kubernetes ResourceQuotas and LimitRanges correctly when using Istio, accounting for sidecar proxy resource consumption and injection overhead.
 

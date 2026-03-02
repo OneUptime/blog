@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kafka, Consumer Groups, Offsets, Message Processing, Reliability
+Tags: Kafka, Consumer Groups, Offset, Message Processing, Reliability
 
 Description: Learn how to manage Kafka consumer groups, offsets, and rebalancing for reliable message processing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Observability, Custom Processors, Collector, Go, Telemetry Pipeline
+Tags: OpenTelemetry, Observability, Custom Processor, Collector, Go, Telemetry Pipeline
 
 Description: A practical guide to building custom processors for the OpenTelemetry Collector, enabling advanced data transformation, filtering, and enrichment in your telemetry pipeline.
 

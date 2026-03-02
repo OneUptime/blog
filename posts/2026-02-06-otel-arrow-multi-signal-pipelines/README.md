@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTel Arrow, Multi-Signal, Pipelines
+Tags: OpenTelemetry, OTel Arrow, Multi-Signal, Pipeline
 
 Description: Set up OTel Arrow to transport traces, metrics, and logs on a single Arrow stream for maximum transport efficiency.
 

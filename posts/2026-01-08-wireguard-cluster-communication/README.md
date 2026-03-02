@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: wireguard, vpn, kubernetes, cluster-networking, security, multi-cluster, encryption
+Tags: WireGuard, VPN, Kubernetes, cluster-networking, Security, Multi-Cluster, Encryption
 
 Description: A comprehensive guide to establishing secure WireGuard VPN tunnels between Kubernetes clusters for encrypted cross-cluster communication.
 

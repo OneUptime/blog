@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Azure, Durable Functions, Workflows, Serverless
+Tags: Azure, Durable Functions, Workflow, Serverless
 
 Description: Master Azure Durable Functions for building complex, stateful workflows with practical patterns including saga transactions, long-running processes, and event-driven architectures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Ubuntu Core, IoT, Embedded, Snaps
+Tags: Ubuntu, Ubuntu Core, IoT, Embedded, Snap
 
 Description: Learn how to install and configure Ubuntu Core on IoT and embedded devices, understand the snap-based architecture, and set up remote management for fleet deployments.
 

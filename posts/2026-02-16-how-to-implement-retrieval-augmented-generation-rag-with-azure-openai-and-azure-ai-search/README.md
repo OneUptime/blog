@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, OpenAI, RAG, AI Search, GPT-4, Embeddings, Vector Search
+Tags: Azure, OpenAI, RAG, AI Search, GPT-4, Embedding, Vector Search
 
 Description: Learn how to build a Retrieval-Augmented Generation pipeline using Azure OpenAI and Azure AI Search for grounded, accurate AI responses.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linkerd, Service Mesh, Kubernetes, Upgrades, DevOps, SRE, Zero Downtime
+Tags: Linkerd, Service Mesh, Kubernetes, Upgrade, DevOps, SRE, Zero Downtime
 
 Description: A comprehensive guide to safely upgrading Linkerd in production environments, covering pre-upgrade checks, rolling proxy updates, certificate rotation, and rollback strategies.
 

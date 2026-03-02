@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Timeouts, Infrastructure as Code, DevOps, Resource Management
+Tags: Terraform, Timeout, Infrastructure as Code, DevOps, Resource Management
 
 Description: Learn how to configure the timeouts block in Terraform resources to control how long Terraform waits for create, update, and delete operations to complete.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Namespaces, Resource Management
+Tags: Kubernetes, Namespace, Resource Management
 
 Description: Learn how to implement namespace resource quotas for different priority classes in Kubernetes to ensure fair resource allocation and prevent resource starvation.
 

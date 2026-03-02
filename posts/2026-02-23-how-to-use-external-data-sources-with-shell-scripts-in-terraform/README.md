@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, External Provider, Shell Scripts, Bash, Infrastructure as Code
+Tags: Terraform, External Provider, Shell Script, Bash, Infrastructure as Code
 
 Description: Learn how to use Terraform external data sources with shell scripts to fetch dynamic data, query APIs, perform lookups, and integrate with command-line tools.
 

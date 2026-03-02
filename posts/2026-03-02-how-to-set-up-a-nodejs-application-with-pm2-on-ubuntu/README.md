@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Node.js, PM2, Nginx, Web Server
+Tags: Ubuntu, Node.js, PM2, NGINX, Web Server
 
 Description: Deploy and manage a Node.js application on Ubuntu using PM2 for process management, with Nginx as a reverse proxy and automatic startup on server reboot.
 

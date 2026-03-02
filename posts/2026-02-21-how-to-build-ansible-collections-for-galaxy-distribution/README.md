@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ansible Galaxy, Collections, Packaging, Development
+Tags: Ansible, Ansible Galaxy, Collection, Packaging, Development
 
 Description: End-to-end guide to building professional Ansible collections for Galaxy distribution including testing, documentation, CI/CD, and release management.
 

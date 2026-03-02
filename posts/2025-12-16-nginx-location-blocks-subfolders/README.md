@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, Configuration, Web Server, DevOps
+Tags: NGINX, Configuration, Web Server, DevOps
 
 Description: Master Nginx location block configuration for subfolders with practical examples covering prefix matching, regex patterns, try_files, and nested locations for complex routing scenarios.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Event Grid, Managed Applications, Webhooks, Notifications, Azure Marketplace, ISV, Event-Driven
+Tags: Azure Event Grid, Managed Applications, Webhook, Notifications, Azure Marketplace, ISV, Event-Driven
 
 Description: Implement real-time notifications for Azure Managed Application lifecycle events using Azure Event Grid subscriptions and webhook handlers.
 

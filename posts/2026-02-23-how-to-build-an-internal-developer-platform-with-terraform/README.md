@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Internal Developer Platform, IDP, Platform Engineering, DevOps, Self-Service
+Tags: Terraform, Internal Developer Platform, IdP, Platform Engineering, DevOps, Self-Service
 
 Description: Learn how to build an internal developer platform using Terraform that provides self-service workflows, standardized environments, and automated infrastructure provisioning.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: DevOps, Approvals, Workflows, CI/CD
+Tags: DevOps, Approval, Workflow, CI/CD
 
 Description: Learn to create approval workflows for controlled deployments with human review.
 

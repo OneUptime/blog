@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Bicep, Static Web Apps, Custom Domains, Infrastructure as Code, Web Hosting, Frontend
+Tags: Azure, Bicep, Static Web Apps, Custom Domain, Infrastructure as Code, Web Hosting, Frontend
 
 Description: Deploy Azure Static Web Apps with custom domain configuration and SSL using Bicep templates for automated frontend hosting infrastructure.
 

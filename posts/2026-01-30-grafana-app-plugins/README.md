@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Monitoring, Plugins, TypeScript
+Tags: Grafana, Monitoring, Plugin, TypeScript
 
 Description: A comprehensive guide to building Grafana app plugins from scratch, covering project setup, configuration pages, custom routing, and deployment to production.
 

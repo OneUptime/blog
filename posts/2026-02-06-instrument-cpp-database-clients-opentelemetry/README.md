@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, C++, Database, Clients, SQL, Tracing
+Tags: OpenTelemetry, C++, Database, Client, SQL, Tracing
 
 Description: Complete guide to instrumenting C++ database clients with OpenTelemetry for comprehensive database operation tracing and performance monitoring.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Finalizers, Controllers, Cleanup
+Tags: Kubernetes, Finalizer, Controller, Cleanup
 
 Description: Use Kubernetes finalizers to ensure cleanup operations complete before resource deletion with proper controller implementation patterns.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Security, Hashing
+Tags: Ansible, Jinja2, Filter, Security, Hashing
 
 Description: Learn how to use the hash and checksum filters in Ansible to generate hashes and verify file integrity in your automation.
 

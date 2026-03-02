@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Agent Pools, Workers, Self-Hosted Agents
+Tags: Terraform, HCP Terraform, Agent Pools, Worker, Self-Hosted Agents
 
 Description: Set up custom worker pools (agent pools) in HCP Terraform to run Terraform operations on your own infrastructure for private network access.
 

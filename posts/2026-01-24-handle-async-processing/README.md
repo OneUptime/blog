@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Async, Message Queues, RabbitMQ, Redis, Kafka, Background Jobs, Architecture, Performance
+Tags: Async, Message Queue, RabbitMQ, Redis, Kafka, Background Jobs, Architecture, Performance
 
 Description: A practical guide to implementing async processing patterns using message queues, background workers, and event-driven architectures for scalable applications.
 

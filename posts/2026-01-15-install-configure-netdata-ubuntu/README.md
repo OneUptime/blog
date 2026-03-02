@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Netdata, Monitoring, Real-time, Observability, Tutorial
+Tags: Ubuntu, Netdata, Monitoring, Real-Time, Observability, Tutorial
 
 Description: Set up Netdata for real-time performance monitoring with beautiful dashboards and zero configuration.
 

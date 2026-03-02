@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Database, Migrations, PostgreSQL, MySQL, golang-migrate
+Tags: Go, Golang, Database, Migration, PostgreSQL, MySQL, golang-migrate
 
 Description: A practical guide to managing database schema migrations in Go projects using golang-migrate and goose.
 

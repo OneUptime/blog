@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Autocomplete, Search, Type-ahead, Suggestions, User Experience
+Tags: Redis, Autocomplete, Search, Type-Ahead, Suggestions, User Experience
 
 Description: A comprehensive guide to implementing autocomplete and type-ahead search functionality with Redis, covering prefix matching, weighted suggestions, fuzzy search.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Incident Management, SRE, Blameless Culture, Postmortems, Learning Organization
+Tags: Incident Management, SRE, Blameless Culture, Postmortem, Learning Organization
 
 Description: Learn how to build an engineering culture that treats incidents as learning opportunities rather than failures to be punished.
 

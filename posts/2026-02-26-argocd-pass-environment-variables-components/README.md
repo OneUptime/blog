@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Environment Variables, Configuration
+Tags: ArgoCD, GitOps, Kubernetes, Environment Variable, Configuration
 
 Description: Learn how to pass environment variables to all ArgoCD components including the server, controller, repo server, and notification controller using different installation methods.
 

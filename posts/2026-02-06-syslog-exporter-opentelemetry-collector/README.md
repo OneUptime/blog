@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Syslog, Logging, SIEM
+Tags: OpenTelemetry, Collector, Exporter, Syslog, Logging, SIEM
 
 Description: Learn how to configure the syslog exporter in the OpenTelemetry Collector to send log data to syslog servers and SIEM systems using RFC 5424 and RFC 3164 formats.
 

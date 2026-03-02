@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Operators, Helm, Infrastructure as Code, DevOps
+Tags: Terraform, Kubernetes, Operator, Helm, Infrastructure as Code, DevOps
 
 Description: Learn how to deploy and manage Kubernetes operators with Terraform using Helm charts and raw manifests, including Prometheus Operator, Strimzi, and custom operators.
 

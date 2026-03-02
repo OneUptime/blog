@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Service Bus, Messaging, Queues, Topics, Event-Driven Architecture, DevOps
+Tags: Azure, Service Bus, Messaging, Queue, Topics, Event-Driven Architecture, DevOps
 
 Description: A practical guide to handling Azure Service Bus for reliable messaging, including queues, topics, dead letter handling, and error recovery patterns.
 

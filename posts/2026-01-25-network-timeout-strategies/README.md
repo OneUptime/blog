@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Networking, Timeouts, Reliability, Performance, TCP, HTTP, Microservices, Fault Tolerance
+Tags: Networking, Timeout, Reliability, Performance, TCP, HTTP, Microservices, Fault Tolerance
 
 Description: Learn how to configure network timeouts effectively to prevent hung connections and cascading failures.
 

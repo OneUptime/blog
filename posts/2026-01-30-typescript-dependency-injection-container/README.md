@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: TypeScript, Design Patterns, Architecture, Testing
+Tags: TypeScript, Design Pattern, Architecture, Testing
 
 Description: Build a lightweight dependency injection container in TypeScript from scratch, supporting constructor injection, singleton scope, and interface-based resolution.
 

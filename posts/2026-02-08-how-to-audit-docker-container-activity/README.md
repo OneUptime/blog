@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, auditing, security, logging, monitoring, compliance, container activity
+Tags: Docker, Auditing, Security, Logging, Monitoring, Compliance, container activity
 
 Description: Learn how to audit Docker container activity using Docker events, system logs, Falco, and custom scripts to maintain security visibility.
 

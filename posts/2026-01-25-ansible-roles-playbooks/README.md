@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Roles, Playbooks, DevOps, Configuration Management, Infrastructure as Code
+Tags: Ansible, Roles, Playbook, DevOps, Configuration Management, Infrastructure as Code
 
 Description: Learn how to structure Ansible automation using roles and playbooks for reusable, maintainable infrastructure code with practical examples and best practices.
 

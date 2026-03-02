@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: FastAPI, Python, OAuth2, Security, Scopes, Authentication, Authorization
+Tags: FastAPI, Python, OAuth2, Security, Scope, Authentication, Authorization
 
 Description: Learn how to implement OAuth2 scopes in FastAPI for fine-grained access control, including scope definitions, token validation, and permission checking.
 

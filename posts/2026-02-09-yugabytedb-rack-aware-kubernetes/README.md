@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: YugabyteDB, Kubernetes, Databases
+Tags: YugabyteDB, Kubernetes, Database
 
 Description: Learn how to deploy YugabyteDB on Kubernetes with rack-aware replica placement for optimal availability across failure domains, combining PostgreSQL compatibility with distributed architecture.
 

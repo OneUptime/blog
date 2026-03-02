@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Zookeeper, Leader Election, Session Monitoring
+Tags: OpenTelemetry, ZooKeeper, Leader Election, Session Monitoring
 
 Description: Monitor Apache Zookeeper leader election frequency, session count, and outstanding requests using the OpenTelemetry Collector Zookeeper receiver.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Persistent Queues, Crash Recovery, Reliability
+Tags: OpenTelemetry, Persistent Queue, Crash Recovery, Reliability
 
 Description: Configure disk-backed persistent queues in the OpenTelemetry Collector so that in-flight telemetry data survives crashes and restarts.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Debezium, Change Data Capture, Kafka, Transformations, SMT, Data Streaming, Event-Driven
+Tags: Debezium, Change Data Capture, Kafka, Transformation, SMT, Data Streaming, Event-Driven
 
 Description: Learn how to implement Debezium Single Message Transformations (SMTs) to filter, route, and modify change events before they reach downstream consumers.
 

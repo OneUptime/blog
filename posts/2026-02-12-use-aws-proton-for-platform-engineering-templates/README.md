@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Proton, Platform Engineering, IaC, Templates, DevOps
+Tags: AWS, Proton, Platform Engineering, IaC, Template, DevOps
 
 Description: Use AWS Proton to create reusable infrastructure templates that let development teams self-service deploy standardized environments and services.
 

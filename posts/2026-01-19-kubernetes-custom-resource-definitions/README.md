@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRDs, Custom Resources, Controllers, Operators, Go, DevOps
+Tags: Kubernetes, CRD, Custom Resource, Controller, Operator, Go, DevOps
 
 Description: Learn how to create Custom Resource Definitions in Kubernetes to extend the API with your own resource types, including schema validation, versioning, and building controllers.
 

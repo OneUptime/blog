@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Errors, Error Handling, Error Wrapping, fmt.Errorf
+Tags: Go, Golang, Error, Error Handling, Error Wrapping, fmt.Errorf
 
 Description: Learn how to wrap errors in Go using %w with fmt.Errorf, create error chains, and use errors.Is and errors.As for proper error inspection.
 

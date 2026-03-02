@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Tail Sampling, Distributed Tracing, Observability
+Tags: OpenTelemetry, Collector, Processor, Tail Sampling, Distributed Tracing, Observability
 
 Description: Learn how to configure the tail sampling processor in OpenTelemetry Collector to make intelligent sampling decisions based on complete trace data, reducing costs while preserving critical traces.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Environment Variables, Playbook, Configuration
+Tags: Ansible, Environment Variable, Playbook, Configuration
 
 Description: Learn how to set and manage environment variables in Ansible playbooks at the play, task, and role level for application configuration.
 

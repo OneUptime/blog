@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, TLS, SSL, Security, Networking, Encryption, Containers, Certificates
+Tags: Docker, TLS, SSL, Security, Networking, Encryption, Container, Certificate
 
 Description: Secure communication between Docker containers using TLS with certificate generation, configuration, and verification steps.
 

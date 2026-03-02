@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Controllers, Error Handling
+Tags: Kubernetes, Controller, Error Handling
 
 Description: Master retry patterns for handling API conflicts in Kubernetes controllers, implement exponential backoff, and build resilient operators that gracefully handle concurrent modifications.
 

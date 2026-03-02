@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, RBAC, Namespaces, Kubernetes, Multi-Tenancy
+Tags: Istio, RBAC, Namespace, Kubernetes, Multi-Tenancy
 
 Description: How to set up namespace-scoped RBAC for Istio so teams can manage their own mesh configuration without affecting others.
 

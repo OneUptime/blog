@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Payments, Latency, Error Monitoring, Distributed Tracing, Metrics, Observability
+Tags: OpenTelemetry, Payment, Latency, Error Monitoring, Distributed Tracing, Metrics, Observability
 
 Description: A practical guide to monitoring payment processing latency and errors with OpenTelemetry, covering instrumentation, metrics, alerting, and debugging payment failures.
 

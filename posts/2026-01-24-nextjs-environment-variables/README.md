@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NextJS, Environment Variables, Configuration, DevOps, Security
+Tags: NextJS, Environment Variable, Configuration, DevOps, Security
 
 Description: Learn how to properly configure and use environment variables in Next.js applications for both server-side and client-side code.
 

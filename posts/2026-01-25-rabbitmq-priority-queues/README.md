@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Priority Queues, Message Queues, Performance, Task Scheduling, DevOps
+Tags: RabbitMQ, Priority Queue, Message Queue, Performance, Task Scheduling, DevOps
 
 Description: Learn how to implement priority queues in RabbitMQ to ensure high-priority messages are processed first, with practical examples and performance considerations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, CodePush, OTA Updates, App Center, Mobile Development, Deployment
+Tags: React Native, CodePush, OTA Update, App Center, Mobile Development, Deployment
 
 Description: Learn how to implement over-the-air updates in React Native using CodePush for instant bug fixes without app store reviews.
 

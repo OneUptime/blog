@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Gin, File Uploads, API, Storage, AWS S3, Security
+Tags: Go, Gin, File Upload, API, Storage, AWS S3, Security
 
 Description: Learn how to handle single and multiple file uploads in Gin with validation, streaming, and cloud storage integration.
 

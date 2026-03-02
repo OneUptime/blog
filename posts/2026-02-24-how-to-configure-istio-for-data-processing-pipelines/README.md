@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Data Processing, Kubernetes, Service Mesh, Pipelines
+Tags: Istio, Data Processing, Kubernetes, Service Mesh, Pipeline
 
 Description: A practical guide to configuring Istio service mesh for data processing pipeline workloads running on Kubernetes with proper timeouts and traffic policies.
 

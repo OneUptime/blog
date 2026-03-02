@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Job Scheduling, Delayed Jobs, Cron, Task Queue, Background Jobs
+Tags: Redis, Job Scheduling, Delayed Job, Cron, Task Queue, Background Jobs
 
 Description: A comprehensive guide to implementing job scheduling with Redis, covering delayed jobs, recurring tasks, priority queues, and production patterns for reliable task execution.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Rust, Reqwest, HTTP Client, Tracing, Async
+Tags: OpenTelemetry, Rust, reqwest, HTTP Client, Tracing, Async
 
 Description: Implement distributed tracing for Reqwest HTTP client calls using OpenTelemetry to monitor external API calls, track latency, and propagate trace context.
 

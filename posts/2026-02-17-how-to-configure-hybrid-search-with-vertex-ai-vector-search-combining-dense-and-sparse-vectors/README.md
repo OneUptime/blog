@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Vertex AI, Vector Search, Hybrid Search, Embeddings
+Tags: GCP, Vertex AI, Vector Search, Hybrid Search, Embedding
 
 Description: Learn how to configure hybrid search on Vertex AI Vector Search by combining dense semantic embeddings with sparse keyword vectors for better search results.
 

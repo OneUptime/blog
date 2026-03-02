@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, C#, Configuration, Custom Providers, Dependency Injection
+Tags: .NET, C#, Configuration, Custom Provider, Dependency Injection
 
 Description: Learn how to build custom configuration providers in .NET to load settings from databases, APIs, or custom file formats.
 

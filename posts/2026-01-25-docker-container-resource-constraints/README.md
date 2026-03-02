@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, DevOps, Resource Management, Performance, Containers
+Tags: Docker, DevOps, Resource Management, Performance, Container
 
 Description: Learn how to configure CPU, memory, and I/O limits for Docker containers to prevent resource contention and ensure stable production workloads.
 

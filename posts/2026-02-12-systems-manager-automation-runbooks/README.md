@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Systems Manager, Automation, DevOps, Runbooks
+Tags: AWS, Systems Manager, Automation, DevOps, Runbook
 
 Description: Learn how to use AWS Systems Manager Automation to build and run operational runbooks that standardize repetitive tasks across your infrastructure.
 

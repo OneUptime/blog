@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Providers, Multi-Region, Infrastructure as Code
+Tags: Terraform, HCL, Provider, Multi-Region, Infrastructure as Code
 
 Description: Learn how to use the Terraform provider meta-argument to work with multiple provider configurations for multi-region deployments, cross-account access.
 

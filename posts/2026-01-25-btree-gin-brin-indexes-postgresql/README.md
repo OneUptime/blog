@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Indexes, B-Tree, GIN, BRIN, Performance, Database Optimization
+Tags: PostgreSQL, Indexes, B-Tree, Gin, BRIN, Performance, Database Optimization
 
 Description: Learn when to use B-Tree, GIN, and BRIN indexes in PostgreSQL.
 

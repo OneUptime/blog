@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, WebSockets, Real-Time, Socket.IO, Mobile Development, Live Updates
+Tags: React Native, WebSocket, Real-Time, Socket.IO, Mobile Development, Live Updates
 
 Description: Learn how to implement WebSocket connections in React Native for real-time features like chat, live updates, and notifications.
 

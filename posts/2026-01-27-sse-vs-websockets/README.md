@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SSE, WebSockets, Real-time, Event Stream, HTTP
+Tags: SSE, WebSocket, Real-Time, Event Stream, HTTP
 
 Description: Learn when to use Server-Sent Events vs WebSockets for real-time applications, including implementation examples and performance considerations.
 

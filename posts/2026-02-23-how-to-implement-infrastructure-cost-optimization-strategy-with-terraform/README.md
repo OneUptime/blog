@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Cost Optimization, FinOps, Cloud Costs, DevOps
+Tags: Terraform, Cost Optimization, FinOps, Cloud Cost, DevOps
 
 Description: Learn how to implement infrastructure cost optimization strategies using Terraform, including right-sizing, reserved capacity, spot instances, resource scheduling, and automated cost governance.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connectors, Routing, Traffic Management, Multi-tenancy
+Tags: OpenTelemetry, Collector, Connector, Routing, Traffic Management, Multi-Tenancy
 
 Description: Master the Routing Connector in OpenTelemetry Collector to intelligently route telemetry data to different backends based on attributes, enabling multi-tenancy and advanced traffic management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Developer Experience, Remote Development, Cloud IDE, Development Environments
+Tags: Developer Experience, Remote Development, Cloud IDE, Development Environment
 
 Description: Learn to implement remote development environments with cloud workspaces, IDE integration, and collaborative coding for flexible development workflows.
 

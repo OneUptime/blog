@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: FinOps, Cloud Cost Management, Cost Monitoring, AWS Cost Explorer, Budgets, Observability
+Tags: FinOps, Cloud Cost Management, Cost Monitoring, AWS Cost Explorer, Budget, Observability
 
 Description: Learn how to build effective cloud cost monitoring that catches anomalies early and provides actionable insights for optimization.
 

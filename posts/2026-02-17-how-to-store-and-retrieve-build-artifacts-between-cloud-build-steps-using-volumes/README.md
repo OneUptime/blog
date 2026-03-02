@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Build, CI/CD, Volumes, Build Artifacts, DevOps
+Tags: GCP, Cloud Build, CI/CD, VOLUME, Build Artifacts, DevOps
 
 Description: Learn how to share files and build artifacts between steps in Google Cloud Build using volumes and the workspace directory.
 

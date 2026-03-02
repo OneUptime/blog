@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kafka, Collector, Telemetry Pipelines
+Tags: OpenTelemetry, Kafka, Collector, Telemetry Pipeline
 
 Description: A practical guide to configuring the Kafka exporter and Kafka receiver in the OpenTelemetry Collector for reliable buffered delivery.
 

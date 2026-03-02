@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, text generation, oobabooga, llm, web ui, ai, self-hosted, gpu
+Tags: Docker, text generation, oobabooga, LLM, Web UI, AI, Self-Hosted, GPU
 
 Description: Deploy Oobabooga's Text Generation WebUI in Docker to run and interact with large language models through a feature-rich web interface.
 

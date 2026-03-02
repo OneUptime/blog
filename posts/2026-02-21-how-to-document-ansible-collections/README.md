@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Documentation, Collections, DevOps
+Tags: Ansible, Documentation, Collection, DevOps
 
 Description: How to write effective documentation for Ansible collections including module docs, collection-level docs, changelogs, and docsite generation.
 

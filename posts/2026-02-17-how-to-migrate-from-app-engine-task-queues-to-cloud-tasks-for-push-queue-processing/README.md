@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, App Engine, Cloud Tasks, Task Queues, Migration
+Tags: GCP, App Engine, Cloud Tasks, Task Queue, Migration
 
 Description: Step-by-step guide to migrating from the deprecated App Engine Task Queue API to Cloud Tasks for reliable push queue processing in your applications.
 

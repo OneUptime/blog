@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Init, Rust, Containerization, DevOps, Systems Programming, Multi-Stage Builds
+Tags: Docker, Docker Init, Rust, Containerization, DevOps, Systems Programming, Multi-Stage Build
 
 Description: Learn how to use docker init with Rust projects for optimized multi-stage builds that produce minimal container images from compiled binaries.
 

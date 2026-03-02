@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: API Design, Design Patterns, Backend, TypeScript, Python, Software Architecture
+Tags: API Design, Design Pattern, Backend, TypeScript, Python, Software Architecture
 
 Description: Learn how to implement reusable API filtering patterns including the Specification Pattern, Criteria Pattern, and Filter Chain to build flexible, composable query systems.
 

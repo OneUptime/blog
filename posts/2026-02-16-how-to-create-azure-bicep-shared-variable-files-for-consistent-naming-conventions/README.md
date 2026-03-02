@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Bicep, Naming Conventions, Infrastructure as Code, Best Practices, Modules, DevOps
+Tags: Azure, Bicep, Naming Convention, Infrastructure as Code, Best Practices, Modules, DevOps
 
 Description: Learn how to create shared variable files in Azure Bicep to enforce consistent naming conventions across all your infrastructure deployments.
 

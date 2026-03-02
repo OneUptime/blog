@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, security onion, network security, IDS, NSM, containerization, threat hunting
+Tags: Docker, security onion, Network Security, IDS, NSM, Containerization, Threat Hunting
 
 Description: Deploy Security Onion network security monitoring suite with Docker for full packet capture, intrusion detection, and threat hunting.
 

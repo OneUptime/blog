@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Async, Tokio, Concurrency, Runtime
+Tags: Rust, Async, tokio, Concurrency, Runtime
 
 Description: Learn how to write asynchronous Rust code with the Tokio runtime for high-performance concurrent applications.
 

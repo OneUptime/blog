@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Kubernetes, K8s, Container Orchestration, Observability
+Tags: OpenTelemetry, Collector, Processor, Kubernetes, K8s, Container Orchestration, Observability
 
 Description: Learn how to configure the Kubernetes attributes processor in OpenTelemetry Collector to automatically enrich telemetry data with pod, namespace, deployment, and node metadata.
 

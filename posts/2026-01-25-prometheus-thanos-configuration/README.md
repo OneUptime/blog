@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Thanos, Long-term Storage, High Availability, Global View, Object Storage, Kubernetes, Observability
+Tags: Prometheus, Thanos, Long-Term Storage, High Availability, Global View, Object Storage, Kubernetes, Observability
 
 Description: A complete guide to configuring Thanos with Prometheus for unlimited retention, global querying, and high availability.
 

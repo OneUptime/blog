@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Secrets Manager, ECS, Containers, Security
+Tags: AWS, Secrets Manager, ECS, Container, Security
 
 Description: Learn how to inject secrets from AWS Secrets Manager into ECS tasks as environment variables or retrieve them at runtime using the SDK with practical examples.
 

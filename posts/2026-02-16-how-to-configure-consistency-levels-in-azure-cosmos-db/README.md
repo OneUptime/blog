@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Cosmos DB, Consistency Levels, Distributed Databases, NoSQL, Data Consistency
+Tags: Azure, Cosmos DB, Consistency Levels, Distributed Database, NoSQL, Data Consistency
 
 Description: Understand and configure the five consistency levels in Azure Cosmos DB to balance between data consistency, availability, and latency for your workload.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, checkinstall, Package Management, Build Tools, Linux
+Tags: Ubuntu, checkinstall, Package Management, Build Tool, Linux
 
 Description: Learn how to use checkinstall on Ubuntu to create .deb packages from source-compiled software, enabling proper installation tracking and clean removal via apt.
 

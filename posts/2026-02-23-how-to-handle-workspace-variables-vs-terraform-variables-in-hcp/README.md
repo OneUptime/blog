@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Variables, Workspaces, Configuration Management
+Tags: Terraform, HCP Terraform, Variables, Workspace, Configuration Management
 
 Description: Understand the difference between workspace variables and Terraform variables in HCP Terraform and when to use each type.
 

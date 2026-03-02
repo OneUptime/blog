@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Finalizers, Application Lifecycle
+Tags: ArgoCD, GitOps, Kubernetes, Finalizer, Application Lifecycle
 
 Description: Learn how to use ArgoCD finalizer annotations to control what happens when you delete applications, including cascade and orphan deletion strategies.
 

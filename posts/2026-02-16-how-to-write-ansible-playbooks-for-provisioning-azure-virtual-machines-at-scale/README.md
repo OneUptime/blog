@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Azure, Virtual Machines, Automation, Infrastructure as Code, DevOps, Configuration Management
+Tags: Ansible, Azure, Virtual Machine, Automation, Infrastructure as Code, DevOps, Configuration Management
 
 Description: Learn how to write Ansible playbooks that provision and configure Azure virtual machines at scale with dynamic inventory and parallel execution.
 

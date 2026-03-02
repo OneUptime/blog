@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, Nginx, Production, Deployment, SPA, DevOps
+Tags: React, NGINX, Production, Deployment, SPA, DevOps
 
 Description: Learn how to configure Nginx to serve React single-page applications in production with optimal performance, security, and caching strategies.
 

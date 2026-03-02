@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, SSL, TLS, Nginx, Security
+Tags: Ansible, SSL, TLS, NGINX, Security
 
 Description: Configure SSL/TLS certificates with Nginx using Ansible including certificate deployment, security hardening, and HTTPS redirection.
 

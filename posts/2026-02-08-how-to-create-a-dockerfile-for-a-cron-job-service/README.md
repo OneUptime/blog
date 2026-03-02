@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, Cron, Scheduling, DevOps, Automation, Containers
+Tags: Docker, Dockerfile, Cron, Scheduling, DevOps, Automation, Container
 
 Description: Learn how to build Docker containers that run cron jobs reliably, with logging, environment variables, and health checks.
 

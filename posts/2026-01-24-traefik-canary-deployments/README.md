@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Traefik, Canary Deployments, Traffic Splitting, DevOps, Continuous Deployment
+Tags: Traefik, Canary Deployment, Traffic Splitting, DevOps, Continuous Deployment
 
 Description: Configure weighted traffic routing in Traefik to implement canary deployments, gradually rolling out new versions while monitoring for issues.
 

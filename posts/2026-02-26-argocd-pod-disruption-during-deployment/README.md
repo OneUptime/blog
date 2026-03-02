@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Pod Disruption, Deployments
+Tags: ArgoCD, GitOps, Kubernetes, Pod Disruption, Deployment
 
 Description: Learn how to handle pod disruptions during ArgoCD deployments including PDB configuration, node drains, preemption, and maintaining service availability during rollouts.
 

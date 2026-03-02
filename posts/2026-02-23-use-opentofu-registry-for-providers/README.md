@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenTofu, Terraform, Providers, Registry, Infrastructure as Code
+Tags: OpenTofu, Terraform, Provider, Registry, Infrastructure as Code
 
 Description: Learn how to discover, install, and configure providers from the OpenTofu Registry, including version pinning, provider mirrors, and working with community and official providers.
 

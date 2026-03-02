@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, direnv, Development, Shell, Environment Variables
+Tags: Ubuntu, direnv, Development, Shell, Environment Variable
 
 Description: Set up direnv on Ubuntu to automatically load and unload environment variables when entering and leaving project directories, keeping secrets out of your shell profile.
 

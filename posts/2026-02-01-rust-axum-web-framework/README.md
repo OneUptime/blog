@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Axum, Web Framework, REST API, Tower, Tokio
+Tags: Rust, axum, Web Framework, REST API, Tower, tokio
 
 Description: A practical guide to building web APIs with Axum, the Tokio-native web framework built on Tower.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Tekton, Results, CI/CD, Kubernetes, DevOps, Pipeline History, Observability
+Tags: Tekton, Result, CI/CD, Kubernetes, DevOps, Pipeline History, Observability
 
 Description: Learn how to implement Tekton Results to store, query, and analyze your pipeline execution history at scale with PostgreSQL backends, gRPC APIs, and dashboard integrations.
 

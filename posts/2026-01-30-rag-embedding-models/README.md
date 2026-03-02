@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RAG, Embeddings, Vector Search, Machine Learning
+Tags: RAG, Embedding, Vector Search, Machine Learning
 
 Description: Learn to implement embedding models for converting text into vector representations for similarity search.
 

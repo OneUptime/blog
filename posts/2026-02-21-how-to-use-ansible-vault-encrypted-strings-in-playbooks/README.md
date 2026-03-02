@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Vault, Playbooks, Security, Encryption
+Tags: Ansible, Vault, Playbook, Security, Encryption
 
 Description: Learn how to embed vault-encrypted strings directly in Ansible playbooks and variable files for granular secret protection.
 

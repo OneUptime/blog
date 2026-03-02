@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Deduplication, Data Quality, Aggregations, Data Cleaning
+Tags: Elasticsearch, Deduplication, Data Quality, Aggregation, Data Cleaning
 
 Description: Learn how to identify and remove duplicate documents in Elasticsearch using aggregations, scripts, and prevention strategies for maintaining clean data.
 

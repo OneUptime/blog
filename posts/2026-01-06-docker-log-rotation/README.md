@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Containers, DevOps, Logging, Monitoring, Storage
+Tags: Docker, Container, DevOps, Logging, Monitoring, Storage
 
 Description: Configure JSON-file driver limits, syslog and fluentd drivers, and implement log rotation to prevent disk exhaustion from runaway container logs.
 

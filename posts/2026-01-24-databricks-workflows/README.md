@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Databricks, Workflows, Data Engineering, Apache Spark, ETL, Orchestration, Data Pipelines
+Tags: Databricks, Workflow, Data Engineering, Apache Spark, ETL, Orchestration, Data Pipeline
 
 Description: Learn how to build, manage, and monitor production-ready data pipelines using Databricks Workflows with tasks, dependencies, and error handling.
 

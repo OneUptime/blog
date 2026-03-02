@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Kubernetes, Maintenance Windows, Cluster Management
+Tags: GCP, GKE, Kubernetes, Maintenance Window, Cluster Management
 
 Description: Learn how to configure GKE maintenance windows and exclusions to control when automatic node and control plane upgrades occur in your clusters.
 

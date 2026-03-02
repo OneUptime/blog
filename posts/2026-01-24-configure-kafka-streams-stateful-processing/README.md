@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kafka, Kafka Streams, Stream Processing, Stateful Processing, Java, RocksDB, State Store, Real-time Analytics
+Tags: Kafka, Kafka Streams, Stream Processing, Stateful Processing, Java, RocksDB, State Store, Real-Time Analytics
 
 Description: A practical guide to configuring Kafka Streams for stateful processing, including state store setup, fault tolerance, performance tuning, and best practices for production deployments.
 

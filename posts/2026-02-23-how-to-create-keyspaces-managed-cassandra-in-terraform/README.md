@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Keyspaces, Cassandra, NoSQL, Database, Infrastructure as Code
+Tags: Terraform, AWS, Keyspace, Cassandra, NoSQL, Database, Infrastructure as Code
 
 Description: Learn how to create and manage Amazon Keyspaces (managed Apache Cassandra) resources using Terraform for serverless wide-column database workloads.
 

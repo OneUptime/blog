@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Namespaces, Multi-tenancy, DevOps, Resource Management
+Tags: Kubernetes, Namespace, Multi-Tenancy, DevOps, Resource Management
 
 Description: A practical guide to Kubernetes namespaces covering creation, resource quotas, network policies, RBAC integration, and best practices for organizing workloads in production clusters.
 

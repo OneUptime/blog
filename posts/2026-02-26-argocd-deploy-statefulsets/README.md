@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, StatefulSets, Stateful Applications
+Tags: ArgoCD, GitOps, Kubernetes, StatefulSet, Stateful Applications
 
 Description: Learn how to deploy and manage Kubernetes StatefulSets with ArgoCD, including ordering guarantees, persistent storage, and handling stateful application updates safely.
 

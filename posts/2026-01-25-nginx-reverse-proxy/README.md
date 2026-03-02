@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Reverse Proxy, DevOps, Web Server, Load Balancing
+Tags: NGINX, Reverse Proxy, DevOps, Web Server, Load Balancing
 
 Description: Learn how to configure Nginx as a reverse proxy to route traffic to backend servers, handle SSL termination, and improve your application architecture.
 

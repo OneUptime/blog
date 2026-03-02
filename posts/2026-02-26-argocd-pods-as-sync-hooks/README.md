@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Sync Hooks, Pods
+Tags: ArgoCD, GitOps, Kubernetes, Sync Hooks, POD
 
 Description: Learn how to use bare Kubernetes Pods as ArgoCD sync hooks for simple one-shot tasks where Job overhead is unnecessary.
 

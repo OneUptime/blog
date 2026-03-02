@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Borrow Checker, Mutability, Memory Safety, References
+Tags: Rust, Borrow Checker, Mutability, Memory Safety, Reference
 
 Description: Learn how to fix 'mutable borrow occurs here' errors in Rust. This guide explains why these conflicts happen and provides practical patterns to resolve them.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Networking, URLs
+Tags: Ansible, Jinja2, Filter, Networking, URL
 
 Description: Learn how to use the urlencode filter in Ansible to safely encode strings for use in URLs, query parameters, and API requests.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, CRDs, Kubernetes, Migration, Cluster Setup
+Tags: Istio, CRD, Kubernetes, Migration, Cluster Setup
 
 Description: Step-by-step guide to importing Istio Custom Resource Definitions and configuration resources into a new Kubernetes cluster during migration or disaster recovery.
 

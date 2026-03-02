@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Performance, Memory, Optimization, Linux, Cgroups, Database, DevOps
+Tags: Docker, Performance, Memory, Optimization, Linux, cgroups, Database, DevOps
 
 Description: Learn how to configure Docker memory limits, swap behavior, OOM handling, and kernel parameters for applications that need large amounts of RAM.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Alembic, Azure SQL, Python, Database Migrations, SQLAlchemy, DevOps, Schema
+Tags: Alembic, Azure SQL, Python, Database Migration, SQLAlchemy, DevOps, Schema
 
 Description: Manage database schema changes with Alembic migrations against Azure SQL Database in Python for version-controlled schema evolution.
 

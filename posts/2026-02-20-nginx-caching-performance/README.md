@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Caching, Performance, Proxy Cache, Optimization
+Tags: NGINX, Caching, Performance, Proxy Cache, Optimization
 
 Description: Learn how to configure Nginx proxy caching for improved application performance and reduced backend load.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Feature Flags, IaC, Design Patterns
+Tags: Terraform, Modules, Feature Flags, IaC, Design Pattern
 
 Description: Learn how to implement feature flags in Terraform modules for toggling infrastructure capabilities, gradual rollouts, and environment-specific configurations.
 

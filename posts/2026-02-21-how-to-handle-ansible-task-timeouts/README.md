@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Timeouts, Error Handling, DevOps
+Tags: Ansible, Timeout, Error Handling, DevOps
 
 Description: Learn how to configure and handle task-level timeouts in Ansible to prevent playbooks from hanging on slow or stuck tasks.
 

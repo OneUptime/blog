@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PHP, Laravel, Eloquent, Database, Soft Deletes
+Tags: PHP, Laravel, Eloquent, Database, Soft Delete
 
 Description: Learn how to implement soft deletes in Laravel for data recovery and audit trails. This guide covers the SoftDeletes trait, querying, restoring, and cascade handling.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, WebSocket, Chat, Real-time, Web Development
+Tags: Go, WebSocket, Chat, Real-Time, Web Development
 
 Description: Learn how to build a real-time chat application with multiple rooms in Go using the Gorilla WebSocket library, covering connection handling, broadcasting, and room management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Git, Merge Conflicts, Lock Files, DevOps
+Tags: Terraform, Git, Merge Conflicts, Lock File, DevOps
 
 Description: Resolve merge conflicts in Terraform dependency lock files correctly to maintain provider consistency and prevent infrastructure drift across environments.
 

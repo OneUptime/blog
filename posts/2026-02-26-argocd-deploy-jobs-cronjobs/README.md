@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Jobs, CronJobs
+Tags: ArgoCD, GitOps, Kubernetes, Jobs, CronJob
 
 Description: Learn how to manage Kubernetes Jobs and CronJobs with ArgoCD, including handling completed jobs, sync behavior, and cleanup strategies for batch workloads.
 

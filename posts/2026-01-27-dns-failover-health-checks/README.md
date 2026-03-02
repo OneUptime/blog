@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DNS, Failover, Health Checks, High Availability, Reliability
+Tags: DNS, Failover, Health Check, High Availability, Reliability
 
 Description: Learn how to implement DNS failover with health checks for high availability, including active-passive and active-active configurations.
 

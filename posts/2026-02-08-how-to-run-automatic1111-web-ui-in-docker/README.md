@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, automatic1111, stable diffusion, web ui, image generation, ai, gpu, self-hosted
+Tags: Docker, automatic1111, stable diffusion, Web UI, Image Generation, AI, GPU, Self-Hosted
 
 Description: Deploy the Automatic1111 Stable Diffusion Web UI in Docker for AI image generation with a user-friendly interface and extensive extension support.
 

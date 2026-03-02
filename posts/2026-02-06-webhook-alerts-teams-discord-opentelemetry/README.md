@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Webhooks, Microsoft Teams, Discord, Alertmanager
+Tags: OpenTelemetry, Webhook, Microsoft Teams, Discord, Alertmanager
 
 Description: Configure webhook integrations to send OpenTelemetry metric alerts to Microsoft Teams and Discord channels.
 

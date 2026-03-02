@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Coralogix, Observability, Logs, Metrics, Traces
+Tags: OpenTelemetry, Collector, Exporter, Coralogix, Observability, Logs, Metrics, Traces
 
 Description: Complete guide to configuring the Coralogix exporter in OpenTelemetry Collector for unified observability with logs, metrics, and traces in the Coralogix platform.
 

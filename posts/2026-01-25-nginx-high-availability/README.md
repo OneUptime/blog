@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, High Availability, Failover, Load Balancing, Reliability
+Tags: NGINX, High Availability, Failover, Load Balancing, Reliability
 
 Description: Learn how to configure high availability for Nginx deployments using active-passive failover with Keepalived, shared configuration, and health monitoring.
 

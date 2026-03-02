@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Security, DevSecOps, CI/CD, Pipelines, SAST, DAST, Vulnerability Scanning
+Tags: Security, DevSecOps, CI/CD, Pipeline, SAST, DAST, Vulnerability Scanning
 
 Description: A practical guide to integrating security scanning tools into your CI/CD pipelines for automated vulnerability detection and compliance.
 

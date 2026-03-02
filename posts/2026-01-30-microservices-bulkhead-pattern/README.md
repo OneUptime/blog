@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Microservices, Resilience, Design Patterns, Architecture
+Tags: Microservices, Resilience, Design Pattern, Architecture
 
 Description: Implement the bulkhead pattern to isolate failures in microservices using thread pools, semaphores, and connection limits for fault containment.
 

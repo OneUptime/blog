@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Mappings, Schema Design, Indexing, Search, Data Modeling
+Tags: Elasticsearch, Mapping, Schema Design, Indexing, Search, Data Modeling
 
 Description: A comprehensive guide to designing Elasticsearch index mappings, covering field types, analyzers, mapping optimization, and best practices for efficient search and storage.
 

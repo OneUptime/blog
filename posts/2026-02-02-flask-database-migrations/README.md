@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Flask, Python, Database, Migrations, Flask-Migrate, Alembic, SQLAlchemy
+Tags: Flask, Python, Database, Migration, Flask-Migrate, Alembic, SQLAlchemy
 
 Description: Learn how to handle database migrations in Flask applications using Flask-Migrate and Alembic.
 

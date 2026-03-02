@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Java, Jakarta EE, Application Servers
+Tags: OpenTelemetry, Java, Jakarta EE, Application Server
 
 Description: Resolve version conflicts between the OpenTelemetry Java SDK and Jakarta EE application servers like Tomcat, WildFly, and Payara.
 

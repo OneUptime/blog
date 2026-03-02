@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, VNet Peering, Virtual Networks, Networking, Troubleshooting, Connectivity, Cloud
+Tags: Azure, VNet Peering, Virtual Network, Networking, Troubleshooting, Connectivity, Cloud
 
 Description: Diagnose and resolve common VNet peering connectivity issues in Azure including failed states and routing problems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Budget Alerts, Cost Management, Billing, FinOps, Cost Controls
+Tags: GCP, Budget Alerts, Cost Management, Billing, FinOps, Cost Control
 
 Description: Set up budget alerts, cost controls, and spending limits for a new GCP project to prevent unexpected charges and maintain visibility into cloud spending from day one.
 

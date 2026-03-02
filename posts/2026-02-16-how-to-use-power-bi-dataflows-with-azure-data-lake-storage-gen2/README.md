@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Power BI, Azure Data Lake, Dataflows, Data Engineering, ETL, Azure Storage, Business Intelligence
+Tags: Power BI, Azure Data Lake, Dataflow, Data Engineering, ETL, Azure Storage, Business Intelligence
 
 Description: A practical guide to connecting Power BI Dataflows with Azure Data Lake Storage Gen2 for scalable self-service data preparation.
 

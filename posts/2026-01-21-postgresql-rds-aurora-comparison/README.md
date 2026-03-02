@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, AWS, RDS, Aurora, Cloud Database, Managed Services
+Tags: PostgreSQL, AWS, RDS, Aurora, Cloud Database, Managed Service
 
 Description: A comparison of Amazon RDS PostgreSQL, Aurora PostgreSQL, and self-hosted PostgreSQL, covering features, costs, and use case recommendations.
 

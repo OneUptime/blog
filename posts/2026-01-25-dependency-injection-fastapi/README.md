@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, FastAPI, Dependency Injection, Clean Architecture, Testing, Design Patterns
+Tags: Python, FastAPI, Dependency Injection, Clean Architecture, Testing, Design Pattern
 
 Description: Learn how to use dependency injection in FastAPI to build maintainable, testable applications.
 

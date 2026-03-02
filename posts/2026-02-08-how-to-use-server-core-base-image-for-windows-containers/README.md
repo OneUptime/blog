@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, server core, windows containers, .NET Framework, IIS, Windows Server, enterprise
+Tags: Docker, server core, Windows Containers, .NET Framework, IIS, Windows Server, Enterprise
 
 Description: Build Windows container images on the Server Core base image for applications that need full .NET Framework, IIS, and Windows Server features.
 

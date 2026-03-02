@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Span Names, Cardinality, Performance
+Tags: OpenTelemetry, Span Name, Cardinality, Performance
 
 Description: Learn why high-cardinality span names destroy your tracing backend performance and how to use attributes correctly instead.
 

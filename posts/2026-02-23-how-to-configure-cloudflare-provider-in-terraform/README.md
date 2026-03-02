@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Cloudflare, DNS, CDN, Providers, Infrastructure as Code
+Tags: Terraform, Cloudflare, DNS, CDN, Provider, Infrastructure as Code
 
 Description: Learn how to configure the Terraform Cloudflare provider to manage DNS records, firewall rules, page rules, and other Cloudflare resources as infrastructure code.
 

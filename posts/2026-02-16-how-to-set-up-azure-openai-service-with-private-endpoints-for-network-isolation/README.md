@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure OpenAI, Private Endpoints, Network Security, Virtual Network, Azure Networking, Zero Trust, Enterprise Security
+Tags: Azure OpenAI, Private Endpoint, Network Security, Virtual Network, Azure Networking, Zero Trust, Enterprise Security
 
 Description: Configure Azure OpenAI Service with private endpoints to restrict access to your virtual network and eliminate public internet exposure.
 

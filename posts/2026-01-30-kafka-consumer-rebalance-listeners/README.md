@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kafka, Consumers, Rebalancing, Reliability
+Tags: Kafka, Consumer, Rebalancing, Reliability
 
 Description: A practical guide to implementing ConsumerRebalanceListener in Java for handling partition assignments, offset management, and graceful state transitions during Kafka consumer group rebalances.
 

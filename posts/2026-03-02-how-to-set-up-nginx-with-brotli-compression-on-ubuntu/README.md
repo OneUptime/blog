@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Nginx, Performance, Web Server, Optimization
+Tags: Ubuntu, NGINX, Performance, Web Server, Optimization
 
 Description: Configure Nginx with Brotli compression on Ubuntu to reduce bandwidth usage and improve page load times, including building the module and configuring optimal compression settings.
 

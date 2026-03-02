@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, Conditionals, DevOps, Cloud Automation
+Tags: Terraform, Infrastructure as Code, Conditional, DevOps, Cloud Automation
 
 Description: Learn how to create resources conditionally in Terraform using count, for_each, and conditional expressions to build flexible, environment-aware infrastructure configurations.
 

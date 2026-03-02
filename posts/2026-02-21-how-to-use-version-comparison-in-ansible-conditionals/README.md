@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Version Comparison, Conditionals, DevOps
+Tags: Ansible, Version Comparison, Conditional, DevOps
 
 Description: Learn how to compare software versions in Ansible conditionals using the version test for accurate semantic version checking.
 

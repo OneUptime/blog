@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Security, CSRF, Web Security, Tokens, Authentication, Backend
+Tags: Security, CSRF, Web Security, Token, Authentication, Backend
 
 Description: Learn how to prevent Cross-Site Request Forgery attacks using CSRF tokens, SameSite cookies, and other defense mechanisms.
 

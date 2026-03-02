@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GitLab, Providers, DevOps, Git, Infrastructure as Code
+Tags: Terraform, GitLab, Provider, DevOps, Git, Infrastructure as Code
 
 Description: Learn how to configure the Terraform GitLab provider to manage projects, groups, CI/CD variables, merge request approvals, and other GitLab resources as code.
 

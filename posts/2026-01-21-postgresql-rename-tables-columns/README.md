@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Schema Changes, Zero Downtime, DDL, Migrations
+Tags: PostgreSQL, Schema Changes, Zero Downtime, DDL, Migration
 
 Description: A guide to safely renaming PostgreSQL tables and columns without downtime, covering strategies for backward compatibility.
 

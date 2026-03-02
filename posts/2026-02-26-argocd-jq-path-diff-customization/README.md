@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, JQ, Diff Customization
+Tags: ArgoCD, GitOps, Kubernetes, jq, Diff Customization
 
 Description: Learn how to use JQ path expressions in ArgoCD ignoreDifferences for advanced field matching with wildcards, conditionals, and array filtering.
 

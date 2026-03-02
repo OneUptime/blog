@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Debezium, MySQL, Change Data Capture, CDC, Kafka, Database, Streaming, Real-time, Event-Driven
+Tags: Debezium, MySQL, Change Data Capture, CDC, Kafka, Database, Streaming, Real-Time, Event-Driven
 
 Description: A comprehensive guide to configuring Debezium for MySQL change data capture, covering binlog setup, connector configuration, GTID mode, schema history, snapshot modes, and table filtering.
 

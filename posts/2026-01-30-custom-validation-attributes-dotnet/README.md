@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: .NET, C#, Validation, ASP.NET Core, Data Annotations, Backend Development
+Tags: .NET, C#, Validation, ASP.NET Core, Data Annotation, Backend Development
 
 Description: Learn how to build production-ready custom validation attributes in .NET. This guide covers everything from simple validators to complex cross-property validation with dependency injection support.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Configuration, Python, Development
+Tags: Ansible, Plugin, Configuration, Python, Development
 
 Description: Master the Ansible plugin configuration system to define options that load from environment variables, ini files, and Ansible variables.
 

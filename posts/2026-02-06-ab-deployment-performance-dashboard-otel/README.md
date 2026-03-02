@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, A/B Deployments, Performance Dashboard, Canary Releases, Grafana
+Tags: OpenTelemetry, A/B Deployments, Performance Dashboard, Canary Release, Grafana
 
 Description: Build a Grafana dashboard that compares performance metrics side-by-side for A/B deployments using OpenTelemetry data from both versions.
 

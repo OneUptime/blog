@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Systemd, Linux, Service Management, Production, DevOps
+Tags: Docker, systemd, Linux, Service Management, Production, DevOps
 
 Description: Run Docker containers as native systemd services with proper lifecycle management, logging, and automatic startup on boot.
 

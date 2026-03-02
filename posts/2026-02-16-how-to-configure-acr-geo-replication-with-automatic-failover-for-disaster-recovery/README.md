@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ACR, Azure Container Registry, Geo-Replication, Disaster Recovery, Azure, Containers, High Availability
+Tags: ACR, Azure Container Registry, Geo-Replication, Disaster Recovery, Azure, Container, High Availability
 
 Description: Learn how to configure Azure Container Registry geo-replication for multi-region image availability and automatic failover during regional outages.
 

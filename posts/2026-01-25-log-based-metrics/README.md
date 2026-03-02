@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Log Metrics, Metrics Extraction, Observability, Prometheus, Monitoring, Analytics, Counters
+Tags: Log Metrics, Metrics Extraction, Observability, Prometheus, Monitoring, Analytics, Counter
 
 Description: Learn how to extract metrics from logs for monitoring and alerting.
 

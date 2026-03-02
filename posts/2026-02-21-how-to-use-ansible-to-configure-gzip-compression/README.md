@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Nginx, Gzip, Performance, DevOps
+Tags: Ansible, NGINX, Gzip, Performance, DevOps
 
 Description: Automate Nginx gzip compression configuration using Ansible to reduce bandwidth usage and improve page load times across your web infrastructure.
 

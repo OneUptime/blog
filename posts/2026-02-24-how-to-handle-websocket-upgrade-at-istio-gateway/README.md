@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebSocket, Gateway, Real-time, Kubernetes
+Tags: Istio, WebSocket, Gateway, Real-Time, Kubernetes
 
 Description: How to configure the Istio ingress gateway and VirtualService to properly handle WebSocket connections including timeouts, load balancing, and monitoring.
 

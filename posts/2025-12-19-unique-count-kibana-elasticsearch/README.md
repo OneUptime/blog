@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Kibana, Aggregations, Cardinality, Analytics, Visualization
+Tags: Elasticsearch, Kibana, Aggregation, Cardinality, Analytics, Visualization
 
 Description: Learn how to calculate unique counts (cardinality) in Kibana and Elasticsearch using cardinality aggregations, understand precision trade-offs, and build visualizations for counting distinct values.
 

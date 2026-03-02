@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Load Balancer, Session Affinity, Consistent Hashing, Backend Services, Google Cloud
+Tags: GCP, Load Balancer, Session Affinity, Consistent Hashing, Backend Service, Google Cloud
 
 Description: Configure session affinity using consistent hashing on Google Cloud Load Balancer to route related requests to the same backend for better cache hits and stateful workloads.
 

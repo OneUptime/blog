@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Photon OS, VMware, Containers, Linux
+Tags: Ansible, Photon OS, VMware, Container, Linux
 
 Description: Configure VMware Photon OS with Ansible using tdnf package management for container-optimized VMware infrastructure workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [mallersjamie](https://www.github.com/mallersjamie)
 
-Tags: Incident Management, Comparison, On-Call, Status Pages, Open Source
+Tags: Incident Management, Comparison, On-Call, Status Page, Open Source
 
 Description: An honest comparison of Incident.io and OneUptime for incident management, on-call scheduling, and status pages - covering features, pricing, and which fits your team best.
 

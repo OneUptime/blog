@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, Configuration, Infrastructure as Code, HCL
+Tags: Terraform, Workspace, Configuration, Infrastructure as Code, HCL
 
 Description: Learn how to use the terraform.workspace expression in your Terraform configurations to create dynamic, workspace-aware infrastructure with conditional logic and environment-specific settings.
 

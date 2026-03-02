@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, KVM, QEMU, Virtualization, Virtual Machines, Tutorial
+Tags: Ubuntu, KVM, QEMU, Virtualization, Virtual Machine, Tutorial
 
 Description: Complete guide to setting up KVM virtualization on Ubuntu for running virtual machines with near-native performance.
 

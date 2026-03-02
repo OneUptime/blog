@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Message Queues, Design Patterns, Scalability, Backend
+Tags: Message Queue, Design Pattern, Scalability, Backend
 
 Description: Learn how to implement the competing consumers pattern for scalable message processing.
 

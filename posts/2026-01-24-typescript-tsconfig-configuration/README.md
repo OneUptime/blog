@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Configuration, tsconfig, JavaScript, Build Tools
+Tags: TypeScript, Configuration, tsconfig, JavaScript, Build Tool
 
 Description: A comprehensive guide to configuring tsconfig.json for different project types with explanations of key compiler options.
 

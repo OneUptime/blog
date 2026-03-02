@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Logging, Standards, JSON, Observability
+Tags: Logging, Standard, JSON, Observability
 
 Description: Learn to build log format standards for consistent and parseable log output.
 

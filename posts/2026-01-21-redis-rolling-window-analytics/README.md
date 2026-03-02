@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Analytics, Rolling Window, Moving Average, Real-time Analytics
+Tags: Redis, Analytics, Rolling Window, Moving Average, Real-Time Analytics
 
 Description: A comprehensive guide to implementing rolling window analytics in Redis including moving averages, sliding aggregations, and real-time statistical computations.
 

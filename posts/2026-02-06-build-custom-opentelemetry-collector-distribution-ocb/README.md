@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, OCB, Custom Distribution, Build Tools, Observability
+Tags: OpenTelemetry, Collector, OCB, Custom Distribution, Build Tool, Observability
 
 Description: A comprehensive guide to building custom OpenTelemetry Collector distributions using the OpenTelemetry Collector Builder (OCB) with specific components tailored to your needs.
 

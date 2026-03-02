@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Keyspaces, Cassandra, Database, Capacity Planning, Cost Optimization
+Tags: AWS, Keyspace, Cassandra, Database, Capacity Planning, Cost Optimization
 
 Description: Understand the differences between on-demand and provisioned capacity modes in Amazon Keyspaces and learn when to use each for optimal cost and performance.
 

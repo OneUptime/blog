@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Containers, Reliability
+Tags: Kubernetes, Container, Reliability
 
 Description: Master Kubernetes restart policies to control container restart behavior.
 

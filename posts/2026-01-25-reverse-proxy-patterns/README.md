@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Reverse Proxy, Nginx, HAProxy, Load Balancing, Networking, DevOps
+Tags: Reverse Proxy, NGINX, HAProxy, Load Balancing, Networking, DevOps
 
 Description: A comprehensive guide to implementing reverse proxy patterns, covering load balancing, SSL termination, caching, WebSocket proxying, and advanced routing with Nginx and HAProxy.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Opsgenie, Incident Management
+Tags: ArgoCD, GitOps, Kubernetes, OpsGenie, Incident Management
 
 Description: Learn how to configure ArgoCD to send alerts to Opsgenie for automated incident management, on-call routing, and deployment failure response.
 

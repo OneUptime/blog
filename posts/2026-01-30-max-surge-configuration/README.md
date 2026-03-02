@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployments, Max Surge, Rolling Updates
+Tags: Kubernetes, Deployment, Max Surge, Rolling Update
 
 Description: Learn to create max surge configuration for controlling deployment rollout speed.
 

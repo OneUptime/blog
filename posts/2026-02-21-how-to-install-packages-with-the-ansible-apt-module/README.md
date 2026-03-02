@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, apt, Ubuntu, Package Management
+Tags: Ansible, APT, Ubuntu, Package Management
 
 Description: A complete guide to installing packages on Debian and Ubuntu systems using the Ansible apt module with practical examples.
 

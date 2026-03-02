@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Templates, Include, CI/CD, Code Reuse, DevOps
+Tags: GitLab CI, Template, Include, CI/CD, Code Reuse, DevOps
 
 Description: Learn how to use GitLab CI include templates to share pipeline configurations across projects, reduce duplication, and maintain consistency in your CI/CD workflows.
 

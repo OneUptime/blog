@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Azure, App Service, Custom Domains, SSL, Modules, Infrastructure as Code
+Tags: Terraform, Azure, App Service, Custom Domain, SSL, Modules, Infrastructure as Code
 
 Description: Build reusable Terraform modules for Azure App Service that handle custom domain binding, SSL certificate management, and production-ready configurations.
 

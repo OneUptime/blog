@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, OneUptime, SLOs, SLIs, Reliability
+Tags: Istio, OneUptime, SLO, SLI, Reliability
 
 Description: Define and monitor Service Level Objectives for Istio-managed services using OneUptime with practical examples and error budget tracking.
 

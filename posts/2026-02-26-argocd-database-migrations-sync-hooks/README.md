@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Database, Migrations
+Tags: ArgoCD, GitOps, Kubernetes, Database, Migration
 
 Description: Learn how to run database migrations during ArgoCD sync operations using PreSync and PostSync hooks, sync waves, and Job-based migration runners for safe schema changes.
 

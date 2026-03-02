@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ScyllaDB, Kubernetes, Databases
+Tags: ScyllaDB, Kubernetes, Database
 
 Description: Learn how to deploy ScyllaDB on Kubernetes using the Scylla Operator for high-performance, low-latency NoSQL workloads with Cassandra compatibility and improved resource efficiency.
 

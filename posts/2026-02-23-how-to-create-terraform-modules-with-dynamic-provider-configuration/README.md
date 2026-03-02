@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Providers, Dynamic Configuration, Infrastructure as Code
+Tags: Terraform, Modules, Provider, Dynamic Configuration, Infrastructure as Code
 
 Description: Learn how to create Terraform modules that support dynamic provider configuration for multi-account, multi-region, and cross-provider deployments.
 

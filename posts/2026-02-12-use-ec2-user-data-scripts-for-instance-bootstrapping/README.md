@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, User Data, Automation, Cloud-Init
+Tags: AWS, EC2, User Data, Automation, cloud-init
 
 Description: Learn how to use EC2 user data scripts to automatically configure instances on launch, including practical examples for web servers, applications, and monitoring agents.
 

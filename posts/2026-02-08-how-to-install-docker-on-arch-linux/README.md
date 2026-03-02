@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Arch Linux, Linux, Installation, DevOps, Containers, Pacman, Rolling Release
+Tags: Docker, Arch Linux, Linux, Installation, DevOps, Container, Pacman, Rolling Release
 
 Description: How to install and configure Docker on Arch Linux using pacman, including storage driver setup, networking, and common troubleshooting steps.
 

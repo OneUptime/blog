@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, CI/CD, Stages, Pipelines, DevOps, Automation
+Tags: GitLab CI, CI/CD, Stages, Pipeline, DevOps, Automation
 
 Description: A practical guide to using stages in GitLab CI pipelines. Learn how to organize jobs into stages, control execution order, handle dependencies, and build efficient CI/CD workflows.
 

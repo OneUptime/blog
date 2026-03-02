@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, CQRS, Event Handlers, Distributed Tracing
+Tags: OpenTelemetry, CQRS, Event Handler, Distributed Tracing
 
 Description: Instrument CQRS read and write paths separately with OpenTelemetry to gain independent visibility into command and query performance.
 

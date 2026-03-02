@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Chaos Engineering, Game Days, SRE, Incident Response, Resilience Testing, Team Training
+Tags: Chaos Engineering, Game Day, SRE, Incident Response, Resilience Testing, Team Training
 
 Description: A complete playbook for planning and executing chaos engineering game days that strengthen your team's incident response capabilities and system resilience.
 

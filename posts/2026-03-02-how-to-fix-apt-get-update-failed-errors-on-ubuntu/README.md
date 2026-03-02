@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Package Management, apt, Troubleshooting, Administration
+Tags: Ubuntu, Package Management, APT, Troubleshooting, Administration
 
 Description: Fix common apt-get update failures on Ubuntu including GPG key errors, 404 repository errors, network connectivity issues, and broken source list configurations.
 

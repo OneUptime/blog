@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Faceted Search, Filters, E-commerce, Search, UX
+Tags: Elasticsearch, Faceted Search, Filter, E-Commerce, Search, UX
 
 Description: A comprehensive guide to implementing faceted search with Elasticsearch, covering filter aggregations, post_filter, and building interactive search interfaces with dynamic facet counts.
 

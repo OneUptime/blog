@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, 504 Errors, Timeouts, Troubleshooting, Kubernetes
+Tags: Istio, 504 Errors, Timeout, Troubleshooting, Kubernetes
 
 Description: Troubleshooting guide for diagnosing and resolving 504 Gateway Timeout errors in Istio service mesh including timeout configuration at every layer.
 

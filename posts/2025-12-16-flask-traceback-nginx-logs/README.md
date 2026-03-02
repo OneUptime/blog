@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flask, Nginx, Python, Logging, Debugging
+Tags: Flask, NGINX, Python, Logging, Debugging
 
 Description: Learn how to configure Flask and Nginx to properly capture and display Python tracebacks, including stderr handling, Gunicorn logging, and production error tracking strategies.
 

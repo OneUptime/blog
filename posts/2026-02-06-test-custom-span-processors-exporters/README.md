@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Span Processors, Exporters, SDK Testing, Custom Components
+Tags: OpenTelemetry, Span Processors, Exporter, SDK Testing, Custom Components
 
 Description: Use OpenTelemetry SDK test utilities to write thorough tests for custom span processors and exporters across Java, Python, and Node.js.
 

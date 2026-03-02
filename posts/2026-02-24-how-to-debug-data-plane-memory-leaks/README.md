@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Data Plane, Memory Leaks, Envoy, Debugging, Kubernetes
+Tags: Istio, Data Plane, Memory Leak, Envoy, Debugging, Kubernetes
 
 Description: Practical steps to identify, diagnose, and fix memory leaks in Istio's Envoy sidecar proxies using stats, heap profiling, and configuration tuning.
 

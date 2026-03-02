@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Data Migration, Databases, Infrastructure as Code, DevOps
+Tags: Terraform, Data Migration, Database, Infrastructure as Code, DevOps
 
 Description: Learn how to coordinate data migrations with Terraform infrastructure changes to safely update databases, storage, and stateful services without data loss.
 

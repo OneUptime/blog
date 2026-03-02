@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Kubernetes, Custom Resources
+Tags: Prometheus, Kubernetes, Custom Resource
 
 Description: Monitor Kubernetes Custom Resource Definitions with kube-state-metrics custom resource state metrics, enabling observability for operators and custom controllers.
 

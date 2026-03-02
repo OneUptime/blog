@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Loops, Lookups, Data Sources
+Tags: Ansible, Loops, Lookup, Data Source
 
 Description: Learn the differences between query and lookup in Ansible loops and how to use lookup plugins to feed dynamic data into your iteration logic.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Buffering, Performance, Proxy, Optimization
+Tags: NGINX, Buffering, Performance, Proxy, Optimization
 
 Description: Learn how to configure request and response buffering in Nginx to optimize performance, handle slow clients, and protect backend servers from resource exhaustion.
 

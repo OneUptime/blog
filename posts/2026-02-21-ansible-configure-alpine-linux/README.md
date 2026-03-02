@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Alpine Linux, Containers, Linux, Minimal
+Tags: Ansible, Alpine Linux, Container, Linux, Minimal
 
 Description: Configure Alpine Linux servers and containers with Ansible using apk package management, OpenRC init system, and musl-based tooling.
 

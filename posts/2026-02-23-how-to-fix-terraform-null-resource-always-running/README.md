@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, Infrastructure as Code, Provisioners
+Tags: Terraform, Troubleshooting, Infrastructure as Code, Provisioner
 
 Description: Fix the Terraform null_resource always running problem by understanding triggers, lifecycle behavior, and migrating to terraform_data resources.
 

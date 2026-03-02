@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Containers, Inventory, DevOps
+Tags: Ansible, Docker, Container, Inventory, DevOps
 
 Description: Learn how to create Ansible inventory for Docker containers using the docker connection plugin and dynamic inventory scripts.
 

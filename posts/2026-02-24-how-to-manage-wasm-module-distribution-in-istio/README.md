@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebAssembly, Wasm, OCI, Distribution
+Tags: Istio, WebAssembly, WASM, OCI, Distribution
 
 Description: How to build, distribute, and manage WebAssembly modules for Istio using OCI registries and best practices for production.
 

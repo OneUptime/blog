@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, Providers, Configuration, DevOps
+Tags: Terraform, Troubleshooting, Provider, Configuration, DevOps
 
 Description: How to resolve Invalid Provider Configuration errors in Terraform caused by missing credentials, wrong regions, or misconfigured provider blocks.
 

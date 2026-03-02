@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, Multi-Tenant, SaaS, Infrastructure as Code, DevOps
+Tags: Terraform, Workspace, Multi-Tenant, SaaS, Infrastructure as Code, DevOps
 
 Description: Learn how to use Terraform workspaces to manage isolated infrastructure for multiple tenants in a SaaS or multi-customer deployment.
 

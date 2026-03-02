@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backup, Disaster Recovery, Rsync, Data Protection
+Tags: Ubuntu, Backup, Disaster Recovery, rsync, Data Protection
 
 Description: Learn how to implement the 3-2-1 backup strategy on Ubuntu using rsync, borgbackup, and cloud storage to protect your data against loss and corruption.
 

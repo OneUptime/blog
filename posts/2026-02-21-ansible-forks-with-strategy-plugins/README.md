@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Forks, Strategy Plugins, Performance, Parallelism
+Tags: Ansible, Fork, Strategy Plugins, Performance, Parallelism
 
 Description: Optimize Ansible performance by tuning the forks setting alongside strategy plugins for the right balance of parallelism and resource usage.
 

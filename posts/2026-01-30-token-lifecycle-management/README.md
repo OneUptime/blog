@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Security, Tokens, Lifecycle, OAuth
+Tags: Security, Token, Lifecycle, OAuth
 
 Description: Learn to create token lifecycle management for token issuance, renewal, and revocation.
 

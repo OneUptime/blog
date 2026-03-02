@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CDKTF, Iterators, Dynamic Resources, Infrastructure as Code
+Tags: Terraform, CDKTF, Iterator, Dynamic Resources, Infrastructure as Code
 
 Description: Learn how to use CDKTF iterators to create dynamic resources from lists and maps, equivalent to Terraform's for_each and count meta-arguments.
 

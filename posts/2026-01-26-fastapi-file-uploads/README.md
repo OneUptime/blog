@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: FastAPI, File Uploads, Python, REST API, Multipart Forms, Async, Web Development
+Tags: FastAPI, File Upload, Python, REST API, Multipart Forms, Async, Web Development
 
 Description: A hands-on guide to implementing secure and scalable file uploads in FastAPI with validation, progress tracking, and cloud storage integration.
 

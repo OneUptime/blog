@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DataSync, S3, Data Migration, On-Premises
+Tags: AWS, DataSync, S3, Data Migration, On-Premise
 
 Description: Step-by-step walkthrough of using AWS DataSync to transfer data from on-premises NFS or SMB storage to Amazon S3, with filtering, scheduling, and verification.
 

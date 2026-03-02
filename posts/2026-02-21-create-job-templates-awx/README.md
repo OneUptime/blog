@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWX, Job Templates, Automation, Playbooks
+Tags: Ansible, AWX, Job Templates, Automation, Playbook
 
 Description: Create and configure AWX job templates to run Ansible playbooks with inventories, credentials, and extra variables.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, DevOps, Automation, Troubleshooting, Python, Modules, Collections
+Tags: Ansible, DevOps, Automation, Troubleshooting, Python, Modules, Collection
 
 Description: Learn how to diagnose and resolve module not found errors in Ansible by installing missing collections, configuring module paths, and fixing Python dependencies.
 

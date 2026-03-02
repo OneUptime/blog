@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Edge Analytics, IoT, Stream Processing, Real-time, Machine Learning, Time Series
+Tags: Edge Analytics, IoT, Stream Processing, Real-Time, Machine Learning, Time Series
 
 Description: Learn how to implement edge analytics for IoT deployments. Build real-time data processing pipelines, implement anomaly detection, create aggregations, and generate insights directly on edge devices.
 

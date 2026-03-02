@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Axum, HTTP, Router, Web Framework
+Tags: Rust, axum, HTTP, Router, Web Framework
 
 Description: Learn how to build a high-performance HTTP router in Rust using Axum, from basic routing to advanced patterns like middleware, extractors, and nested routes.
 

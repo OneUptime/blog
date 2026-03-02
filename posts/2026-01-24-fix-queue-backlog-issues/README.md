@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Queues, RabbitMQ, SQS, Kafka, Performance, Troubleshooting, Monitoring
+Tags: Queue, RabbitMQ, SQS, Kafka, Performance, Troubleshooting, Monitoring
 
 Description: A practical guide to diagnosing and fixing message queue backlogs, including consumer scaling, message prioritization, and dead letter handling.
 

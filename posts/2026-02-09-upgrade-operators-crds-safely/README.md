@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Operators, CRD
+Tags: Kubernetes, Operator, CRD
 
 Description: Master safe Kubernetes operator and CRD upgrades with proper versioning strategies, backup procedures, and validation techniques to prevent data loss and maintain custom resource availability.
 

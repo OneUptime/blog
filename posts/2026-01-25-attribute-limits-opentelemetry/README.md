@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Attributes, Limits, Performance, Cardinality, Observability, Configuration
+Tags: OpenTelemetry, Attributes, Limit, Performance, Cardinality, Observability, Configuration
 
 Description: Learn how to configure attribute limits in OpenTelemetry to prevent memory issues, control costs, and maintain system stability while preserving essential telemetry data.
 

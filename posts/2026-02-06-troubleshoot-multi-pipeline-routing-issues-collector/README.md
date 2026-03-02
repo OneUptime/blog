@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Troubleshooting, Pipelines, Routing, Configuration
+Tags: OpenTelemetry, Collector, Troubleshooting, Pipeline, Routing, Configuration
 
 Description: Comprehensive guide to diagnosing and fixing routing problems in OpenTelemetry Collector multi-pipeline configurations with practical examples and debugging techniques.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, Kubernetes, GitOps, DevOps, Security, Multi-tenancy, RBAC
+Tags: ArgoCD, Kubernetes, GitOps, DevOps, Security, Multi-Tenancy, RBAC
 
 Description: A comprehensive guide to ArgoCD Projects covering multi-tenant isolation, RBAC configuration, source and destination restrictions, role-based access control.
 

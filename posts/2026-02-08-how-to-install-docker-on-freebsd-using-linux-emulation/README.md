@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, FreeBSD, Linux Emulation, Installation, Containers, DevOps, Unix, Virtualization
+Tags: Docker, FreeBSD, Linux Emulation, Installation, Container, DevOps, Unix, Virtualization
 
 Description: How to run Docker on FreeBSD using Linux compatibility layer and virtual machine approaches, with practical alternatives and trade-offs explained.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Python, systemd, Linux, Services
+Tags: Ubuntu, Python, systemd, Linux, Service
 
 Description: Learn how to integrate Python applications with systemd on Ubuntu, including journal logging, service notifications, and watchdog support.
 

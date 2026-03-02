@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, MongoDB Atlas, Databases, Infrastructure as Code
+Tags: Terraform, Provider, MongoDB Atlas, Database, Infrastructure as Code
 
 Description: Learn how to configure the MongoDB Atlas provider in Terraform to manage clusters, database users, network access, and backup policies as code.
 

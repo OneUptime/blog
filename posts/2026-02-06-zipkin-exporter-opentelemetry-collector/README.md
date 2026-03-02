@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Zipkin, Distributed Tracing, Observability
+Tags: OpenTelemetry, Collector, Exporter, Zipkin, Distributed Tracing, Observability
 
 Description: Comprehensive guide to configuring the Zipkin exporter in OpenTelemetry Collector for distributed tracing, including setup, authentication, and optimization techniques.
 

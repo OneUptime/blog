@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, App Service, Docker, Containers, Linux, DevOps, Cloud Computing
+Tags: Azure, App Service, Docker, Container, Linux, DevOps, Cloud Computing
 
 Description: Complete walkthrough for deploying a Docker container to Azure App Service on Linux including image configuration, registry setup, and CI/CD.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Podman Compose, Docker Compose, Containers, DevOps, Multi-Container, Rootless Containers
+Tags: Podman, Podman Compose, Docker Compose, Container, DevOps, Multi-Container, Rootless Containers
 
 Description: Learn how to use Podman Compose to manage multi-container applications with Docker Compose compatibility.
 

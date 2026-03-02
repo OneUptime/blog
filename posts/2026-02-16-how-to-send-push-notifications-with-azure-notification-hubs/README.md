@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Notification Hubs, Push Notifications, Mobile, Cloud, FCM, APNs
+Tags: Azure, Notification Hub, Push Notifications, Mobile, Cloud, FCM, APNs
 
 Description: Learn how to set up Azure Notification Hubs and send push notifications to iOS and Android devices from your backend application.
 

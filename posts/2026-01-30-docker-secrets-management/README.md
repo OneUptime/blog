@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Security, DevOps, Secrets
+Tags: Docker, Security, DevOps, Secret
 
 Description: Secure sensitive data in Docker with secrets management using Docker Swarm secrets, docker-compose secrets, and best practices for credential handling.
 

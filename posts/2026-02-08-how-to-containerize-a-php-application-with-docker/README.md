@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, PHP, Apache, Nginx, Containerization, DevOps, Web Development
+Tags: Docker, PHP, Apache, NGINX, Containerization, DevOps, Web Development
 
 Description: Build production-ready Docker images for PHP applications with proper web server configuration, extensions, and performance tuning.
 

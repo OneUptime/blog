@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mesh, Wasm, Waypoint Proxy, Kubernetes
+Tags: Istio, Ambient Mesh, WASM, Waypoint Proxy, Kubernetes
 
 Description: Learn how to attach WebAssembly plugins to waypoint proxies in Istio ambient mode for Layer 7 traffic processing customization.
 

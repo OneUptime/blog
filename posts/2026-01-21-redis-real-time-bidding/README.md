@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Real-Time, Bidding, Auctions, E-Commerce, WebSockets, High Concurrency
+Tags: Redis, Real-Time, Bidding, Auctions, E-Commerce, WebSocket, High Concurrency
 
 Description: A comprehensive guide to building real-time bidding and auction systems with Redis, covering atomic bid processing, concurrent bid handling, live updates, and auction management.
 

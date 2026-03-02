@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Unroll, Array Attributes, Data Transformation
+Tags: OpenTelemetry, Collector, Processor, Unroll, Array Attributes, Data Transformation
 
 Description: Master the Unroll processor in OpenTelemetry Collector to flatten array attributes into multiple telemetry records for easier querying and analysis.
 

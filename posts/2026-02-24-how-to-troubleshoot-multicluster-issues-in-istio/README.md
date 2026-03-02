@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Multicluster, Troubleshooting, Kubernetes, Service Mesh
+Tags: Istio, MultiCluster, Troubleshooting, Kubernetes, Service Mesh
 
 Description: A practical troubleshooting guide for common issues in Istio multicluster deployments including connectivity, DNS, and certificate problems.
 

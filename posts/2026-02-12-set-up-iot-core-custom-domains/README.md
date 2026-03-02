@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, IoT, IoT Core, Custom Domains, TLS, DNS, Security
+Tags: AWS, IoT, IoT Core, Custom Domain, TLS, DNS, Security
 
 Description: Configure custom domain names for AWS IoT Core endpoints so your devices connect to branded, meaningful hostnames with your own TLS certificates.
 

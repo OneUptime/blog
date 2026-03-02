@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Spot Instances, Capacity Providers, Cost Optimization
+Tags: AWS, ECS, Spot Instances, Capacity Provider, Cost Optimization
 
 Description: Set up Amazon ECS with Spot Instances and capacity providers to reduce container compute costs by up to 90 percent while maintaining availability
 

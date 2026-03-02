@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, ServiceAccounts
+Tags: Kubernetes, Security, ServiceAccount
 
 Description: Learn how to disable automatic ServiceAccount token mounting in Kubernetes using automountServiceAccountToken false for improved security on workloads that don't need API access.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Runbooks, Alerting, Incident Response
+Tags: OpenTelemetry, Runbook, Alerting, Incident Response
 
 Description: Write effective runbooks that connect alerting rules directly to the OpenTelemetry metrics and trace queries engineers need during incident response.
 

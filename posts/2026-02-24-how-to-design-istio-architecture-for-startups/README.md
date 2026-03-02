@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Startups, Service Mesh, Kubernetes, Architecture
+Tags: Istio, Startup, Service Mesh, Kubernetes, Architecture
 
 Description: A practical guide to designing a lightweight and cost-effective Istio service mesh architecture tailored for startup environments.
 

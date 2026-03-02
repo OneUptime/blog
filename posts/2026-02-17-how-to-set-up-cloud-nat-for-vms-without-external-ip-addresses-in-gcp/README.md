@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud NAT, Networking, Virtual Machines, Security
+Tags: GCP, Cloud NAT, Networking, Virtual Machine, Security
 
 Description: Configure Cloud NAT to provide internet access for GCP virtual machines that do not have external IP addresses, improving security while maintaining outbound connectivity.
 

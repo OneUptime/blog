@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kind, Integration Testing, CI/CD, Controllers
+Tags: Kubernetes, Kind, Integration Testing, CI/CD, Controller
 
 Description: Learn how to create integration tests that automatically provision Kind clusters in CI pipelines for testing Kubernetes controllers against real API servers.
 

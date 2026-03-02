@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, Static Files, Web Server, Configuration, DevOps
+Tags: NGINX, Static Files, Web Server, Configuration, DevOps
 
 Description: Learn the difference between Nginx root and alias directives for serving static files, including proper usage patterns, common pitfalls, and production configuration examples.
 

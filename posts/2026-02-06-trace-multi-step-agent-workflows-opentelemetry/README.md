@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, AI Agents, Tracing, Sessions, Spans, Observability, Autonomous Agents, Workflows, LLM
+Tags: OpenTelemetry, AI Agents, Tracing, Sessions, Span, Observability, Autonomous Agents, Workflow, LLM
 
 Description: Learn how to trace multi-step AI agent workflows using OpenTelemetry sessions and spans, with practical patterns for tool use, planning, and error recovery.
 

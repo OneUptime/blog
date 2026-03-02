@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Logic Apps, Workflows, Automation, Integration, Troubleshooting, Cloud
+Tags: Azure, Logic Apps, Workflow, Automation, Integration, Troubleshooting, Cloud
 
 Description: Learn how to diagnose and fix common Azure Logic App workflow errors including trigger failures, action errors, and expression issues.
 

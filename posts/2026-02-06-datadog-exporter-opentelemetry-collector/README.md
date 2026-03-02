@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Datadog, APM, Observability, Monitoring
+Tags: OpenTelemetry, Collector, Exporter, Datadog, APM, Observability, Monitoring
 
 Description: Step-by-step guide to configuring the Datadog exporter in OpenTelemetry Collector, enabling seamless integration between OpenTelemetry instrumentation and Datadog monitoring platform.
 

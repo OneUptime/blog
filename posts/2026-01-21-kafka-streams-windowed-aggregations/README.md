@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Apache Kafka, Kafka Streams, Windowed Aggregations, Time Windows, Stream Processing, Real-time Analytics
+Tags: Apache Kafka, Kafka Streams, Windowed Aggregations, Time Windows, Stream Processing, Real-Time Analytics
 
 Description: Learn how to implement windowed aggregations in Kafka Streams, including tumbling, hopping, sliding, and session windows for time-based analytics and real-time data processing.
 

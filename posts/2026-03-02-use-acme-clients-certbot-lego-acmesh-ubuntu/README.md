@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, TLS, ACME, Let's Encrypt, Certificates
+Tags: Ubuntu, TLS, ACME, Let's Encrypt, Certificate
 
 Description: Compare and use the three major ACME clients - Certbot, Lego, and acme.sh - on Ubuntu to obtain and manage Let's Encrypt certificates for different use cases.
 

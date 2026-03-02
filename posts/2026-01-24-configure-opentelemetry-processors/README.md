@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Configuration, Observability, Performance
+Tags: OpenTelemetry, Collector, Processor, Configuration, Observability, Performance
 
 Description: A comprehensive guide to configuring OpenTelemetry Collector processors for filtering, transforming, and optimizing telemetry data.
 

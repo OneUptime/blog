@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, gcloud CLI, Configurations, Multi-Project, Google Cloud
+Tags: GCP, gcloud CLI, Configuration, Multi-Project, Google Cloud
 
 Description: Learn how to use gcloud config configurations to manage and switch between multiple GCP projects, accounts, and environments efficiently from the command line.
 

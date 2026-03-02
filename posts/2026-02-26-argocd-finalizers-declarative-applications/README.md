@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Finalizers, Resource Cleanup
+Tags: ArgoCD, GitOps, Kubernetes, Finalizer, Resource Cleanup
 
 Description: Learn how to configure finalizers in declarative ArgoCD Application manifests to control resource cleanup behavior when applications are deleted.
 

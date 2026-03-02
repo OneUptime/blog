@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provider Development, Plan Modification, Infrastructure as Code, Custom Providers
+Tags: Terraform, Provider Development, Plan Modification, Infrastructure as Code, Custom Provider
 
 Description: Learn how to implement plan modifiers in custom Terraform providers to control attribute behavior during planning, including default values and force replacement.
 

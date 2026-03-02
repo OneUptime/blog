@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Controllers, Performance
+Tags: Kubernetes, Controller, Performance
 
 Description: Learn how to use Kubernetes informers to cache resources locally, reduce API server load, build efficient controllers, and understand the informer pattern for scalable applications.
 

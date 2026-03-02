@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Deployments, Circuit Breaker, DevOps
+Tags: AWS, ECS, Deployment, Circuit Breaker, DevOps
 
 Description: Learn how to configure the ECS deployment circuit breaker to automatically detect failed deployments and roll back to the last working version of your service.
 

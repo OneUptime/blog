@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, Tagging, AWS, Infrastructure as Code, Cost Management
+Tags: Terraform, Workspace, Tagging, AWS, Infrastructure as Code, Cost Management
 
 Description: Learn how to implement workspace-aware tagging strategies in Terraform to track costs, enforce compliance, and manage resources across environments.
 

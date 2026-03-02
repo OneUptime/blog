@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Platform Engineering, Production Parity, Development Environments, DevOps
+Tags: Platform Engineering, Production Parity, Development Environment, DevOps
 
 Description: Learn to implement production parity for development environments with configuration mirroring, data sampling, and infrastructure matching for reliable testing.
 

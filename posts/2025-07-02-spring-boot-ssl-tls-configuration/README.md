@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, SSL, TLS, HTTPS, Security, Certificates
+Tags: Java, Spring Boot, SSL, TLS, HTTPS, Security, Certificate
 
 Description: Learn how to configure SSL/TLS in Spring Boot applications for secure HTTPS connections. This guide covers keystore setup, certificate management, and mutual TLS authentication.
 

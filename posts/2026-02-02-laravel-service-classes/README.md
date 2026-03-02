@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PHP, Laravel, Service Classes, Design Patterns, Clean Code
+Tags: PHP, Laravel, Service Classes, Design Pattern, Clean Code
 
 Description: Learn how to implement service classes in Laravel to separate business logic from controllers, making your code more testable, reusable, and maintainable.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SharePoint, Power Automate, Azure AD, Document Approval, Workflows, Microsoft 365, Automation
+Tags: SharePoint, Power Automate, Azure AD, Document Approval, Workflow, Microsoft 365, Automation
 
 Description: Implement document approval workflows in SharePoint using Power Automate with Azure AD group-based routing for dynamic approver assignment.
 

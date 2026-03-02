@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Multi-Cluster
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Multi-Cluster
 
 Description: Learn how to use ArgoCD ApplicationSets with the cluster generator to automatically deploy applications to every registered cluster in your fleet.
 

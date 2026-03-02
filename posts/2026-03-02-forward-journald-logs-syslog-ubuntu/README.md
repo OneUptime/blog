@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Logging, journald, syslog, System Administration
+Tags: Ubuntu, Logging, journald, Syslog, System Administration
 
 Description: Forward journald logs to syslog on Ubuntu to integrate with centralized log management systems like rsyslog, syslog-ng, or remote log aggregators.
 

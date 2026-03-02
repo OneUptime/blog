@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, TCP Proxy, Stream Module, SNI, Load Balancing, SSL Passthrough
+Tags: NGINX, TCP Proxy, Stream Module, SNI, Load Balancing, SSL Passthrough
 
 Description: Learn how to configure Nginx stream module for TCP forwarding based on hostname using SNI, enabling routing of TLS traffic to different backends without terminating SSL.
 

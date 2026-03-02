@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Desktop, File Sharing, Volumes, Performance, Bind Mounts
+Tags: Docker, Docker Desktop, File Sharing, VOLUME, Performance, Bind Mounts
 
 Description: Configure Docker Desktop file sharing settings to optimize volume mount performance and control host filesystem access.
 

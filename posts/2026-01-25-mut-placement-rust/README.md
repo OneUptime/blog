@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Mutability, References, Ownership, Syntax
+Tags: Rust, Mutability, Reference, Ownership, Syntax
 
 Description: Learn the difference between &mut T and let mut in Rust. Understand where mut goes in variable declarations, references, and patterns for correct mutability control.
 

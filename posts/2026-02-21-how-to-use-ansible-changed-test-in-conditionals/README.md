@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditionals, Automation, DevOps
+Tags: Ansible, Conditional, Automation, DevOps
 
 Description: Learn how to use the Ansible changed test in conditionals to trigger tasks only when previous tasks actually modified the system state.
 

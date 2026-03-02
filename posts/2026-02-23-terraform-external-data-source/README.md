@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Data Sources, External, Scripting, Infrastructure as Code
+Tags: Terraform, Data Source, External, Scripting, Infrastructure as Code
 
 Description: Learn how to use the external data source in Terraform to execute external programs and scripts that return JSON data for use in your infrastructure configuration.
 

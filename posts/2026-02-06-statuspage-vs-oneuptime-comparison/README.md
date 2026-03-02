@@ -2,7 +2,7 @@
 
 Author: [mallersjamie](https://www.github.com/mallersjamie)
 
-Tags: Status Pages, StatusPage.io, Comparison, Open Source, Incident Management
+Tags: Status Page, StatusPage.io, Comparison, Open Source, Incident Management
 
 Description: Comparing Atlassian StatusPage.io with OneUptime - features, pricing, and why open-source status pages are gaining ground in 2026.
 

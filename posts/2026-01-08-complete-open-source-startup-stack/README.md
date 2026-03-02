@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Open Source, Startups, DevOps, Observability, Tools, Self-Hosting, Cost Optimization, SaaS
+Tags: Open Source, Startup, DevOps, Observability, Tools, Self-Hosting, Cost Optimization, SaaS
 
 Description: A comprehensive guide to open-source alternatives for every tool your startup needs.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Helm, Kubernetes, Deployments, Observability, DevOps
+Tags: OpenTelemetry, Helm, Kubernetes, Deployment, Observability, DevOps
 
 Description: Learn how to monitor Helm chart deployments and rollbacks using OpenTelemetry traces, metrics, and events for full release observability.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Virtual Hosts, Server Blocks, Hosting, Multi-Site
+Tags: NGINX, Virtual Hosts, Server Blocks, Hosting, Multi-Site
 
 Description: Learn how to configure virtual hosts in Nginx to serve multiple websites from a single server, including name-based and IP-based virtual hosting.
 

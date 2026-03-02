@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Containers, EKS, Kubernetes, AWS, Infrastructure Patterns, Platform Engineering
+Tags: Terraform, Container, EKS, Kubernetes, AWS, Infrastructure Patterns, Platform Engineering
 
 Description: Build a production-ready container platform on AWS using Terraform with EKS, managed node groups, cluster add-ons, and platform tooling for development teams.
 

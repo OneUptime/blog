@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cost Controls, Budget Alerts, Cloud Functions, Pub/Sub, FinOps, Automation
+Tags: GCP, Cost Control, Budget Alerts, Cloud Functions, Pub/Sub, FinOps, Automation
 
 Description: Learn how to set up automated cost controls on GCP that detect budget overruns and automatically shut down or scale back resources using budget alerts and Cloud Functions.
 

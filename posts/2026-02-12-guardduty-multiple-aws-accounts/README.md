@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, GuardDuty, Multi-Account, Organizations, Security
+Tags: AWS, GuardDuty, Multi-Account, Organization, Security
 
 Description: Learn how to enable and manage Amazon GuardDuty across all AWS accounts in your organization using a delegated administrator for centralized threat detection.
 

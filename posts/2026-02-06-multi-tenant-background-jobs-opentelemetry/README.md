@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Background Jobs, Multi-Tenant, Job Queues
+Tags: OpenTelemetry, Background Jobs, Multi-Tenant, Job Queue
 
 Description: Instrument multi-tenant background job processing with OpenTelemetry for tenant-aware routing and per-tenant job performance visibility.
 

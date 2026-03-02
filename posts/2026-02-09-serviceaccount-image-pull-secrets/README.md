@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ServiceAccounts, Docker
+Tags: Kubernetes, ServiceAccount, Docker
 
 Description: Configure Kubernetes ServiceAccounts with image pull secrets to automate private registry authentication and simplify pod specifications across your cluster.
 

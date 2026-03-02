@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: TypeScript, Design Patterns, Architecture, OOP
+Tags: TypeScript, Design Pattern, Architecture, OOP
 
 Description: Implement the abstract factory pattern in TypeScript for creating families of related objects without specifying concrete classes.
 

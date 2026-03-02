@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, SignalR, Real-Time, WebSockets, Infrastructure as Code
+Tags: Terraform, Azure, SignalR, Real-Time, WebSocket, Infrastructure as Code
 
 Description: Learn how to provision Azure SignalR Service with Terraform for building real-time web applications with WebSocket support, scaling, and managed connections.
 

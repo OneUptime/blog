@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, MongoDB, Replica Sets, High Availability
+Tags: Ansible, MongoDB, Replica Set, High Availability
 
 Description: Set up MongoDB replica sets with Ansible for high availability and automatic failover across your database cluster.
 

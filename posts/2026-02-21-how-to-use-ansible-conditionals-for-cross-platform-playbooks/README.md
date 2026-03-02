@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Cross-Platform, Conditionals, Linux, DevOps
+Tags: Ansible, Cross-Platform, Conditional, Linux, DevOps
 
 Description: Build Ansible playbooks that work across multiple operating systems and distributions by using conditionals with gathered facts.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machines, Boot Diagnostics, Serial Console, Troubleshooting, VM Recovery, Azure Compute
+Tags: Azure, Virtual Machine, Boot Diagnostics, Serial Console, Troubleshooting, VM Recovery, Azure Compute
 
 Description: Use Azure Boot Diagnostics and Serial Console to diagnose and fix virtual machine boot failures, OS corruption, and configuration errors.
 

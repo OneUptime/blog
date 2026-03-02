@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Standards, Policy as Code, Compliance, DevOps
+Tags: Terraform, Standard, Policy as Code, Compliance, DevOps
 
 Description: Learn how to enforce Terraform coding standards, security policies, and organizational conventions automatically using policy-as-code tools, CI/CD integration, and custom validation rules.
 

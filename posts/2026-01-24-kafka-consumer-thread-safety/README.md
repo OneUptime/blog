@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Kafka, Consumer, Thread Safety, Concurrency, Java, Python, Multi-threading
+Tags: Apache Kafka, Consumer, Thread Safety, Concurrency, Java, Python, Multi-Threading
 
 Description: Learn how to safely use Kafka consumers in multi-threaded applications, including patterns for concurrent processing and common pitfalls to avoid.
 

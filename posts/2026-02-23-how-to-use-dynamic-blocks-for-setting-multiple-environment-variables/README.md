@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Dynamic Blocks, Environment Variables, AWS, ECS, Lambda, Infrastructure as Code
+Tags: Terraform, Dynamic Blocks, Environment Variable, AWS, ECS, Lambda, Infrastructure as Code
 
 Description: Learn how to use Terraform dynamic blocks to set environment variables on Lambda functions, ECS tasks, and other compute resources from maps and lists.
 

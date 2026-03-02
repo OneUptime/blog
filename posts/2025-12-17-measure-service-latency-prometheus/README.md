@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Latency, Metrics, Monitoring, Histograms, SLO, Performance, Observability, PromQL
+Tags: Prometheus, Latency, Metrics, Monitoring, Histogram, SLO, Performance, Observability, PromQL
 
 Description: Learn how to measure and monitor service latency with Prometheus using histograms and summaries.
 

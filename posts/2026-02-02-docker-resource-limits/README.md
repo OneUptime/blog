@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, DevOps, Containers, Performance, Resource Management
+Tags: Docker, DevOps, Container, Performance, Resource Management
 
 Description: A comprehensive guide to configuring CPU, memory, and I/O resource limits in Docker containers, covering runtime flags, Docker Compose settings, and best practices for production environments.
 

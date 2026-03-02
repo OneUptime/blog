@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Keepalived, VRRP, High Availability, Failover, Virtual IP, Networking
+Tags: Docker, keepalived, VRRP, High Availability, Failover, Virtual IP, Networking
 
 Description: Configure Keepalived in Docker to provide virtual IP failover using VRRP for high availability service deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Zero Downtime, Deployments, Kubernetes, Rolling Update
+Tags: Istio, Zero Downtime, Deployment, Kubernetes, Rolling Update
 
 Description: Complete configuration guide for achieving truly zero-downtime deployments using Istio service mesh with proper drain, retry, and health check settings.
 

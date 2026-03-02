@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Rust, tracing, Crates, Setup, Observability
+Tags: OpenTelemetry, Rust, Tracing, Crates, Setup, Observability
 
 Description: Complete guide to integrating OpenTelemetry with Rust's tracing ecosystem for structured logging and distributed tracing across your applications.
 

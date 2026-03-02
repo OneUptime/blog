@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, Monitoring, Prometheus, Security
+Tags: Istio, Certificate, Monitoring, Prometheus, Security
 
 Description: How to monitor certificate expiration in your Istio service mesh using Prometheus metrics, custom scripts, and alerting rules to prevent outages from expired certificates.
 

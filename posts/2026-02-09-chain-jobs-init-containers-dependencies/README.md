@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Jobs, Workflows, Dependencies
+Tags: Kubernetes, Jobs, Workflow, Dependencies
 
 Description: Learn how to create sequential job pipelines in Kubernetes using init containers, job completion checks, and workflow patterns for complex batch processing workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Real-Time, Notifications, WebSockets, Pub/Sub, Push Notifications, SSE
+Tags: Redis, Real-Time, Notifications, WebSocket, Pub/Sub, Push Notifications, SSE
 
 Description: A comprehensive guide to building real-time notification systems with Redis, covering Pub/Sub, Streams, WebSocket integration, and Server-Sent Events for delivering instant notifications to users.
 

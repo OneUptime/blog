@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, sysctl, Kernel, System Tuning, Linux
+Tags: Ubuntu, Sysctl, Kernel, System Tuning, Linux
 
 Description: A thorough guide to /etc/sysctl.conf on Ubuntu - what it controls, how to use it safely, and practical tuning parameters for networking, memory, and security.
 

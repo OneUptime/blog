@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Relay, API, On-Premises, Firewall, Hybrid Cloud, Security
+Tags: Azure, Relay, API, On-Premise, Firewall, Hybrid Cloud, Security
 
 Description: Expose your on-premises REST APIs to cloud applications securely using Azure Relay without opening any inbound firewall ports.
 

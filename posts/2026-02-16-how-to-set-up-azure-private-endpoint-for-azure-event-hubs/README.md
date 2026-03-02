@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Private Endpoint, Event Hubs, Private Link, Networking, Security
+Tags: Azure, Private Endpoint, Event Hub, Private Link, Networking, Security
 
 Description: Configure Azure Private Endpoint for Event Hubs to enable private network access for event streaming without exposing traffic to the public internet.
 

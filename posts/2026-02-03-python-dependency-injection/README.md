@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Dependency Injection, Design Patterns, Testing, FastAPI, Clean Architecture, SOLID Principles
+Tags: Python, Dependency Injection, Design Pattern, Testing, FastAPI, Clean Architecture, SOLID Principles
 
 Description: Learn how to implement dependency injection in Python using manual techniques, the dependency-injector library, protocols, and FastAPI's Depends system for cleaner, more testable code.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Benchmarking, Performance, Upgrades, Kubernetes
+Tags: Istio, Benchmarking, Performance, Upgrade, Kubernetes
 
 Description: How to systematically compare Istio performance between versions to understand the impact of upgrades on latency, throughput, and resource usage.
 

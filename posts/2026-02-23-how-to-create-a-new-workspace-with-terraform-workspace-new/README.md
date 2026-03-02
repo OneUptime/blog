@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, CLI Commands, State Management, Infrastructure as Code
+Tags: Terraform, Workspace, CLI Commands, State Management, Infrastructure as Code
 
 Description: A detailed guide to creating new Terraform workspaces using the terraform workspace new command, including practical examples, state initialization, and integration with backends.
 

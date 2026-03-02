@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Docker, Volumes, Persistent Storage, Docker Provider, Infrastructure as Code
+Tags: Terraform, Docker, VOLUME, Persistent Storage, Docker Provider, Infrastructure as Code
 
 Description: Learn how to create and manage Docker volumes with Terraform for persistent data storage including named volumes, NFS mounts, and volume lifecycle management.
 

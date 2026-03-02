@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CodeDeploy, ECS, DevOps, Containers
+Tags: AWS, CodeDeploy, ECS, DevOps, Container
 
 Description: Step-by-step guide to configuring AWS CodeDeploy for blue/green deployments to Amazon ECS, including task definitions, target groups, and traffic shifting.
 

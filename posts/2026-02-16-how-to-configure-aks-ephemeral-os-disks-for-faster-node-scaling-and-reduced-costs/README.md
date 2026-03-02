@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Ephemeral OS Disks, Kubernetes, Performance, Cost Optimization, Azure, Node Pools
+Tags: AKS, Ephemeral OS Disks, Kubernetes, Performance, Cost Optimization, Azure, Node Pool
 
 Description: Learn how to configure AKS with ephemeral OS disks for faster node boot times, lower latency, and reduced storage costs.
 

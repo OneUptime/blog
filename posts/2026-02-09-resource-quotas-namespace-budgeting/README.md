@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Resource Management, Multi-tenancy, Cost Control, Namespace Isolation
+Tags: Kubernetes, Resource Management, Multi-Tenancy, Cost Control, Namespace Isolation
 
 Description: Implement resource quotas to enforce namespace-level budgets, prevent resource exhaustion, and enable fair multi-tenant cluster sharing.
 

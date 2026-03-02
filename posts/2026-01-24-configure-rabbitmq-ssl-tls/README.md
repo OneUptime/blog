@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, SSL, TLS, Security, Encryption, Certificates, DevOps
+Tags: RabbitMQ, SSL, TLS, Security, Encryption, Certificate, DevOps
 
 Description: Step-by-step guide to configuring SSL/TLS encryption for RabbitMQ connections, including certificate generation and client configuration.
 

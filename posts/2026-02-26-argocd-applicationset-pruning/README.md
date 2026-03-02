@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Lifecycle Management
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Lifecycle Management
 
 Description: Learn how to configure application pruning in ArgoCD ApplicationSets to safely handle the removal of generated applications when generator output changes.
 

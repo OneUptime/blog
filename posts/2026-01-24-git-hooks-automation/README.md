@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Git, Automation, DevOps, CI/CD, Code Quality, Pre-commit
+Tags: Git, Automation, DevOps, CI/CD, Code Quality, Pre-Commit
 
 Description: Learn how to use Git hooks to automate code formatting, testing, commit message validation, and deployment workflows.
 

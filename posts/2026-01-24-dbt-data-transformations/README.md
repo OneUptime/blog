@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: dbt, Data Engineering, SQL, Data Transformations, Analytics, ELT
+Tags: dbt, Data Engineering, SQL, Data Transformation, Analytics, ELT
 
 Description: Learn how to handle dbt data transformations effectively, including models, tests, incremental processing, and best practices for building reliable data pipelines.
 

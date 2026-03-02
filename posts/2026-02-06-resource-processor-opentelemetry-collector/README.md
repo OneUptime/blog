@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Resource Processor, Service Metadata, Configuration
+Tags: OpenTelemetry, Collector, Processor, Resource Processor, Service Metadata, Configuration
 
 Description: Learn how to configure the resource processor in OpenTelemetry Collector to manage service-level metadata, enrich resource attributes.
 

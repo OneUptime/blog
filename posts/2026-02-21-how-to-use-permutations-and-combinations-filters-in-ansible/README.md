@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Jinja2, Combinatorics
+Tags: Ansible, Filter, Jinja2, Combinatorics
 
 Description: Learn how to use permutations and combinations filters in Ansible to generate all possible arrangements and selections from lists for testing and configuration.
 

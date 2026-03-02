@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, Resources
+Tags: Kubernetes, Windows, Resource
 
 Description: Learn how to properly configure CPU and memory resource requests and limits for Windows pods in Kubernetes with best practices and troubleshooting tips.
 

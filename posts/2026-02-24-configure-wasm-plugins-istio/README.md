@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebAssembly, Wasm, Configuration, Envoy
+Tags: Istio, WebAssembly, WASM, Configuration, Envoy
 
 Description: A detailed guide to configuring WebAssembly plugins in Istio, covering plugin phases, targeting, priority, and runtime configuration options.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Container Instances, Sidecar Pattern, Multi-Container, Containers, DevOps, Cloud Computing
+Tags: Azure, Container Instances, Sidecar Pattern, Multi-Container, Container, DevOps, Cloud Computing
 
 Description: How to deploy a multi-container group in Azure Container Instances using the sidecar pattern for logging, monitoring, proxying, and other cross-cutting concerns.
 

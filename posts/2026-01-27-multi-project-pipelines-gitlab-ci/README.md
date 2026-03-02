@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Multi-Project, Pipelines, Microservices, CI/CD, DevOps
+Tags: GitLab CI, Multi-Project, Pipeline, Microservices, CI/CD, DevOps
 
 Description: Learn how to build multi-project pipelines in GitLab CI to orchestrate builds across multiple repositories, coordinate microservice deployments, and manage complex CI/CD workflows.
 

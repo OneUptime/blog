@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extensions, OpAMP, Remote Management, Operations, Fleet Management
+Tags: OpenTelemetry, Collector, Extension, OpAMP, Remote Management, Operations, Fleet Management
 
 Description: Learn how to configure the OpAMP extension in OpenTelemetry Collector for centralized remote management, dynamic configuration updates, and automated fleet operations at scale.
 

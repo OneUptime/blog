@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Message Queues, Integration Patterns, Design Patterns, Backend
+Tags: Message Queue, Integration Patterns, Design Pattern, Backend
 
 Description: Learn how to implement the message aggregator pattern for combining related messages.
 

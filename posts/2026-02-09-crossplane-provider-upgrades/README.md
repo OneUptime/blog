@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Crossplane, Provider, Upgrades, Kubernetes, Infrastructure as Code
+Tags: Crossplane, Provider, Upgrade, Kubernetes, Infrastructure as Code
 
 Description: Strategies and best practices for upgrading Crossplane providers in production without disrupting managed cloud infrastructure resources
 

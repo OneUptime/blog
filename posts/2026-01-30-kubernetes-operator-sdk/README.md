@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Operators, Operator SDK, Go
+Tags: Kubernetes, Operator, Operator SDK, Go
 
 Description: Create Kubernetes operators using Operator SDK to automate complex application lifecycle management with custom resources and controllers.
 

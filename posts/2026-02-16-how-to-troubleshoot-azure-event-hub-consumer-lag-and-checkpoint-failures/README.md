@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Event Hubs, Streaming, Consumer Lag, Checkpointing, Event Processing, Troubleshooting
+Tags: Azure, Event Hub, Streaming, Consumer Lag, Checkpointing, Event Processing, Troubleshooting
 
 Description: Diagnose and fix Azure Event Hub consumer lag and checkpoint failures that cause message processing delays and data loss in streaming workloads.
 

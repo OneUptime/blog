@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Vagrant, Development Environments, Virtualization, Automation
+Tags: Ubuntu, Vagrant, Development Environment, Virtualization, Automation
 
 Description: Set up reproducible Ubuntu development environments with Vagrant, including Vagrantfile configuration, provisioning, shared folders, and multi-machine setups for local development.
 

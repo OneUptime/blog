@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Memorystore, Memcached, Caching, Managed Services
+Tags: GCP, Memorystore, Memcached, Caching, Managed Service
 
 Description: Create and configure a Memorystore for Memcached instance on Google Cloud, including node configuration, networking, and connecting from your applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Optional Features, IaC, Design Patterns
+Tags: Terraform, Modules, Optional Features, IaC, Design Pattern
 
 Description: Learn how to design Terraform modules with optional features using conditional resources, dynamic blocks, and optional variable attributes for maximum flexibility.
 

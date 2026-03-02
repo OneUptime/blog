@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, GitLab Pages, Static Sites, Deployment, CI/CD, Web Hosting
+Tags: GitLab CI, GitLab Pages, Static Site, Deployment, CI/CD, Web Hosting
 
 Description: Learn how to set up GitLab Pages deployment in your CI/CD pipeline. This guide covers static site deployment, custom domains, HTTPS configuration, and common static site generators.
 

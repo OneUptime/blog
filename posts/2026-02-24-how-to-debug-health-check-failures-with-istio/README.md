@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Health Checks, Debugging, Kubernetes, Troubleshooting
+Tags: Istio, Health Check, Debugging, Kubernetes, Troubleshooting
 
 Description: A step-by-step troubleshooting guide for health check failures in Istio-enabled pods, covering probe rewriting issues, mTLS conflicts, and timing problems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Init, PHP, Laravel, Symfony, Composer, Apache, Nginx, Containerization, DevOps
+Tags: Docker, Docker Init, PHP, Laravel, Symfony, Composer, Apache, NGINX, Containerization, DevOps
 
 Description: A hands-on guide to using docker init with PHP projects, covering Laravel, Symfony, and custom PHP applications with Apache or Nginx.
 

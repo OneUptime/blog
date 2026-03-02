@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Testing, Validation, Jinja2
+Tags: Ansible, Plugin, Testing, Validation, Jinja2
 
 Description: Build custom Ansible test plugins that validate infrastructure data like hostnames, configuration values, and compliance requirements.
 

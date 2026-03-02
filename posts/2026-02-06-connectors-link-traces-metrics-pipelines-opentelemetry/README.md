@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connectors, Traces, Metrics, Pipeline Architecture
+Tags: OpenTelemetry, Collector, Connector, Traces, Metrics, Pipeline Architecture
 
 Description: Master the art of linking traces and metrics pipelines in OpenTelemetry Collector using connectors to create unified observability workflows and derive metrics from traces.
 

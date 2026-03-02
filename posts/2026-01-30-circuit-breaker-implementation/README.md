@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microservices, Resilience, Design Patterns, Fault Tolerance, Distributed Systems
+Tags: Microservices, Resilience, Design Pattern, Fault Tolerance, Distributed Systems
 
 Description: Implement the circuit breaker pattern from scratch with states, thresholds, half-open testing, and integration with monitoring systems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ad Hoc Commands, Privilege Escalation, Sudo, Security
+Tags: Ansible, Ad Hoc Commands, Privilege Escalation, sudo, Security
 
 Description: Learn how to use privilege escalation with Ansible ad hoc commands including sudo, become, and various escalation methods for secure server management.
 

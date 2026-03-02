@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, unionfs, overlay2, storage driver, filesystem, containers, linux
+Tags: Docker, unionfs, Overlay2, Storage Driver, Filesystem, Container, Linux
 
 Description: Learn how Docker uses UnionFS and Overlay2 storage drivers to create layered filesystems for efficient container image management.
 

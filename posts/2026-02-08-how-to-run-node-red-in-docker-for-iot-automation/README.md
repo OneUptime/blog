@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, node-red, iot, automation, mqtt, self-hosted, low-code
+Tags: Docker, Node-RED, IoT, Automation, MQTT, Self-Hosted, Low-Code
 
 Description: Deploy Node-RED in Docker to build IoT automation flows with a visual programming interface and MQTT integration.
 

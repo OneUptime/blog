@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Push Notifications, APNS, FCM
+Tags: OpenTelemetry, Push Notifications, APNs, FCM
 
 Description: Instrument push notification delivery across APNS, FCM, and Web Push providers with OpenTelemetry to track delivery rates and latency.
 

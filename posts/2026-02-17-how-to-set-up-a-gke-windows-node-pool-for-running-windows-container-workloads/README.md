@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Windows Containers, Kubernetes, Node Pools, Windows Server
+Tags: GCP, GKE, Windows Containers, Kubernetes, Node Pool, Windows Server
 
 Description: Step-by-step guide to creating a GKE Windows node pool and deploying Windows container workloads alongside your Linux containers in the same cluster.
 

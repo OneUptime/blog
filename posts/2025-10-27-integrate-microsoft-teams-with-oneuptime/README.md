@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Monitoring, Incident Management, Integrations, Microsoft Teams, On-call, Workspace Connections
+Tags: Monitoring, Incident Management, Integration, Microsoft Teams, On-Call, Workspace Connections
 
 Description: Use OneUptime Workspace Connections to deliver interactive incident, alert, and maintenance updates directly into Microsoft Teams.
 

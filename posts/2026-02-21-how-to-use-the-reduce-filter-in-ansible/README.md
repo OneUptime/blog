@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Jinja2, Data Aggregation
+Tags: Ansible, Filter, Jinja2, Data Aggregation
 
 Description: Learn how to use the reduce filter in Ansible to aggregate list data into single values, build dictionaries from lists, and perform cumulative computations.
 

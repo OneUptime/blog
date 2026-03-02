@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Rocky Linux, Linux, Installation, DevOps, Containers, RHEL, Enterprise Linux
+Tags: Docker, Rocky Linux, Linux, Installation, DevOps, Container, RHEL, Enterprise Linux
 
 Description: Complete guide to installing Docker Engine on Rocky Linux 9 with repository configuration, SELinux handling, and production-ready setup tips.
 

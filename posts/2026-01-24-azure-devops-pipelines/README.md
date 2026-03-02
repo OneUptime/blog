@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure DevOps, CI/CD, Pipelines, DevOps, Automation, YAML, Build, Deploy
+Tags: Azure DevOps, CI/CD, Pipeline, DevOps, Automation, YAML, Build, Deploy
 
 Description: Learn how to create, configure, and troubleshoot Azure DevOps Pipelines for continuous integration and deployment with practical examples and best practices.
 

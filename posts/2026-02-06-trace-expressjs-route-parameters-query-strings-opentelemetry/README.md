@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Express.js, Routes, Parameters, Query Strings, Tracing
+Tags: OpenTelemetry, Express.js, Routes, Parameters, Query String, Tracing
 
 Description: Learn how to capture and trace Express.js route parameters, query strings, and request data with OpenTelemetry for better debugging and observability in your Node.js applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Laravel, Broadcasting, WebSockets, Real-Time, PHP, Pusher, Laravel Echo, Backend Development
+Tags: Laravel, Broadcasting, WebSocket, Real-Time, PHP, Pusher, Laravel Echo, Backend Development
 
 Description: Learn how to build real-time features in Laravel applications using Broadcasting.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Handlers, Troubleshooting, Playbooks, DevOps
+Tags: Ansible, Handlers, Troubleshooting, Playbook, DevOps
 
 Description: Fix Ansible handler not found errors caused by name mismatches, scope issues, and handler definition placement in roles and playbooks.
 

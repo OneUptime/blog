@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Snap, Package Management, System Administration, Applications
+Tags: Ubuntu, Snap, Package Management, System Administration, Application
 
 Description: Learn how to install, update, remove, and manage Snap packages on Ubuntu, including working with channels, understanding confinement levels, managing snap services, and controlling snap updates.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, VPN Gateway, Site-to-Site VPN, Hybrid Networking, Azure Networking, IPSec
+Tags: Azure, VPN Gateway, Site-to-Site VPN, Hybrid Networking, Azure Networking, IPsec
 
 Description: Learn how to set up an Azure VPN Gateway with a site-to-site IPSec connection to link your on-premises network with an Azure virtual network.
 

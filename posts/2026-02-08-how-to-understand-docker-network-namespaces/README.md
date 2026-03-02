@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, Network Namespaces, Linux, Containers, Kernel
+Tags: Docker, Networking, Network Namespaces, Linux, Container, Kernel
 
 Description: Explore how Docker uses Linux network namespaces to isolate container networking, with hands-on inspection techniques.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Containers, DevOps, Reliability, Monitoring
+Tags: Docker, Container, DevOps, Reliability, Monitoring
 
 Description: Implement HEALTHCHECK instructions using curl, custom scripts, and proper thresholds so Docker, Swarm, and Compose can auto-heal your services.
 

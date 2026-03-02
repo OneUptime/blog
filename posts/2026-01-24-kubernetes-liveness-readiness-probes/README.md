@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Checks, Probes, Reliability, DevOps
+Tags: Kubernetes, Health Check, Probe, Reliability, DevOps
 
 Description: A practical guide to configuring Kubernetes liveness, readiness, and startup probes correctly to ensure your applications self-heal and handle traffic only when ready.
 

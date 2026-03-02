@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Logic Apps, Blob Storage, Event Grid, Triggers, Serverless, Automation
+Tags: Azure, Logic Apps, Blob Storage, Event Grid, Trigger, Serverless, Automation
 
 Description: Learn three different approaches to trigger an Azure Logic App when a new blob is uploaded to Azure Storage and choose the best one for your use case.
 

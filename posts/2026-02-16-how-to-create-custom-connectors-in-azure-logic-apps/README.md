@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Logic Apps, Custom Connectors, API Integration, OpenAPI, Workflow Automation, REST API
+Tags: Azure, Logic Apps, Custom Connector, API Integration, OpenAPI, Workflow Automation, REST API
 
 Description: Build custom connectors for Azure Logic Apps to integrate any REST API into your workflow automations using OpenAPI specifications.
 

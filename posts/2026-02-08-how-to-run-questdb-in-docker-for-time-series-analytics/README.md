@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, QuestDB, Time-Series, Databases, Analytics, DevOps
+Tags: Docker, QuestDB, Time-Series, Database, Analytics, DevOps
 
 Description: Deploy QuestDB in Docker for high-performance time-series analytics with SQL queries and InfluxDB line protocol ingestion
 

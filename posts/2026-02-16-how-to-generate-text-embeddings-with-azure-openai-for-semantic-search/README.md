@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, OpenAI, Embeddings, Semantic Search, Vector Search, AI, NLP
+Tags: Azure, OpenAI, Embedding, Semantic Search, Vector Search, AI, NLP
 
 Description: Learn how to generate text embeddings with Azure OpenAI and use them to build a semantic search system that understands meaning, not just keywords.
 

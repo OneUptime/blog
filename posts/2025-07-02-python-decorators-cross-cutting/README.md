@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Decorators, Design Patterns, Logging, Caching, AOP
+Tags: Python, Decorators, Design Pattern, Logging, Caching, AOP
 
 Description: Learn how to build powerful Python decorators for logging, caching, rate limiting, and validation. This guide covers function decorators, class decorators, and decorator factories.
 

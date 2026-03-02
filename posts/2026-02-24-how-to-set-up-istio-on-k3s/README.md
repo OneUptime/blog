@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, k3s, Kubernetes, Service Mesh, Lightweight Kubernetes
+Tags: Istio, K3s, Kubernetes, Service Mesh, Lightweight Kubernetes
 
 Description: Step-by-step instructions for installing Istio service mesh on a k3s lightweight Kubernetes cluster with proper configuration and tuning.
 

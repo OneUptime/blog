@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Pointer Receiver, Value Receiver, Methods, Interfaces, Common Errors
+Tags: Go, Golang, Pointer Receiver, Value Receiver, Methods, interface, Common Errors
 
 Description: Understand why Go complains about pointer receivers with interface types and learn the fix for 'cannot use X as type Y' errors when working with methods and interfaces.
 

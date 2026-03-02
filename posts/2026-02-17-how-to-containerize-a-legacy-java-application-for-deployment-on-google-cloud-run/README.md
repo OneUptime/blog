@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Java, Containers, Docker
+Tags: GCP, Cloud Run, Java, Container, Docker
 
 Description: A hands-on guide to containerizing a legacy Java application and deploying it on Google Cloud Run with optimized startup and resource usage.
 

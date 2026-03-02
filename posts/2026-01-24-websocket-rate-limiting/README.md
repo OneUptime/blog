@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Rate Limiting, Node.js, Real-time, Security, Performance
+Tags: WebSocket, Rate Limiting, Node.js, Real-Time, Security, Performance
 
 Description: Learn how to implement effective rate limiting for WebSocket connections to protect your server from abuse while maintaining quality service for legitimate users.
 

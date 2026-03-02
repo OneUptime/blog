@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kafka, Consumers, At-Least-Once, Message Processing, Delivery Semantics
+Tags: Kafka, Consumer, At-Least-Once, Message Processing, Delivery Semantics
 
 Description: Learn how to implement Kafka consumers with at-least-once delivery semantics, including offset management, error handling, and idempotency patterns.
 

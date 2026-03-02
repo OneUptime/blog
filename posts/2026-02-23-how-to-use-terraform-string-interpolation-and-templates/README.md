@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Infrastructure as Code, Templates, Strings
+Tags: Terraform, HCL, Infrastructure as Code, Template, String
 
 Description: Learn how to use string interpolation and template expressions in Terraform to build dynamic values, generate configuration files, and create reusable infrastructure code.
 

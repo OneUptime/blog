@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Security, Hardening, CIS Benchmarks, DevSecOps, Compliance
+Tags: Ansible, Security, Hardening, CIS Benchmark, DevSecOps, Compliance
 
 Description: Automate security hardening with Ansible using CIS benchmarks, security baselines, and compliance checks to protect your infrastructure systematically.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, RDS, Backups, Disaster Recovery
+Tags: AWS, RDS, Backup, Disaster Recovery
 
 Description: Learn how to configure RDS automated backups and manual snapshots for disaster recovery, including retention policies and cross-region backup copies.
 

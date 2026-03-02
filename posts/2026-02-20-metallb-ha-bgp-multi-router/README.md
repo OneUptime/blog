@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, BGP, High Availability, Routers
+Tags: Kubernetes, MetalLB, BGP, High Availability, Router
 
 Description: Learn how to configure MetalLB with multiple BGP routers for high availability and automatic failover in production.
 

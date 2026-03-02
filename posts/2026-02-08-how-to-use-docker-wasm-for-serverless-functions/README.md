@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, WebAssembly, Wasm, Serverless, Functions, FaaS, Cloud Native
+Tags: Docker, WebAssembly, WASM, Serverless, Functions, FaaS, Cloud Native
 
 Description: Deploy serverless functions using Docker and WebAssembly for near-instant cold starts and minimal resource usage.
 

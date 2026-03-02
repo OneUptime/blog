@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: PostgreSQL, Docker, Database, DevOps, Containers
+Tags: PostgreSQL, Docker, Database, DevOps, Container
 
 Description: Learn how to run PostgreSQL in Docker for development and production, including data persistence, configuration, backups, and docker-compose setups.
 

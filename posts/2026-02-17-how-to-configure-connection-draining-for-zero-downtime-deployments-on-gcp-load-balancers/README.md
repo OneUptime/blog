@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Load Balancer, Connection Draining, Zero Downtime, Deployments
+Tags: GCP, Load Balancer, Connection Draining, Zero Downtime, Deployment
 
 Description: Learn how to configure connection draining on GCP load balancers to achieve zero-downtime deployments by gracefully handling in-flight requests during backend removal.
 

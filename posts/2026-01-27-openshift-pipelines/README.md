@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenShift, Tekton, Pipelines, CI/CD, Kubernetes, DevOps, Automation
+Tags: OpenShift, Tekton, Pipeline, CI/CD, Kubernetes, DevOps, Automation
 
 Description: A comprehensive guide to implementing OpenShift Pipelines using Tekton, covering Tasks, Pipelines, Triggers, Workspaces, PVC integration, ClusterTasks, and monitoring for cloud-native CI/CD workflows.
 

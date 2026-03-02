@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, DNS, Networking, Infrastructure as Code
+Tags: Terraform, Provider, DNS, Networking, Infrastructure as Code
 
 Description: Learn how to configure the DNS provider in Terraform to manage DNS records programmatically using RFC 2136 dynamic updates.
 

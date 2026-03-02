@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Nginx, SSL/TLS, Security
+Tags: Ubuntu, NGINX, SSL/TLS, Security
 
 Description: Learn how to configure SSL/TLS certificates for Nginx on Ubuntu, including certificate installation, HTTPS server blocks, and security-hardened TLS settings.
 

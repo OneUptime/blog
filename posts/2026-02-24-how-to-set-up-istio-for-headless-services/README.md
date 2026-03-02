@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Headless Services, Kubernetes, Service Mesh, Networking
+Tags: Istio, Headless Service, Kubernetes, Service Mesh, Networking
 
 Description: A detailed guide to using headless services with Istio including configuration, DNS behavior, and traffic management for services without cluster IPs.
 

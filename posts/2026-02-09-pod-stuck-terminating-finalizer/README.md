@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Troubleshooting, Finalizers
+Tags: Kubernetes, Troubleshooting, Finalizer
 
 Description: Learn how to diagnose and resolve pods stuck in Terminating state due to finalizer issues, including safe removal techniques and prevention strategies for finalizer-related problems.
 

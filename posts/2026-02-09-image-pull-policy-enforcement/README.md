@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Images, Admission Controllers, Policy, Security
+Tags: Kubernetes, Images, Admission Controller, Policy, Security
 
 Description: Learn how to enforce image pull policies using admission controllers to control container image sources.
 

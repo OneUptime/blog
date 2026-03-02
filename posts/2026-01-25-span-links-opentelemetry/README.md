@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Span Links, Tracing, Distributed Tracing, Async Processing, Message Queues, Observability
+Tags: OpenTelemetry, Span Links, Tracing, Distributed Tracing, Async Processing, Message Queue, Observability
 
 Description: Learn how to use span links in OpenTelemetry to connect related but non-parent-child traces, including batch processing, fan-out patterns, and async workflows.
 

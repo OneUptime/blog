@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Incident Management, Documentation, SRE, Postmortems
+Tags: Incident Management, Documentation, SRE, Postmortem
 
 Description: Learn how to document incident timelines for effective post-incident analysis.
 

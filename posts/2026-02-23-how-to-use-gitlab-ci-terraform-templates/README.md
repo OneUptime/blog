@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GitLab CI, CI/CD, Templates, Infrastructure as Code, DevOps
+Tags: Terraform, GitLab CI, CI/CD, Template, Infrastructure as Code, DevOps
 
 Description: Use GitLab CI built-in Terraform templates and create custom reusable templates to standardize Terraform pipelines across multiple projects and teams.
 

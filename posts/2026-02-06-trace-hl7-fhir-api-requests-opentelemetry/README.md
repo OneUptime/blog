@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, FHIR, HL7, Healthcare APIs
+Tags: OpenTelemetry, FHIR, HL7, Healthcare API
 
 Description: A practical guide to tracing HL7 FHIR API request flows including patient lookups and clinical data retrieval using OpenTelemetry.
 

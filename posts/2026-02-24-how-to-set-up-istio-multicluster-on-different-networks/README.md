@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Multicluster, Networking, Kubernetes, Service Mesh
+Tags: Istio, MultiCluster, Networking, Kubernetes, Service Mesh
 
 Description: Step-by-step instructions for setting up Istio multicluster when clusters are on separate networks that cannot directly route pod traffic between them.
 

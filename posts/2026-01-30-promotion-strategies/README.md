@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: DevOps, Promotion, Environments, CI/CD
+Tags: DevOps, Promotion, Environment, CI/CD
 
 Description: Learn to build promotion strategies for moving code between environments.
 

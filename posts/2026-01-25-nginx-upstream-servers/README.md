@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Upstream, Load Balancing, Backend, Proxy
+Tags: NGINX, Upstream, Load Balancing, Backend, Proxy
 
 Description: Learn how to configure upstream server groups in Nginx for load balancing, failover, and efficient connection management to your backend servers.
 

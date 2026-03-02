@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Troubleshooting, Port Binding, Linux, DevOps, Networking
+Tags: NGINX, Troubleshooting, Port Binding, Linux, DevOps, Networking
 
 Description: Learn how to diagnose and fix the Nginx error 'bind() to [::]:80 failed' caused by port conflicts, permission issues, or IPv6 configuration problems.
 

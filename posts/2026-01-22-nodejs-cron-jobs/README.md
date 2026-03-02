@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Cron, Scheduling, Automation, Tasks
+Tags: NodeJS, Cron, Scheduling, Automation, Task
 
 Description: Learn how to create scheduled tasks and cron jobs in Node.js using node-cron, node-schedule, and agenda for recurring task automation.
 

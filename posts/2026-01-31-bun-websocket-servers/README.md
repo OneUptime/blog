@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Bun, WebSocket, Real-time, Backend
+Tags: Bun, WebSocket, Real-Time, Backend
 
 Description: Learn how to build high-performance WebSocket servers with Bun using its native API, pub/sub patterns, authentication, and scaling strategies.
 

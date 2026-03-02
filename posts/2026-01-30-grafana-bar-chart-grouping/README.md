@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboards, Charts
+Tags: Grafana, Observability, Dashboard, Charts
 
 Description: Learn how to group and visualize data effectively using bar charts in Grafana with practical examples and configuration tips.
 

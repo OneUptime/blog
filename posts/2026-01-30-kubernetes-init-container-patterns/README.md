@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Containers, Patterns, DevOps, Container Orchestration
+Tags: Kubernetes, Init Container, Patterns, DevOps, Container Orchestration
 
 Description: Implement Kubernetes init container patterns for database migrations, configuration, dependency checks, and secrets injection.
 

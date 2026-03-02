@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Triggers, Functions, PL/pgSQL, Stored Procedures, Automation
+Tags: PostgreSQL, Trigger, Functions, PL/pgSQL, Stored Procedures, Automation
 
 Description: A comprehensive guide to implementing PostgreSQL triggers and functions, covering trigger types, function creation, event handling, and practical use cases for database automation.
 

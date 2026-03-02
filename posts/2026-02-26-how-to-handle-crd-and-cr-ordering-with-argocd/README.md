@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, CRDs, Sync Waves
+Tags: ArgoCD, GitOps, Kubernetes, CRD, Sync Waves
 
 Description: Learn how to manage CRD and Custom Resource ordering in ArgoCD using sync waves, sync phases, and resource hooks to avoid dependency failures.
 

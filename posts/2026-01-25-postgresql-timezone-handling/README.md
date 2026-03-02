@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Timezones, TIMESTAMP, Date Time, UTC, Database Design
+Tags: PostgreSQL, Timezone, Timestamp, Date Time, UTC, Database Design
 
 Description: Learn how to properly handle timezones in PostgreSQL. This guide covers timestamp types, timezone conversions, session settings, and best practices for global applications.
 

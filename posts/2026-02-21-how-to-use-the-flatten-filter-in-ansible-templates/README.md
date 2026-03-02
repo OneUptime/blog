@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Data Transformation, Automation
+Tags: Ansible, Jinja2, Filter, Data Transformation, Automation
 
 Description: Learn how to use the flatten filter in Ansible to collapse nested lists into a single flat list for easier processing in playbooks and templates.
 

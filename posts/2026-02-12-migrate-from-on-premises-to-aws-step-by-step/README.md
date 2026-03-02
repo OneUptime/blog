@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Cloud Migration, On-Premises, Migration Hub, MGN, DMS, Lift and Shift
+Tags: AWS, Cloud Migration, On-Premise, Migration Hub, MGN, DMS, Lift and Shift
 
 Description: A complete step-by-step guide for migrating on-premises infrastructure to AWS covering discovery, planning, execution, and optimization phases.
 

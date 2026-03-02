@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Linux, SSH, Server, Installation, DevOps, Containers, Remote Administration, Headless
+Tags: Docker, Linux, SSH, Server, Installation, DevOps, Container, Remote Administration, Headless
 
 Description: A complete guide to installing and managing Docker on a remote headless Linux server over SSH, covering secure setup, remote management, and monitoring.
 

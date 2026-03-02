@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Testing
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Testing
 
 Description: Learn how to preview and validate ApplicationSet changes before they create or modify applications using dry-run techniques and safety mechanisms in ArgoCD.
 

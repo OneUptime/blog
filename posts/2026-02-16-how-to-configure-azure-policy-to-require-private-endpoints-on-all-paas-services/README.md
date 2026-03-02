@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Policy, Private Endpoints, PaaS Security, Network Security, Compliance, Governance
+Tags: Azure, Azure Policy, Private Endpoint, PaaS Security, Network Security, Compliance, Governance
 
 Description: Step-by-step guide to creating and assigning Azure Policy definitions that enforce the use of private endpoints on PaaS services like Storage, SQL, and Key Vault.
 

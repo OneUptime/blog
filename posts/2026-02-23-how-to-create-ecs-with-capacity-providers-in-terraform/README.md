@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, Capacity Providers, Auto Scaling, Spot Instances, Fargate, Infrastructure as Code
+Tags: Terraform, AWS, ECS, Capacity Provider, Auto Scaling, Spot Instances, Fargate, Infrastructure as Code
 
 Description: Learn how to configure ECS capacity providers with Terraform to manage compute capacity using a mix of Fargate, Fargate Spot, and EC2 Auto Scaling groups.
 

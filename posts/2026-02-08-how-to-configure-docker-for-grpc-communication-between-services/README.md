@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, grpc, microservices, protobuf, docker compose, service communication, networking
+Tags: Docker, gRPC, Microservices, Protobuf, Docker Compose, Service Communication, Networking
 
 Description: Step-by-step guide to setting up gRPC communication between Docker containers in microservice architectures.
 

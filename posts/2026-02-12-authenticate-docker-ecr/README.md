@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECR, Docker, Authentication, Containers
+Tags: AWS, ECR, Docker, Authentication, Container
 
 Description: A complete guide to authenticating Docker with Amazon ECR, covering CLI authentication, credential helpers, CI/CD integration, and troubleshooting common auth errors.
 

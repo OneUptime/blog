@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Availability Zones, Data Sources, High Availability
+Tags: Terraform, AWS, Availability Zones, Data Source, High Availability
 
 Description: Learn how to use the aws_availability_zones data source in Terraform to dynamically discover available AZs and build highly available infrastructure across zones.
 

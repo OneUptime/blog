@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Microservices, Resilience, Design Patterns, Reliability
+Tags: Microservices, Resilience, Design Pattern, Reliability
 
 Description: Implement retry patterns with exponential backoff, jitter, and retry budgets for handling transient failures in distributed systems.
 

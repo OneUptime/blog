@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Remote Tap, Debugging, Telemetry
+Tags: OpenTelemetry, Collector, Processor, Remote Tap, Debugging, Telemetry
 
 Description: Learn how to configure the Remote Tap processor in the OpenTelemetry Collector to duplicate and forward telemetry data to additional endpoints for debugging and monitoring purposes.
 

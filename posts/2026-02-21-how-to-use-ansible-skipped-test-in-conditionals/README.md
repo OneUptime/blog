@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditionals, Task Control, Automation
+Tags: Ansible, Conditional, Task Control, Automation
 
 Description: Learn how to use the Ansible skipped test in conditionals to detect when tasks were skipped and build responsive playbook logic.
 

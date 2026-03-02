@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, API Gateway, WebSocket, Serverless, Real-time, Infrastructure as Code
+Tags: Terraform, AWS, API Gateway, WebSocket, Serverless, Real-Time, Infrastructure as Code
 
 Description: Learn how to build real-time WebSocket APIs using AWS API Gateway v2 and Terraform, with Lambda integration, route handling, connection management, and custom domains.
 

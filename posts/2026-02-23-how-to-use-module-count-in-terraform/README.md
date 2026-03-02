@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, count, Infrastructure as Code, DevOps, Conditional Resources
+Tags: Terraform, Modules, Count, Infrastructure as Code, DevOps, Conditional Resources
 
 Description: Learn how to use the count meta-argument with Terraform modules for conditional module creation and simple repetition, including when to prefer count over for_each.
 

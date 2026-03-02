@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Documentation, Best Practices
+Tags: Ansible, Plugin, Documentation, Best Practices
 
 Description: Learn how to write proper documentation for Ansible plugins that integrates with ansible-doc and Galaxy documentation systems.
 

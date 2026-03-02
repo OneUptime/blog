@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, PostgreSQL, Vacuum, Table Bloat, Database Maintenance
+Tags: GCP, Cloud SQL, PostgreSQL, VACUUM, Table Bloat, Database Maintenance
 
 Description: A detailed guide to diagnosing stuck vacuum processes and fixing table bloat issues on Cloud SQL PostgreSQL instances, including autovacuum tuning.
 

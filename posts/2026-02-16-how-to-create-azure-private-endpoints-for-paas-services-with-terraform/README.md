@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Private Endpoints, Networking, Security, IaC, PaaS
+Tags: Terraform, Azure, Private Endpoint, Networking, Security, IaC, PaaS
 
 Description: Learn how to create Azure Private Endpoints for PaaS services like Storage, SQL, and Key Vault using Terraform for secure network access.
 

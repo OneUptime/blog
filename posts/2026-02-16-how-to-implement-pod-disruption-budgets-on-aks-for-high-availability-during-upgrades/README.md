@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Pod Disruption Budgets, High Availability, Kubernetes, Upgrades, PDB, Reliability
+Tags: AKS, Pod Disruption Budget, High Availability, Kubernetes, Upgrade, PDB, Reliability
 
 Description: Learn how to configure Pod Disruption Budgets on AKS to maintain service availability during node upgrades, scaling, and maintenance.
 

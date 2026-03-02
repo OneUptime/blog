@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Webhooks, Go, Admission Control
+Tags: Kubernetes, Webhook, Go, Admission Control
 
 Description: Learn how to implement validating admission webhooks in Go to enforce custom validation rules and policies for Kubernetes resources before they are persisted to etcd.
 

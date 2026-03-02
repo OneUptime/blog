@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Next.js, Parallel Routes, App Router, Routing, Layouts, Modals
+Tags: Next.js, Parallel Routes, App Router, Routing, Layout, Modal
 
 Description: A troubleshooting guide for common parallel routes issues in Next.js, covering slot matching, default pages, and modal patterns.
 

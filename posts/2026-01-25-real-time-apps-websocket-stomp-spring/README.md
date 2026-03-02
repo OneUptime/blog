@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring, WebSocket, STOMP, Real-time
+Tags: Java, Spring, WebSocket, STOMP, Real-Time
 
 Description: Learn how to build real-time applications using WebSocket and STOMP protocol in Spring Boot. This guide covers configuration, message handling, security, and production deployment patterns.
 

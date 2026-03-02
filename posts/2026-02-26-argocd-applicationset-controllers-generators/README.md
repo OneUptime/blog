@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, DevOps
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, DevOps
 
 Description: Learn how ArgoCD ApplicationSet controllers and generators work together to dynamically create and manage multiple applications from a single template definition.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Kubernetes, Cluster Upgrades, Zero Downtime, PDB, Surge Upgrades
+Tags: GCP, GKE, Kubernetes, Cluster Upgrade, Zero Downtime, PDB, Surge Upgrades
 
 Description: A step-by-step guide to performing zero-downtime GKE cluster upgrades using surge upgrade strategies combined with Pod Disruption Budgets for uninterrupted service.
 

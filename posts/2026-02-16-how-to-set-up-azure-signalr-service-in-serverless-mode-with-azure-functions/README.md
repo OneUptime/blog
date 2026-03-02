@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, SignalR, Serverless, Azure Functions, Real-Time, WebSockets
+Tags: Azure, SignalR, Serverless, Azure Functions, Real-Time, WebSocket
 
 Description: A hands-on guide to setting up Azure SignalR Service in serverless mode with Azure Functions for real-time messaging without managing servers.
 

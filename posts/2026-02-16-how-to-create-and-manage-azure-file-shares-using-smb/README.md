@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Files, SMB, File Shares, Azure Storage, Network Storage, Cloud Files
+Tags: Azure, Azure Files, SMB, File Share, Azure Storage, Network Storage, Cloud Files
 
 Description: A practical guide to creating and managing Azure File Shares using the SMB protocol for cloud-based file storage accessible from Windows, Linux, and macOS.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby, Rails, Webhooks, API, Integration, Events
+Tags: Ruby, Rails, Webhook, API, Integration, Events
 
 Description: Learn how to implement robust webhooks in Ruby on Rails applications. This guide covers receiving webhooks, sending webhooks, signature verification, retry logic, and production best practices.
 

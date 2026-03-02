@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Next.js, getStaticPaths, Static Generation, Build Errors, SSG, Pages Router
+Tags: Next.js, getStaticPaths, Static Generation, build error, SSG, Pages Router
 
 Description: Learn how to diagnose and fix common getStaticPaths build errors in Next.js including fallback issues, parameter mismatches, and data fetching problems.
 

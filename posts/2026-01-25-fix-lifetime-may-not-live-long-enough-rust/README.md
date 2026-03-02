@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Lifetimes, Borrow Checker, Errors, Debugging
+Tags: Rust, Lifetimes, Borrow Checker, Error, Debugging
 
 Description: Learn how to diagnose and fix 'lifetime may not live long enough' errors in Rust. Understand lifetime constraints and discover patterns for correct lifetime annotations.
 

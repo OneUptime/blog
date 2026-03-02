@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, API Management, Subscriptions, Access Control, Products, API Security
+Tags: Azure, API Management, Subscription, Access Control, Product, API Security
 
 Description: A practical guide to setting up products, subscriptions, and access control in Azure API Management to manage who can access your APIs and how.
 

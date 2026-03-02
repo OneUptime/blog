@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, volume mounts, input output error, troubleshooting, storage, linux, containers
+Tags: Docker, Volume Mounts, input output error, Troubleshooting, Storage, Linux, Container
 
 Description: Learn how to diagnose and fix the Docker Input/Output error on volume mounts caused by filesystem corruption, NFS issues, and storage driver problems.
 

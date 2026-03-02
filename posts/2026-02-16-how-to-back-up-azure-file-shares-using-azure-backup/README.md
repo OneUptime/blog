@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Backup, Azure Files, File Shares, Backup, Disaster Recovery, Data Protection
+Tags: Azure, Azure Backup, Azure Files, File Share, Backup, Disaster Recovery, Data Protection
 
 Description: A detailed guide to configuring Azure Backup for Azure File Shares with automated snapshot management, retention policies, and point-in-time restore capabilities.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SRE, Runbooks, Operations, Incident Management, Site Reliability Engineering, Documentation, DevOps
+Tags: SRE, Runbook, Operations, Incident Management, Site Reliability Engineering, Documentation, DevOps
 
 Description: A complete guide to creating runbooks that reduce incident response time, including templates, automation strategies, and real-world examples for common operational scenarios.
 

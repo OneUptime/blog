@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Apache, httpd, Web Servers, DevOps, Reverse Proxy
+Tags: Docker, Apache, HTTPD, Web Server, DevOps, Reverse Proxy
 
 Description: Deploy Apache httpd web server in Docker with virtual hosts, SSL termination, reverse proxy, and module configuration
 

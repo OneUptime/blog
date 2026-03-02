@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machines, Subscription, Resource Management, Cloud Migration, Azure CLI
+Tags: Azure, Virtual Machine, Subscription, Resource Management, Cloud Migration, Azure CLI
 
 Description: Step-by-step guide to moving Azure virtual machines between subscriptions including prerequisites, dependent resources, and common pitfalls.
 

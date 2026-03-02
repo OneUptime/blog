@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Notification Hubs, Scheduled Notifications, Push, Mobile, Automation, Cloud
+Tags: Azure, Notification Hub, Scheduled Notifications, Push, Mobile, Automation, Cloud
 
 Description: Learn how to schedule push notifications in Azure Notification Hubs for future delivery, including time zone handling and cancellation.
 

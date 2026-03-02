@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Container Instances, YAML, Containers, ACI, DevOps, Cloud Computing
+Tags: Azure, Container Instances, YAML, Container, ACI, DevOps, Cloud Computing
 
 Description: How to define and deploy Azure Container Instances container groups using YAML configuration files for repeatable and version-controlled deployments.
 

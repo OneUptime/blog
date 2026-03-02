@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, SHELL, Bash, PowerShell, DevOps
+Tags: Docker, Dockerfile, Shell, Bash, PowerShell, DevOps
 
 Description: Learn how to use the SHELL instruction to change the default shell in Dockerfiles for bash features and Windows support.
 

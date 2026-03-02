@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Cardinality, Span Names, Performance
+Tags: OpenTelemetry, Cardinality, Span Name, Performance
 
 Description: Troubleshoot and fix high-cardinality span names caused by URL path parameters being included in auto-instrumented span names.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Dictionaries, Filters, Variables, DevOps
+Tags: Ansible, Dictionaries, Filter, Variables, DevOps
 
 Description: Learn how to use the Ansible combine filter to merge dictionaries for building layered configurations, overriding defaults, and aggregating data from multiple sources.
 

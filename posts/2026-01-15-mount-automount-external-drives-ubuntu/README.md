@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Storage, Mount, Filesystems, System Administration, Tutorial
+Tags: Ubuntu, Storage, Mount, Filesystem, System Administration, Tutorial
 
 Description: Learn how to mount external drives manually and configure automatic mounting on boot using fstab and systemd on Ubuntu.
 

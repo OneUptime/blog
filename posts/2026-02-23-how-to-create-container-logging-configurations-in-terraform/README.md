@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Containers, Logging, ECS, Kubernetes, CloudWatch
+Tags: Terraform, Container, Logging, ECS, Kubernetes, CloudWatch
 
 Description: Learn how to create container logging configurations in Terraform for centralized log collection, including CloudWatch, Fluentd, and structured logging across platforms.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, Google Cloud, Multi-Project, Providers, Infrastructure as Code
+Tags: Terraform, GCP, Google Cloud, Multi-Project, Provider, Infrastructure as Code
 
 Description: Learn how to configure the Terraform Google provider to manage resources across multiple GCP projects using provider aliases and practical organizational patterns.
 

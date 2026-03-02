@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: HashiCorp Vault, Namespaces, Multi-Tenancy, Kubernetes, Security Isolation
+Tags: HashiCorp Vault, Namespace, Multi-Tenancy, Kubernetes, Security Isolation
 
 Description: Learn how to implement Vault namespaces for complete tenant isolation in multi-tenant Kubernetes environments, ensuring secrets remain separated and secure.
 

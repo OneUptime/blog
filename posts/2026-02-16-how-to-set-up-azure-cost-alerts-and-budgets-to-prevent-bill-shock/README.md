@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Cost Management, Budgets, Alerts, FinOps, Cloud Costs, Governance
+Tags: Azure, Cost Management, Budget, Alerts, FinOps, Cloud Cost, Governance
 
 Description: Step-by-step guide to setting up Azure cost alerts and budgets to catch spending surprises before they turn into bill shock.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, RBAC, Nodes, Monitoring, Security
+Tags: Kubernetes, RBAC, Node, Monitoring, Security
 
 Description: Learn how to grant RBAC permissions for accessing node logs and metrics data without giving users full node management privileges that could compromise cluster security.
 

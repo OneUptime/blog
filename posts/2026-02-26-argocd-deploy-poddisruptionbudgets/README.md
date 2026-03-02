@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, PodDisruptionBudgets, High Availability
+Tags: ArgoCD, GitOps, Kubernetes, PodDisruptionBudget, High Availability
 
 Description: Learn how to deploy PodDisruptionBudgets with ArgoCD to protect application availability during node maintenance, cluster upgrades, and voluntary disruptions.
 

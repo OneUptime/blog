@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Automation, Webhooks, Runbooks, Automation, Integration, Azure Cloud, DevOps
+Tags: Azure Automation, Webhook, Runbook, Automation, Integration, Azure Cloud, DevOps
 
 Description: Learn how to create webhooks for Azure Automation runbooks so external systems like monitoring tools, CI/CD pipelines, and custom applications can trigger automated responses.
 

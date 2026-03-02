@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, mosquitto, mqtt, iot, messaging, self-hosted, sensors
+Tags: Docker, Mosquitto, MQTT, IoT, Messaging, Self-Hosted, Sensors
 
 Description: Set up Eclipse Mosquitto MQTT broker in Docker to handle messaging between IoT devices, sensors, and automation platforms.
 

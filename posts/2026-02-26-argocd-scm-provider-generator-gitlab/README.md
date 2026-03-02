@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, GitLab
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, GitLab
 
 Description: Learn how to use the ArgoCD ApplicationSet SCM provider generator with GitLab to automatically discover repositories in groups and create applications for each one.
 

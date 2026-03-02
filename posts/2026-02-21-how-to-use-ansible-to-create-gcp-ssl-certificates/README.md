@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, GCP, SSL Certificates, HTTPS, Load Balancing
+Tags: Ansible, GCP, SSL Certificate, HTTPS, Load Balancing
 
 Description: Learn how to provision and manage GCP SSL certificates using Ansible, including both self-managed and Google-managed certificate options.
 

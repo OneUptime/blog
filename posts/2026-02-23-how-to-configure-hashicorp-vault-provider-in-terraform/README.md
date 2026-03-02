@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, HashiCorp Vault, Secrets Management, Infrastructure as Code
+Tags: Terraform, Provider, HashiCorp Vault, Secrets Management, Infrastructure as Code
 
 Description: Learn how to configure and use the HashiCorp Vault provider in Terraform to manage secrets, policies, and authentication backends as code.
 

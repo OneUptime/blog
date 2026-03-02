@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Callbacks, Plugins, Notifications, DevOps, Automation
+Tags: Ansible, Callback, Plugin, Notifications, DevOps, Automation
 
 Description: Customize Ansible output and integrate with external systems using callback plugins for logging, notifications, metrics, and custom reporting.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Jinja2, Automation
+Tags: Ansible, Filter, Jinja2, Automation
 
 Description: Learn how to use the selectattr filter in Ansible to filter lists of dictionaries before looping, enabling conditional iteration based on object attributes.
 

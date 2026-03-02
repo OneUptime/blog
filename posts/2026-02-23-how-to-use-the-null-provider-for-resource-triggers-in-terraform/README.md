@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Null Provider, Provisioners, Triggers, Infrastructure as Code
+Tags: Terraform, Null Provider, Provisioner, Trigger, Infrastructure as Code
 
 Description: Learn how to use the Terraform null_resource and terraform_data for triggering provisioners, running scripts conditionally, and managing dependencies between resources.
 

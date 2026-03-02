@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Data Engineering, ETL, Data Pipelines, Debugging, Apache Spark, Apache Airflow, Troubleshooting
+Tags: Data Engineering, ETL, Data Pipeline, Debugging, Apache Spark, Apache Airflow, Troubleshooting
 
 Description: A practical guide to diagnosing and fixing common data pipeline failures including schema mismatches, resource exhaustion, and dependency issues.
 

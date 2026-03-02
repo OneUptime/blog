@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Terragrunt, Infrastructure as Code, DevOps, Environment Variables, CI/CD
+Tags: Terraform, Terragrunt, Infrastructure as Code, DevOps, Environment Variable, CI/CD
 
 Description: Learn how to use the get_env function in Terragrunt to read environment variables, set defaults, and integrate with CI/CD pipelines for dynamic configuration.
 

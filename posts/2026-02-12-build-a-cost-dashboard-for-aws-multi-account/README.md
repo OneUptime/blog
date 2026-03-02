@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Cost Management, CloudWatch, Organizations, FinOps
+Tags: AWS, Cost Management, CloudWatch, Organization, FinOps
 
 Description: Build a centralized cost dashboard for AWS multi-account environments using Cost Explorer API, Athena, and QuickSight for full financial visibility.
 

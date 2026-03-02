@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Configuration
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Configuration
 
 Description: Learn how to use template overrides in ArgoCD ApplicationSets to customize individual application specs generated from shared templates.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: LangChain, Vector Databases, Pinecone, Weaviate, Chroma, FAISS, Embeddings, RAG, AI, Python
+Tags: LangChain, Vector Database, Pinecone, Weaviate, Chroma, FAISS, Embedding, RAG, AI, Python
 
 Description: Learn how to integrate LangChain with popular vector databases like Pinecone, Weaviate, Chroma, and FAISS for building powerful retrieval-augmented generation (RAG) applications.
 

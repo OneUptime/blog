@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, ServiceAccounts
+Tags: Kubernetes, Security, ServiceAccount
 
 Description: Learn to configure Kubernetes token volume projection with custom audiences and expiration times for enhanced security and service integration.
 

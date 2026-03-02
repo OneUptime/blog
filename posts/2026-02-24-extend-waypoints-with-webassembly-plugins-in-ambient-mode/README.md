@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mode, WebAssembly, Wasm, Waypoint Proxy
+Tags: Istio, Ambient Mode, WebAssembly, WASM, Waypoint Proxy
 
 Description: How to extend Istio waypoint proxies in ambient mode with custom WebAssembly plugins for advanced traffic processing and custom logic.
 

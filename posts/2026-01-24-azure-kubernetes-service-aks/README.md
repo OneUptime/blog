@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Kubernetes, AKS, Cloud, DevOps, Containers, Orchestration
+Tags: Azure, Kubernetes, AKS, Cloud, DevOps, Container, Orchestration
 
 Description: A comprehensive guide to managing Azure Kubernetes Service clusters, from deployment and scaling to monitoring and troubleshooting.
 

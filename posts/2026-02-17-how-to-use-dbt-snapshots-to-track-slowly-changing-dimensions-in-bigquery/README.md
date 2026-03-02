@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, dbt, Snapshots, Slowly Changing Dimensions, Data Modeling
+Tags: GCP, BigQuery, dbt, Snapshot, Slowly Changing Dimensions, Data Modeling
 
 Description: Learn how to use dbt snapshots to track historical changes to dimension data in BigQuery, implementing Type 2 slowly changing dimensions automatically.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Directus, Headless CMS, REST API, GraphQL, PostgreSQL, Node.js, Containers, API
+Tags: Docker, Directus, Headless CMS, REST API, GraphQL, PostgreSQL, Node.js, Container, API
 
 Description: Deploy Directus in Docker to get an instant REST and GraphQL API for any SQL database, complete with an admin dashboard and flexible content management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, streaming, protocol buffers, microservices, real-time, server-streaming, client-streaming, bidirectional
+Tags: gRPC, Streaming, Protocol Buffers, Microservices, Real-Time, server-streaming, client-streaming, Bidirectional
 
 Description: A comprehensive guide to implementing all four gRPC communication patterns with practical examples, error handling, and flow control strategies.
 

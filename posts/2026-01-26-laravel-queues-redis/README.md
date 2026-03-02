@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Laravel, Queues, Redis, PHP, Background Jobs
+Tags: Laravel, Queue, Redis, PHP, Background Jobs
 
 Description: Learn how to use Laravel Queues with Redis for background job processing including job creation, retries, rate limiting, and monitoring with Horizon.
 

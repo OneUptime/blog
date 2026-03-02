@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Cloud Monitoring, Cost Management, AWS Budgets, CloudWatch, FinOps
+Tags: Terraform, Cloud Monitoring, Cost Management, AWS Budget, CloudWatch, FinOps
 
 Description: Learn how to set up comprehensive cloud spend monitoring with Terraform using AWS Budgets, CloudWatch dashboards, Cost Explorer, and automated alerting pipelines.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Lookup Plugins, Environment Variables, DevOps
+Tags: Ansible, Lookup Plugins, Environment Variable, DevOps
 
 Description: Learn how to use the Ansible env lookup plugin to read environment variables from the control node for dynamic playbook configuration.
 

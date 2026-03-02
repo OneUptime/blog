@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Storage, Configuration Management, DevOps
+Tags: Ansible, Filter, Storage, Configuration Management, DevOps
 
 Description: Learn how to use the human_to_bytes filter in Ansible to convert human-readable sizes like 2GB into byte values for configuration templates.
 

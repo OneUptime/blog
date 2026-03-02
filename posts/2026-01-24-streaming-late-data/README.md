@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Spark, Structured Streaming, Stream Processing, Watermarks, Late Data, Real-Time Analytics, Event Time
+Tags: Apache Spark, Structured Streaming, Stream Processing, Watermark, Late Data, Real-Time Analytics, Event Time
 
 Description: Learn how to handle late-arriving data in Spark Structured Streaming using watermarks, window operations, and state management strategies.
 

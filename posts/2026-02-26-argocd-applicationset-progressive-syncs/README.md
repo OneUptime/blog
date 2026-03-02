@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Progressive Delivery
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Progressive Delivery
 
 Description: Learn how to use progressive syncs in ArgoCD ApplicationSets to roll out changes gradually across environments and clusters with controlled rollout steps.
 

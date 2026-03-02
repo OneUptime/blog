@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Geospatial, Location, GEO Commands, Nearby Search, Maps, Real-time
+Tags: Redis, Geospatial, Location, GEO Commands, Nearby Search, Maps, Real-Time
 
 Description: Learn how to implement location-based features using Redis geospatial indexes.
 

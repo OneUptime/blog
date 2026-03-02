@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Debugging, Timeouts, Span Duration, Distributed Tracing
+Tags: OpenTelemetry, Debugging, Timeout, Span Duration, Distributed Tracing
 
 Description: Learn how to identify and resolve intermittent timeout issues by analyzing span duration distributions with OpenTelemetry tracing data.
 

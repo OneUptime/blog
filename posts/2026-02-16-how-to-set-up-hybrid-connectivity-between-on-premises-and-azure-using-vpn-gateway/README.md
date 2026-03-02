@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, VPN Gateway, Hybrid Connectivity, Networking, Site-to-Site, IPSec, Cloud Infrastructure
+Tags: Azure, VPN Gateway, Hybrid Connectivity, Networking, Site-to-Site, IPsec, Cloud Infrastructure
 
 Description: Step-by-step guide to establishing secure hybrid connectivity between your on-premises data center and Azure using a Site-to-Site VPN Gateway.
 

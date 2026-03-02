@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: IPv6, Testing, Networking, DevOps, Applications, QA
+Tags: IPv6, Testing, Networking, DevOps, Application, QA
 
 Description: A comprehensive guide to testing and validating IPv6 readiness in your applications, covering tools, checklists, code examples, and best practices to ensure seamless dual-stack compatibility.
 

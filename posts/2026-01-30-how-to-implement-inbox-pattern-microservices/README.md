@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Microservices, Distributed Systems, Event-Driven Architecture, Message Queues, PostgreSQL, Node.js
+Tags: Microservices, Distributed Systems, Event-Driven Architecture, Message Queue, PostgreSQL, Node.js
 
 Description: A practical guide to implementing the Inbox Pattern for reliable message processing in distributed systems.
 

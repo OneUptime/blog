@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, ServiceEntry, HTTP APIs, Service Mesh, Kubernetes
+Tags: Istio, ServiceEntry, HTTP API, Service Mesh, Kubernetes
 
 Description: Step-by-step guide to registering external HTTP APIs in Istio's service registry using ServiceEntry for full traffic management and observability.
 

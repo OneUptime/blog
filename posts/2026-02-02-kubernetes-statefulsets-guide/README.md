@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, StatefulSets, Containers, DevOps, Databases, Persistent Storage, Cloud Native
+Tags: Kubernetes, StatefulSet, Container, DevOps, Database, Persistent Storage, Cloud Native
 
 Description: A comprehensive guide to configuring Kubernetes StatefulSets for stateful applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Design Patterns, Modules, Abstraction, Infrastructure as Code
+Tags: Terraform, Design Pattern, Modules, Abstraction, Infrastructure as Code
 
 Description: Learn how to create abstract resource patterns in Terraform using modules, variable-driven composition, and factory patterns to build reusable infrastructure components.
 

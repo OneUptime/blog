@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Security Groups, Data Sources, VPC, Networking
+Tags: Terraform, AWS, Security Groups, Data Source, VPC, Networking
 
 Description: Learn how to use Terraform data sources to query and reference existing AWS security groups in your infrastructure configurations for cleaner cross-team collaboration.
 

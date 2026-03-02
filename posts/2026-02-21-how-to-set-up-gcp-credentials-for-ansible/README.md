@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, GCP, Authentication, Service Accounts, Cloud Automation
+Tags: Ansible, GCP, Authentication, Service Account, Cloud Automation
 
 Description: Configure Google Cloud Platform credentials for Ansible including service accounts, environment variables, and workload identity federation.
 

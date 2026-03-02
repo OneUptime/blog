@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, NTP, Chrony, DevOps, Time Synchronization
+Tags: Ubuntu, Linux, NTP, chrony, DevOps, Time Synchronization
 
 Description: Configure accurate time synchronization on Ubuntu using NTP or Chrony for production servers, containers, and distributed systems.
 

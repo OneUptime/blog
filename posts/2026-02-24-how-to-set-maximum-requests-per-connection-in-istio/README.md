@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Service Mesh, Connections, Kubernetes, Load Balancing
+Tags: Istio, Service Mesh, Connection, Kubernetes, Load Balancing
 
 Description: How to use maxRequestsPerConnection in Istio DestinationRule to force connection recycling for better load distribution and memory management.
 

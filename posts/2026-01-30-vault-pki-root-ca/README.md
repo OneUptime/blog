@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Vault, PKI, Certificates, Security
+Tags: Vault, PKI, Certificate, Security
 
 Description: A practical guide to setting up a Root Certificate Authority using HashiCorp Vault's PKI secrets engine.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Build, Monorepo, CI/CD, Triggers, DevOps, Microservices
+Tags: GCP, Cloud Build, Monorepo, CI/CD, Trigger, DevOps, Microservices
 
 Description: Configure Google Cloud Build triggers to detect which services changed in a monorepo and only build and deploy those specific services.
 

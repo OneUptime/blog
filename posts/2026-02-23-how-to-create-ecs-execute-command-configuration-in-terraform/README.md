@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, Execute Command, Debugging, SSM, Containers, Infrastructure as Code
+Tags: Terraform, AWS, ECS, Execute Command, Debugging, SSM, Container, Infrastructure as Code
 
 Description: Learn how to configure ECS Exec with Terraform to get interactive shell access to running containers for debugging and troubleshooting in production.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, C#, Azure Service Bus, Messaging, Queues, Microservices, Cloud, ASP.NET Core
+Tags: .NET, C#, Azure Service Bus, Messaging, Queue, Microservices, Cloud, ASP.NET Core
 
 Description: A practical guide to building reliable messaging systems with Azure Service Bus in .NET, covering queues, topics, sessions, dead letter queues, and best practices.
 

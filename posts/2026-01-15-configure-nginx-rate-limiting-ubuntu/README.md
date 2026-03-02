@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Ubuntu, Rate Limiting, Web Server, Security, DDoS Protection, API Protection, DevOps
+Tags: NGINX, Ubuntu, Rate Limiting, Web Server, Security, DDoS Protection, API Protection, DevOps
 
 Description: Learn how to configure Nginx rate limiting on Ubuntu to protect your web servers and APIs from abuse, DDoS attacks, and resource exhaustion.
 

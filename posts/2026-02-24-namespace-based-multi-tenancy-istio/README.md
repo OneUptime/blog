@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Multi-Tenancy, Kubernetes, Namespaces, Service Mesh, Security
+Tags: Istio, Multi-Tenancy, Kubernetes, Namespace, Service Mesh, Security
 
 Description: A practical guide to implementing namespace-based multi-tenancy in Istio with traffic isolation, authorization policies, and per-tenant configuration.
 

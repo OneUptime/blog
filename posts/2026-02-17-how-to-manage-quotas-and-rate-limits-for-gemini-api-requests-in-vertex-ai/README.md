@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Vertex AI, Gemini API, Quotas, Rate Limiting
+Tags: GCP, Vertex AI, Gemini API, Quota, Rate Limiting
 
 Description: A practical guide to understanding, monitoring, and managing quotas and rate limits when using Gemini API through Vertex AI on Google Cloud.
 

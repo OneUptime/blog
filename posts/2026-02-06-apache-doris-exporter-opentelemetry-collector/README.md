@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Apache Doris, Analytics, Data Warehouse, MPP, Real-time
+Tags: OpenTelemetry, Collector, Exporter, Apache Doris, Analytics, Data Warehouse, MPP, Real-Time
 
 Description: Configure the Apache Doris exporter in OpenTelemetry Collector to send observability data to Apache Doris for high-performance analytics and real-time queries.
 

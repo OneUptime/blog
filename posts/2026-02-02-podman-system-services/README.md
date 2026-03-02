@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Containers, Linux, Systemd, DevOps, Rootless Containers, Microservices
+Tags: Podman, Container, Linux, systemd, DevOps, Rootless Containers, Microservices
 
 Description: Learn how to manage Podman containers as system services using systemd.
 

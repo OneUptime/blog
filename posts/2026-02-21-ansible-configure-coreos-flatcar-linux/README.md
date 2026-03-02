@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Flatcar Linux, CoreOS, Containers, Immutable Infrastructure
+Tags: Ansible, Flatcar Linux, CoreOS, Container, Immutable Infrastructure
 
 Description: Manage Flatcar Container Linux with Ansible for container-optimized infrastructure, immutable OS updates, and systemd unit management.
 

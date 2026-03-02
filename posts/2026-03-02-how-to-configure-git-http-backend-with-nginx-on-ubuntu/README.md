@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Git, Nginx, Self-Hosted, Version Control
+Tags: Ubuntu, Git, NGINX, Self-Hosted, Version Control
 
 Description: Configure git-http-backend with Nginx on Ubuntu to serve Git repositories over HTTP and HTTPS with basic authentication, enabling smart HTTP protocol for efficient clone and push operations.
 

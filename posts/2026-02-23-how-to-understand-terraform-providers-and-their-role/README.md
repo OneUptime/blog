@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Infrastructure as Code, DevOps, Cloud, Architecture
+Tags: Terraform, Provider, Infrastructure as Code, DevOps, Cloud, Architecture
 
 Description: Learn what Terraform providers are, how they work as the bridge between your configuration and cloud APIs, and how to choose, configure, and manage them effectively.
 

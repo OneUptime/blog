@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GitHub, Issues, Open Source, Bug Reports
+Tags: Istio, GitHub, Issues, Open Source, Bug Report
 
 Description: A complete guide to using Istio's GitHub repositories for filing issues, participating in discussions, and tracking project progress.
 

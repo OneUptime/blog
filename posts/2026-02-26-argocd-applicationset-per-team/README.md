@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Multi-Tenancy
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Multi-Tenancy
 
 Description: Learn how to use ArgoCD ApplicationSets to generate team-specific application configurations with proper isolation, RBAC, and namespace management.
 

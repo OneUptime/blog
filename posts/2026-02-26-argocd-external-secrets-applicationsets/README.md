@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, External Secrets, ApplicationSets
+Tags: ArgoCD, GitOps, Kubernetes, External Secrets, ApplicationSet
 
 Description: Learn how to combine External Secrets Operator with ArgoCD ApplicationSets to manage secrets across multiple clusters and environments using templated ExternalSecret manifests.
 

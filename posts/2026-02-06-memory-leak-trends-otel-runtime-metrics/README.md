@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Memory Leaks, Runtime Metrics, Production Monitoring, Debugging
+Tags: OpenTelemetry, Memory Leak, Runtime Metrics, Production Monitoring, Debugging
 
 Description: Detect memory leak trends in production applications using OpenTelemetry runtime metrics to catch leaks before they cause outages or OOM kills.
 

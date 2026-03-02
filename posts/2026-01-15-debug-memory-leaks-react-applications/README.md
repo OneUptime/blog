@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, Performance, Memory Leaks, Debugging, Chrome DevTools, Optimization
+Tags: React, Performance, Memory Leak, Debugging, Chrome DevTools, Optimization
 
 Description: A comprehensive guide to identifying, diagnosing, and fixing memory leaks in React applications using Chrome DevTools, heap snapshots, and proven debugging patterns.
 

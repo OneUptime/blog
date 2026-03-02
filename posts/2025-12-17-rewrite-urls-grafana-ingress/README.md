@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Kubernetes, Ingress, Nginx, URL Rewrite
+Tags: Grafana, Kubernetes, Ingress, NGINX, URL Rewrite
 
 Description: Learn how to configure Kubernetes Ingress URL rewrites for Grafana when serving from a subpath, including Nginx Ingress annotations and Grafana root_url configuration.
 

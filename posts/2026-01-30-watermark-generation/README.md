@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Stream Processing, Watermarks, Event Time, Apache Flink
+Tags: Stream Processing, Watermark, Event Time, Apache Flink
 
 Description: Learn how to implement watermark generation strategies for handling out-of-order events.
 

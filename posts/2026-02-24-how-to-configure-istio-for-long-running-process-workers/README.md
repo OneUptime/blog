@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Workers, Kubernetes, Service Mesh, Long-Running Processes
+Tags: Istio, Worker, Kubernetes, Service Mesh, Long-Running Processes
 
 Description: How to configure Istio for long-running worker processes that maintain persistent connections and require extended timeout and keepalive settings.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, SignalR, ASP.NET Core, Chat Application, Real-Time, WebSockets
+Tags: Azure, SignalR, ASP.NET Core, Chat Application, Real-Time, WebSocket
 
 Description: A step-by-step guide to building a real-time chat application using Azure SignalR Service and ASP.NET Core with rooms, typing indicators, and message history.
 

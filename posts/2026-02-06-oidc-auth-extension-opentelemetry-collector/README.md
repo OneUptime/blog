@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extensions, Authentication, OIDC, OAuth2, Security, Identity
+Tags: OpenTelemetry, Collector, Extension, Authentication, OIDC, OAuth2, Security, Identity
 
 Description: Learn how to configure OpenID Connect authentication in the OpenTelemetry Collector to secure receivers with token-based identity verification and authorization.
 

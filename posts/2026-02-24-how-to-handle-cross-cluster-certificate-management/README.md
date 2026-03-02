@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, Multi-Cluster, Security, mTLS
+Tags: Istio, Certificate, Multi-Cluster, Security, mTLS
 
 Description: A complete guide to managing TLS certificates across multiple Istio clusters for secure cross-cluster communication.
 

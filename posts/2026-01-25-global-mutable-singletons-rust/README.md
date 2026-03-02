@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Design Patterns, Concurrency, Static, Global State
+Tags: Rust, Design Pattern, Concurrency, Static, Global State
 
 Description: Learn how to create global mutable singletons in Rust using lazy_static, once_cell, and the new std::sync::OnceLock. Understand the trade-offs and best practices for managing global state safely.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployments, Timeout, Progress
+Tags: Kubernetes, Deployment, Timeout, Progress
 
 Description: Learn to implement deployment progress deadline for automatic rollback on stuck deployments.
 

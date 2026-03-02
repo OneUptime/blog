@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Query DSL, Filters, Search Performance, Query Optimization, Scoring
+Tags: Elasticsearch, Query DSL, Filter, Search Performance, Query Optimization, Scoring
 
 Description: Learn the fundamental difference between queries and filters in Elasticsearch to write faster, more efficient searches by using the right approach for each use case.
 

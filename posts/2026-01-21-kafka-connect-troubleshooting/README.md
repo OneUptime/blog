@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Kafka, Kafka Connect, Troubleshooting, Connectors, Error Handling, Debugging
+Tags: Apache Kafka, Kafka Connect, Troubleshooting, Connector, Error Handling, Debugging
 
 Description: A comprehensive guide to troubleshooting Kafka Connect failures, covering connector errors, task failures, and common issues with source and sink connectors.
 

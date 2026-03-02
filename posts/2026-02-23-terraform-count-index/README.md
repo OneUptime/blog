@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, count, Loops, Infrastructure as Code
+Tags: Terraform, HCL, Count, Loops, Infrastructure as Code
 
 Description: Learn how to use count.index in Terraform to create multiple resource instances with unique names, configurations, and references based on their index position.
 

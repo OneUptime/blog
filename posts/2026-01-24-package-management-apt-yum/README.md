@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, Package Management, apt, yum, dnf, Debian, Ubuntu, RHEL, CentOS, System Administration
+Tags: Linux, Package Management, APT, YUM, DNF, Debian, Ubuntu, RHEL, CentOS, System Administration
 
 Description: A comprehensive guide to managing software packages on Linux using apt for Debian-based systems and yum/dnf for RHEL-based systems.
 

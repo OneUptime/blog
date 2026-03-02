@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, State Management, Upgrades, Infrastructure as Code
+Tags: Terraform, Modules, State Management, Upgrade, Infrastructure as Code
 
 Description: Learn safe strategies for upgrading Terraform module versions without losing state, including state migration, moved blocks, import blocks, and rollback procedures.
 

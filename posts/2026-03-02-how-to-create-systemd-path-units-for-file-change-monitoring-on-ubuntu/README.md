@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Systemd, Automation, File Monitoring, System Administration
+Tags: Ubuntu, systemd, Automation, File Monitoring, System Administration
 
 Description: Learn how to use systemd path units to monitor files and directories for changes and automatically trigger services on Ubuntu, as an alternative to inotifywait scripts.
 

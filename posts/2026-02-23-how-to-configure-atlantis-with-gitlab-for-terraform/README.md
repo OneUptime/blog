@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Atlantis, GitLab, Merge Requests, CI/CD, DevOps
+Tags: Terraform, Atlantis, GitLab, Merge Request, CI/CD, DevOps
 
 Description: Complete guide to setting up Atlantis with GitLab for Terraform merge request automation, covering token configuration, webhooks, GitLab CI integration, and self-managed GitLab instances.
 

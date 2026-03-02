@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Message Queues, Kubernetes, Service Mesh, RabbitMQ, Workers
+Tags: Istio, Message Queue, Kubernetes, Service Mesh, RabbitMQ, Worker
 
 Description: How to configure Istio for message queue worker applications that consume from RabbitMQ, Redis, or SQS on Kubernetes with proper sidecar and network settings.
 

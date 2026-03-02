@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Containers, Security, DevOps, Kubernetes, DevSecOps
+Tags: Docker, Container, Security, DevOps, Kubernetes, DevSecOps
 
 Description: A comprehensive guide to securing containers in production, covering image hardening, runtime security, and vulnerability scanning.
 

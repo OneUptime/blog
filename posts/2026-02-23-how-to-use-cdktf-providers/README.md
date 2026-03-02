@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CDKTF, Providers, Infrastructure as Code, Cloud
+Tags: Terraform, CDKTF, Provider, Infrastructure as Code, Cloud
 
 Description: Learn how to configure and use Terraform providers in CDKTF to manage resources across AWS, Azure, GCP, and hundreds of other services.
 

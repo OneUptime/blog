@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Bigtable, Filters, Query Optimization, Row Filtering
+Tags: GCP, Cloud Bigtable, Filter, Query Optimization, Row Filtering
 
 Description: Master row-level filtering in Cloud Bigtable to build efficient queries that return only the data you need, reducing latency and network transfer costs.
 

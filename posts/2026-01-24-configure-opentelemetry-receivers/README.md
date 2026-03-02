@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Configuration, Receivers, Observability
+Tags: OpenTelemetry, Collector, Configuration, Receiver, Observability
 
 Description: A comprehensive guide to configuring OpenTelemetry Collector receivers for ingesting traces, metrics, and logs from various sources.
 

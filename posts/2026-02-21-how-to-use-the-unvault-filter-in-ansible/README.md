@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Vault, Filters, Jinja2, Security
+Tags: Ansible, Vault, Filter, Jinja2, Security
 
 Description: Learn how to use the Ansible unvault filter to decrypt vault-encrypted content within Jinja2 templates and task expressions.
 

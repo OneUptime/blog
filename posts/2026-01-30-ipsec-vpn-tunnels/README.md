@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: IPSec, VPN, Security, Networking
+Tags: IPsec, VPN, Security, Networking
 
 Description: A comprehensive guide to building secure IPSec VPN tunnels between sites, covering IKE phases, authentication methods, encryption algorithms.
 

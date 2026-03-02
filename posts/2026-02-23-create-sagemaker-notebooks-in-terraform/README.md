@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, SageMaker, Machine Learning, Notebooks, Infrastructure as Code
+Tags: Terraform, AWS, SageMaker, Machine Learning, Notebook, Infrastructure as Code
 
 Description: Step-by-step guide to creating Amazon SageMaker notebook instances and Studio domains with Terraform, covering IAM roles, lifecycle configurations, and VPC settings.
 

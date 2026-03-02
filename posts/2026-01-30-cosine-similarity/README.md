@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Vector Search, Similarity Metrics, Machine Learning, Embeddings
+Tags: Vector Search, Similarity Metrics, Machine Learning, Embedding
 
 Description: Learn to implement cosine similarity for vector search with normalization, batch computation, and optimization strategies for semantic similarity applications.
 

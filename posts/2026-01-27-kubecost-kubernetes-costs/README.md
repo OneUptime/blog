@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kubecost, Cost Management, FinOps, Cloud Costs, DevOps, Cost Optimization
+Tags: Kubernetes, Kubecost, Cost Management, FinOps, Cloud Cost, DevOps, Cost Optimization
 
 Description: A comprehensive guide to installing and using Kubecost to monitor, allocate, and optimize Kubernetes costs across namespaces, teams, and cloud providers.
 

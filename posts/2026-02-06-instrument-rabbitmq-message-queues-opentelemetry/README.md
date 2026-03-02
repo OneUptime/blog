@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, RabbitMQ, Message Queues, Distributed Tracing, Observability, Messaging
+Tags: OpenTelemetry, RabbitMQ, Message Queue, Distributed Tracing, Observability, Messaging
 
 Description: A complete guide to instrumenting RabbitMQ producers and consumers with OpenTelemetry for distributed tracing, metrics, and observability across async messaging workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Message Queues, Ordering, Reliability, Backend
+Tags: Message Queue, Ordering, Reliability, Backend
 
 Description: Learn how to implement FIFO message ordering guarantees in distributed systems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, AWS, CloudWatch, Logs, Observability, Cloud
+Tags: OpenTelemetry, Collector, Exporter, AWS, CloudWatch, Logs, Observability, Cloud
 
 Description: Learn how to configure the AWS CloudWatch Logs exporter in OpenTelemetry Collector to centralize log management in AWS with log groups, streams, IAM permissions, and metric filters.
 

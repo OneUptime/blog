@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, CentOS, Linux, Installation, DevOps, Containers, CentOS Stream 9
+Tags: Docker, CentOS, Linux, Installation, DevOps, Container, CentOS Stream 9
 
 Description: A complete step-by-step guide to installing Docker Engine on CentOS Stream 9, including repository setup, post-install configuration, and troubleshooting tips.
 

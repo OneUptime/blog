@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OAuth2, Scopes, Authorization, Security, Access Control
+Tags: OAuth2, Scope, Authorization, Security, Access Control
 
 Description: Learn how to properly configure OAuth2 scopes for fine-grained access control including scope design patterns, validation strategies, and best practices for scope management.
 

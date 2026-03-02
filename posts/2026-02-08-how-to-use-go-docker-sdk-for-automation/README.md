@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, go, golang, SDK, automation, container management, DevOps
+Tags: Docker, Go, Golang, SDK, Automation, Container Management, DevOps
 
 Description: Use the Go Docker SDK to build fast, compiled automation tools for container management, image operations, and Docker orchestration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: React, Vite, Build Tools, JavaScript, TypeScript, Frontend, Development, Configuration
+Tags: React, Vite, Build Tool, JavaScript, TypeScript, Frontend, Development, Configuration
 
 Description: A complete guide to setting up a React project with Vite, covering TypeScript configuration, path aliases, environment variables, proxies, and production optimization.
 

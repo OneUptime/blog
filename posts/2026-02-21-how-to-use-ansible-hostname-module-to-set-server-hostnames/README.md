@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, hostname, Server Configuration, Linux, DevOps
+Tags: Ansible, Hostname, Server Configuration, Linux, DevOps
 
 Description: Set and manage server hostnames with the Ansible hostname module for consistent naming across your infrastructure.
 

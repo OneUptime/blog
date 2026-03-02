@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Networking, Namespaces, Network Policies, Service Discovery, DNS
+Tags: Kubernetes, Networking, Namespace, Network Policies, Service Discovery, DNS
 
 Description: Learn how to configure pod-to-pod communication across Kubernetes namespaces including network isolation, cross-namespace service access, and network policies for secure multi-tenant clusters.
 

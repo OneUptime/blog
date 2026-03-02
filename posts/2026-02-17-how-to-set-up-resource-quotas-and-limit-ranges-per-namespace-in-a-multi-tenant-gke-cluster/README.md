@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Kubernetes, Multi-Tenancy, Resource Management, Quotas
+Tags: GCP, GKE, Kubernetes, Multi-Tenancy, Resource Management, Quota
 
 Description: A complete guide to configuring resource quotas and limit ranges per namespace in GKE to prevent resource hogging and ensure fair sharing in multi-tenant clusters.
 

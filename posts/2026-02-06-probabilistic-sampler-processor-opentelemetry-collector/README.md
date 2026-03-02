@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Probabilistic Sampling, Head Sampling, Distributed Tracing
+Tags: OpenTelemetry, Collector, Processor, Probabilistic Sampling, Head Sampling, Distributed Tracing
 
 Description: Learn how to configure the probabilistic sampler processor in OpenTelemetry Collector for consistent, stateless trace sampling across distributed systems.
 

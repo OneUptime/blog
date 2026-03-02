@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Deployment Strategy
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Deployment Strategy
 
 Description: Learn how to configure rollout strategies for ArgoCD ApplicationSets including AllAtOnce and RollingSync to control how changes propagate across applications.
 

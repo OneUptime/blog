@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Alerting, Runbooks, Incident Response
+Tags: OpenTelemetry, Alerting, Runbook, Incident Response
 
 Description: Build automated alert runbooks that pull live diagnostic data from OpenTelemetry traces, metrics, and logs to give responders immediate context when an alert fires.
 

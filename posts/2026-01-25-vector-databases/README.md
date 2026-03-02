@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MLOps, Vector Database, Embeddings, Similarity Search, Pinecone, Milvus, AI, LLM
+Tags: MLOps, Vector Database, Embedding, Similarity Search, Pinecone, Milvus, AI, LLM
 
 Description: Learn how to implement vector databases for similarity search, covering indexing strategies, query optimization, and integration with ML applications like RAG systems.
 

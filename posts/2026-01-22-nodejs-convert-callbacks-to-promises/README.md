@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, JavaScript, Promises, Async, Callbacks, Error Handling
+Tags: NodeJS, JavaScript, Promises, Async, Callback, Error Handling
 
 Description: Learn how to convert callback-based functions to Promises in Node.js using manual wrapping, util.promisify, and custom promisification patterns for cleaner async code.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, Schema Design, STRUCT, ARRAY
+Tags: GCP, BigQuery, Schema Design, Struct, ARRAY
 
 Description: Learn how to design BigQuery table schemas using nested STRUCT and ARRAY columns for denormalized data models that improve query performance and reduce costs.
 

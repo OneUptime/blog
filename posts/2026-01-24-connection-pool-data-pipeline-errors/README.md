@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Data Pipelines, Connection Pool, Database, Error Handling, Performance, Python, ETL, Data Engineering
+Tags: Data Pipeline, Connection Pool, Database, Error Handling, Performance, Python, ETL, Data Engineering
 
 Description: Learn how to diagnose and fix connection pool exhaustion errors in data pipelines, including proper pool sizing, connection management, and monitoring strategies.
 

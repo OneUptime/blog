@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Vertex AI, Batch Predictions, Machine Learning, Inference
+Tags: GCP, Vertex AI, Batch Prediction, Machine Learning, Inference
 
 Description: Learn how to run batch prediction jobs in Vertex AI to process large datasets efficiently without maintaining a persistent endpoint.
 

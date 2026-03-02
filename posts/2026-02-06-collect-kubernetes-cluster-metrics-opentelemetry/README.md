@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, Metrics, Monitoring, Cluster, Nodes, Pods, Containers
+Tags: OpenTelemetry, Kubernetes, Metrics, Monitoring, Cluster, Node, POD, Container
 
 Description: A hands-on guide to collecting comprehensive Kubernetes cluster metrics for nodes, pods, and containers using the OpenTelemetry Collector's Kubernetes receivers.
 

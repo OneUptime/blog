@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Data Processing
+Tags: Ansible, Jinja2, Filter, Data Processing
 
 Description: Learn how to use the select and reject filters in Ansible to filter list elements based on tests and conditions.
 

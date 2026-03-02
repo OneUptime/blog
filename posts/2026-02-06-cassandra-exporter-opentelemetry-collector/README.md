@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Cassandra, Database, NoSQL, Time Series
+Tags: OpenTelemetry, Collector, Exporter, Cassandra, Database, NoSQL, Time Series
 
 Description: Learn how to configure the Cassandra exporter in the OpenTelemetry Collector to store telemetry data in Apache Cassandra for scalable, distributed long-term data retention.
 

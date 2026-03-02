@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Tasks, Node.js, Scheduling, Callbacks, Google Cloud
+Tags: GCP, Cloud Tasks, Node.js, Scheduling, Callback, Google Cloud
 
 Description: Schedule delayed HTTP callbacks from Node.js applications using the google-cloud/tasks npm package for deferred processing and timed workflows.
 

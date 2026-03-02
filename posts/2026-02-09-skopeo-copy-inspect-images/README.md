@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Skopeo, Container Images, Registry, Copy, Inspect
+Tags: Skopeo, Container Image, Registry, COPY, Inspect
 
 Description: Master Skopeo for copying and inspecting container images across different registries without Docker.
 

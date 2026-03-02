@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Container Registry, ACR, Docker, Containers, Infrastructure as Code
+Tags: Terraform, Azure, Container Registry, ACR, Docker, Container, Infrastructure as Code
 
 Description: Learn how to create and configure Azure Container Registry with Terraform, including geo-replication, private endpoints, webhooks, and CI/CD integration.
 

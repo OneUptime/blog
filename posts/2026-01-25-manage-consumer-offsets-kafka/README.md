@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kafka, Consumer Offsets, Message Processing, Data Recovery, Operations
+Tags: Kafka, Consumer Offset, Message Processing, Data Recovery, Operations
 
 Description: A comprehensive guide to managing Kafka consumer offsets, including automatic vs manual commits, offset reset strategies, seeking to specific positions, and recovering from offset-related issues.
 

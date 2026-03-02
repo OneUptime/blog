@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collections, Roles, Configuration Management, DevOps
+Tags: Ansible, Collection, Roles, Configuration Management, DevOps
 
 Description: How to include Ansible roles inside a collection with proper structure, variable scoping, dependencies, and cross-collection references.
 

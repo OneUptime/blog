@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Filtering
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Filtering
 
 Description: Learn how to use post selectors in ArgoCD ApplicationSets to filter which applications get generated from your generators using label-based matching.
 

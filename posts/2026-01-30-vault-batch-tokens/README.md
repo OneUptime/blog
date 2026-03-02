@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Vault, Security, Tokens, Performance
+Tags: Vault, Security, Token, Performance
 
 Description: Learn how to leverage HashiCorp Vault batch tokens for high-volume operations with improved performance and reduced storage overhead.
 

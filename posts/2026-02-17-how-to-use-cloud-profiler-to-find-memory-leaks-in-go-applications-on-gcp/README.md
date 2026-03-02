@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Profiler, Go, Memory Leaks, Performance
+Tags: GCP, Cloud Profiler, Go, Memory Leak, Performance
 
 Description: A hands-on guide to using Google Cloud Profiler heap profiles to detect and diagnose memory leaks in Go applications running on Google Cloud Platform.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, adguard, dns, ad-blocking, networking, self-hosted, privacy
+Tags: Docker, adguard, DNS, ad-blocking, Networking, Self-Hosted, Privacy
 
 Description: A complete guide to deploying AdGuard Home in Docker for network-wide ad blocking and DNS filtering on your home network.
 

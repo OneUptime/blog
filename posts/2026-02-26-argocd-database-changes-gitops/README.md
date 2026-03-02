@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Database, Migrations
+Tags: ArgoCD, GitOps, Kubernetes, Database, Migration
 
 Description: Practical strategies for managing database schema changes, migrations, and data operations within an ArgoCD GitOps workflow using hooks and job resources.
 

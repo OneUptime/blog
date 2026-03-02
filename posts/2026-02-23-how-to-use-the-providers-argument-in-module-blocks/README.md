@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Providers, Infrastructure as Code, Multi-Region, DevOps
+Tags: Terraform, Modules, Provider, Infrastructure as Code, Multi-Region, DevOps
 
 Description: Learn how to use the providers argument in Terraform module blocks to pass specific provider configurations to modules for multi-region and multi-account deployments.
 

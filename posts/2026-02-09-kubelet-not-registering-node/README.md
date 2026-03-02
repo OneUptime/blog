@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Nodes, Troubleshooting
+Tags: Kubernetes, Node, Troubleshooting
 
 Description: Learn how to diagnose and fix kubelet registration failures that prevent nodes from joining the Kubernetes cluster with practical debugging steps.
 

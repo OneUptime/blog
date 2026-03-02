@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CronJobs, Scheduling, Node Affinity
+Tags: Kubernetes, CronJob, Scheduling, Node Affinity
 
 Description: Learn how to use node affinity, node selectors, and taints/tolerations to control which nodes run CronJob pods for resource isolation and specialized hardware access.
 

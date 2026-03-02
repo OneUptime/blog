@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Notification Hubs, Firebase, FCM, Android, Push Notifications
+Tags: Azure, Notification Hub, Firebase, FCM, Android, Push Notifications
 
 Description: Step-by-step guide to configuring Azure Notification Hubs with Firebase Cloud Messaging to send push notifications to Android apps.
 

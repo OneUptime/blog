@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OAuth2, Session Management, Authentication, Security, Tokens, Refresh Tokens
+Tags: OAuth2, Session Management, Authentication, Security, Token, Refresh Tokens
 
 Description: Learn how to implement secure session management with OAuth2, including token storage, refresh flows, and session lifecycle handling.
 

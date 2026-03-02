@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Status Pages, Monitoring, Incident Communication, Infrastructure as Code
+Tags: Terraform, Status Page, Monitoring, Incident Communication, Infrastructure as Code
 
 Description: Learn how to create and manage public status pages using Terraform to communicate service health and incidents to your users transparently.
 

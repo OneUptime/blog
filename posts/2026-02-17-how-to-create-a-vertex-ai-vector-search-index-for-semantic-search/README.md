@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Vertex AI, Vector Search, Semantic Search, Embeddings
+Tags: GCP, Vertex AI, Vector Search, Semantic Search, Embedding
 
 Description: Learn how to create and deploy a Vertex AI Vector Search index for building scalable semantic search applications on Google Cloud.
 

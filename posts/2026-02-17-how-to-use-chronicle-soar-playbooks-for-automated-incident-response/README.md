@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Chronicle SOAR, Playbooks, Incident Response, Security Automation
+Tags: GCP, Chronicle SOAR, Playbook, Incident Response, Security Automation
 
 Description: Learn how to build and deploy automated incident response playbooks in Google Chronicle SOAR to accelerate threat containment and reduce manual security operations work.
 

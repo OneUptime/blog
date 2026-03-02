@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, PostgreSQL, Databases
+Tags: ArgoCD, GitOps, Kubernetes, PostgreSQL, Database
 
 Description: Learn how to deploy and manage PostgreSQL on Kubernetes with ArgoCD, including single-instance setups, high-availability clusters, backups, and production best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Airflow, Debugging, Task Failures, Troubleshooting, Data Pipelines, Error Handling
+Tags: Apache Airflow, Debugging, Task Failures, Troubleshooting, Data Pipeline, Error Handling
 
 Description: A practical guide to diagnosing and fixing common Apache Airflow task failures including dependency issues, resource constraints, and timeout errors.
 

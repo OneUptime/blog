@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, lazy_static, Statics, Initialization, Configuration
+Tags: Rust, lazy_static, Static, Initialization, Configuration
 
 Description: Learn how to use lazy_static and once_cell for runtime-initialized global variables in Rust. This guide covers static initialization, thread safety, and best practices.
 

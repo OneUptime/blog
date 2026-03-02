@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet
 
 Description: Learn how to use the ArgoCD ApplicationSet Matrix generator to combine multiple generators and create cross-product deployments across clusters, environments, and applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Lookup Plugins, Filters, Jinja2
+Tags: Ansible, Lookup Plugins, Filter, Jinja2
 
 Description: Understand the differences between Ansible lookup plugins and filters, when to use each, and how they work together in playbooks.
 

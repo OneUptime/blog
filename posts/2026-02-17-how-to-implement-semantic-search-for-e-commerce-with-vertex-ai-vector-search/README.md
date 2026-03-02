@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Vertex AI, Vector Search, Semantic Search, E-Commerce, Embeddings, Google Cloud
+Tags: GCP, Vertex AI, Vector Search, Semantic Search, E-Commerce, Embedding, Google Cloud
 
 Description: Build a semantic search engine for e-commerce product catalogs using Vertex AI Vector Search and text embeddings for better search relevance.
 

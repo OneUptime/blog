@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, macOS, Colima, Lima, Installation, DevOps, Containers, Apple Silicon, Docker Engine
+Tags: Docker, macOS, Colima, Lima, Installation, DevOps, Container, Apple Silicon, Docker Engine
 
 Description: How to run Docker Engine on macOS without Docker Desktop by using Colima, Lima, or other lightweight alternatives for a free and flexible container runtime.
 

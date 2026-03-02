@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Power Automate, Azure Durable Functions, Orchestration, Serverless, Workflows, Power Platform, Azure Functions
+Tags: Power Automate, Azure Durable Functions, Orchestration, Serverless, Workflow, Power Platform, Azure Functions
 
 Description: Combine Power Automate with Azure Durable Functions to orchestrate long-running workflows that exceed Power Automate's timeout limits.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Retries, Timeouts, Resilience, Service Mesh, Kubernetes
+Tags: Istio, Retries, Timeout, Resilience, Service Mesh, Kubernetes
 
 Description: Learn how to configure request retries and timeouts in Istio for improved reliability.
 

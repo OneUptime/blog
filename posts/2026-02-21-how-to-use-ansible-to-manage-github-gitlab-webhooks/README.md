@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, GitHub, GitLab, Webhooks
+Tags: Ansible, GitHub, GitLab, Webhook
 
 Description: Learn how to use Ansible to create, update, and manage webhooks on GitHub and GitLab repositories for automated CI/CD triggers and event notifications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Grafana, Data Sources, Monitoring, Infrastructure as Code
+Tags: Terraform, Grafana, Data Source, Monitoring, Infrastructure as Code
 
 Description: Learn how to create Grafana data sources using Terraform to connect Prometheus, Elasticsearch, CloudWatch, and other monitoring backends.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: grpc, envoy, proxy, load-balancing, kubernetes, observability, transcoding, microservices
+Tags: gRPC, Envoy, Proxy, load-balancing, Kubernetes, Observability, Transcoding, Microservices
 
 Description: Learn how to configure Envoy as a powerful gRPC proxy with route matching, load balancing, gRPC-JSON transcoding, and comprehensive observability features.
 

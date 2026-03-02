@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Lifetimes, Ownership, References, Memory Safety
+Tags: Rust, Lifetimes, Ownership, Reference, Memory Safety
 
 Description: Learn why Rust prevents returning references to local variables and discover the correct patterns for returning data from functions including owned values, Cow, and static references.
 

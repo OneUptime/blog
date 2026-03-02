@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Vertex AI, Vector Search, Similarity Search, Embeddings
+Tags: GCP, Vertex AI, Vector Search, Similarity Search, Embedding
 
 Description: A practical guide to configuring Vertex AI Vector Search indexes for performing fast similarity search at billion-scale with low latency.
 

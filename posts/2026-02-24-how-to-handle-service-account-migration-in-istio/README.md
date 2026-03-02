@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Service Accounts, Migration, Kubernetes, Security
+Tags: Istio, Service Account, Migration, Kubernetes, Security
 
 Description: A guide to safely migrating Kubernetes service accounts in Istio without breaking mTLS, authorization policies, or traffic routing.
 

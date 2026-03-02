@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GraphQL, Fragments, API, Frontend, TypeScript, React, Code Organization
+Tags: GraphQL, Fragment, API, Frontend, TypeScript, React, Code Organization
 
 Description: A hands-on guide to GraphQL fragments - from basic syntax to advanced patterns for building maintainable, reusable queries in real applications.
 

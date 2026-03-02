@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Platform Engineering, DevOps, Infrastructure, IDP
+Tags: Platform Engineering, DevOps, Infrastructure, IdP
 
 Description: A practical guide to building self-service infrastructure that empowers developers to provision resources safely without waiting for ops tickets.
 

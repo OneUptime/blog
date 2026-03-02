@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Application Metrics, Instrumentation, Counters, Gauges, Histograms, Python, Go, Node.js, Observability
+Tags: Prometheus, Application Metrics, Instrumentation, Counter, Gauge, Histogram, Python, Go, Node.js, Observability
 
 Description: A practical guide to instrumenting applications with Prometheus metrics. Learn how to choose the right metric types, implement custom metrics in Python, Go, and Node.
 

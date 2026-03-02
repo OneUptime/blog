@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure CLI, Resource Management, Azure Resource Groups, Subscriptions, Cloud Governance, DevOps
+Tags: Azure CLI, Resource Management, Azure Resource Groups, Subscription, Cloud Governance, DevOps
 
 Description: Move Azure resources between resource groups and subscriptions using Azure CLI with proper validation, planning, and handling of dependencies.
 

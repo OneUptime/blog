@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machines, Cost Optimization, Right-Sizing, Cloud Costs, FinOps, Performance
+Tags: Azure, Virtual Machine, Cost Optimization, Right-Sizing, Cloud Cost, FinOps, Performance
 
 Description: A practical guide to right-sizing Azure virtual machines by analyzing usage patterns and selecting optimal VM sizes to cut costs.
 

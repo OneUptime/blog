@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, apt, Ubuntu, Package Management
+Tags: Ansible, APT, Ubuntu, Package Management
 
 Description: Learn how to safely remove packages on Debian and Ubuntu with Ansible apt module including purge, autoremove, and cleanup.
 

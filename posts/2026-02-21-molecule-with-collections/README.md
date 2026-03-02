@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Molecule, Collections, Testing, Galaxy
+Tags: Ansible, Molecule, Collection, Testing, Galaxy
 
 Description: Configure Molecule to test Ansible collections including dependency management, namespace handling, and collection-level testing strategies.
 

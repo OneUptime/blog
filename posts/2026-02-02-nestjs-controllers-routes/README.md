@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, NestJS, Controllers, Routing, TypeScript
+Tags: Node.js, NestJS, Controller, Routing, TypeScript
 
 Description: Learn how to build REST APIs in NestJS using controllers and routes, including parameter handling, request validation, and route organization best practices.
 

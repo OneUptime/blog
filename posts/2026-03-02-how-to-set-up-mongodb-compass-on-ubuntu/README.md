@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, MongoDB, Databases, GUI
+Tags: Ubuntu, MongoDB, Database, GUI
 
 Description: Install and configure MongoDB Compass on Ubuntu for visual database management, schema analysis, query building, and performance profiling of MongoDB instances.
 

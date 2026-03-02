@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Docker, Containers, Microservices
+Tags: AWS, ECS, Docker, Container, Microservices
 
 Description: Learn how to configure and run sidecar containers in Amazon ECS task definitions for logging, monitoring, proxying, and more.
 

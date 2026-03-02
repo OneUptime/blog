@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Networking, Hairpin, Services, NAT
+Tags: Kubernetes, Networking, Hairpin, Service, NAT
 
 Description: Learn how to configure hairpin mode in Kubernetes to enable pods to access themselves through Service IPs including bridge hairpin configuration, troubleshooting, and CNI-specific implementations.
 

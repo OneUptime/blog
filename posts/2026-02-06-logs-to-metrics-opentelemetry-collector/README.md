@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Logs, Metrics, Collector Pipelines
+Tags: OpenTelemetry, Logs, Metrics, Collector Pipeline
 
 Description: Transform structured log data into actionable metrics using the OpenTelemetry Collector's processors and connectors, creating alert-ready time series from log events.
 

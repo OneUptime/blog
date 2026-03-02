@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Load Balancer, Layer 7, Health Checks, Networking
+Tags: Go, Load Balancer, Layer 7, Health Check, Networking
 
 Description: Learn how to build a production-ready Layer 7 (HTTP) load balancer in Go with active health checks, multiple balancing algorithms, and graceful backend management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Key Vault, Secrets Management, Security, Certificates, DevOps
+Tags: Azure, Key Vault, Secrets Management, Security, Certificate, DevOps
 
 Description: A practical guide to configuring Azure Key Vault for secrets management, including access policies, managed identities, and integration with applications.
 

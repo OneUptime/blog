@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Security, Nginx, HTTP Headers, DevOps
+Tags: Ansible, Security, NGINX, HTTP Headers, DevOps
 
 Description: Automate the deployment of HTTP security headers in Nginx using Ansible to protect your web applications from XSS, clickjacking, and other attacks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Video Conferencing, WebRTC, Virtual Classrooms
+Tags: OpenTelemetry, Video Conferencing, WebRTC, Virtual Classroom
 
 Description: Monitor jitter, packet loss, and latency in virtual classroom video conferencing using OpenTelemetry metrics and traces.
 

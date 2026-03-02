@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Azure DevOps, Webhooks
+Tags: ArgoCD, GitOps, Kubernetes, Azure DevOps, Webhook
 
 Description: Step-by-step guide to configuring Azure DevOps service hooks for ArgoCD to trigger immediate reconciliation when code is pushed to your Azure Repos.
 

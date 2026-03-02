@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Database, Lookup, Python
+Tags: Ansible, Plugin, Database, Lookup, Python
 
 Description: Build an Ansible lookup plugin that queries a PostgreSQL database to retrieve configuration data for use in playbooks and templates.
 

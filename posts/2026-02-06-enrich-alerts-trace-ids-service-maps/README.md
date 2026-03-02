@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Alert Enrichment, Trace Context, Service Maps, Observability
+Tags: OpenTelemetry, Alert Enrichment, Trace Context, Service Map, Observability
 
 Description: Enrich your alert notifications with trace IDs, service dependency maps, and dashboard deep links from OpenTelemetry data.
 

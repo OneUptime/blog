@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Image Updater, Container Images
+Tags: ArgoCD, GitOps, Kubernetes, Image Updater, Container Image
 
 Description: Learn how to use the alphabetical update strategy in ArgoCD Image Updater to select container images based on lexicographic sorting of tag names for date-based and sequential tagging schemes.
 

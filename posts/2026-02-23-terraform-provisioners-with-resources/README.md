@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provisioners, Infrastructure as Code, Configuration Management, DevOps
+Tags: Terraform, Provisioner, Infrastructure as Code, Configuration Management, DevOps
 
 Description: Learn how to attach provisioners to Terraform resources for post-creation configuration, bootstrapping, and integration with external systems during the resource lifecycle.
 

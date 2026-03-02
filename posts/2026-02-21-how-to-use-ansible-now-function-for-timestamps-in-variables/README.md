@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Timestamps, now Function, Jinja2, Automation
+Tags: Ansible, Timestamp, now Function, Jinja2, Automation
 
 Description: Learn how to use the Ansible now() function to generate timestamps for file names, log entries, backup labels, and deployment tracking.
 

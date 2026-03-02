@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, JavaScript, Modules, CommonJS, require, exports
+Tags: NodeJS, JavaScript, Modules, CommonJS, require, Export
 
 Description: Learn how to properly use module.exports and require in Node.js for organizing code into modules, including common patterns, circular dependencies, and migration to ES modules.
 

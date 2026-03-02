@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, Providers, Modules, DevOps
+Tags: Terraform, Troubleshooting, Provider, Modules, DevOps
 
 Description: How to resolve the Provider Configuration Not Present error in Terraform, typically caused by module provider passing issues or removed providers.
 

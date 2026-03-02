@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Route 53, DNS, Domains
+Tags: AWS, Route 53, DNS, Domain
 
 Description: A complete guide to registering domain names through AWS Route 53, covering the registration process, domain privacy, auto-renewal, DNS configuration, and domain transfer from other registrars.
 

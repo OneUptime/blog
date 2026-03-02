@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Terraform, RBAC, Service Principals, Microsoft Entra ID, Infrastructure as Code, Access Control
+Tags: Azure, Terraform, RBAC, Service Principal, Microsoft Entra ID, Infrastructure as Code, Access Control
 
 Description: A practical guide to managing Azure RBAC role assignments through Terraform, including creating service principals, assigning roles, and handling common pitfalls.
 

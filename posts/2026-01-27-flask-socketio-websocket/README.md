@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Flask, Python, WebSocket, Socket.IO, Real-time, Async
+Tags: Flask, Python, WebSocket, Socket.IO, Real-Time, Async
 
 Description: Learn how to build real-time WebSocket applications with Flask-SocketIO including events, rooms, namespaces, and scaling with message queues.
 

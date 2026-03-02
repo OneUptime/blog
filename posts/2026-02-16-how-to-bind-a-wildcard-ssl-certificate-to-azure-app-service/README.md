@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, App Service, SSL, Wildcard Certificate, HTTPS, Security, Custom Domains
+Tags: Azure, App Service, SSL, Wildcard Certificate, HTTPS, Security, Custom Domain
 
 Description: How to obtain, upload, and bind a wildcard SSL certificate to Azure App Service for securing multiple subdomains under a single certificate.
 

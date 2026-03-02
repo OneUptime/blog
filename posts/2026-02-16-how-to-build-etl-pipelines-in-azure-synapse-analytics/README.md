@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Synapse Analytics, ETL, Data Pipelines, Data Engineering, Data Integration, Azure Data Factory
+Tags: Azure, Synapse Analytics, ETL, Data Pipeline, Data Engineering, Data Integration, Azure Data Factory
 
 Description: Learn how to build end-to-end ETL pipelines in Azure Synapse Analytics using Synapse Pipelines for data ingestion, transformation, and loading.
 

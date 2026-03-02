@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Borrow Checker, Mutability, Errors, Debugging
+Tags: Rust, Borrow Checker, Mutability, Error, Debugging
 
 Description: Learn how to diagnose and fix the common 'cannot borrow as mutable' error in Rust. Understand the borrowing rules and discover patterns to work with the borrow checker.
 

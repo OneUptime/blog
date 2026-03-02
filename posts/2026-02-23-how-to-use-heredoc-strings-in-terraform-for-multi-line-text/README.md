@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Infrastructure as Code, Strings, Configuration
+Tags: Terraform, HCL, Infrastructure as Code, String, Configuration
 
 Description: Learn how to use heredoc strings in Terraform to handle multi-line text for user data scripts, IAM policies, configuration files, and more with proper indentation control.
 

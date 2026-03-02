@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, kaniko, ci/cd, container builds, devops, kubernetes, github actions
+Tags: Docker, Kaniko, CI/CD, Container Build, DevOps, Kubernetes, GitHub Actions
 
 Description: Compare Kaniko and Docker build for CI/CD pipelines and learn when to use each approach
 

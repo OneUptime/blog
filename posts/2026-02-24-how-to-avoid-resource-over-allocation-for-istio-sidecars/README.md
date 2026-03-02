@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Resources, Sidecar, Kubernetes, Cost Optimization
+Tags: Istio, Resource, Sidecar, Kubernetes, Cost Optimization
 
 Description: How to right-size Istio sidecar proxy resources to avoid wasting cluster capacity while maintaining reliable performance for production workloads.
 

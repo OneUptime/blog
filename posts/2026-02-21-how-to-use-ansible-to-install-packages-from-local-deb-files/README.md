@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, apt, Debian, Package Management
+Tags: Ansible, APT, Debian, Package Management
 
 Description: How to install local .deb packages with Ansible using the apt module, including dependency handling and practical deployment patterns.
 

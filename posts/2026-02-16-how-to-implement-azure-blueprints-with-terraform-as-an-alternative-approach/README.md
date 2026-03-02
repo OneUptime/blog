@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Blueprints, Terraform, Infrastructure as Code, Azure Governance, Cloud Compliance, Azure Policy, Landing Zones
+Tags: Azure Blueprints, Terraform, Infrastructure as Code, Azure Governance, Cloud Compliance, Azure Policy, Landing Zone
 
 Description: Learn how to replicate Azure Blueprints functionality using Terraform for a more flexible, version-controlled approach to governance and landing zone deployment.
 

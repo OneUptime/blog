@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Boot, Initramfs, Troubleshooting, System Recovery
+Tags: Ubuntu, Boot, initramfs, Troubleshooting, System Recovery
 
 Description: A practical guide to diagnosing and resolving the initramfs busybox shell that appears during Ubuntu boot, covering filesystem errors, missing root, and recovery steps.
 

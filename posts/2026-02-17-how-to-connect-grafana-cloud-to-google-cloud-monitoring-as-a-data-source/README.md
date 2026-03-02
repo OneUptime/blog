@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Grafana, Cloud Monitoring, Data Source, Dashboards, Observability, Google Cloud
+Tags: GCP, Grafana, Cloud Monitoring, Data Source, Dashboard, Observability, Google Cloud
 
 Description: A step-by-step guide to connecting Grafana Cloud to Google Cloud Monitoring as a data source for building custom dashboards and alerts.
 

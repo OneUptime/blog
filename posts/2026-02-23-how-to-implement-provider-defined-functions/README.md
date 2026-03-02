@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provider Development, Provider Functions, Infrastructure as Code, Custom Providers
+Tags: Terraform, Provider Development, Provider Functions, Infrastructure as Code, Custom Provider
 
 Description: Learn how to implement provider-defined functions in custom Terraform providers to expose reusable computation logic that users can call directly in their configurations.
 

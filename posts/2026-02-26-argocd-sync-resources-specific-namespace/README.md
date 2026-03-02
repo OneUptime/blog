@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Namespaces, Selective Sync
+Tags: ArgoCD, GitOps, Kubernetes, Namespace, Selective Sync
 
 Description: Learn how to selectively sync resources in a specific namespace within a multi-namespace ArgoCD application, with practical patterns for staged rollouts and namespace isolation.
 

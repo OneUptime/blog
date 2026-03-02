@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, community.docker, Automation, Containers
+Tags: Ansible, Docker, community.docker, Automation, Container
 
 Description: Complete guide to the community.docker Ansible collection covering installation, key modules, and practical examples for managing Docker with Ansible.
 

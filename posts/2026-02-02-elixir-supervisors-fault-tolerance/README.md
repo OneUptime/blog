@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elixir, Supervisors, OTP, Fault Tolerance, Resilience
+Tags: Elixir, Supervisor, OTP, Fault Tolerance, Resilience
 
 Description: Learn how to build self-healing Elixir applications using OTP Supervisors with practical examples of supervision strategies, restart policies, and process hierarchies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, PromQL, rate(), increase(), Counters, Metrics, Monitoring, Observability
+Tags: Prometheus, PromQL, rate(), increase(), Counter, Metrics, Monitoring, Observability
 
 Description: Learn the difference between rate() and increase() in Prometheus. This guide explains when to use each function, how they handle counter resets, and common mistakes to avoid.
 

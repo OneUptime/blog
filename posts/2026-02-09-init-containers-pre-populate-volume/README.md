@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Containers, Volumes, Data Management, Storage
+Tags: Kubernetes, Init Container, VOLUME, Data Management, Storage
 
 Description: Learn how to use init containers to pre-populate volumes with data, templates, or assets before your application starts, enabling efficient data distribution and initialization strategies.
 

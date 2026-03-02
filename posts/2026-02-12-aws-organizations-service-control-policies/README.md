@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Organizations, Security, Governance
+Tags: AWS, Organization, Security, Governance
 
 Description: A comprehensive guide to setting up AWS Organizations with Service Control Policies to enforce security guardrails across all accounts in your multi-account environment.
 

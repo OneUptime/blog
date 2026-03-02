@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kustomize, Design Patterns
+Tags: Kubernetes, Kustomize, Design Pattern
 
 Description: Master Kustomize base and overlay inheritance patterns to build scalable, maintainable configuration hierarchies for complex multi-environment Kubernetes deployments.
 

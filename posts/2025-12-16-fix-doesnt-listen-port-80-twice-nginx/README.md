@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Troubleshooting, Configuration, Server Blocks, Virtual Hosts, Port Binding
+Tags: NGINX, Troubleshooting, Configuration, Server Blocks, Virtual Hosts, Port Binding
 
 Description: Learn how to diagnose and fix Nginx configuration errors related to duplicate port listeners, including proper virtual host setup and understanding the default_server directive.
 

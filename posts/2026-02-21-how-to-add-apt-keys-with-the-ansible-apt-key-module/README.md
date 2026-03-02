@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, apt, GPG Keys, Ubuntu, Security
+Tags: Ansible, APT, GPG Keys, Ubuntu, Security
 
 Description: How to manage APT repository signing keys with the Ansible apt_key module and the modern signed-by alternative approach.
 

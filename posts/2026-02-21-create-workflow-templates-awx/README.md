@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWX, Workflows, Automation, Orchestration
+Tags: Ansible, AWX, Workflow, Automation, Orchestration
 
 Description: Build AWX workflow templates to chain job templates with conditional logic, approval gates, and parallel execution paths.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, SSH, Security Hardening, CIS Benchmarks, Linux
+Tags: Ansible, SSH, Security Hardening, CIS Benchmark, Linux
 
 Description: Learn how to harden SSH server configuration using Ansible following CIS benchmarks and security best practices for production servers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, ClusterTrustBundle, Kubernetes, TLS, Security, Certificates
+Tags: Istio, ClusterTrustBundle, Kubernetes, TLS, Security, Certificate
 
 Description: A practical guide to using Kubernetes ClusterTrustBundle resources with Istio for managing trust anchors across your service mesh.
 

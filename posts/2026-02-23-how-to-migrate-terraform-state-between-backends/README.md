@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, State Management, Backends, Migration, Infrastructure as Code
+Tags: Terraform, State Management, Backend, Migration, Infrastructure as Code
 
 Description: Learn how to safely migrate Terraform state between different backends such as local, S3, Azure Blob, GCS, and HCP Terraform with zero downtime.
 

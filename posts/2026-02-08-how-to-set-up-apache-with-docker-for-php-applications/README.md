@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Apache, PHP, Web Servers, DevOps, Web Development
+Tags: Docker, Apache, PHP, Web Server, DevOps, Web Development
 
 Description: A practical guide to running Apache with PHP in Docker containers for local development and production deployments.
 

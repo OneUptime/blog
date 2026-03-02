@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Repository Patterns, CI/CD
+Tags: ArgoCD, GitOps, Kubernetes, Repository Pattern, CI/CD
 
 Description: Learn the config repo vs app repo separation pattern for ArgoCD to cleanly divide application code from deployment configuration.
 

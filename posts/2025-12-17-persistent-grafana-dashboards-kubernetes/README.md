@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Kubernetes, Dashboards, ConfigMaps, Helm, GitOps, Monitoring, DevOps, Persistence
+Tags: Grafana, Kubernetes, Dashboard, ConfigMap, Helm, GitOps, Monitoring, DevOps, Persistence
 
 Description: Learn how to persist Grafana dashboards in Kubernetes using ConfigMaps, sidecar containers, and persistent volumes.
 

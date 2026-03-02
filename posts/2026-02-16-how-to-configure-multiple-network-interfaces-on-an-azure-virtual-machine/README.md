@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machines, Networking, Network Interfaces, NIC, Cloud Infrastructure
+Tags: Azure, Virtual Machine, Networking, Network Interface, NIC, Cloud Infrastructure
 
 Description: Learn how to attach multiple network interfaces to an Azure VM for network segmentation, traffic isolation, and multi-subnet architectures.
 

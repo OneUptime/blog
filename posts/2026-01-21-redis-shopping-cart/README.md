@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, E-commerce, Shopping Cart, Session Management, Python, Node.js
+Tags: Redis, E-Commerce, Shopping Cart, Session Management, Python, Node.js
 
 Description: A comprehensive guide to building a fast and scalable shopping cart system with Redis, covering session management, cart operations, inventory checks, and production best practices.
 

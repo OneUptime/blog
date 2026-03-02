@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, Heredoc, BuildKit, Multi-line, DevOps
+Tags: Docker, Dockerfile, Heredoc, BuildKit, Multi-Line, DevOps
 
 Description: Learn how to use heredoc syntax in Dockerfiles to write cleaner multi-line scripts and inline configuration files.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, Server-Sent Events, SSE, Real-time, Streaming, Express, TypeScript
+Tags: Node.js, Server-Sent Events, SSE, Real-Time, Streaming, Express, TypeScript
 
 Description: Learn how to implement Server-Sent Events (SSE) in Node.js for real-time streaming updates.
 

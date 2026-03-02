@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Generators, yield, Iteration, Memory Efficiency
+Tags: Python, Generator, yield, Iteration, Memory Efficiency
 
 Description: Master Python generators and the yield keyword to write memory-efficient code that processes large datasets without loading everything into memory.
 

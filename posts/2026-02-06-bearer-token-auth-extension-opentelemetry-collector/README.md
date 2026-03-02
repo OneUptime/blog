@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extensions, Authentication, Bearer Token, Security
+Tags: OpenTelemetry, Collector, Extension, Authentication, Bearer Token, Security
 
 Description: Learn how to configure bearer token authentication in the OpenTelemetry Collector to secure exporters and receivers with token-based authentication mechanisms.
 

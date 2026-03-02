@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Error Handling, Python, Best Practices
+Tags: Ansible, Plugin, Error Handling, Python, Best Practices
 
 Description: Write robust Ansible plugins with proper error handling using AnsibleError, try/except patterns, and graceful degradation strategies.
 

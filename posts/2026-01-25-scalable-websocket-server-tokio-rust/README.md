@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, WebSocket, Tokio, Real-time, Scalability
+Tags: Rust, WebSocket, tokio, Real-Time, Scalability
 
 Description: Learn how to build a production-ready WebSocket server in Rust using Tokio and the tungstenite library.
 

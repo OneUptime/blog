@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Terraform, GKE, Kubernetes, Node Pools, Infrastructure as Code
+Tags: GCP, Terraform, GKE, Kubernetes, Node Pool, Infrastructure as Code
 
 Description: Learn how to deploy a Google Kubernetes Engine cluster using Terraform with properly configured node pools, autoscaling, networking, and security settings.
 

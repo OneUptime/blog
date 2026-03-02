@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, String Functions, HCL, DevOps, Templates
+Tags: Terraform, Infrastructure as Code, String Functions, HCL, DevOps, Template
 
 Description: Learn how to use the templatestring function in Terraform to render inline template strings with variables, with practical examples for dynamic configuration generation.
 

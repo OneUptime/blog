@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Azure Files, CSI Driver, Persistent Volumes, Kubernetes, Storage, Azure
+Tags: AKS, Azure Files, CSI Driver, Persistent Volume, Kubernetes, Storage, Azure
 
 Description: How to configure Azure Files CSI Driver on AKS for shared persistent volumes that multiple pods can read from and write to simultaneously.
 

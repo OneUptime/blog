@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Kubernetes, Operators, Database, Replication
+Tags: MongoDB, Kubernetes, Operator, Database, Replication
 
 Description: Learn how to deploy production-ready MongoDB replica sets on Kubernetes using the MongoDB Community Operator with automated failover and scaling capabilities.
 

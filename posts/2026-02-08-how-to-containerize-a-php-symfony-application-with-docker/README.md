@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, PHP, Symfony, Containerization, Nginx, DevOps, Production
+Tags: Docker, PHP, Symfony, Containerization, NGINX, DevOps, Production
 
 Description: Build optimized Docker images for Symfony applications with proper environment handling, Messenger workers, and production caching.
 

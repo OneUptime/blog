@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, SystemD, Linux, Service Monitoring, Metrics, Infrastructure
+Tags: OpenTelemetry, Collector, systemd, Linux, Service Monitoring, Metrics, Infrastructure
 
 Description: Learn how to collect SystemD service status and health metrics using the OpenTelemetry Collector to monitor Linux service availability and detect failures.
 

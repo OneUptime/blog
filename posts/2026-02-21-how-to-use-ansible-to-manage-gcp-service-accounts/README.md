@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, GCP, Service Accounts, IAM, Security
+Tags: Ansible, GCP, Service Account, IAM, Security
 
 Description: Create and manage GCP service accounts with Ansible including key rotation, role assignments, and workload identity configuration.
 

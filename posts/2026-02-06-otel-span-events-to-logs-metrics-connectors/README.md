@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Span Events, Connectors, Logs, Metrics
+Tags: OpenTelemetry, Span Events, Connector, Logs, Metrics
 
 Description: Convert OpenTelemetry span events into standalone log records and metric data points using Collector connectors and processors.
 

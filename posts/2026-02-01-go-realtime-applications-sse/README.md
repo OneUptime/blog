@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, SSE, Server-Sent Events, Real-time, HTTP, Streaming
+Tags: Go, Golang, SSE, Server-Sent Events, Real-Time, HTTP, Streaming
 
 Description: A practical guide to implementing Server-Sent Events in Go for building real-time applications like live dashboards and notification systems.
 

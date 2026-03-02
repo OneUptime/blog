@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Percentiles, Histograms, Statistics, Analytics, Performance Monitoring
+Tags: Redis, Percentiles, Histogram, Statistics, Analytics, Performance Monitoring
 
 Description: A comprehensive guide to calculating percentiles, histograms, and statistical aggregations at scale using Redis data structures and algorithms.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Lighthouse, Service Offers, Managed Services, Delegation, Azure Marketplace, Multi-Tenant
+Tags: Azure, Azure Lighthouse, Service Offers, Managed Service, Delegation, Azure Marketplace, Multi-Tenant
 
 Description: Learn how to create and publish Azure Lighthouse service offers to delegate resource management to managed service providers or internal teams.
 

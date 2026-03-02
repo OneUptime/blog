@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Kafka, AWS Kinesis, Streaming Comparison, Managed Services, Self-Hosted, Event Streaming
+Tags: Apache Kafka, AWS Kinesis, Streaming Comparison, Managed Service, Self-Hosted, Event Streaming
 
 Description: A comprehensive comparison of Apache Kafka and AWS Kinesis, covering architecture differences, pricing, scalability, and use cases to help you choose the right streaming platform.
 

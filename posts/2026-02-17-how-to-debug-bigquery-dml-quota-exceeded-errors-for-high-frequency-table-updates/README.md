@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, DML, Quotas, Table Updates, Data Engineering
+Tags: GCP, BigQuery, DML, Quota, Table Updates, Data Engineering
 
 Description: Diagnose and fix BigQuery DML quota exceeded errors when running high-frequency INSERT, UPDATE, DELETE, or MERGE operations on tables.
 

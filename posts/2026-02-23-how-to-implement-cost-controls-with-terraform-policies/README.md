@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Cost Controls, Policy as Code, Sentinel, OPA
+Tags: Terraform, Cost Control, Policy as Code, Sentinel, OPA
 
 Description: Learn how to implement cost control policies for Terraform using Sentinel, OPA, and custom validation rules to prevent expensive infrastructure deployments.
 

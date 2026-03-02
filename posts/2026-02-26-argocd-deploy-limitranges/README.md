@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, LimitRanges, Resource Management
+Tags: ArgoCD, GitOps, Kubernetes, LimitRange, Resource Management
 
 Description: Learn how to deploy LimitRanges with ArgoCD to set default resource requests and limits, enforce minimum and maximum constraints, and prevent resource abuse per namespace.
 

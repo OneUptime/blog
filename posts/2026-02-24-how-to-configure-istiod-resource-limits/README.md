@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Istiod, Resources, Kubernetes, Control Plane, Performance
+Tags: Istio, Istiod, Resource, Kubernetes, Control Plane, Performance
 
 Description: How to set and tune CPU and memory resource requests and limits for Istiod to keep your Istio control plane stable and responsive.
 

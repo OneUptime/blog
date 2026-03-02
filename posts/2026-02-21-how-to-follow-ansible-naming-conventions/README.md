@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Naming Conventions, DevOps, Code Quality
+Tags: Ansible, Naming Convention, DevOps, Code Quality
 
 Description: Learn the recommended naming conventions for Ansible playbooks, roles, variables, tasks, and handlers to keep your automation consistent and readable.
 

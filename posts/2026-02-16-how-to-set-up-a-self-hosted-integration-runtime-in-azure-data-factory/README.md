@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Data Factory, Integration Runtime, Self-Hosted, On-Premises, Data Integration, Azure
+Tags: Azure Data Factory, Integration Runtime, Self-Hosted, On-Premise, Data Integration, Azure
 
 Description: Step-by-step guide to installing and configuring a self-hosted integration runtime in Azure Data Factory for accessing on-premises and private network data sources.
 

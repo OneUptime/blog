@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Real-time, WebSocket, Server-Sent Events, Async
+Tags: Rust, Real-Time, WebSocket, Server-Sent Events, Async
 
 Description: A practical guide to building real-time applications in Rust using WebSockets and Server-Sent Events.
 

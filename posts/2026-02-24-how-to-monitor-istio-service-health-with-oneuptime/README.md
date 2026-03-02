@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, OneUptime, Monitoring, Health Checks, Service Mesh
+Tags: Istio, OneUptime, Monitoring, Health Check, Service Mesh
 
 Description: Set up comprehensive service health monitoring for Istio-managed services using OneUptime probes, metrics, and status tracking.
 

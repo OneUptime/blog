@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Sidecar, Readiness, Health Checks, Kubernetes
+Tags: Istio, Sidecar, Readiness, Health Check, Kubernetes
 
 Description: How to configure and manage readiness checks for the Istio sidecar proxy to ensure traffic is only sent to pods that are fully ready.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Registry, SSL, Let's Encrypt, Nginx, HTTPS, Security, Self-Hosted
+Tags: Docker, Docker Registry, SSL, Let's Encrypt, NGINX, HTTPS, Security, Self-Hosted
 
 Description: Configure a private Docker registry with automatic Let's Encrypt SSL certificates using Nginx as a reverse proxy.
 

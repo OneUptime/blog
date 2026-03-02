@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, JSON, Dynamic JSON, Type Assertions, Parsing, API
+Tags: Go, Golang, JSON, Dynamic JSON, Type Assertion, Parsing, API
 
 Description: Learn techniques for parsing JSON with unknown or dynamic structure in Go using maps, interfaces, and type assertions for flexible data handling.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Temporal, Workflows, Tracing, Observability, Distributed Systems
+Tags: OpenTelemetry, Temporal, Workflow, Tracing, Observability, Distributed Systems
 
 Description: A hands-on guide to instrumenting Temporal.io workflows and activities with OpenTelemetry for end-to-end distributed tracing.
 

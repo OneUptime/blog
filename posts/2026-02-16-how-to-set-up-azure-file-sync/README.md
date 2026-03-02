@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure File Sync, File Server, Hybrid Cloud, Azure Files, Data Synchronization, On-Premises
+Tags: Azure, Azure File Sync, File Server, Hybrid Cloud, Azure Files, Data Synchronization, On-Premise
 
 Description: A complete walkthrough of setting up Azure File Sync to synchronize on-premises Windows file servers with Azure File Shares for hybrid cloud file storage.
 

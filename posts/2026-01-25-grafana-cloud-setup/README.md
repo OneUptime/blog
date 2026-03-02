@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana Cloud, SaaS, Monitoring, Observability, Metrics, Logs, Traces, Managed Services
+Tags: Grafana Cloud, SaaS, Monitoring, Observability, Metrics, Logs, Traces, Managed Service
 
 Description: A complete guide to getting started with Grafana Cloud, from initial setup through data ingestion and dashboard creation.
 

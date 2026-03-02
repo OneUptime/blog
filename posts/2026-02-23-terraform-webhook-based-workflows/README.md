@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Webhooks, Automation, DevOps, Infrastructure as Code, CI/CD
+Tags: Terraform, Webhook, Automation, DevOps, Infrastructure as Code, CI/CD
 
 Description: Learn how to integrate Terraform with webhook-based workflows to trigger infrastructure changes, send notifications, and connect with external systems automatically.
 

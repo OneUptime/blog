@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, Sidecar, Instrumentation, Containers, Cloud Native
+Tags: OpenTelemetry, Kubernetes, Sidecar, Instrumentation, Container, Cloud Native
 
 Description: Learn how to instrument Kubernetes sidecar containers with OpenTelemetry regardless of the programming language runtime used by the main application.
 

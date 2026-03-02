@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, StatefulSet, Headless Services, Kubernetes, Service Mesh
+Tags: Istio, StatefulSet, Headless Service, Kubernetes, Service Mesh
 
 Description: How to configure Istio to work correctly with Kubernetes StatefulSets and headless services for databases and stateful workloads.
 

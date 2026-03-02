@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, PersistentVolumeClaims, Storage
+Tags: Ansible, Kubernetes, PersistentVolumeClaim, Storage
 
 Description: Create and manage Kubernetes PersistentVolumeClaims with Ansible for dynamic storage provisioning, volume expansion, and storage lifecycle management.
 

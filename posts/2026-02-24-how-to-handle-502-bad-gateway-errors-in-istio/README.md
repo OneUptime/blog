@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, 502 Errors, Troubleshooting, Kubernetes, Envoy
+Tags: Istio, 502 Error, Troubleshooting, Kubernetes, Envoy
 
 Description: A troubleshooting guide for diagnosing and fixing 502 Bad Gateway errors in Istio service mesh with practical debugging steps and configuration fixes.
 

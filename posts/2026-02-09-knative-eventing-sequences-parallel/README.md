@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Knative, Kubernetes, Serverless, Event-Driven, Workflows
+Tags: Knative, Kubernetes, Serverless, Event-Driven, Workflow
 
 Description: Learn to orchestrate complex serverless workflows using Knative Eventing Sequences for sequential processing and Parallel for concurrent event processing.
 

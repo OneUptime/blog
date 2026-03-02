@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Webhooks, Troubleshooting, Kubernetes, Service Mesh
+Tags: Istio, Webhook, Troubleshooting, Kubernetes, Service Mesh
 
 Description: Step-by-step guide to diagnosing and fixing Istio webhook failures including sidecar injection failures and configuration validation errors.
 

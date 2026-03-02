@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Apache Kafka, Consumer Offsets, Offset Management, Consumer Groups, Troubleshooting
+Tags: Apache Kafka, Consumer Offset, Offset Management, Consumer Groups, Troubleshooting
 
 Description: Learn how to manage Kafka consumer offsets including resetting, migrating, and troubleshooting offset issues for consumer groups.
 

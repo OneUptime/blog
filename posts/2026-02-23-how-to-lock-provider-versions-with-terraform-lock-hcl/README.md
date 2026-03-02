@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Lock File, Version Management, Infrastructure as Code, DevOps
+Tags: Terraform, Provider, Lock File, Version Management, Infrastructure as Code, DevOps
 
 Description: Learn how the .terraform.lock.hcl file works, how it locks provider versions and hashes for reproducible builds, and how to manage it across platforms and teams.
 

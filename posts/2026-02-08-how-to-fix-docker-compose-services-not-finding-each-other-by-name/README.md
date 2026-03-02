@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, docker-compose, service discovery, DNS, networking, troubleshooting, containers
+Tags: Docker, docker-compose, Service Discovery, DNS, Networking, Troubleshooting, Container
 
 Description: Fix Docker Compose services that cannot resolve each other by service name, covering network configuration, DNS, and common connectivity mistakes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, IAM, ECS, Containers, Infrastructure as Code
+Tags: Terraform, AWS, IAM, ECS, Container, Infrastructure as Code
 
 Description: Learn how to create IAM task roles and execution roles for Amazon ECS tasks in Terraform, including secrets access, logging, and ECR permissions.
 

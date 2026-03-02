@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Service Accounts, Security, Linux, DevOps
+Tags: Ansible, Service Account, Security, Linux, DevOps
 
 Description: Learn how to create and manage service accounts with Ansible following the principle of least privilege, including full provisioning workflows.
 

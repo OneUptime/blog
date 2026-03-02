@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Upgrades, Rolling Upgrade, Migration, Zero Downtime, Operations
+Tags: Elasticsearch, Upgrade, Rolling Upgrade, Migration, Zero Downtime, Operations
 
 Description: A comprehensive guide to upgrading Elasticsearch without downtime using rolling upgrades, covering version compatibility, pre-upgrade checks, and step-by-step upgrade procedures.
 

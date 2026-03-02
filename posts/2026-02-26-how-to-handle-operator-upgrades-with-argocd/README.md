@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Operators, Upgrades
+Tags: ArgoCD, GitOps, Kubernetes, Operator, Upgrade
 
 Description: Learn how to safely upgrade Kubernetes Operators with ArgoCD, including CRD migration strategies, version pinning, rollback procedures, and zero-downtime upgrade patterns.
 

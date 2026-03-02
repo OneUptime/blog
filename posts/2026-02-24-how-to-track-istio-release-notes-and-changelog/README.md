@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Release Management, DevOps, Changelog, Upgrades
+Tags: Istio, Release Management, DevOps, Changelog, Upgrade
 
 Description: Practical strategies and tools for tracking Istio release notes, changelogs, and security advisories to stay on top of upgrades and patches.
 

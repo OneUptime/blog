@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Fintech, Compliance
+Tags: ArgoCD, GitOps, Kubernetes, FinTech, Compliance
 
 Description: Learn how to configure ArgoCD for fintech environments with SOC 2, PCI DSS, and regulatory compliance requirements built into every deployment.
 

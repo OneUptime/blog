@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Upgrades, kubeadm, Cluster Management
+Tags: Kubernetes, Upgrade, kubeadm, Cluster Management
 
 Description: Learn how to perform safe in-place minor version upgrades of Kubernetes clusters using kubeadm, including control plane updates, worker node upgrades, and rollback procedures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Terraform, IAM, Service Accounts, Security, Infrastructure as Code
+Tags: GCP, Terraform, IAM, Service Account, Security, Infrastructure as Code
 
 Description: Learn how to manage Google Cloud IAM roles, service accounts, and access policies using Terraform with least-privilege principles and security best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GitHub, Providers, DevOps, Git, Infrastructure as Code
+Tags: Terraform, GitHub, Provider, DevOps, Git, Infrastructure as Code
 
 Description: Learn how to configure the Terraform GitHub provider to manage repositories, teams, branch protection rules, and organization settings as infrastructure code.
 

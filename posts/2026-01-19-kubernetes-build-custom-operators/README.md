@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Operators, Custom Resources, Go, Operator SDK, DevOps
+Tags: Kubernetes, Operator, Custom Resource, Go, Operator SDK, DevOps
 
 Description: Learn how to build custom Kubernetes operators to automate complex application management using the Operator SDK and controller-runtime.
 

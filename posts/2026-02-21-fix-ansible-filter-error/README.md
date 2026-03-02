@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Troubleshooting, DevOps
+Tags: Ansible, Jinja2, Filter, Troubleshooting, DevOps
 
 Description: Resolve AnsibleFilterError by fixing filter syntax, installing missing collections, and handling undefined variables in Jinja2 templates.
 

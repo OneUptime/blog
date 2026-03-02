@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, JWT, Authentication, Security, Interceptors, Tokens, Authorization
+Tags: gRPC, JWT, Authentication, Security, Interceptors, Token, Authorization
 
 Description: Learn how to implement JWT-based authentication in gRPC services using interceptors, token validation, and refresh token patterns.
 

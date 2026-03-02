@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Aggregations, Cardinality, Unique Values, Search, Analytics
+Tags: Elasticsearch, Aggregation, Cardinality, Unique Values, Search, Analytics
 
 Description: Learn how to retrieve unique values from Elasticsearch using terms aggregations, cardinality aggregations, and composite aggregations for distinct field values across your indices.
 

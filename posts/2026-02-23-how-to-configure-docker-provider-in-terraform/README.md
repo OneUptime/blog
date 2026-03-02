@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Docker, Providers, Containers, DevOps, Infrastructure as Code
+Tags: Terraform, Docker, Provider, Container, DevOps, Infrastructure as Code
 
 Description: Learn how to configure the Terraform Docker provider to manage Docker containers, images, networks, and volumes as infrastructure code on local and remote Docker hosts.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Logging, Callbacks, Automation, DevOps, Monitoring, Observability
+Tags: Ansible, Logging, Callback, Automation, DevOps, Monitoring, Observability
 
 Description: Learn how to configure Ansible callback plugins to capture detailed logs, customize output formats, and integrate with external logging systems.
 

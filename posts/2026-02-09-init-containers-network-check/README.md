@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Containers, Network, Connectivity, Troubleshooting
+Tags: Kubernetes, Init Container, Network, Connectivity, Troubleshooting
 
 Description: Learn how to use init containers to verify network connectivity and DNS resolution before your application starts, preventing networking-related startup failures.
 

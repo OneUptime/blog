@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Performance, SLOWLOG, LATENCY, Profiling, Monitoring, Debugging, Production
+Tags: Redis, Performance, SLOWLOG, Latency, Profiling, Monitoring, Debugging, Production
 
 Description: A comprehensive guide to profiling Redis performance using SLOWLOG and LATENCY commands. Learn to identify slow commands, measure latency distribution, and diagnose performance bottlenecks.
 

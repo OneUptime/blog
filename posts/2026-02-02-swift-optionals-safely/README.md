@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Swift, Optionals, iOS, Safety, Best Practices
+Tags: Swift, Optional, iOS, Safety, Best Practices
 
 Description: Learn how to work with Swift optionals safely using optional binding, guard statements, nil coalescing, and other patterns to write crash-free code.
 

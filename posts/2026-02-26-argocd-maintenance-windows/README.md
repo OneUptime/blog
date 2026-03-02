@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Maintenance Windows, Operations
+Tags: ArgoCD, GitOps, Kubernetes, Maintenance Window, Operations
 
 Description: Learn how to plan and implement maintenance windows for ArgoCD, including sync windows, upgrade procedures, and communication strategies for operations teams.
 

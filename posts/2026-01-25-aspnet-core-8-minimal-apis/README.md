@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, C#, ASP.NET Core 8, Minimal APIs, REST API, Web Development
+Tags: .NET, C#, ASP.NET Core 8, Minimal API, REST API, Web Development
 
 Description: Learn how to build clean, fast REST APIs using ASP.NET Core 8 Minimal APIs. This guide covers routing, validation, dependency injection, error handling, and production-ready patterns.
 

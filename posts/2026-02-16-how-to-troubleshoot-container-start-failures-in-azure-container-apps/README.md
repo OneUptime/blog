@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Container Apps, Troubleshooting, Debugging, Docker, DevOps, Containers
+Tags: Azure, Container Apps, Troubleshooting, Debugging, Docker, DevOps, Container
 
 Description: A practical troubleshooting guide for diagnosing and fixing container start failures in Azure Container Apps with real examples and solutions.
 

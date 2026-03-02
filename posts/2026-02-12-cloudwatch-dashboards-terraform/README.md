@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CloudWatch, Terraform, Dashboards, Infrastructure as Code
+Tags: AWS, CloudWatch, Terraform, Dashboard, Infrastructure as Code
 
 Description: Learn how to create and manage CloudWatch dashboards using Terraform for consistent, version-controlled monitoring views across your AWS infrastructure.
 

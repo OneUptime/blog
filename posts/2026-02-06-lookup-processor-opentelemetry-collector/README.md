@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Lookup, Enrichment, Attributes
+Tags: OpenTelemetry, Collector, Processor, Lookup, Enrichment, Attributes
 
 Description: Learn how to configure the Lookup processor in OpenTelemetry Collector to enrich telemetry data with external reference information for enhanced observability.
 

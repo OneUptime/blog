@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, CQRS, Design Patterns, Architecture, Command Query Separation, Microservices, Domain-Driven Design
+Tags: Python, CQRS, Design Pattern, Architecture, Command Query Separation, Microservices, Domain-Driven Design
 
 Description: Learn how to implement the CQRS (Command Query Responsibility Segregation) pattern in Python.
 

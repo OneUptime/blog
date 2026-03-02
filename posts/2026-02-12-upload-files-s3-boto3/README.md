@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, S3, Boto3, Python
+Tags: AWS, S3, boto3, Python
 
 Description: Learn how to upload files to Amazon S3 using Boto3 in Python, including single file uploads, multipart uploads, progress tracking, and best practices for large files.
 

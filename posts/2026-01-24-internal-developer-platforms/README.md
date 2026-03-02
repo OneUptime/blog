@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Internal Developer Platform, IDP, Platform Engineering, DevOps, Self-Service, Backstage
+Tags: Internal Developer Platform, IdP, Platform Engineering, DevOps, Self-Service, Backstage
 
 Description: Step-by-step guide to configuring an internal developer platform that provides self-service capabilities for your engineering teams.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, cert-manager, Certificates, Security, Kubernetes, Let's Encrypt
+Tags: Istio, cert-manager, Certificate, Security, Kubernetes, Let's Encrypt
 
 Description: How to integrate cert-manager with Istio to automate certificate issuance and management using external CAs like Let's Encrypt and private CAs.
 

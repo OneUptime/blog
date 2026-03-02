@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Templates, Automation
+Tags: Ansible, Jinja2, Template, Automation
 
 Description: Learn how to create and use Jinja2 macros in Ansible templates to build reusable template functions and reduce duplication.
 

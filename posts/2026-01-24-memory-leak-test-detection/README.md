@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Testing, Memory Leaks, JavaScript, Node.js, Performance, Debugging, Quality Assurance
+Tags: Testing, Memory Leak, JavaScript, Node.js, Performance, Debugging, Quality Assurance
 
 Description: A practical guide to detecting, diagnosing, and fixing memory leaks in your test suites with real code examples and debugging strategies.
 

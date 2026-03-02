@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CircleCI, Docker, CI/CD, DevOps, Containers, Build Automation
+Tags: CircleCI, Docker, CI/CD, DevOps, Container, Build Automation
 
 Description: A complete guide to building Docker images in CircleCI pipelines, covering configuration, caching strategies, multi-stage builds, security scanning, and pushing to container registries.
 

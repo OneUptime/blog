@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Observability, Performance, Metrics, Latency, SLOs, Site Reliability Engineering, SRE, Reliability
+Tags: Observability, Performance, Metrics, Latency, SLO, Site Reliability Engineering, SRE, Reliability
 
 Description: Learn what P50, P95, and P99 latency percentiles mean, why averages lie about performance, and how to use percentiles for SLOs. Includes code examples and practical debugging tips.
 

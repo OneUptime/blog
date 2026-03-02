@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Security, Performance, DevOps, Containers
+Tags: Docker, Security, Performance, DevOps, Container
 
 Description: A practical playbook for cutting Docker image sizes in half while tightening security-covering multi-stage builds, distroless bases, BuildKit secrets, SBOMs, and automated policy gates.
 

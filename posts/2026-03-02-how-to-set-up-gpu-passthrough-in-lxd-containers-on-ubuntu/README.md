@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LXD, GPU, Containers, Machine Learning
+Tags: Ubuntu, LXD, GPU, Container, Machine Learning
 
 Description: Configure GPU passthrough in LXD containers on Ubuntu for machine learning workloads, CUDA development, and GPU-accelerated applications using NVIDIA and AMD GPUs.
 

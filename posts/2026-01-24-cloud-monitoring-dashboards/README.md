@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, Cloud Monitoring, Dashboards, Observability, Metrics, GCP
+Tags: Google Cloud, Cloud Monitoring, Dashboard, Observability, Metrics, GCP
 
 Description: A comprehensive guide to creating, managing, and optimizing Google Cloud Monitoring dashboards for effective infrastructure and application observability.
 

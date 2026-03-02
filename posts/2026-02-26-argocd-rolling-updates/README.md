@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Deployment Strategies, Rolling Updates
+Tags: ArgoCD, GitOps, Kubernetes, Deployment Strategies, Rolling Update
 
 Description: Learn how to configure and optimize rolling updates with ArgoCD using Kubernetes native deployment strategies for zero-downtime releases.
 

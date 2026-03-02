@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Troubleshooting, Conditionals, Jinja2, YAML
+Tags: Ansible, Troubleshooting, Conditional, Jinja2, YAML
 
 Description: Fix Ansible conditional check failed errors caused by syntax issues, undefined variables, and type mismatches in when clauses.
 

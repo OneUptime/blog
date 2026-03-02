@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Kubernetes, Storage, PersistentVolumes, DevOps
+Tags: Ubuntu, Kubernetes, Storage, PersistentVolume, DevOps
 
 Description: Comprehensive guide to configuring Kubernetes Storage Classes on Ubuntu, including local storage, NFS provisioners, and dynamic volume provisioning for stateful workloads.
 

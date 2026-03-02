@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployments, Resilience
+Tags: Kubernetes, Deployment, Resilience
 
 Description: Learn how to implement intelligent retry logic for Kubernetes deployments to handle transient failures like temporary network issues, registry timeouts.
 

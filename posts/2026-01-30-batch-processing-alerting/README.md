@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Batch Processing, Alerting, SLA, Data Pipelines
+Tags: Batch Processing, Alerting, SLA, Data Pipeline
 
 Description: Learn to build batch alerting for notifying teams about job failures, SLA breaches, and data quality issues.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, GitHub Actions, CI/CD, DevOps, Self-Hosted Runners, ARC, Automation
+Tags: Kubernetes, GitHub Actions, CI/CD, DevOps, Self-Hosted Runners, Arc, Automation
 
 Description: A complete guide to deploying and managing GitHub Actions self-hosted runners on Kubernetes using Actions Runner Controller (ARC), covering autoscaling, runner groups, ephemeral runners, security.
 

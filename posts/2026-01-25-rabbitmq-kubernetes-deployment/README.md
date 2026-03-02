@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Kubernetes, DevOps, Message Queues, Container Orchestration, High Availability
+Tags: RabbitMQ, Kubernetes, DevOps, Message Queue, Container Orchestration, High Availability
 
 Description: A practical guide to deploying RabbitMQ on Kubernetes using the cluster operator, StatefulSets, and best practices for production-ready messaging infrastructure.
 

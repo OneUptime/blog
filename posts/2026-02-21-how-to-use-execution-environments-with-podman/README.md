@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Execution Environments, Podman, Containers
+Tags: Ansible, Execution Environment, Podman, Container
 
 Description: Build and run Ansible Execution Environments with Podman, including rootless mode, pod networking, and Podman-specific configuration tips.
 

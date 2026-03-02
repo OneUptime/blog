@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Elastic Cloud, Elasticsearch, Observability, Infrastructure as Code
+Tags: Terraform, Provider, Elastic Cloud, Elasticsearch, Observability, Infrastructure as Code
 
 Description: Learn how to configure the Elastic Cloud provider in Terraform to manage Elasticsearch deployments, Kibana, and observability resources as code.
 

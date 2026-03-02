@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Multi-Tenancy, Namespaces, Security, Isolation
+Tags: Kubernetes, Multi-Tenancy, Namespace, Security, Isolation
 
 Description: A comprehensive guide to implementing multi-tenancy in Kubernetes using namespaces, RBAC, network policies, and resource quotas.
 

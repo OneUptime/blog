@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, C#, CQRS, MediatR, Clean Architecture, Design Patterns, Domain-Driven Design
+Tags: .NET, C#, CQRS, MediatR, Clean Architecture, Design Pattern, Domain-Driven Design
 
 Description: A practical guide to implementing the Command Query Responsibility Segregation pattern using MediatR in .NET.
 

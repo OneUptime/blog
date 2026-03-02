@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Prometheus, Histograms, PromQL, Visualization, Latency, Metrics, Monitoring, Percentiles
+Tags: Grafana, Prometheus, Histogram, PromQL, Visualization, Latency, Metrics, Monitoring, Percentiles
 
 Description: Learn how to visualize Prometheus histograms in Grafana using heatmaps, percentile calculations, and distribution analysis.
 

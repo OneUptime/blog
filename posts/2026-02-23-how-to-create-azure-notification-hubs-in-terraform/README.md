@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Notification Hubs, Push Notifications, Infrastructure as Code, Mobile
+Tags: Terraform, Azure, Notification Hub, Push Notifications, Infrastructure as Code, Mobile
 
 Description: Learn how to create Azure Notification Hubs with Terraform for sending push notifications to iOS, Android, Windows, and other platforms at scale.
 

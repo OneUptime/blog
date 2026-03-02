@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: LlamaIndex, Data Loaders, RAG, AI, Machine Learning, Python, Vector Databases, LLM
+Tags: LlamaIndex, Data Loaders, RAG, AI, Machine Learning, Python, Vector Database, LLM
 
 Description: A comprehensive guide to using LlamaIndex data loaders for ingesting documents from various sources.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, RBAC, Pods, Deployments, Operations
+Tags: Kubernetes, RBAC, POD, Deployment, Operations
 
 Description: Learn how to implement RBAC policies that prevent direct pod deletion while allowing deployment updates, protecting workloads from accidental disruption.
 

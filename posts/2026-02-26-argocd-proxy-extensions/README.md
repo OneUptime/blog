@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Extensions, API Proxy
+Tags: ArgoCD, GitOps, Kubernetes, Extension, API Proxy
 
 Description: Learn how to configure and use ArgoCD proxy extensions to securely expose backend services through the ArgoCD API server for custom integrations.
 

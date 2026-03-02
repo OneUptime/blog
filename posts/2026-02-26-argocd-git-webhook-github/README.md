@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, GitHub, Webhooks
+Tags: ArgoCD, GitOps, Kubernetes, GitHub, Webhook
 
 Description: Step-by-step guide to configuring GitHub webhooks for ArgoCD to trigger immediate reconciliation when code is pushed to your repositories.
 

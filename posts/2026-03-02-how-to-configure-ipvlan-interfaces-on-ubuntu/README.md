@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, IPVLAN, Virtual Interfaces
+Tags: Ubuntu, Networking, IPvlan, Virtual Interfaces
 
 Description: Configure IPVLAN interfaces on Ubuntu with step-by-step instructions covering L2 and L3 modes, use cases compared to MacVLAN, and persistent configuration methods.
 

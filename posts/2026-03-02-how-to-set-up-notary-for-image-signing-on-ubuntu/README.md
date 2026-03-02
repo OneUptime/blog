@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Docker, Containers
+Tags: Ubuntu, Security, Docker, Container
 
 Description: Set up Notary on Ubuntu to cryptographically sign container images and enforce Docker Content Trust, ensuring only verified images run in your environment.
 

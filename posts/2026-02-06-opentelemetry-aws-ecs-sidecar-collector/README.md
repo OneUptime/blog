@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, AWS ECS, Sidecar, Collector, Observability, Containers
+Tags: OpenTelemetry, AWS ECS, Sidecar, Collector, Observability, Container
 
 Description: Learn how to deploy the OpenTelemetry Collector as a sidecar container in AWS ECS task definitions for collecting traces, metrics, and logs from your services.
 

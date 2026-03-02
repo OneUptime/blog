@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Kubernetes, Ingress, DevOps, Cloud Native
+Tags: NGINX, Kubernetes, Ingress, DevOps, Cloud Native
 
 Description: Learn how to deploy and configure the Nginx Ingress Controller in Kubernetes to manage external access to your services with routing, SSL termination, and load balancing.
 

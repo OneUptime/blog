@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Celery, Task Queue, Workers
+Tags: Ansible, Python, Celery, Task Queue, Worker
 
 Description: Deploy and manage Celery distributed task workers with Ansible including broker configuration, worker pools, and monitoring setup.
 

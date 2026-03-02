@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, FileSystem, ErrorHandling, Performance, Linux
+Tags: NodeJS, Filesystem, ErrorHandling, Performance, Linux
 
 Description: Learn how to fix the EMFILE too many open files error in Node.js by increasing system limits, using graceful-fs, and implementing proper file handle management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Log Access Control, RBAC, Security, Compliance, Authorization, Multi-tenancy, Data Protection
+Tags: Log Access Control, RBAC, Security, Compliance, Authorization, Multi-Tenancy, Data Protection
 
 Description: Learn how to configure log access control to protect sensitive data and meet compliance requirements.
 

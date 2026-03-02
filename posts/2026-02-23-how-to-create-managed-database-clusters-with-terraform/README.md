@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Database, Aurora, DocumentDB, ElastiCache, Managed Services, Infrastructure as Code
+Tags: Terraform, AWS, Database, Aurora, DocumentDB, ElastiCache, Managed Service, Infrastructure as Code
 
 Description: Learn how to create and manage database clusters on AWS using Terraform including Aurora PostgreSQL, DocumentDB, and ElastiCache Redis clusters.
 

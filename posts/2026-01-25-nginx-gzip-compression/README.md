@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Gzip, Compression, Performance, Optimization
+Tags: NGINX, Gzip, Compression, Performance, Optimization
 
 Description: Learn how to configure Gzip compression in Nginx to reduce bandwidth usage and improve page load times, with practical examples and performance tuning tips.
 

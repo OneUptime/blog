@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Modules, Imports, ES Modules, CommonJS, Error Handling
+Tags: TypeScript, Modules, Import, ES Modules, CommonJS, Error Handling
 
 Description: Learn how to diagnose and fix the 'Module has no default export' error in TypeScript, including understanding named vs default exports and module interoperability.
 

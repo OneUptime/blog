@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, HTTP, Timeouts, Network, API, Client
+Tags: Go, Golang, HTTP, Timeout, Network, API, Client
 
 Description: Learn how to properly configure HTTP client timeouts in Go to prevent hanging requests, including connection, read, write, and overall timeouts.
 

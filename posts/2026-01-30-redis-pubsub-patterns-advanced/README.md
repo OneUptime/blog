@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Redis, Messaging, PubSub, Real-time
+Tags: Redis, Messaging, PubSub, Real-Time
 
 Description: Implement advanced Redis pub/sub patterns with pattern subscriptions, message routing, and reliable message delivery strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Deadlocks, Thread Contention, Concurrency, Debugging
+Tags: OpenTelemetry, Deadlock, Thread Contention, Concurrency, Debugging
 
 Description: Use OpenTelemetry span timing gaps to detect deadlocks and thread contention issues in concurrent applications.
 

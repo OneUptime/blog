@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Akamai, CDN, Providers, Infrastructure as Code, Edge Computing
+Tags: Terraform, Akamai, CDN, Provider, Infrastructure as Code, Edge Computing
 
 Description: A practical guide to configuring the Akamai provider in Terraform for managing CDN properties, DNS zones, edge configurations, and security policies as code.
 

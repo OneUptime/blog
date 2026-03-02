@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Grafana Alloy, Collector, Observability, Telemetry Pipelines
+Tags: OpenTelemetry, Grafana Alloy, Collector, Observability, Telemetry Pipeline
 
 Description: A practical comparison of OpenTelemetry Collector and Grafana Alloy for building telemetry pipelines, covering architecture, configuration, and use cases.
 

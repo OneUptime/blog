@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Key Vault, Secrets, Security, IaC
+Tags: Terraform, Azure, Key Vault, Secret, Security, IaC
 
 Description: Learn how to create, manage, and retrieve secrets from Azure Key Vault in Terraform, including access policies, managed identities, certificate management, and integration with Azure services.
 

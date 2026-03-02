@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Correlation IDs, Request Scoping, Business Metrics, Observability
+Tags: OpenTelemetry, Correlation ID, Request Scoping, Business Metrics, Observability
 
 Description: Implement request-scoped correlation IDs that unify OpenTelemetry traces, structured logs, and custom business metrics for full request visibility.
 

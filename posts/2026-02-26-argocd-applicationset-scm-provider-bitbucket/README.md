@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Bitbucket
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Bitbucket
 
 Description: Learn how to configure the ArgoCD ApplicationSet SCM Provider generator for Bitbucket Cloud and Bitbucket Server to automatically discover repositories and deploy applications.
 

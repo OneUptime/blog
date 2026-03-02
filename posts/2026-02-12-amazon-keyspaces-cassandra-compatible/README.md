@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Keyspaces, Cassandra, Database, NoSQL
+Tags: AWS, Keyspace, Cassandra, Database, NoSQL
 
 Description: A hands-on guide to setting up Amazon Keyspaces, the serverless Cassandra-compatible database service, covering table creation, connectivity, and production best practices.
 

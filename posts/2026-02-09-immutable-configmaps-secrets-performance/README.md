@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ConfigMaps, Performance
+Tags: Kubernetes, ConfigMap, Performance
 
 Description: Learn how to create immutable ConfigMaps and Secrets in Kubernetes to improve cluster performance, reduce API server load, and prevent accidental configuration changes.
 

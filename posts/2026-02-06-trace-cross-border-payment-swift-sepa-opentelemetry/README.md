@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Cross-Border Payments, SWIFT, SEPA
+Tags: OpenTelemetry, Cross-Border Payments, Swift, SEPA
 
 Description: Trace SWIFT and SEPA cross-border payment message flows end-to-end using OpenTelemetry distributed tracing and metrics.
 

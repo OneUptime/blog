@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provider Development, Validation, Infrastructure as Code, Custom Providers
+Tags: Terraform, Provider Development, Validation, Infrastructure as Code, Custom Provider
 
 Description: Learn how to implement attribute validation in custom Terraform providers using validators, plan modifiers, and custom validation logic to ensure correct configurations.
 

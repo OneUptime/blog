@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kafka, Connect, Connectors, Integration
+Tags: Kafka, Connect, Connector, Integration
 
 Description: Build custom Kafka Connect source connectors to ingest data from any system with proper offset management and configuration handling.
 

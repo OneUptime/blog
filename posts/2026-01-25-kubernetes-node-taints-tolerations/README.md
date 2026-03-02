@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Scheduling, Nodes, DevOps, Resource Management
+Tags: Kubernetes, Scheduling, Node, DevOps, Resource Management
 
 Description: Learn how to use Kubernetes taints and tolerations to control pod scheduling, dedicate nodes for specific workloads, and handle node maintenance without disrupting applications.
 

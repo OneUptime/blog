@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Cron, Environment Variables, Shell Scripting
+Tags: Ubuntu, Cron, Environment Variable, Shell Scripting
 
 Description: Learn how to properly set and use environment variables in cron jobs on Ubuntu, including setting PATH, loading from files, and passing application-specific configuration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Data Sources, HTTP, API, Infrastructure as Code
+Tags: Terraform, Data Source, HTTP, API, Infrastructure as Code
 
 Description: Learn how to use the http data source in Terraform to fetch data from HTTP endpoints, APIs, and web services to use in your infrastructure configuration.
 

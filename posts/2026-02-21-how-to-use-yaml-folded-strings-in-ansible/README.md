@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, YAML, Strings, Formatting, DevOps
+Tags: Ansible, YAML, String, Formatting, DevOps
 
 Description: Learn when and how to use YAML folded strings in Ansible playbooks for readable long lines, conditions, and string values.
 

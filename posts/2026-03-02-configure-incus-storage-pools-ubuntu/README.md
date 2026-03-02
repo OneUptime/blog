@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Incus, Storage, Containers, System Administration
+Tags: Ubuntu, Incus, Storage, Container, System Administration
 
 Description: Configure and manage Incus storage pools on Ubuntu using different backends like Btrfs, ZFS, LVM, and Ceph to optimize container storage performance and flexibility.
 

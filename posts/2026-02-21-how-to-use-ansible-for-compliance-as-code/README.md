@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Compliance, Security, CIS Benchmarks
+Tags: Ansible, Compliance, Security, CIS Benchmark
 
 Description: Implement compliance as code with Ansible to automate security benchmarks, audit checks, and regulatory requirements across your infrastructure.
 

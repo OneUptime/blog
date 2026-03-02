@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Docker, Debugging, Containers
+Tags: AWS, ECS, Docker, Debugging, Container
 
 Description: Diagnose and resolve the ECS essential container exited error by checking exit codes, container health, log drivers, and task definition configuration.
 

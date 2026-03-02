@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Backend Plugins, Data Sources, Go
+Tags: Grafana, Backend Plugins, Data Source, Go
 
 Description: Learn to implement Grafana backend plugins with Go SDK, query handling, and streaming for custom data source integration.
 

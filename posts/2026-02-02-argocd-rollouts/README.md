@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ArgoCD, Rollouts, Canary, Blue-Green, Progressive Delivery, DevOps
+Tags: Kubernetes, ArgoCD, Rollout, Canary, Blue-Green, Progressive Delivery, DevOps
 
 Description: A comprehensive guide to implementing Argo Rollouts for progressive delivery in Kubernetes, covering canary deployments, blue-green deployments, analysis runs, traffic management.
 

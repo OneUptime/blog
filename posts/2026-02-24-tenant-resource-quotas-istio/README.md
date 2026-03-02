@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Resource Quotas, Multi-Tenancy, Kubernetes, Capacity Planning
+Tags: Istio, Resource Quota, Multi-Tenancy, Kubernetes, Capacity Planning
 
 Description: Configure resource quotas and limits for tenants in an Istio service mesh, covering sidecar resources, connection limits, and bandwidth control.
 

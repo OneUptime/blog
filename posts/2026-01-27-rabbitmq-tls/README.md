@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, TLS, Security, Message Queue, Encryption, Certificates, mTLS, DevOps
+Tags: RabbitMQ, TLS, Security, Message Queue, Encryption, Certificate, mTLS, DevOps
 
 Description: A comprehensive guide to securing RabbitMQ with TLS encryption, covering certificate generation, server and client configuration, mutual TLS authentication, certificate rotation strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Templates, HTML, Web Development, Backend, text/template, html/template
+Tags: Go, Template, HTML, Web Development, Backend, text/template, html/template
 
 Description: A practical guide to generating dynamic HTML with Go's template packages, covering syntax, actions, pipelines, custom functions, and security best practices.
 

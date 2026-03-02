@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Containers, Troubleshooting
+Tags: Kubernetes, Container, Troubleshooting
 
 Description: Learn how to diagnose and fix init container failures that prevent main containers from starting in Kubernetes pods with practical debugging techniques.
 

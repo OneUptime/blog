@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Alertmanager, Prometheus, Monitoring, Alerting
+Tags: OpenTelemetry, Collector, Exporter, Alertmanager, Prometheus, Monitoring, Alerting
 
 Description: Learn how to configure the Alertmanager exporter in the OpenTelemetry Collector to send alerts from your telemetry data to Prometheus Alertmanager for centralized alert routing and management.
 

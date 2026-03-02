@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Workflows, Connectors, API Integration, Automation
+Tags: GCP, Cloud Workflows, Connector, API Integration, Automation
 
 Description: Learn how to use built-in Cloud Workflow connectors to call Google Cloud services like BigQuery, Firestore, Pub/Sub, and Cloud Storage without writing raw HTTP requests.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, CI/CD, GitOps, Canary Deployments, Kubernetes
+Tags: Istio, CI/CD, GitOps, Canary Deployment, Kubernetes
 
 Description: Build a CI/CD pipeline that leverages Istio traffic management for canary deployments, automated rollbacks, and safe production releases.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Pulsar, Apache Pulsar, Streaming, Message Queue
+Tags: OpenTelemetry, Collector, Exporter, Pulsar, Apache Pulsar, Streaming, Message Queue
 
 Description: Learn how to configure the Pulsar exporter in the OpenTelemetry Collector to stream telemetry data to Apache Pulsar for scalable, event-driven observability architectures.
 

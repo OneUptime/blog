@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ChromaDB, Vector Database, Embeddings, RAG
+Tags: ChromaDB, Vector Database, Embedding, RAG
 
 Description: Learn to integrate ChromaDB for local-first vector storage with collection management, metadata filtering, and embedding functions for RAG applications.
 

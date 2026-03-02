@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Redis, RDB Persistence, Data Persistence, Azure Cache for Redis, Premium Tier, Snapshots
+Tags: Azure, Redis, RDB Persistence, Data Persistence, Azure Cache for Redis, Premium Tier, Snapshot
 
 Description: Learn how to enable and configure RDB snapshot persistence in Azure Cache for Redis Premium Tier to protect cached data from loss during restarts and failures.
 

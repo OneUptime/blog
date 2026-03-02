@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, Subnets, VPC, Networking, Infrastructure as Code, Google Cloud, GKE
+Tags: Terraform, GCP, Subnet, VPC, Networking, Infrastructure as Code, Google Cloud, GKE
 
 Description: Learn how to create GCP subnets with secondary IP ranges using Terraform, including configurations for GKE pods and services, Private Google Access, and flow logs.
 

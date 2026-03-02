@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Terraform, IAM, Service Accounts, Security, Google Cloud Platform
+Tags: GCP, Terraform, IAM, Service Account, Security, Google Cloud Platform
 
 Description: Create GCP service accounts with least-privilege IAM roles across multiple projects using Terraform, including custom roles, cross-project access patterns, and workload identity federation.
 

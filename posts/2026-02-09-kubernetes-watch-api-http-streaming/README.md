@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, API, Watch
+Tags: Kubernetes, API, WATCH
 
 Description: Learn how to use the Kubernetes Watch API with HTTP streaming to receive real-time resource updates, build efficient controllers, and understand the watch protocol for event-driven applications.
 

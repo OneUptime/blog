@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Environment, Conditionals, DevOps
+Tags: Ansible, Environment, Conditional, DevOps
 
 Description: Learn how to skip or run Ansible tasks based on the deployment environment using variables, groups, and conditional logic.
 

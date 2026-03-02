@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connectors, Count Connector, Metrics, Observability
+Tags: OpenTelemetry, Collector, Connector, Count Connector, Metrics, Observability
 
 Description: Learn how to configure the Count Connector in OpenTelemetry Collector to generate metrics from spans and logs, enabling powerful aggregation and monitoring capabilities.
 

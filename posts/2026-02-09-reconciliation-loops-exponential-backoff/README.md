@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Controllers, Reconciliation, Error Handling
+Tags: Kubernetes, Controller, Reconciliation, Error Handling
 
 Description: Learn how to implement robust reconciliation loops with exponential backoff in Kubernetes controllers to handle transient failures and avoid overwhelming external systems.
 

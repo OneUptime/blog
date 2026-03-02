@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Persistent Storage, Queues, Reliability
+Tags: OpenTelemetry, Collector, Persistent Storage, Queue, Reliability
 
 Description: Configure persistent queue storage in the OpenTelemetry Collector to prevent telemetry data loss during restarts, crashes, and backend outages.
 

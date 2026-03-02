@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HashiCorp Vault, Secrets, Security, IaC, DevOps
+Tags: Terraform, HashiCorp Vault, Secret, Security, IaC, DevOps
 
 Description: A hands-on guide to integrating HashiCorp Vault with Terraform for dynamic secret management, covering Vault provider setup, secret retrieval, dynamic credentials, and advanced patterns.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Functions, Firestore, Triggers, Serverless
+Tags: GCP, Cloud Functions, Firestore, Trigger, Serverless
 
 Description: Step-by-step guide to creating Google Cloud Functions that automatically respond to Firestore document creates, updates, and deletes using Eventarc triggers.
 

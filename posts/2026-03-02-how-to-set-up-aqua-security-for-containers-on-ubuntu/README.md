@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Containers, Docker
+Tags: Ubuntu, Security, Container, Docker
 
 Description: Deploy Aqua Security on Ubuntu to scan container images for vulnerabilities, enforce runtime policies, and secure your containerized workloads.
 

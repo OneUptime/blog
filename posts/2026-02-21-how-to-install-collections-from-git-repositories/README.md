@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ansible Galaxy, Collections, Git, Version Control
+Tags: Ansible, Ansible Galaxy, Collection, Git, Version Control
 
 Description: How to install Ansible collections directly from Git repositories including GitHub, GitLab, private repos, and subdirectory support.
 

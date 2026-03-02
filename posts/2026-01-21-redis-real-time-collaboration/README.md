@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Real-Time, Collaboration, WebSockets, Presence, Shared Editing, Cursors
+Tags: Redis, Real-Time, Collaboration, WebSocket, Presence, Shared Editing, Cursor
 
 Description: A comprehensive guide to implementing real-time collaboration features with Redis, covering presence detection, cursor tracking, shared editing.
 

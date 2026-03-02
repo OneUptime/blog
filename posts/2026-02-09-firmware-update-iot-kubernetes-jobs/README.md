@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, IoT, Firmware Updates, Jobs, Edge Computing
+Tags: Kubernetes, IoT, Firmware Update, Jobs, Edge Computing
 
 Description: Learn how to orchestrate firmware updates for IoT devices using Kubernetes Jobs, including batch updates, rollback mechanisms, and status tracking for large-scale IoT deployments.
 

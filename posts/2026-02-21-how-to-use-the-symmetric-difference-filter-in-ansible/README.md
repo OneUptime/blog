@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Set Operations, Automation, Configuration Management
+Tags: Ansible, Filter, Set Operations, Automation, Configuration Management
 
 Description: Learn how to use the symmetric_difference filter in Ansible to find items that exist in either of two lists but not in both for drift detection.
 

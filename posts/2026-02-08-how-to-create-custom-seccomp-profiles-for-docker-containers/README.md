@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Security, Seccomp, Containers, Linux, Hardening, DevOps
+Tags: Docker, Security, seccomp, Container, Linux, Hardening, DevOps
 
 Description: Learn how to create and apply custom seccomp profiles to restrict system calls in Docker containers, reducing your attack surface significantly.
 

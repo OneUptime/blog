@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Log Analytics, Data Export, Azure Storage, Event Hubs, Log Management, Data Archiving
+Tags: Azure Log Analytics, Data Export, Azure Storage, Event Hub, Log Management, Data Archiving
 
 Description: Step-by-step instructions for exporting data from an Azure Log Analytics workspace to Azure Storage or Event Hubs for archiving and external integration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Capacity Planning, Reviews, SRE, Process
+Tags: Capacity Planning, Review, SRE, Process
 
 Description: Learn how to conduct effective capacity reviews for proactive planning.
 

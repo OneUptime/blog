@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, VPC, Subnets, IP Ranges, GKE, Networking
+Tags: GCP, VPC, Subnet, IP Ranges, GKE, Networking
 
 Description: Learn how to configure primary and secondary IP ranges for GCP VPC subnets, including planning for GKE pod and service ranges, and expanding ranges without downtime.
 

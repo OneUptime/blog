@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Git, Troubleshooting, Errors, Repository Repair, Version Control, DevOps
+Tags: Git, Troubleshooting, Error, Repository Repair, Version Control, DevOps
 
 Description: Learn how to diagnose and fix Git 'object not found' errors caused by missing commits, corrupted repositories, or incomplete clones.
 

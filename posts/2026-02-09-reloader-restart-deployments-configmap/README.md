@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Reloader, ConfigMaps
+Tags: Kubernetes, Reloader, ConfigMap
 
 Description: Learn how to use Stakater Reloader to automatically restart Kubernetes deployments when ConfigMaps or Secrets change, eliminating manual pod restarts.
 

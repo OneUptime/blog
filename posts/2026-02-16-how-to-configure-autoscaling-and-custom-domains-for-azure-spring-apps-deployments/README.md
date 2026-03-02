@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Spring Apps, Autoscaling, Custom Domains, Spring Boot, Java, Cloud Configuration, SSL
+Tags: Azure Spring Apps, Autoscaling, Custom Domain, Spring Boot, Java, Cloud Configuration, SSL
 
 Description: Learn how to configure autoscaling rules and set up custom domains with SSL certificates for Azure Spring Apps to handle variable traffic and professional branding.
 

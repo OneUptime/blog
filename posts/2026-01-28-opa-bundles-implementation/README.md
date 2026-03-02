@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OPA, Bundles, Policy-as-Code, DevOps, Kubernetes, Security
+Tags: OPA, Bundle, Policy-as-Code, DevOps, Kubernetes, Security
 
 Description: Learn how to package, distribute, and update OPA policies at scale using bundles for centralized policy management.
 

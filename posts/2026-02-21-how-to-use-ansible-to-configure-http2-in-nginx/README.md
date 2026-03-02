@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Nginx, HTTP/2, Performance, SSL
+Tags: Ansible, NGINX, HTTP/2, Performance, SSL
 
 Description: Automate HTTP/2 configuration in Nginx using Ansible playbooks to improve web application performance with multiplexed connections and header compression.
 

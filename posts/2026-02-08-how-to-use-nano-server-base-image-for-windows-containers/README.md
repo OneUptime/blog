@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, nano server, windows containers, lightweight, .NET, microservices, optimization
+Tags: Docker, nano server, Windows Containers, Lightweight, .NET, Microservices, Optimization
 
 Description: Build minimal Windows container images using Nano Server for fast deployments of .NET applications and lightweight microservices.
 

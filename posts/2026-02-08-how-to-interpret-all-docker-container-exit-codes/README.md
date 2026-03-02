@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, exit codes, troubleshooting, debugging, containers, signals, process management
+Tags: Docker, Exit Code, Troubleshooting, Debugging, Container, Signals, Process Management
 
 Description: A complete reference guide to Docker container exit codes, explaining what each code means, how to diagnose the cause, and how to fix common failures.
 

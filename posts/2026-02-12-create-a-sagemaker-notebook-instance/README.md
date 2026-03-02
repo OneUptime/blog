@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, SageMaker, Machine Learning, Jupyter, Notebooks
+Tags: AWS, SageMaker, Machine Learning, Jupyter, Notebook
 
 Description: Step-by-step guide to creating and configuring an Amazon SageMaker notebook instance for machine learning development, including lifecycle configurations and cost management.
 

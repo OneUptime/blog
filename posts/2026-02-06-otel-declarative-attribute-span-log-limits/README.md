@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Limits, Span Limits, Attribute Limits, Configuration
+Tags: OpenTelemetry, Limit, Span Limits, Attribute Limits, Configuration
 
 Description: Configure attribute limits, span limits, and log record limits in a single OpenTelemetry declarative YAML file to protect your pipeline.
 

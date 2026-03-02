@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Callbacks, Plugins, DevOps, Monitoring
+Tags: Ansible, Callback, Plugin, DevOps, Monitoring
 
 Description: Learn how to use Ansible callback plugins to customize playbook output, send notifications, log to external systems, and create custom reporting.
 

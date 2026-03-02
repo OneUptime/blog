@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Wasm, Performance, Monitoring, Prometheus, Envoy
+Tags: Istio, WASM, Performance, Monitoring, Prometheus, Envoy
 
 Description: A practical guide to measuring and monitoring the performance impact of WebAssembly plugins running in your Istio service mesh proxies.
 

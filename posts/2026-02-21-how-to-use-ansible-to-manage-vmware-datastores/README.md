@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Datastores, Storage, vSphere
+Tags: Ansible, VMware, Datastore, Storage, vSphere
 
 Description: Learn how to manage VMware datastores with Ansible including creating NFS and VMFS datastores, monitoring capacity, and performing maintenance.
 

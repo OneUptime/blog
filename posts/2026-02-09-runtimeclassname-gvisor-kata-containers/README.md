@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Container Runtimes
+Tags: Kubernetes, Security, Container Runtime
 
 Description: Learn how to use RuntimeClassName in Kubernetes to select alternative container runtimes like gVisor and Kata Containers for enhanced security isolation and workload-specific runtime requirements.
 

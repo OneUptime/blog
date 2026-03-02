@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, SSL, Certificates, Monitoring, Security
+Tags: Ansible, SSL, Certificate, Monitoring, Security
 
 Description: Build Ansible playbooks that check SSL certificate expiry dates across all your domains and send alerts before certificates expire.
 

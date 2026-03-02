@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Ubuntu, Linux, Installation, Version Management, DevOps, Containers, Version Pinning
+Tags: Docker, Ubuntu, Linux, Installation, Version Management, DevOps, Container, Version Pinning
 
 Description: How to install a specific version of Docker Engine on Ubuntu instead of the latest, with version pinning to prevent unwanted automatic upgrades.
 

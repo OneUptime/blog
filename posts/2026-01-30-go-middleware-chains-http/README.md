@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Middleware, HTTP, Web Development, Design Patterns
+Tags: Go, Middleware, HTTP, Web Development, Design Pattern
 
 Description: Learn how to build composable middleware chains in Go for logging, authentication, rate limiting, and more using the standard library.
 

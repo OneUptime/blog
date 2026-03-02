@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dagger, CI/CD, DevOps, Build Pipelines, Continuous Integration
+Tags: Docker, Dagger, CI/CD, DevOps, Build Pipeline, Continuous Integration
 
 Description: Use Dagger to write CI/CD pipelines as code in Go, Python, or TypeScript that run identically in Docker locally and in any CI system.
 

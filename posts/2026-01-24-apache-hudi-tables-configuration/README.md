@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Hudi, Data Lake, Spark, Data Engineering, Upserts, Incremental Processing, CDC
+Tags: Apache Hudi, Data Lake, Spark, Data Engineering, Upsert, Incremental Processing, CDC
 
 Description: Learn how to configure Apache Hudi tables for efficient upserts, incremental queries, and time travel in your data lake architecture.
 

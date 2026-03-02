@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Containers, Security
+Tags: Kubernetes, Init Container, Security
 
 Description: Learn how to use init containers to decrypt secrets from external vaults or encrypted storage before your application starts, improving security and secret management.
 

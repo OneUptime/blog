@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collections
+Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collection
 
 Description: Learn how to use the zipmap function in Terraform to create maps from two parallel lists of keys and values for dynamic resource configurations.
 

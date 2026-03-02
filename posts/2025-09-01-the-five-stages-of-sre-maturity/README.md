@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Site Reliability Engineering, SRE, Observability, DevOps, SLOs, Error Budgets, Incident Management
+Tags: Site Reliability Engineering, SRE, Observability, DevOps, SLO, Error Budget, Incident Management
 
 Description: Site Reliability Engineering (SRE) isn't a destination - it's a journey.
 

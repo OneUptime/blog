@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, WebSocket, SSL, TLS, Proxy, Real-time
+Tags: NGINX, WebSocket, SSL, TLS, Proxy, Real-Time
 
 Description: Learn how to configure Nginx as a secure WebSocket proxy with SSL termination, including connection upgrades, timeouts, load balancing, and troubleshooting common issues.
 

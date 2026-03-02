@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Clustering, High Availability, Message Queues, DevOps, Distributed Systems
+Tags: RabbitMQ, Clustering, High Availability, Message Queue, DevOps, Distributed Systems
 
 Description: A practical guide to setting up a RabbitMQ cluster for high availability, covering node configuration, network partitions, and best practices for production deployments.
 

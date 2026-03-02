@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: istio, mtls, kubernetes, security, service mesh, certificates, pod communication, zero trust
+Tags: Istio, mTLS, Kubernetes, Security, Service Mesh, Certificate, Pod Communication, Zero Trust
 
 Description: A comprehensive guide to implementing mutual TLS (mTLS) for secure pod-to-pod communication in Kubernetes using Istio service mesh.
 

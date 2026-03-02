@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, System Administration, Memory Management, Performance, Swap, Virtual Memory
+Tags: Linux, System Administration, Memory Management, Performance, SWAP, Virtual Memory
 
 Description: A comprehensive guide to configuring and managing swap space in Linux, including swap partitions, swap files, swappiness tuning, and best practices for different workloads.
 

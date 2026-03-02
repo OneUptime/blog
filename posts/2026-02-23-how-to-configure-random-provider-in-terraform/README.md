@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Random Provider, Infrastructure as Code, Automation
+Tags: Terraform, Provider, Random Provider, Infrastructure as Code, Automation
 
 Description: A complete guide to configuring the Random provider in Terraform for generating unique names, passwords, IDs, and other random values in your infrastructure.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Callbacks, Configuration, DevOps, Monitoring
+Tags: Ansible, Callback, Configuration, DevOps, Monitoring
 
 Description: Configure the Ansible callback whitelist to enable timer, profiling, logging, and notification plugins for better playbook visibility.
 

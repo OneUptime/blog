@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Build, CI/CD, Service Accounts, IAM, Cross-Project, DevOps
+Tags: GCP, Cloud Build, CI/CD, Service Account, IAM, Cross-Project, DevOps
 
 Description: Learn how to set up Cloud Build pipelines that span multiple GCP projects using service accounts, IAM bindings, and cross-project triggers for enterprise deployment workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Oncall, Incident Management
+Tags: Grafana, OnCall, Incident Management
 
 Description: Learn how to set up and use Grafana Oncall for managing on-call schedules, escalations, and incident response workflows.
 

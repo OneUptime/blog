@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Angular, Containerization, Frontend, DevOps, Nginx
+Tags: Docker, Angular, Containerization, Frontend, DevOps, NGINX
 
 Description: A step-by-step guide to containerizing Angular applications with Docker using multi-stage builds and Nginx for production
 

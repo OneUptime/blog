@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Product Search, E-commerce, Search Implementation, Relevance, Faceted Search
+Tags: Elasticsearch, Product Search, E-Commerce, Search Implementation, Relevance, Faceted Search
 
 Description: A comprehensive guide to building product search with Elasticsearch for e-commerce applications, covering index design, relevance tuning, faceted search, autocomplete, and performance optimization.
 

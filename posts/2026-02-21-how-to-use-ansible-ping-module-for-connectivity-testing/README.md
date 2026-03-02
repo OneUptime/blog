@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ping, Connectivity, Testing, DevOps
+Tags: Ansible, Ping, Connectivity, Testing, DevOps
 
 Description: Use the Ansible ping module to verify host connectivity, Python availability, and basic Ansible functionality on remote hosts.
 

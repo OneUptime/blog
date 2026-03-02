@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Platform Engineering, DevOps, Internal Tools
+Tags: Terraform, Provider, Platform Engineering, DevOps, Internal Tools
 
 Description: Learn how to build and maintain an internal catalog of approved Terraform providers, including custom providers, version governance, and security review processes for your organization.
 

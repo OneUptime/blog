@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SSE, Server-Sent Events, Real-time, Express, FastAPI, Spring Boot, Gin, Rails, EventSource
+Tags: SSE, Server-Sent Events, Real-Time, Express, FastAPI, Spring Boot, Gin, Rails, EventSource
 
 Description: Learn how to implement Server-Sent Events in various frameworks including Express, FastAPI, Spring Boot, Gin, and Rails with practical code examples for real-time data streaming.
 

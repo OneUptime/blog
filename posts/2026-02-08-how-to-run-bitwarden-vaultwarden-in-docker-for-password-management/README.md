@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, vaultwarden, bitwarden, password-manager, security, self-hosted
+Tags: Docker, Vaultwarden, Bitwarden, password-manager, Security, Self-Hosted
 
 Description: Deploy Vaultwarden in Docker as a lightweight, self-hosted Bitwarden-compatible password manager for individuals and families.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Dynamic Blocks, ECS, AWS, Containers, Infrastructure as Code
+Tags: Terraform, Dynamic Blocks, ECS, AWS, Container, Infrastructure as Code
 
 Description: Learn how to use Terraform dynamic blocks to build flexible ECS task definitions with variable-driven container configurations.
 

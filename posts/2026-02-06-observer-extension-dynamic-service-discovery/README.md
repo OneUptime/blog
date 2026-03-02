@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extensions, Service Discovery, Dynamic Configuration, Kubernetes, Docker
+Tags: OpenTelemetry, Collector, Extension, Service Discovery, Dynamic Configuration, Kubernetes, Docker
 
 Description: Learn how to configure the Observer Extension in OpenTelemetry Collector for automatic service discovery, enabling dynamic monitoring of ephemeral workloads in Kubernetes, Docker.
 

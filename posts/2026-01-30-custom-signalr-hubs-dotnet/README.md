@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, SignalR, ASP.NET Core, C#, WebSockets, Real-Time, Hub Filters, MessagePack
+Tags: .NET, SignalR, ASP.NET Core, C#, WebSocket, Real-Time, Hub Filters, MessagePack
 
 Description: Learn advanced techniques for building custom SignalR hubs in .NET.
 

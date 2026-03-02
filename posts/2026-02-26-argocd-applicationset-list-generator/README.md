@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet
 
 Description: Complete guide to using the ArgoCD ApplicationSet List generator with static and dynamic elements, multi-cluster deployments, and advanced templating patterns.
 

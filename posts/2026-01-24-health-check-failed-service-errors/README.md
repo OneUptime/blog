@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Health Checks, Microservices, Kubernetes, Monitoring, Troubleshooting, Readiness, Liveness, Service Mesh
+Tags: Health Check, Microservices, Kubernetes, Monitoring, Troubleshooting, Readiness, Liveness, Service Mesh
 
 Description: Learn how to diagnose and fix health check failures in microservices, including configuring proper liveness and readiness probes, handling dependency failures, and preventing cascading outages.
 

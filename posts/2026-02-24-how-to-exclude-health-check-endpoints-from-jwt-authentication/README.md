@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, JWT, Authentication, Kubernetes, Health Checks, Security
+Tags: Istio, JWT, Authentication, Kubernetes, Health Check, Security
 
 Description: Learn how to exclude health check and readiness probe endpoints from JWT authentication requirements in Istio service mesh configurations.
 

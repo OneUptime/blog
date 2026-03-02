@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, High Availability, Node Pool, Version Upgrades
+Tags: Kubernetes, High Availability, Node Pool, Version Upgrade
 
 Description: Learn how to upgrade Kubernetes clusters without downtime using node pool rotation strategies, ensuring continuous service availability while maintaining security and performance standards.
 

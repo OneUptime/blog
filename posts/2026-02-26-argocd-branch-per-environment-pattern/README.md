@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Git Branching, Environments
+Tags: ArgoCD, GitOps, Kubernetes, Git Branching, Environment
 
 Description: Learn how to implement the branch-per-environment pattern in ArgoCD where each Git branch represents a different deployment environment like dev, staging, and production.
 

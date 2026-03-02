@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, Jinja2, Templates, DevOps
+Tags: Ansible, Testing, Jinja2, Template, DevOps
 
 Description: A practical guide to testing Ansible Jinja2 template rendering to catch syntax errors, logic bugs, and variable issues before deploying to production.
 

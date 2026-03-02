@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure PowerShell, Virtual Machines, Automation, Cost Optimization, Azure, DevOps, Cloud Management
+Tags: Azure PowerShell, Virtual Machine, Automation, Cost Optimization, Azure, DevOps, Cloud Management
 
 Description: Learn how to use Azure PowerShell scripts and Azure Automation to create scheduled start and stop operations for virtual machines to reduce cloud costs.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Event Sourcing, Snapshots, CQRS, Aggregates, State Management
+Tags: Redis, Event Sourcing, Snapshot, CQRS, Aggregates, State Management
 
 Description: Learn how to use Redis for storing event sourcing snapshots.
 

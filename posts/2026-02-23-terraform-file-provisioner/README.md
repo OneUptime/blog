@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provisioners, File Transfer, Infrastructure as Code, SSH
+Tags: Terraform, Provisioner, File Transfer, Infrastructure as Code, SSH
 
 Description: Learn how to use the file provisioner in Terraform to upload files and directories from the Terraform host to remote resources during the provisioning process.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, DNS, Route53, Data Sources, Infrastructure as Code
+Tags: Terraform, AWS, DNS, Route53, Data Source, Infrastructure as Code
 
 Description: Learn how to use Terraform data sources to read and reference existing DNS records from Route53 and other DNS providers in your infrastructure configurations.
 

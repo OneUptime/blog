@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Storage, DevOps, Containers
+Tags: Docker, Storage, DevOps, Container
 
 Description: A practical guide to creating and managing Docker volumes for databases, caches, and other stateful applications that need persistent storage across container restarts.
 

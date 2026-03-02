@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Nested Objects, Data Modeling, Complex Queries, Mappings
+Tags: Elasticsearch, Nested Objects, Data Modeling, Complex Queries, Mapping
 
 Description: Learn how to use nested objects in Elasticsearch for querying arrays of objects while maintaining field relationships, with practical examples covering nested mappings, queries, and aggregations.
 

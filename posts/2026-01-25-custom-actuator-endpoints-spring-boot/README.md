@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, Actuator, Monitoring, Observability, Health Checks, Metrics, Production
+Tags: Java, Spring Boot, Actuator, Monitoring, Observability, Health Check, Metrics, Production
 
 Description: Learn how to build custom Spring Boot Actuator endpoints to expose application-specific health checks, metrics, and operational data.
 

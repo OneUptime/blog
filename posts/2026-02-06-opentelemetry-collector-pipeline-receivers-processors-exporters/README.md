@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Pipeline, Receivers, Processors, Exporters
+Tags: OpenTelemetry, Collector, Pipeline, Receiver, Processor, Exporter
 
 Description: Learn how the OpenTelemetry Collector's pipeline architecture processes telemetry data through receivers, processors, and exporters.
 

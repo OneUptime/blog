@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, OpenTelemetry, Exporters, Observability, Tracing, Metrics
+Tags: Go, OpenTelemetry, Exporter, Observability, Tracing, Metrics
 
 Description: Build custom OpenTelemetry exporters in Go to send traces, metrics, and logs to any backend or storage system.
 

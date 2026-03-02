@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Flatpak, Package Management, Applications, Tutorial
+Tags: Ubuntu, Flatpak, Package Management, Application, Tutorial
 
 Description: Set up Flatpak on Ubuntu for accessing a vast library of sandboxed applications from Flathub.
 

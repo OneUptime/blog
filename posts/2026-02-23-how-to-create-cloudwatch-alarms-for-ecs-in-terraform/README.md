@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, CloudWatch, ECS, Monitoring, Containers, Infrastructure as Code
+Tags: Terraform, AWS, CloudWatch, ECS, Monitoring, Container, Infrastructure as Code
 
 Description: Learn how to create CloudWatch alarms for Amazon ECS services using Terraform to monitor CPU, memory, task health, and service scaling.
 

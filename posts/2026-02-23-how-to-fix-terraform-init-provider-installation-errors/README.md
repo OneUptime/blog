@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, Providers, DevOps, Infrastructure as Code
+Tags: Terraform, Troubleshooting, Provider, DevOps, Infrastructure as Code
 
 Description: A hands-on guide to resolving terraform init provider installation failures including network issues, version constraints, and registry errors.
 

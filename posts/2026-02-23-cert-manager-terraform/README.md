@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, cert-manager, TLS, Certificates, Security, DevOps
+Tags: Terraform, Kubernetes, cert-manager, TLS, Certificate, Security, DevOps
 
 Description: Learn how to deploy and configure cert-manager on Kubernetes using Terraform, including Let's Encrypt issuers, DNS validation, wildcard certificates, and automatic renewal.
 

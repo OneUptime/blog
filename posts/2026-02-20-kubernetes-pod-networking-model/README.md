@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Networking, Pods, Container Networking, CNI
+Tags: Kubernetes, Networking, POD, Container Networking, CNI
 
 Description: Deep dive into how Kubernetes pod networking works including IP-per-pod, veth pairs, bridges, and cross-node communication.
 

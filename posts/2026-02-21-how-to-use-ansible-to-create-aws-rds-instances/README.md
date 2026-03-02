@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWS, RDS, Databases, Infrastructure as Code
+Tags: Ansible, AWS, RDS, Database, Infrastructure as Code
 
 Description: Complete tutorial on provisioning and managing AWS RDS database instances with Ansible including Multi-AZ, backups, and parameter groups.
 

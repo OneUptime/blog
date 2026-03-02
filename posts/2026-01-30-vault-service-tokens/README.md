@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Vault, Security, Tokens, Applications
+Tags: Vault, Security, Token, Application
 
 Description: Learn how to implement HashiCorp Vault service tokens for long-lived operations with proper lifecycle management, renewal strategies, and orphan token handling.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, State Management, Infrastructure as Code, Cleanup
+Tags: Terraform, Workspace, State Management, Infrastructure as Code, Cleanup
 
 Description: A step-by-step guide to safely removing resources from the default Terraform workspace and migrating to named workspaces.
 

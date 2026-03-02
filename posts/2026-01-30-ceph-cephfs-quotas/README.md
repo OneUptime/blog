@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ceph, CephFS, Quotas, Storage
+Tags: Ceph, CephFS, Quota, Storage
 
 Description: Learn how to implement and manage CephFS quotas to control storage consumption in your Ceph cluster.
 

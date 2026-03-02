@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, CI/CD, DevOps, Automation, Workflows, Job Dependencies, Parallel Jobs
+Tags: GitHub Actions, CI/CD, DevOps, Automation, Workflow, Job Dependencies, Parallel Jobs
 
 Description: Learn how to orchestrate complex CI/CD pipelines using job dependencies in GitHub Actions.
 

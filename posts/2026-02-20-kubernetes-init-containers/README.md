@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Containers, Pod Lifecycle, Setup, Initialization
+Tags: Kubernetes, Init Container, Pod Lifecycle, Setup, Initialization
 
 Description: Learn how to use init containers to run setup tasks before main containers start including database migrations and config loading.
 

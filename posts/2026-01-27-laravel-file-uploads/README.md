@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Laravel, PHP, File Uploads, Storage, AWS S3, Validation, Cloud Storage
+Tags: Laravel, PHP, File Upload, Storage, AWS S3, Validation, Cloud Storage
 
 Description: Learn how to implement file uploads in Laravel including validation, storage configuration, S3 integration, and chunked uploads for large files.
 

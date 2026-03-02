@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Vertex AI, Embeddings, NLP, Semantic Search
+Tags: GCP, Vertex AI, Embedding, NLP, Semantic Search
 
 Description: Learn how to generate text embeddings using the Vertex AI Embedding API for semantic search, clustering, and similarity applications.
 

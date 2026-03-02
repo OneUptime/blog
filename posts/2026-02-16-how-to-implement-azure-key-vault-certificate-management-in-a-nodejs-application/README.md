@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Key Vault, Certificates, Node.js, Security, TLS, SDK, Cloud
+Tags: Azure Key Vault, Certificate, Node.js, Security, TLS, SDK, Cloud
 
 Description: Manage TLS certificates programmatically using Azure Key Vault in a Node.js application with automatic renewal, rotation, and monitoring.
 

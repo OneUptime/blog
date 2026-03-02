@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditionals, File Operations, Automation
+Tags: Ansible, Conditional, File Operations, Automation
 
 Description: Learn how to read file content on remote hosts and use it in Ansible when conditionals for decision-making based on file data.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Oracle Cloud, OCI, Infrastructure as Code
+Tags: Terraform, Provider, Oracle Cloud, OCI, Infrastructure as Code
 
 Description: A detailed guide to configuring the Oracle Cloud Infrastructure (OCI) provider in Terraform for managing compute, networking, databases, and more.
 

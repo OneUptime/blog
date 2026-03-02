@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Cluster Upgrades, Operations
+Tags: ArgoCD, GitOps, Kubernetes, Cluster Upgrade, Operations
 
 Description: Learn how to safely manage ArgoCD during Kubernetes cluster upgrades, including pre-upgrade checks, sync window configuration, and post-upgrade validation.
 

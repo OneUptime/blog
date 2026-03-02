@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Key Vault, Private Endpoints, Private Link, Virtual Network, Network Security, Zero Trust
+Tags: Azure, Key Vault, Private Endpoint, Private Link, Virtual Network, Network Security, Zero Trust
 
 Description: Learn how to set up private endpoints for Azure Key Vault to ensure that all traffic stays within your virtual network and never traverses the public internet.
 

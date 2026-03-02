@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Variables, Automation
+Tags: Ansible, Plugin, Variables, Automation
 
 Description: Learn how to build custom Ansible vars plugins to dynamically inject variables from external sources like databases, APIs, cloud services, and secret managers during playbook execution.
 

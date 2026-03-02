@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, Containers, Kernel, Security
+Tags: Ubuntu, Linux, Container, Kernel, Security
 
 Description: A thorough guide to Linux namespaces on Ubuntu, explaining how each namespace type works and how they isolate system resources for containers and processes.
 

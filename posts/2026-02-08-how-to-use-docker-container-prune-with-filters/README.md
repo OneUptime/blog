@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, docker prune, containers, cleanup, filters, disk space, maintenance
+Tags: Docker, Docker Prune, Container, Cleanup, Filter, Disk Space, Maintenance
 
 Description: Learn how to selectively remove stopped Docker containers using docker container prune with label and time filters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Troubleshooting, Debug Exporter, Pipelines, Configuration
+Tags: OpenTelemetry, Collector, Troubleshooting, Debug Exporter, Pipeline, Configuration
 
 Description: Learn how to leverage the OpenTelemetry Debug Exporter to troubleshoot and validate your collector pipelines with practical examples and configuration patterns.
 

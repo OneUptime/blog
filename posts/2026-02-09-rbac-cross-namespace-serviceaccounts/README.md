@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, RBAC, ServiceAccounts, Namespace, Security
+Tags: Kubernetes, RBAC, ServiceAccount, Namespace, Security
 
 Description: Learn how to configure RBAC RoleBindings that grant permissions to ServiceAccounts from different namespaces, enabling secure cross-namespace service communication patterns.
 

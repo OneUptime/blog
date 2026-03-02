@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Security Command Center, CIS Benchmarks, Compliance, Cloud Security
+Tags: GCP, Security Command Center, CIS Benchmark, Compliance, Cloud Security
 
 Description: Learn how to use Security Command Center compliance reports to track your GCP environment against CIS benchmark standards and maintain continuous compliance.
 

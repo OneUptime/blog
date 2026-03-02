@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Required Providers, Configuration, Infrastructure as Code, DevOps
+Tags: Terraform, Provider, Required Providers, Configuration, Infrastructure as Code, DevOps
 
 Description: Learn how to use the required_providers block in Terraform to declare provider dependencies with explicit sources, version constraints, and organizational standards for reproducible infrastructure.
 

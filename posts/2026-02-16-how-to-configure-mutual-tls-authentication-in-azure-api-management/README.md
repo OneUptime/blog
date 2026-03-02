@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, API Management, mTLS, Security, Certificates, Authentication
+Tags: Azure, API Management, mTLS, Security, Certificate, Authentication
 
 Description: Learn how to configure mutual TLS (mTLS) authentication in Azure API Management for client certificate-based API security.
 

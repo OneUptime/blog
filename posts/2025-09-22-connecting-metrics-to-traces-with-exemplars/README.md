@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Metrics, Traces, Exemplars, Correlation, Histograms, Performance
+Tags: OpenTelemetry, Metrics, Traces, Exemplars, Correlation, Histogram, Performance
 
 Description: A hands-on guide to exemplars, how they connect metric points to the exact trace that caused them, why they matter for faster debugging and cost efficiency.
 

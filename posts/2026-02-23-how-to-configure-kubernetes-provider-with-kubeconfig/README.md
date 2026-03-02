@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Kubeconfig, Providers, DevOps, Infrastructure as Code
+Tags: Terraform, Kubernetes, kubeconfig, Provider, DevOps, Infrastructure as Code
 
 Description: Learn how to configure the Terraform Kubernetes provider using kubeconfig files for authentication, including multi-cluster setups and context switching patterns.
 

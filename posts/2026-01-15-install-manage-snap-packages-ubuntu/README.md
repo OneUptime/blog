@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Snap, Package Management, Applications, Tutorial
+Tags: Ubuntu, Snap, Package Management, Application, Tutorial
 
 Description: Complete guide to using Snap packages on Ubuntu for installing, updating, and managing containerized applications.
 

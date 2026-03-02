@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, DAPR, Microservices, Sidecar, Kubernetes, Service Invocation, Pub/Sub
+Tags: AKS, Dapr, Microservices, Sidecar, Kubernetes, Service Invocation, Pub/Sub
 
 Description: Complete guide to installing DAPR on AKS and configuring automatic sidecar injection for reliable microservice-to-microservice communication.
 

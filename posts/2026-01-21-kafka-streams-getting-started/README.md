@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Kafka, Kafka Streams, Stream Processing, Real-time Analytics, Java, Stateful Processing
+Tags: Apache Kafka, Kafka Streams, Stream Processing, Real-Time Analytics, Java, Stateful Processing
 
 Description: A comprehensive guide to getting started with Kafka Streams, covering stream processing fundamentals, topology building, stateless and stateful operations.
 

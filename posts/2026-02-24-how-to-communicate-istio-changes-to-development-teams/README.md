@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Service Mesh, DevOps, Communication, Teams
+Tags: Istio, Service Mesh, DevOps, Communication, Team
 
 Description: Practical advice on how to communicate Istio service mesh changes to development teams so they understand what is changing and why.
 

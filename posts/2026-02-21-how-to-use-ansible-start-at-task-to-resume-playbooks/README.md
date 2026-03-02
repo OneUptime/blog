@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Debugging, Playbooks, DevOps
+Tags: Ansible, Debugging, Playbook, DevOps
 
 Description: Learn how to use the Ansible start-at-task flag to resume playbook execution from a specific task after a failure.
 

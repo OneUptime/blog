@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connectors, Routing, Multi-Backend
+Tags: OpenTelemetry, Collector, Connector, Routing, Multi-Backend
 
 Description: Discover how to use the routing connector to intelligently route telemetry data to different backends based on attributes, resources, and conditions.
 

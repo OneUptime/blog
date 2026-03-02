@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Monitoring, Resources, CPU, Memory, DevOps
+Tags: Kubernetes, kubectl, Monitoring, Resource, CPU, Memory, DevOps
 
 Description: Learn how to use kubectl top to monitor CPU and memory usage in Kubernetes. This guide covers pod and node metrics, sorting and filtering, and integrating with scripts for resource management.
 

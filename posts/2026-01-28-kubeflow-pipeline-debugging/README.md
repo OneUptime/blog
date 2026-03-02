@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubeflow, Debugging, Pipelines, Troubleshooting, ML Ops
+Tags: Kubeflow, Debugging, Pipeline, Troubleshooting, ML Ops
 
 Description: Master the techniques for debugging failed Kubeflow pipelines, from inspecting logs and artifacts to handling common failure patterns and implementing retry strategies.
 

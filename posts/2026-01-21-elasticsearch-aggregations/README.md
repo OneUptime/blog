@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Aggregations, Analytics, Search, Data Analysis
+Tags: Elasticsearch, Aggregation, Analytics, Search, Data Analysis
 
 Description: A comprehensive guide to Elasticsearch aggregations, covering bucket, metric, and pipeline aggregations for building powerful analytics and data exploration features.
 

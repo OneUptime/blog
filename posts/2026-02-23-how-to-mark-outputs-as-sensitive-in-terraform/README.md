@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Outputs, Security, Sensitive Data, Infrastructure as Code
+Tags: Terraform, Output, Security, Sensitive Data, Infrastructure as Code
 
 Description: Learn how to use the sensitive flag on Terraform outputs to prevent secrets from being displayed in terminal output, logs, and when consumed by other modules.
 

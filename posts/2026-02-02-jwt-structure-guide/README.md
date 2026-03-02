@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: JWT, Authentication, Security, Tokens, API
+Tags: JWT, Authentication, Security, Token, API
 
 Description: A practical guide to understanding JSON Web Token structure, including the header, payload, and signature components, with code examples for creating and validating JWTs.
 

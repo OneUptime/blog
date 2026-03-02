@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, k3s, Observability, Edge Computing, Lightweight
+Tags: OpenTelemetry, Kubernetes, K3s, Observability, Edge Computing, Lightweight
 
 Description: A practical guide to deploying OpenTelemetry on k3s and other lightweight Kubernetes distributions for edge and resource-constrained environments.
 

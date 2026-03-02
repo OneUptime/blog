@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Terraform Cloud, Agents, Private Infrastructure, Networking, Security
+Tags: Terraform, HCP Terraform, Terraform Cloud, Agent, Private Infrastructure, Networking, Security
 
 Description: Learn how to deploy and use HCP Terraform agents to manage infrastructure behind firewalls, VPNs, and private networks without opening inbound ports.
 

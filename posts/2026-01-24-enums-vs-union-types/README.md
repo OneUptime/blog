@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Enums, Union Types, Type Safety, Best Practices, Design Patterns
+Tags: TypeScript, Enums, Union Types, Type Safety, Best Practices, Design Pattern
 
 Description: A comprehensive comparison of TypeScript enums and union types, helping you choose the right approach for your use cases with practical examples and best practices.
 

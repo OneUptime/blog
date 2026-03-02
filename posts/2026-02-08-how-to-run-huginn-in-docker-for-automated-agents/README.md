@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Huginn, Automation, Agents, Web Scraping, Docker Compose, Self-Hosted
+Tags: Docker, Huginn, Automation, Agent, Web Scraping, Docker Compose, Self-Hosted
 
 Description: Deploy Huginn in Docker to create automated agents that monitor websites, process data, and trigger actions on your behalf.
 

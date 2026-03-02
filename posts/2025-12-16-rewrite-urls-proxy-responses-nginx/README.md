@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Reverse Proxy, URL Rewriting, sub_filter, proxy_redirect, Response Modification
+Tags: NGINX, Reverse Proxy, URL Rewriting, sub_filter, proxy_redirect, Response Modification
 
 Description: Learn how to rewrite URLs in proxy responses using Nginx, including modifying redirect headers, HTML content, and handling absolute URLs in backend responses.
 

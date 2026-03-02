@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MACSec, Networking, Security, Encryption
+Tags: MACsec, Networking, Security, Encryption
 
 Description: A comprehensive guide to implementing MACSec (Media Access Control Security) encryption for Layer 2 network protection.
 

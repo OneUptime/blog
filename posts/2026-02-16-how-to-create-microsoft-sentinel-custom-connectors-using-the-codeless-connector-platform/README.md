@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Microsoft Sentinel, Custom Connectors, Codeless Connector Platform, SIEM, Data Ingestion, Security
+Tags: Azure, Microsoft Sentinel, Custom Connector, Codeless Connector Platform, SIEM, Data Ingestion, Security
 
 Description: A step-by-step guide to building custom data connectors for Microsoft Sentinel using the Codeless Connector Platform without writing backend code.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Templates, DevOps
+Tags: Ansible, Jinja2, Template, DevOps
 
 Description: Learn how to use Jinja2 comments in Ansible templates to document logic without affecting rendered output.
 

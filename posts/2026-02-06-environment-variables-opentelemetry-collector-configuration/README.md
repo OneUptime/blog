@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Configuration, Environment Variables, DevOps
+Tags: OpenTelemetry, Collector, Configuration, Environment Variable, DevOps
 
 Description: Master environment variable usage in OpenTelemetry Collector configurations for flexible, secure, and environment-specific deployments across different infrastructures.
 

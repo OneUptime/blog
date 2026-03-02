@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Pods, Dynamic Inventory, DevOps
+Tags: Ansible, Kubernetes, POD, Dynamic Inventory, DevOps
 
 Description: Learn how to build Ansible dynamic inventory from Kubernetes pods to manage and configure workloads running in your cluster.
 

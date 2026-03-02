@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, deadlines, timeouts, context cancellation, distributed systems, microservices, resilience
+Tags: gRPC, Deadlines, Timeout, Context Cancellation, Distributed Systems, Microservices, Resilience
 
 Description: Master gRPC deadline and timeout handling including deadline propagation, context cancellation, and strategies for preventing cascading failures in distributed systems.
 

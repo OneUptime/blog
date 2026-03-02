@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connectors, Configuration
+Tags: OpenTelemetry, Collector, Connector, Configuration
 
 Description: Troubleshoot OpenTelemetry Collector connector misconfigurations that pass validation but fail at runtime with unexpected behavior.
 

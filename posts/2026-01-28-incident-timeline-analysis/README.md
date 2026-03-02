@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Incident Management, SRE, Timeline Analysis, Postmortems, Root Cause Analysis
+Tags: Incident Management, SRE, Timeline Analysis, Postmortem, Root Cause Analysis
 
 Description: Learn how to construct and analyze incident timelines to identify root causes, improve response times, and prevent future incidents.
 

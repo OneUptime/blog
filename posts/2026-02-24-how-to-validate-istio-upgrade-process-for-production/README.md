@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Upgrades, Kubernetes, Production, Canary
+Tags: Istio, Upgrade, Kubernetes, Production, Canary
 
 Description: A hands-on guide to validating your Istio upgrade process for production environments using canary upgrades and pre-flight checks.
 

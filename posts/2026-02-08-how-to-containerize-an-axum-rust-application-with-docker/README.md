@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Axum, Rust, Containerization, Backend, DevOps, Tokio, Async
+Tags: Docker, axum, Rust, Containerization, Backend, DevOps, tokio, Async
 
 Description: Step-by-step guide to containerizing Axum web applications in Rust with Docker for production-grade deployments
 

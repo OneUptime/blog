@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ceph, CephFS, Snapshots, Storage
+Tags: Ceph, CephFS, Snapshot, Storage
 
 Description: A complete guide to implementing CephFS snapshots for point-in-time data protection. Learn how to create, manage, schedule, and restore snapshots in your Ceph distributed file system.
 

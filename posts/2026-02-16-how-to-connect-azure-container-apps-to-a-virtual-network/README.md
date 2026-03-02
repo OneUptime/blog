@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Container Apps, Virtual Network, VNet, Networking, Security, Private Endpoints
+Tags: Azure, Container Apps, Virtual Network, VNet, Networking, Security, Private Endpoint
 
 Description: Learn how to deploy Azure Container Apps into a virtual network for private connectivity, network isolation, and secure access to backend resources.
 

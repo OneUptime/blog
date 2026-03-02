@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Application Gateway, Session Affinity, Cookies, Sticky Sessions, Load Balancing, Web Applications
+Tags: Azure, Application Gateway, Session Affinity, Cookies, Sticky Sessions, Load Balancing, Web Application
 
 Description: Configure cookie-based session affinity on Azure Application Gateway to keep user sessions pinned to the same backend server.
 

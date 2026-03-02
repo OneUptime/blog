@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Dataflow, Apache Beam, Data Enrichment, Side Inputs
+Tags: GCP, Google Cloud Dataflow, Apache Beam, Data Enrichment, Side Input
 
 Description: Learn how to use Apache Beam side inputs in Dataflow pipelines to enrich streaming data with lookup tables, reference data, and slowly changing dimensions.
 

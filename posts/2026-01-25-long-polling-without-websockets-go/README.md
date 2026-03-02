@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Long Polling, HTTP, Real-time, Web Development
+Tags: Go, Long Polling, HTTP, Real-Time, Web Development
 
 Description: Learn how to implement long polling in Go for real-time updates when WebSockets are not available or practical, with production-ready patterns and common pitfalls to avoid.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Applications
+Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Application
 
 Description: Learn how to diagnose and fix the ArgoCD unable to create application error including permission issues, project restrictions, invalid specs, and namespace problems.
 

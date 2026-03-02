@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Connection Pooling, Performance, Resource Management, Message Queues, DevOps
+Tags: RabbitMQ, Connection Pooling, Performance, Resource Management, Message Queue, DevOps
 
 Description: Learn how to implement connection pooling for RabbitMQ to improve performance, reduce resource usage, and build resilient messaging applications.
 

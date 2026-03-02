@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Lifetimes, References, Borrow Checker, Memory Safety
+Tags: Rust, Lifetimes, Reference, Borrow Checker, Memory Safety
 
 Description: Learn when and how to use explicit lifetime annotations in Rust. Understand lifetime elision rules and how to annotate functions, structs, and impl blocks correctly.
 

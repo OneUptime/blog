@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Policy, Encryption, Storage Accounts, Compliance, Security, Governance
+Tags: Azure, Azure Policy, Encryption, Storage Account, Compliance, Security, Governance
 
 Description: Step-by-step guide to configuring Azure Policy definitions and assignments that enforce encryption at rest on all Azure Storage accounts across your subscriptions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Providers, Tagging, Cost Management, Infrastructure as Code
+Tags: Terraform, AWS, Provider, Tagging, Cost Management, Infrastructure as Code
 
 Description: Learn how to configure default tags in the Terraform AWS provider to automatically apply consistent tags across all your AWS resources for cost tracking and compliance.
 

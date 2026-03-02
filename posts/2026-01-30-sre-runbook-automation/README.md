@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: SRE, Automation, Runbooks, DevOps
+Tags: SRE, Automation, Runbook, DevOps
 
 Description: Automate operational runbooks to reduce toil and response time with scripted remediation, approval workflows, and audit trails.
 

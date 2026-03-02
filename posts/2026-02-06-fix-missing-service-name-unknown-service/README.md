@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Configuration, Resources, Service Name
+Tags: OpenTelemetry, Configuration, Resource, Service Name
 
 Description: Fix the unknown_service problem in your tracing backend by correctly setting the service.name resource attribute in OpenTelemetry.
 

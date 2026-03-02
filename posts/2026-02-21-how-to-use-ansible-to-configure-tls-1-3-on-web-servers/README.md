@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, TLS 1.3, Nginx, Apache, Web Security
+Tags: Ansible, TLS 1.3, NGINX, Apache, Web Security
 
 Description: Configure TLS 1.3 on Nginx and Apache web servers using Ansible playbooks for faster, more secure HTTPS connections across your fleet.
 

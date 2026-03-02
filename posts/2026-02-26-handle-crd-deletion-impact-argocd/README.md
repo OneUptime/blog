@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, CRDs, Resource Management
+Tags: ArgoCD, GitOps, Kubernetes, CRD, Resource Management
 
 Description: Learn how to safely handle CRD deletion in ArgoCD to prevent cascade deletion of custom resources and avoid breaking your cluster.
 

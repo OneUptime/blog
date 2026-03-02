@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Caching, Performance, Web Development, HTTP Headers, CDN, Nginx, Apache
+Tags: Caching, Performance, Web Development, HTTP Headers, CDN, NGINX, Apache
 
 Description: A comprehensive guide to configuring browser caching for web applications, covering HTTP cache headers, cache strategies, and implementation examples for popular web servers.
 

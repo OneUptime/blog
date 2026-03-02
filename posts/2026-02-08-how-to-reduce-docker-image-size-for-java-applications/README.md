@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, java, image optimization, jlink, multi-stage builds, spring boot, jre
+Tags: Docker, Java, Image Optimization, jlink, Multi-Stage Build, Spring Boot, jre
 
 Description: Shrink Java Docker images from 600MB+ to under 80MB with jlink, multi-stage builds, and layering
 

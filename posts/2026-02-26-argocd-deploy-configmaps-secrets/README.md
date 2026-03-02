@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ConfigMaps, Secrets Management
+Tags: ArgoCD, GitOps, Kubernetes, ConfigMap, Secrets Management
 
 Description: Learn how to manage Kubernetes ConfigMaps and Secrets with ArgoCD, including secret encryption strategies, external secret operators, and configuration change detection.
 

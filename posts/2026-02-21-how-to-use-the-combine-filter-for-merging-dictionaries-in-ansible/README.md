@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Dictionaries, Configuration Management, DevOps
+Tags: Ansible, Filter, Dictionaries, Configuration Management, DevOps
 
 Description: Learn how to merge dictionaries in Ansible using the combine filter to override defaults, layer configurations, and build dynamic variable structures.
 

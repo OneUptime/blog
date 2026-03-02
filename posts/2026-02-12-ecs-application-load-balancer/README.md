@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, ALB, Load Balancer, Containers
+Tags: AWS, ECS, ALB, Load Balancer, Container
 
 Description: A complete guide to setting up an Application Load Balancer with ECS, covering target groups, health checks, path-based routing, SSL termination, and multi-service configurations.
 

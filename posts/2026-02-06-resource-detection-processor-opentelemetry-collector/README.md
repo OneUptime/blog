@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Resource Detection, Cloud Providers, Infrastructure, Observability
+Tags: OpenTelemetry, Collector, Processor, Resource Detection, Cloud Provider, Infrastructure, Observability
 
 Description: Learn how to configure the resource detection processor in OpenTelemetry Collector to automatically discover and add cloud provider, container, and system metadata to your telemetry data.
 

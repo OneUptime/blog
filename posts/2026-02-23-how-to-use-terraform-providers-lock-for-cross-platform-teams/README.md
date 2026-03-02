@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Lock File, Cross-Platform, DevOps, CI/CD
+Tags: Terraform, Provider, Lock File, Cross-Platform, DevOps, CI/CD
 
 Description: Learn how to use terraform providers lock to generate consistent dependency lock files across different operating systems and architectures for your team.
 

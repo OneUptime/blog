@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Rust, Compilers, Parsing, Programming Languages
+Tags: Rust, Compiler, Parsing, Programming Languages
 
 Description: Build a compiler frontend in Rust covering lexical analysis, parsing with recursive descent, AST construction, and semantic analysis fundamentals.
 

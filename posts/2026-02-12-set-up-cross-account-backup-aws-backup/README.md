@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Backup, Cross-Account, Organizations, Data Protection
+Tags: AWS, Backup, Cross-Account, Organization, Data Protection
 
 Description: Configure AWS Backup cross-account backup to copy recovery points between AWS accounts using AWS Organizations, providing an additional layer of data protection.
 

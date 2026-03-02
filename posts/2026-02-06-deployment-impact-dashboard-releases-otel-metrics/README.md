@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Deployments, Grafana, Release Tracking
+Tags: OpenTelemetry, Deployment, Grafana, Release Tracking
 
 Description: Overlay deployment markers on OpenTelemetry metrics in Grafana to measure the impact of each release on performance.
 

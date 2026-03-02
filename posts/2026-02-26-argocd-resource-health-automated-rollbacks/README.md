@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Rollbacks, Deployment Safety
+Tags: ArgoCD, GitOps, Kubernetes, Rollback, Deployment Safety
 
 Description: Learn how to combine ArgoCD resource health checks with automated rollback strategies to automatically revert failed deployments when health degrades after a sync operation.
 

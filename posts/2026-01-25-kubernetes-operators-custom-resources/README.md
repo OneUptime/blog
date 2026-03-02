@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Operators, Custom Resources, CRD, Controllers, DevOps
+Tags: Kubernetes, Operator, Custom Resource, CRD, Controller, DevOps
 
 Description: Learn how to set up and use Kubernetes Operators for managing custom resources.
 

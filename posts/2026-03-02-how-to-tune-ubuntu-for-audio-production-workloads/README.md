@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Audio Production, Real-Time, Jack, Low Latency
+Tags: Ubuntu, Audio Production, Real-Time, JACK, Low Latency
 
 Description: Configure Ubuntu for professional audio production with low-latency kernel, JACK audio server, CPU tuning, and real-time user permissions for reliable recording and processing.
 

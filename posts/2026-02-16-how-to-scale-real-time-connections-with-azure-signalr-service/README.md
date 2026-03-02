@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, SignalR, Scaling, Real-Time, WebSockets, Performance, Cloud
+Tags: Azure, SignalR, Scaling, Real-Time, WebSocket, Performance, Cloud
 
 Description: Learn how to scale Azure SignalR Service to handle thousands or millions of concurrent real-time connections with proper configuration and architecture.
 

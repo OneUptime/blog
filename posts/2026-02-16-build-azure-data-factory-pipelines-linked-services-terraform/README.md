@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Terraform, Data Factory, Data Engineering, ETL, Infrastructure as Code, Data Pipelines
+Tags: Azure, Terraform, Data Factory, Data Engineering, ETL, Infrastructure as Code, Data Pipeline
 
 Description: Build Azure Data Factory pipelines and linked services with Terraform for version-controlled, repeatable data integration infrastructure.
 

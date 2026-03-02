@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, Resource Quotas, Limits, Capacity Planning, Observability
+Tags: OpenTelemetry, Kubernetes, Resource Quota, Limit, Capacity Planning, Observability
 
 Description: Learn how to monitor Kubernetes resource quotas, limits, and requests using OpenTelemetry to prevent capacity issues and optimize cluster utilization.
 

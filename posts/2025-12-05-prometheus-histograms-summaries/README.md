@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Histograms, Summaries, Metrics, Latency, PromQL, Observability
+Tags: Prometheus, Histogram, Summaries, Metrics, Latency, PromQL, Observability
 
 Description: Master Prometheus histograms and summaries for accurate latency measurement, including when to use each type, bucket configuration, and percentile calculations.
 

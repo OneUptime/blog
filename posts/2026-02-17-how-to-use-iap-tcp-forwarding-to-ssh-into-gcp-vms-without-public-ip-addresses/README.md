@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, IAP, TCP Forwarding, SSH, Security, Virtual Machines
+Tags: GCP, IAP, TCP Forwarding, SSH, Security, Virtual Machine
 
 Description: Learn how to use Identity-Aware Proxy TCP forwarding to securely SSH into Google Cloud VMs that have no public IP addresses, eliminating the need for bastion hosts.
 

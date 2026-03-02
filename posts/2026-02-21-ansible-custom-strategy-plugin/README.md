@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Strategy, Execution, Python
+Tags: Ansible, Plugin, Strategy, Execution, Python
 
 Description: Build a custom Ansible strategy plugin to control how tasks are distributed and executed across your infrastructure hosts.
 

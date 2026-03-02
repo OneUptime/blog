@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Autocomplete, Search, Completion Suggester, Type-ahead, UX
+Tags: Elasticsearch, Autocomplete, Search, Completion Suggester, Type-Ahead, UX
 
 Description: Learn how to implement fast and accurate autocomplete functionality in Elasticsearch using completion suggesters, edge n-grams, and search-as-you-type fields for optimal user experience.
 

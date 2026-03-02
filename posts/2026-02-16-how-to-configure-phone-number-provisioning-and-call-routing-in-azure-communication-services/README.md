@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Communication Services, Phone Numbers, Call Routing, PSTN, VoIP, Telephony, Cloud Communications
+Tags: Azure Communication Services, Phone Numbers, Call Routing, PSTN, VoIP, Telephony, Cloud Communication
 
 Description: Learn how to provision phone numbers and configure call routing in Azure Communication Services for building voice-enabled cloud applications.
 

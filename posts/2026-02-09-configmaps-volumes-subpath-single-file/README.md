@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ConfigMaps, Volumes
+Tags: Kubernetes, ConfigMap, VOLUME
 
 Description: Learn how to use subPath to mount individual ConfigMap files without overwriting existing directories, enabling targeted configuration updates in Kubernetes pods.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Airflow, DAG, Data Pipelines, Workflow Orchestration, ETL, Python
+Tags: Apache Airflow, DAG, Data Pipeline, Workflow Orchestration, ETL, Python
 
 Description: A practical guide to configuring Apache Airflow DAGs including scheduling, dependencies, task groups, variables, and production best practices.
 

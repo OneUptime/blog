@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Vault, Security, Tokens, Roles
+Tags: Vault, Security, Token, Roles
 
 Description: Learn how to create and configure Vault token roles as reusable templates for generating tokens with predefined policies, TTLs, and security constraints.
 

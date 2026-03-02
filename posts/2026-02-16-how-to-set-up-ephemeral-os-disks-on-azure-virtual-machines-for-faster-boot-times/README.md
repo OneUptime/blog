@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machines, Ephemeral Disks, Performance, Boot Times, Cost Optimization
+Tags: Azure, Virtual Machine, Ephemeral Disks, Performance, Boot Time, Cost Optimization
 
 Description: Learn how to configure ephemeral OS disks on Azure VMs to achieve faster boot times, lower latency, and reduced storage costs.
 

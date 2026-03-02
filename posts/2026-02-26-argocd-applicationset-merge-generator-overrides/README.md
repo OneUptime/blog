@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Merge Generator
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Merge Generator
 
 Description: Learn how to use the ArgoCD ApplicationSet merge generator to combine and override parameter values from multiple generators for flexible application configuration.
 

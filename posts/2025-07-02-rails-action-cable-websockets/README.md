@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby, Rails, Action Cable, WebSockets, Real-time, Pub/Sub
+Tags: Ruby, Rails, Action Cable, WebSocket, Real-Time, Pub/Sub
 
 Description: Learn how to implement real-time features in Ruby on Rails using Action Cable.
 

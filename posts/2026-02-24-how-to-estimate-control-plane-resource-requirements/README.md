@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Control Plane, Resource Planning, istiod
+Tags: Istio, Kubernetes, Control Plane, Resource Planning, Istiod
 
 Description: A practical guide to estimating CPU, memory, and replica requirements for the Istio control plane based on mesh size and configuration complexity.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kibana, Elasticsearch, Dashboards, Log Analytics, Visualization, Observability
+Tags: Kibana, Elasticsearch, Dashboard, Log Analytics, Visualization, Observability
 
 Description: A comprehensive guide to building log dashboards in Kibana, covering data views, visualizations, dashboard design, and best practices for effective log analysis.
 

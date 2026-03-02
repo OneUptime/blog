@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Memory Leaks, Debugging, Performance, Mobile Development, Optimization
+Tags: React Native, Memory Leak, Debugging, Performance, Mobile Development, Optimization
 
 Description: Learn how to identify, debug, and fix memory leaks in React Native applications using various tools and best practices.
 

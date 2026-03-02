@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, GraphQL, Strawberry, API, FastAPI, Flask, Type Safety, Queries, Mutations, Subscriptions
+Tags: Python, GraphQL, Strawberry, API, FastAPI, Flask, Type Safety, Queries, Mutation, Subscription
 
 Description: Learn how to build type-safe GraphQL APIs in Python using Strawberry. This guide covers schema definition, queries, mutations, subscriptions, authentication, and integration with FastAPI and Flask.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Files, NFS, Linux, File Shares, Mount, Azure Storage
+Tags: Azure, Azure Files, NFS, Linux, File Share, Mount, Azure Storage
 
 Description: A hands-on guide to mounting Azure File Shares on Linux using the NFS protocol, covering setup, authentication, performance tuning, and troubleshooting.
 

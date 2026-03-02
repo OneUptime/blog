@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Vault, Security, Secrets, Development
+Tags: Vault, Security, Secret, Development
 
 Description: Learn how to build custom Vault secret engines with Go plugins to manage specialized credentials and secrets for your infrastructure.
 

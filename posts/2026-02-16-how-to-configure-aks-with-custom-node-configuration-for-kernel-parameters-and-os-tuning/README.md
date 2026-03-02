@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Node Configuration, Kernel Tuning, sysctl, Kubernetes, Performance, Azure
+Tags: AKS, Node Configuration, Kernel Tuning, Sysctl, Kubernetes, Performance, Azure
 
 Description: Learn how to customize AKS node OS settings including kernel parameters, sysctl values, and kubelet configuration for performance-sensitive workloads.
 

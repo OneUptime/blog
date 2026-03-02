@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Keepalived, VRRP, High Availability, Failover, Tutorial
+Tags: Ubuntu, keepalived, VRRP, High Availability, Failover, Tutorial
 
 Description: Complete guide to setting up Keepalived for high availability with virtual IP failover on Ubuntu.
 

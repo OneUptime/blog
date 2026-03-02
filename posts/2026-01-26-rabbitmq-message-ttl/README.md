@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Message TTL, Time-To-Live, Message Expiration, Message Queues, DevOps
+Tags: RabbitMQ, Message TTL, Time-To-Live, Message Expiration, Message Queue, DevOps
 
 Description: Learn how to implement message TTL in RabbitMQ to automatically expire messages, prevent queue buildup, and implement time-sensitive messaging patterns.
 

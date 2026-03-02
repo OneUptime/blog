@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: LangChain, Vector Stores, Embeddings, AI, Machine Learning, RAG, Semantic Search, Python
+Tags: LangChain, Vector Store, Embedding, AI, Machine Learning, RAG, Semantic Search, Python
 
 Description: Learn how to implement vector stores in LangChain for building powerful semantic search and retrieval-augmented generation (RAG) applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Custom Propagators, Legacy Systems, Context Propagation, Distributed Tracing, Migration
+Tags: OpenTelemetry, Custom Propagator, Legacy Systems, Context Propagation, Distributed Tracing, Migration
 
 Description: Learn how to build custom OpenTelemetry propagators that bridge trace context with legacy systems using proprietary header formats.
 

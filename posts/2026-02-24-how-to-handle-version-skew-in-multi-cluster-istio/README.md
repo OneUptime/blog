@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Multi-Cluster, Version Management, Kubernetes, Upgrades
+Tags: Istio, Multi-Cluster, Version Management, Kubernetes, Upgrade
 
 Description: Practical strategies for managing version skew between Istio control planes and data planes across multiple Kubernetes clusters.
 

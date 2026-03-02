@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, New Relic, Monitoring, Observability, Providers, Infrastructure as Code
+Tags: Terraform, New Relic, Monitoring, Observability, Provider, Infrastructure as Code
 
 Description: Learn how to configure the Terraform New Relic provider to manage alert policies, dashboards, synthetic monitors, and NRQL conditions as infrastructure code.
 

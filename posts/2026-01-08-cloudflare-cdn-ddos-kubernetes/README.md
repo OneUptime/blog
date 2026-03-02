@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: cloudflare, cdn, ddos-protection, kubernetes, waf, ssl, caching, security, web-application-firewall
+Tags: Cloudflare, CDN, ddos-protection, Kubernetes, WAF, SSL, Caching, Security, web-application-firewall
 
 Description: Learn how to configure Cloudflare as a CDN and DDoS protection layer for your Kubernetes services with SSL modes, caching rules, WAF configuration, and security best practices.
 

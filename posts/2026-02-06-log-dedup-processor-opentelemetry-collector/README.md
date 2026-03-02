@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Logs, Deduplication, Cost Optimization, Noise Reduction
+Tags: OpenTelemetry, Collector, Processor, Logs, Deduplication, Cost Optimization, Noise Reduction
 
 Description: Learn how to configure the log deduplication processor in OpenTelemetry Collector to eliminate duplicate log entries, reduce storage costs, minimize noise.
 

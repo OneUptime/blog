@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, SES, Python, Boto3, Email
+Tags: AWS, SES, Python, boto3, Email
 
 Description: A complete guide to sending emails from Python applications using Amazon SES and Boto3, covering simple emails, templates, attachments, and production best practices.
 

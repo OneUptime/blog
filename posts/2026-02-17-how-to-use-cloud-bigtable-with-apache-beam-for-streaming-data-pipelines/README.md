@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Bigtable, Apache Beam, Dataflow, Streaming, Data Pipelines
+Tags: GCP, Cloud Bigtable, Apache Beam, Dataflow, Streaming, Data Pipeline
 
 Description: Build streaming data pipelines that write to Cloud Bigtable using Apache Beam and Google Cloud Dataflow for real-time data processing at scale.
 

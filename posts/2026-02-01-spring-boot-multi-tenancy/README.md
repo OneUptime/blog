@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, Multi-tenancy, SaaS, Database, Architecture
+Tags: Java, Spring Boot, Multi-Tenancy, SaaS, Database, Architecture
 
 Description: A practical guide to implementing multi-tenancy in Spring Boot using schema-based and database-based approaches.
 

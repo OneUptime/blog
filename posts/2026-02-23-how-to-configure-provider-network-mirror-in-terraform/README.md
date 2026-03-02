@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Network Mirror, Registry, Infrastructure as Code, DevOps
+Tags: Terraform, Provider, Network Mirror, Registry, Infrastructure as Code, DevOps
 
 Description: Learn how to configure and run a Terraform provider network mirror that serves provider packages over HTTPS for teams in private networks, corporate environments, and multi-region setups.
 

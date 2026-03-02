@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Service Bus, Competing Consumers, Scalability, Load Balancing, Azure, Messaging, Design Patterns
+Tags: Azure Service Bus, Competing Consumers, Scalability, Load Balancing, Azure, Messaging, Design Pattern
 
 Description: Implement the competing consumers pattern with Azure Service Bus to scale message processing horizontally across multiple workers with proper concurrency control.
 

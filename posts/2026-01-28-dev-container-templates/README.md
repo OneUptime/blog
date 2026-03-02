@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dev Containers, Docker, VS Code, Development Environment, Templates, DevOps
+Tags: Dev Containers, Docker, VS Code, Development Environment, Template, DevOps
 
 Description: A practical guide to creating and implementing reusable Dev Container templates that standardize development environments across your team.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: BullMQ, Node.js, Redis, Timeouts, Job Processing, Error Handling, Reliability, Best Practices
+Tags: BullMQ, Node.js, Redis, Timeout, Job Processing, Error Handling, Reliability, Best Practices
 
 Description: A comprehensive guide to implementing job timeouts in BullMQ, including timeout strategies, graceful cancellation, partial result handling.
 

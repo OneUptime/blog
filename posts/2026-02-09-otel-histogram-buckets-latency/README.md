@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Histograms, Latency, Metrics, Performance
+Tags: OpenTelemetry, Histogram, Latency, Metrics, Performance
 
 Description: Learn how to configure OpenTelemetry histogram bucket boundaries for accurate latency tracking and performance analysis with appropriate granularity for your application needs.
 

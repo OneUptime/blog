@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Data Transformation, Filters, Lists
+Tags: Ansible, Data Transformation, Filter, Lists
 
 Description: Learn how to flatten nested lists in Ansible using the flatten filter with depth control, plus practical patterns for handling multi-level data structures.
 

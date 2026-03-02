@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Timeouts, Traffic Management, VirtualService, Resilience
+Tags: Istio, Timeout, Traffic Management, VirtualService, Resilience
 
 Description: A practical guide to configuring request timeouts in Istio using VirtualService to prevent slow upstream services from cascading failures.
 

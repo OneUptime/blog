@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Terraform Enterprise, Vault, HashiCorp Vault, Secrets, Security
+Tags: Terraform, Terraform Enterprise, Vault, HashiCorp Vault, Secret, Security
 
 Description: Learn how to integrate Terraform Enterprise with HashiCorp Vault for dynamic credentials, secrets injection, and secure secret management in your Terraform workflows.
 

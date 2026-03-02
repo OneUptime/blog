@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Google Cloud, GCP, Cloud Monitoring, Cloud Trace, Cloud Logging
+Tags: OpenTelemetry, Collector, Exporter, Google Cloud, GCP, Cloud Monitoring, Cloud Trace, Cloud Logging
 
 Description: Complete guide to configuring the Google Cloud Operations exporter for sending OpenTelemetry data to Google Cloud Monitoring, Cloud Trace, and Cloud Logging.
 

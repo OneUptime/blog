@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AI Platform, Google Cloud, Machine Learning, Vertex AI, Training, Errors, GCP
+Tags: AI Platform, Google Cloud, Machine Learning, Vertex AI, Training, Error, GCP
 
 Description: Learn how to diagnose and fix common Google Cloud AI Platform and Vertex AI training errors including resource issues, permission problems, and code failures.
 

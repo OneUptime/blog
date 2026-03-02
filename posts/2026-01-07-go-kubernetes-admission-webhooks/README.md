@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Kubernetes, Webhooks, Security, DevOps, Admission Controllers
+Tags: Go, Kubernetes, Webhook, Security, DevOps, Admission Controller
 
 Description: Build Kubernetes admission webhooks in Go for validating and mutating pod configurations to enforce security policies and best practices.
 

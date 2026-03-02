@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: .NET, C#, Dependency Injection, IServiceCollection, ASP.NET Core, Extensions, Architecture
+Tags: .NET, C#, Dependency Injection, IServiceCollection, ASP.NET Core, Extension, Architecture
 
 Description: Learn how to build production-ready custom dependency injection extensions in .NET.
 

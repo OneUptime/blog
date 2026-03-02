@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Logrotate, Logs, System Administration, Maintenance, Tutorial
+Tags: Ubuntu, logrotate, Logs, System Administration, Maintenance, Tutorial
 
 Description: Master log rotation on Ubuntu with logrotate to manage log file sizes, automate cleanup, and prevent disk space issues.
 

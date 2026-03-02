@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, ETL, Data Pipelines, Monitoring, Tracing, Data Engineering, Observability
+Tags: OpenTelemetry, ETL, Data Pipeline, Monitoring, Tracing, Data Engineering, Observability
 
 Description: Learn how to monitor ETL data pipelines with OpenTelemetry for tracking extraction, transformation, and loading stages with full observability.
 

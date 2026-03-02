@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Naming Conventions, Best Practices, Team Collaboration, Infrastructure as Code
+Tags: Terraform, Naming Convention, Best Practices, Team Collaboration, Infrastructure as Code
 
 Description: Design and implement consistent Terraform naming conventions across your organization to improve readability, enable automation, and simplify resource management.
 

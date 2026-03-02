@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Timeouts, Resource Management, Infrastructure as Code, Performance
+Tags: Terraform, Timeout, Resource Management, Infrastructure as Code, Performance
 
 Description: Learn strategies for handling long-running resource creation in Terraform, including custom timeouts, retry logic, and structuring configurations to work around slow provisioning.
 

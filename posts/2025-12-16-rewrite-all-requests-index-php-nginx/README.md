@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, PHP, URL Rewriting, Front Controller, Laravel, WordPress, Symfony
+Tags: NGINX, PHP, URL Rewriting, Front Controller, Laravel, WordPress, Symfony
 
 Description: Learn how to configure Nginx to route all requests through index.php for PHP frameworks using the front controller pattern, including configurations for Laravel, WordPress, and Symfony.
 

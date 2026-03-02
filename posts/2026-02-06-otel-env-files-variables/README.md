@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Environment Variables, Configuration, .env Files, Best Practices
+Tags: OpenTelemetry, Environment Variable, Configuration, .env Files, Best Practices
 
 Description: Use .env files and standard OTEL_* environment variables to manage OpenTelemetry configuration across development, staging, and production.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Power Automate, Azure Functions, Dataverse, Triggers, Serverless, Power Platform, Event-Driven
+Tags: Power Automate, Azure Functions, Dataverse, Trigger, Serverless, Power Platform, Event-Driven
 
 Description: Create a Power Automate flow that listens for Dataverse record changes and triggers Azure Functions for custom serverless processing.
 

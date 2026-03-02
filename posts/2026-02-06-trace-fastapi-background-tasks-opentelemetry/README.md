@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, FastAPI, Background Tasks, Python, Async, Spans
+Tags: OpenTelemetry, FastAPI, Background Tasks, Python, Async, Span
 
 Description: Learn how to properly instrument FastAPI background tasks with OpenTelemetry spans to maintain trace context and track async operations that run after response completion.
 

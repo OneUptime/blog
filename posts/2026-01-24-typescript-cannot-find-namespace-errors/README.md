@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Namespaces, Modules, Error Handling, Configuration, Type Definitions
+Tags: TypeScript, Namespace, Modules, Error Handling, Configuration, Type Definitions
 
 Description: A practical guide to diagnosing and fixing 'Cannot find namespace' errors in TypeScript projects, covering common causes and solutions.
 

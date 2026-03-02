@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, windows containers, windows server, containerization, DevOps, .NET, Windows
+Tags: Docker, Windows Containers, Windows Server, Containerization, DevOps, .NET, Windows
 
 Description: Get started with Windows containers in Docker, from installation and first container to understanding isolation modes and base images.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Outputs, Remote State, Cross-Configuration, Infrastructure as Code
+Tags: Terraform, Output, Remote State, Cross-Configuration, Infrastructure as Code
 
 Description: Learn how to share data between separate Terraform configurations using remote state data sources, including setup, access patterns, and security considerations.
 

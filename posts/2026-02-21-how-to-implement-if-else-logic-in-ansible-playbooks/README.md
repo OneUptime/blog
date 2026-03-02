@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Playbooks, Conditionals, Automation
+Tags: Ansible, Playbook, Conditional, Automation
 
 Description: Learn multiple ways to implement if/else branching logic in Ansible playbooks using when clauses, Jinja2 expressions, and block/rescue patterns.
 

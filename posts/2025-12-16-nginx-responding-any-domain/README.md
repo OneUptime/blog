@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, Web Server, DNS, Configuration, Security
+Tags: NGINX, Web Server, DNS, Configuration, Security
 
 Description: Learn why Nginx responds to any domain name and how to configure a proper default server block to control which domains your server accepts, improving security and preventing unwanted traffic.
 

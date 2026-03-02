@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, retry logic, exponential backoff, resilience, microservices, fault tolerance, distributed systems
+Tags: gRPC, Retry Logic, Exponential Backoff, Resilience, Microservices, Fault Tolerance, Distributed Systems
 
 Description: Learn how to implement robust retry logic with exponential backoff in gRPC services, including jitter, idempotency considerations, and retry budgets for building resilient distributed systems.
 

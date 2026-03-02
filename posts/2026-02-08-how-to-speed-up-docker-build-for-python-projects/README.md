@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, python, build optimization, pip, poetry, layer caching, multi-stage builds
+Tags: Docker, Python, Build Optimization, pip, Poetry, Layer Caching, Multi-Stage Build
 
 Description: Proven strategies to cut Docker build times for Python applications from minutes to seconds
 

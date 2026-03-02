@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Containers, DevOps, Learning Resource
+Tags: Docker, Container, DevOps, Learning Resource
 
 Description: Master docker cp, volume mounts, and when to use each approach for moving files between your host and running containers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cloudflare, Workers, KV Store, Edge Computing, Serverless
+Tags: Cloudflare, Worker, KV Store, Edge Computing, Serverless
 
 Description: Learn how to leverage Cloudflare Workers KV for globally distributed key-value storage at the edge.
 

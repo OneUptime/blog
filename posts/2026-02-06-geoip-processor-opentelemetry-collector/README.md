@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, GeoIP, Location, Observability, IP Enrichment
+Tags: OpenTelemetry, Collector, Processor, GeoIP, Location, Observability, IP Enrichment
 
 Description: Learn how to configure the GeoIP Processor in OpenTelemetry Collector to enrich telemetry data with geographical location information based on IP addresses.
 

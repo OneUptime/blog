@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Tasks, Import, Code Organization
+Tags: Ansible, Task, Import, Code Organization
 
 Description: Learn how to use import_tasks for static task inclusion in Ansible playbooks, with details on parse-time processing and best practices.
 

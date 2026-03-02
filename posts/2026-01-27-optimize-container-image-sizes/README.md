@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Containers, DevOps, Kubernetes, Performance, CI/CD
+Tags: Docker, Container, DevOps, Kubernetes, Performance, CI/CD
 
 Description: A comprehensive guide to reducing container image sizes through multi-stage builds, minimal base images, layer optimization, and other proven techniques that improve build times and deployment speed.
 

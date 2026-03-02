@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Neo4j, Graph Database, Databases, DevOps, Cypher
+Tags: Docker, Neo4j, Graph Database, Database, DevOps, Cypher
 
 Description: Step-by-step guide to deploying Neo4j graph database in Docker with Cypher queries and practical examples
 

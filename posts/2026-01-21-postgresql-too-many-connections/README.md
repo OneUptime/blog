@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Connections, Troubleshooting, PgBouncer, Performance
+Tags: PostgreSQL, Connection, Troubleshooting, PgBouncer, Performance
 
 Description: A comprehensive guide to diagnosing and resolving PostgreSQL 'too many connections' errors, covering connection limits, pooling solutions, and monitoring strategies.
 

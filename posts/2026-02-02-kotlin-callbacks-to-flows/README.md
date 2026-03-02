@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kotlin, Flow, Callbacks, Coroutines, Reactive
+Tags: Kotlin, Flow, Callback, Coroutines, Reactive
 
 Description: Learn how to convert callback-based APIs to Kotlin Flows for cleaner, more maintainable reactive code with proper error handling and cancellation support.
 

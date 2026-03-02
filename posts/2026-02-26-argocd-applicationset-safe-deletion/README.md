@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Safety
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Safety
 
 Description: Learn how to safely delete ArgoCD ApplicationSets without accidentally destroying generated applications and their deployed Kubernetes resources.
 

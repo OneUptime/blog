@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Kernel, sysctl, Hardening
+Tags: Ubuntu, Security, Kernel, Sysctl, Hardening
 
 Description: Learn how to harden Ubuntu system security by configuring kernel parameters through sysctl to protect against network attacks, privilege escalation, and information disclosure.
 

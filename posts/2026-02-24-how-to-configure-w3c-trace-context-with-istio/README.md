@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, W3C Trace Context, Tracing, OpenTelemetry, Standards
+Tags: Istio, W3C Trace Context, Tracing, OpenTelemetry, Standard
 
 Description: How to configure Istio to use the W3C Trace Context standard for distributed tracing, including header format, propagation, and migration from B3.
 

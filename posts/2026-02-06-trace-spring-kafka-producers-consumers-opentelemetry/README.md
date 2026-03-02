@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Spring Kafka, Producers, Consumers, Distributed Tracing, Java
+Tags: OpenTelemetry, Spring Kafka, Producer, Consumer, Distributed Tracing, Java
 
 Description: Comprehensive guide to implementing distributed tracing for Spring Kafka applications using OpenTelemetry, including producer and consumer instrumentation, context propagation.
 

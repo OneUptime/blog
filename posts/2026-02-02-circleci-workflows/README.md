@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CircleCI, CI/CD, Workflows, DevOps
+Tags: CircleCI, CI/CD, Workflow, DevOps
 
 Description: A comprehensive guide to creating CircleCI workflows with parallel jobs, sequential dependencies, approval gates, scheduled triggers, and advanced orchestration patterns.
 

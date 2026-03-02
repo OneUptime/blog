@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Load Balancers, AWS ALB, Cloud Infrastructure, High Availability
+Tags: Ansible, Load Balancer, AWS ALB, Cloud Infrastructure, High Availability
 
 Description: Manage cloud load balancers on AWS, Azure, and GCP using Ansible for automated traffic distribution and health monitoring.
 

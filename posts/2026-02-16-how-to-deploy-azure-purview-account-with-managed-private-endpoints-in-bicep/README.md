@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Purview, Bicep, Data Governance, Private Endpoints, Infrastructure as Code, Security
+Tags: Azure, Purview, Bicep, Data Governance, Private Endpoint, Infrastructure as Code, Security
 
 Description: Deploy Microsoft Purview (formerly Azure Purview) with managed private endpoints using Bicep for secure, network-isolated data governance and cataloging.
 

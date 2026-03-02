@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Troubleshooting, Docker, Containers
+Tags: AWS, ECS, Troubleshooting, Docker, Container
 
 Description: A practical troubleshooting guide for common Amazon ECS task failures, covering exit codes, resource limits, networking issues, and IAM permission problems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Server-Sent Events, SSE, Real-time, Streaming
+Tags: Go, Server-Sent Events, SSE, Real-Time, Streaming
 
 Description: A hands-on guide to implementing Server-Sent Events (SSE) in Go for real-time data streaming, covering the protocol, implementation patterns, and production considerations.
 

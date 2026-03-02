@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Nginx, Reverse Proxy, DevOps, Networking
+Tags: Ansible, NGINX, Reverse Proxy, DevOps, Networking
 
 Description: Set up Nginx as a reverse proxy with Ansible for web applications including WebSocket support, caching, and health checks.
 

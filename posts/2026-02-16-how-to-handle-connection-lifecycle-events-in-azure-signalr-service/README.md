@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, SignalR, Connection Lifecycle, Real-Time, WebSockets, Event Handling
+Tags: Azure, SignalR, Connection Lifecycle, Real-Time, WebSocket, Event Handling
 
 Description: Learn how to handle connection, disconnection, and reconnection events in Azure SignalR Service for robust real-time applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Ruby, Rails, ActionCable, WebSockets, Real-Time
+Tags: OpenTelemetry, Ruby, Rails, ActionCable, WebSocket, Real-Time
 
 Description: Master OpenTelemetry instrumentation for ActionCable WebSocket connections, channels, and broadcasts in Rails applications for real-time observability.
 

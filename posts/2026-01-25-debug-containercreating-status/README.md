@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Debugging, Troubleshooting, Containers, DevOps, Storage
+Tags: Kubernetes, Debugging, Troubleshooting, Container, DevOps, Storage
 
 Description: Learn how to diagnose and fix pods stuck in ContainerCreating status.
 

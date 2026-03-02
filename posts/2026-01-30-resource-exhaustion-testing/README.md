@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Testing, ChaosEngineering, Resources, Capacity
+Tags: Testing, ChaosEngineering, Resource, Capacity
 
 Description: A practical guide to stress testing your systems by deliberately exhausting CPU, memory, disk, and network resources to validate capacity limits and recovery behavior.
 

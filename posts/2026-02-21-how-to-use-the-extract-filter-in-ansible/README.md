@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Data Extraction, Automation, Jinja2
+Tags: Ansible, Filter, Data Extraction, Automation, Jinja2
 
 Description: Learn how to use the extract filter in Ansible to pull values from lists and dictionaries by index or key for targeted data retrieval.
 

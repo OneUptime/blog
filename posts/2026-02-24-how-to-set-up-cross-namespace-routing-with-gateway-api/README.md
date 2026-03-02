@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway API, Multi-tenancy, Kubernetes, Networking
+Tags: Istio, Gateway API, Multi-Tenancy, Kubernetes, Networking
 
 Description: Learn how to configure cross-namespace routing with the Kubernetes Gateway API and Istio, including shared gateways, ReferenceGrants, namespace selectors, and multi-team gateway architectures.
 

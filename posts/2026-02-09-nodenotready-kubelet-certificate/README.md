@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Certificates, Node Management
+Tags: Kubernetes, Certificate, Node Management
 
 Description: Learn how to diagnose and fix NodeNotReady status caused by expired kubelet certificates, including certificate renewal procedures and automation strategies to prevent future expiration.
 

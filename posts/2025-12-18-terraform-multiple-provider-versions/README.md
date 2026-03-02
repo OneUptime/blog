@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Infrastructure as Code, DevOps, Configuration Management
+Tags: Terraform, Provider, Infrastructure as Code, DevOps, Configuration Management
 
 Description: Learn how to configure and manage multiple versions of the same Terraform provider in a single configuration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Troubleshooting, Connection Pooling, Memory Leaks, Performance
+Tags: Redis, Troubleshooting, Connection Pooling, Memory Leak, Performance
 
 Description: A comprehensive guide to identifying and fixing Redis client connection leaks, including monitoring techniques, common causes, and best practices for connection management.
 

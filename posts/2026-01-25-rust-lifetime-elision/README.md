@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Lifetimes, Borrow Checker, References, Memory Safety
+Tags: Rust, Lifetimes, Borrow Checker, Reference, Memory Safety
 
 Description: Understand lifetime elision rules in Rust and when you need explicit annotations. This guide clarifies when the compiler can infer lifetimes and when you must specify them.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Containers, DevOps, Cleanup, Docker CLI
+Tags: Docker, Container, DevOps, Cleanup, Docker CLI
 
 Description: Learn how to use the --rm flag and other strategies to automatically remove Docker containers after they exit, keeping your system clean.
 

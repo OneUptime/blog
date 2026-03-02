@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Containers, Auto Scaling, ECS, Kubernetes, Performance
+Tags: Terraform, Container, Auto Scaling, ECS, Kubernetes, Performance
 
 Description: Learn how to configure container service auto scaling in Terraform using target tracking, step scaling, and scheduled scaling for ECS, Kubernetes, and other platforms.
 

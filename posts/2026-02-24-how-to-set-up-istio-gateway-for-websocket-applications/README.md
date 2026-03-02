@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebSocket, Gateway, Kubernetes, Real-time
+Tags: Istio, WebSocket, Gateway, Kubernetes, Real-Time
 
 Description: How to configure an Istio Gateway to properly handle WebSocket connections for real-time applications like chat and live dashboards.
 

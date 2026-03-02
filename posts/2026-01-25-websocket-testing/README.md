@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: WebSocket, Testing, Real-time, Socket.IO, DevOps
+Tags: WebSocket, Testing, Real-Time, Socket.IO, DevOps
 
 Description: Learn to test WebSocket connections effectively, including connection lifecycle, message handling, reconnection logic, and load testing for real-time applications.
 

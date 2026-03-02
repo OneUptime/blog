@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Budgets, Cost Management, FinOps, Alerts, Infrastructure as Code
+Tags: Terraform, AWS, Budget, Cost Management, FinOps, Alerts, Infrastructure as Code
 
 Description: Learn how to create AWS Budget alerts with Terraform to monitor spending, track costs by service or tag, and get notified before you overspend.
 

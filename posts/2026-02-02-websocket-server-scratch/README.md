@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Node.js, Real-time, Server, Networking
+Tags: WebSocket, Node.js, Real-Time, Server, Networking
 
 Description: Learn how to build WebSocket servers from the ground up using raw Node.js, understanding the protocol, handshake process, and frame parsing without external libraries.
 

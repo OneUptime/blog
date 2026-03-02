@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, SEO, Redirects, DNS, Web Server
+Tags: NGINX, SEO, Redirect, DNS, Web Server
 
 Description: Learn how to configure Nginx redirects between www and non-www domains for consistent URLs, better SEO, and proper SSL certificate handling with practical configuration examples.
 

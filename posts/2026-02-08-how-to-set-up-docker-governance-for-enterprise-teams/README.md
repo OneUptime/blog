@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, governance, enterprise, policy, standards, security, team management
+Tags: Docker, Governance, Enterprise, Policy, Standard, Security, Team Management
 
 Description: Establish Docker governance for enterprise teams with standardized base images, naming conventions, security policies, and automated enforcement.
 

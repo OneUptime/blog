@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Kubernetes, DevOps, Containers, Cluster
+Tags: Ubuntu, Kubernetes, DevOps, Container, Cluster
 
 Description: Step-by-step walkthrough for building a production-ready multi-node Kubernetes cluster on Ubuntu using kubeadm, covering installation, networking, and node joining.
 

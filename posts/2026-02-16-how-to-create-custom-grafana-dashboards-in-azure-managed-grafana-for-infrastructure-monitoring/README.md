@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Managed Grafana, Dashboards, Infrastructure Monitoring, Azure Monitor, Visualization, Observability
+Tags: Azure, Managed Grafana, Dashboard, Infrastructure Monitoring, Azure Monitor, Visualization, Observability
 
 Description: Learn how to design and build custom Grafana dashboards in Azure Managed Grafana for monitoring your infrastructure across VMs, storage, networking, and more.
 

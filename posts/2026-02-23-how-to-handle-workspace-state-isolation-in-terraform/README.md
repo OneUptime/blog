@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, State Management, Infrastructure as Code, DevOps
+Tags: Terraform, Workspace, State Management, Infrastructure as Code, DevOps
 
 Description: Learn how to properly isolate Terraform state between workspaces to prevent accidental resource conflicts and keep environments clean.
 

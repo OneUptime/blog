@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Containers, Load Balancing, Debugging
+Tags: AWS, ECS, Container, Load Balancing, Debugging
 
 Description: Resolve ECS services and container instances stuck in draining state due to target group deregistration delays, long-running connections, and load balancer configurations.
 

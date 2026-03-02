@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, Volumes, Troubleshooting, Storage
+Tags: Docker, Docker Compose, VOLUME, Troubleshooting, Storage
 
 Description: Diagnose and fix common Docker Compose volume problems including data not persisting, permission errors, volume conflicts, and path resolution issues that cause application failures.
 

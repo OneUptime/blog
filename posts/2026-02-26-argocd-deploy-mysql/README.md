@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, MySQL, Databases
+Tags: ArgoCD, GitOps, Kubernetes, MySQL, Database
 
 Description: Learn how to deploy and manage MySQL on Kubernetes with ArgoCD, including standalone instances, InnoDB Cluster for HA, backups, and production configuration.
 

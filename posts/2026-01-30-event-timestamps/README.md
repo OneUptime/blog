@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Event-Driven, Timestamps, Distributed Systems, Architecture
+Tags: Event-Driven, Timestamp, Distributed Systems, Architecture
 
 Description: Learn to implement event timestamps for reliable event ordering and time-based processing in distributed systems.
 

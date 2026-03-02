@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Containers, DevOps, CI/CD, ARM64, BuildKit
+Tags: Docker, Container, DevOps, CI/CD, ARM64, BuildKit
 
 Description: Master docker buildx, QEMU emulation, manifest lists, and CI integration to build images that run on both Intel and Apple Silicon machines.
 

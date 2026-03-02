@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Execution Environments, Optimization, Containers
+Tags: Ansible, Execution Environment, Optimization, Container
 
 Description: Build lean Ansible Execution Environments by minimizing collections, Python packages, and system dependencies for faster pulls and smaller images.
 

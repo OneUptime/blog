@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, C#, AutoMapper, Object Mapping, DTOs, Clean Architecture
+Tags: .NET, C#, AutoMapper, Object Mapping, DTO, Clean Architecture
 
 Description: Learn how to use AutoMapper in .NET applications for object-to-object mapping, including profiles, custom mappings, and best practices for clean, maintainable code.
 

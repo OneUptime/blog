@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Platform, APIs, Cloud Services, Troubleshooting, Infrastructure
+Tags: GCP, Google Cloud Platform, API, Cloud Services, Troubleshooting, Infrastructure
 
 Description: Learn how to diagnose and fix 'API Not Enabled' errors in Google Cloud Platform by enabling required APIs and managing service dependencies.
 

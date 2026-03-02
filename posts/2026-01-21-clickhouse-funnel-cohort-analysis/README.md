@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Analytics, Funnel Analysis, Cohort Analysis, User Analytics, windowFunnel, retention, Product Analytics
+Tags: ClickHouse, Analytics, Funnel Analysis, Cohort Analysis, User Analytics, windowFunnel, Retention, Product Analytics
 
 Description: A practical guide to implementing funnel and cohort analysis in ClickHouse using windowFunnel, retention functions, and SQL patterns for tracking user conversion and retention metrics.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, TLS, SSL, Security, Certificates, Encryption, HTTPS
+Tags: gRPC, TLS, SSL, Security, Certificate, Encryption, HTTPS
 
 Description: A comprehensive guide to securing gRPC services with TLS/SSL encryption, including certificate generation, server configuration, and client setup.
 

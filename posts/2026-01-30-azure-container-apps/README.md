@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Azure, Containers, Kubernetes, DevOps, Serverless, Cloud
+Tags: Azure, Container, Kubernetes, DevOps, Serverless, Cloud
 
 Description: A practical guide to deploying containerized applications on Azure Container Apps, covering environment setup, scaling, ingress, secrets management, and real-world deployment patterns.
 

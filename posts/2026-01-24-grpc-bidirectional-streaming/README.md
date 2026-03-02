@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, bidirectional streaming, real-time, WebSocket alternative, microservices, protocol buffers, concurrency
+Tags: gRPC, bidirectional streaming, Real-Time, WebSocket alternative, Microservices, Protocol Buffers, Concurrency
 
 Description: A comprehensive guide to implementing bidirectional streaming in gRPC, covering patterns, error handling, flow control, and real-world use cases.
 

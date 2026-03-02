@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, CI/CD, DevOps, Security, Pipelines
+Tags: Docker, CI/CD, DevOps, Security, Pipeline
 
 Description: Learn how to safely use Docker socket binding in CI/CD pipelines, understand the security risks, implement protection measures, and choose the right approach for your build environment.
 

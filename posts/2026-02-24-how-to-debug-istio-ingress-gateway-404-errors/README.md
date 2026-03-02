@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Debugging, Ingress Gateway, 404 Errors, Troubleshooting
+Tags: Istio, Debugging, Ingress Gateway, 404 Error, Troubleshooting
 
 Description: How to systematically diagnose and fix 404 Not Found errors at the Istio Ingress Gateway caused by routing misconfigurations and missing virtual services.
 

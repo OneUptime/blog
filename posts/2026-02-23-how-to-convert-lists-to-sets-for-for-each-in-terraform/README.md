@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, for_each, Sets, Lists, Infrastructure as Code
+Tags: Terraform, HCL, for_each, set, Lists, Infrastructure as Code
 
 Description: Learn how to convert Terraform lists to sets and maps for use with for_each, including toset, for expressions, and techniques for transforming list data into for_each-compatible collections.
 

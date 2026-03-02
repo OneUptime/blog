@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Compilation, Development, Build Tools, Linux
+Tags: Ubuntu, Compilation, Development, Build Tool, Linux
 
 Description: A practical guide to compiling software from source on Ubuntu, covering build tools, dependency resolution, configure options, and managing custom builds alongside apt-managed packages.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, aqua security, trivy, container scanning, vulnerability detection, DevSecOps, security
+Tags: Docker, aqua security, Trivy, Container Scanning, vulnerability detection, DevSecOps, Security
 
 Description: Use Aqua Security's Trivy scanner in Docker to detect vulnerabilities in container images, filesystems, and infrastructure as code.
 

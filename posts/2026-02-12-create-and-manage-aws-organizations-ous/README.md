@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Organizations, Multi-Account, Governance
+Tags: AWS, Organization, Multi-Account, Governance
 
 Description: Learn how to design and manage organizational units in AWS Organizations for effective multi-account governance, including practical OU structures and account management.
 

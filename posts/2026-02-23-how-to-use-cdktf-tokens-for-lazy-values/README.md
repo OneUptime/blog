@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CDKTF, Tokens, Infrastructure as Code, TypeScript
+Tags: Terraform, CDKTF, Token, Infrastructure as Code, TypeScript
 
 Description: Learn how CDKTF tokens work as lazy value placeholders that resolve at synthesis time, enabling cross-resource references and dynamic configurations.
 

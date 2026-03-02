@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, JavaScript, Networking, Real-time, Resilience
+Tags: WebSocket, JavaScript, Networking, Real-Time, Resilience
 
 Description: Learn how to implement robust WebSocket reconnection with exponential backoff, state recovery, and message queuing for production applications.
 

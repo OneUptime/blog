@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Incident Response, Runbooks, Cloud Operations Suite, SRE, Google Cloud Monitoring
+Tags: GCP, Incident Response, Runbook, Cloud Operations Suite, SRE, Google Cloud Monitoring
 
 Description: Learn how to build a structured incident response runbook system integrated with Google Cloud Operations Suite for faster and more consistent incident resolution.
 

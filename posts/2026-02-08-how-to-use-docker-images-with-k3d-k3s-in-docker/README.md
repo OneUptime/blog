@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Kubernetes, k3d, k3s, Local Development, Lightweight Kubernetes, DevOps
+Tags: Docker, Kubernetes, k3d, K3s, Local Development, Lightweight Kubernetes, DevOps
 
 Description: Step-by-step instructions for loading and managing Docker images in k3d clusters for lightweight Kubernetes testing.
 

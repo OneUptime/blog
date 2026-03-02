@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Kubernetes, ConfigMap, Dashboards, Monitoring
+Tags: Grafana, Kubernetes, ConfigMap, Dashboard, Monitoring
 
 Description: Learn how to automatically provision Grafana dashboards using Kubernetes ConfigMaps for consistent, version-controlled dashboard deployments.
 

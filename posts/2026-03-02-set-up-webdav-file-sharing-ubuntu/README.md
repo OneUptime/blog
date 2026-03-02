@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, WebDAV, File Sharing, Apache, Nginx
+Tags: Ubuntu, WebDAV, File Sharing, Apache, NGINX
 
 Description: Complete guide to setting up a WebDAV server on Ubuntu using Apache or Nginx, with authentication, SSL, and client configuration for Linux, Windows, and macOS.
 

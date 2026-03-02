@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Task Chaining, register, Conditionals, Workflow Control
+Tags: Ansible, Task Chaining, Register, Conditional, Workflow Control
 
 Description: Learn how to chain Ansible tasks together using registered results to create dynamic workflows that react to previous task outcomes.
 

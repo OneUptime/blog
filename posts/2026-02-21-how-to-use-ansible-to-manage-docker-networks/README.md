@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Docker Networks, Container Networking, DevOps
+Tags: Ansible, Docker, Docker Network, Container Networking, DevOps
 
 Description: Practical guide to creating and managing Docker networks with Ansible, covering bridge, overlay, and macvlan networks with real-world examples.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Scaling, Clusters, Nodes, Shards, High Availability
+Tags: Elasticsearch, Scaling, Cluster, Node, Shards, High Availability
 
 Description: A comprehensive guide to scaling Elasticsearch clusters, covering horizontal and vertical scaling, adding nodes, shard rebalancing, and capacity planning for growing workloads.
 

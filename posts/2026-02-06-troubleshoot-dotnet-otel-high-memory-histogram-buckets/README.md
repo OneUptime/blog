@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, .NET, Metrics, Histograms
+Tags: OpenTelemetry, .NET, Metrics, Histogram
 
 Description: Diagnose and fix high memory usage in .NET applications caused by OpenTelemetry histogram bucket explosion with high cardinality.
 

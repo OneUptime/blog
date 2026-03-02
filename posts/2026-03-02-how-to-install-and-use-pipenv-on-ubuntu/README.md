@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Python, pipenv, Virtual Environments, Development
+Tags: Ubuntu, Python, Pipenv, Virtual Environment, Development
 
 Description: A practical guide to installing and using pipenv on Ubuntu for Python dependency management, covering Pipfile creation, virtual environments, and common workflows.
 

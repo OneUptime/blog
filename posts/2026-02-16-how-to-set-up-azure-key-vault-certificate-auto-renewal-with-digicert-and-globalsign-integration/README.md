@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Key Vault, Certificate Management, DigiCert, GlobalSign, SSL Certificates, Automation, PKI
+Tags: Azure Key Vault, Certificate Management, DigiCert, GlobalSign, SSL Certificate, Automation, PKI
 
 Description: Learn how to configure Azure Key Vault to automatically renew SSL/TLS certificates through integrated CA providers like DigiCert and GlobalSign.
 

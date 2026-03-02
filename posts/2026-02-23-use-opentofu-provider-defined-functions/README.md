@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenTofu, Terraform, Providers, Functions, Infrastructure as Code
+Tags: OpenTofu, Terraform, Provider, Functions, Infrastructure as Code
 
 Description: Learn how to use provider-defined functions in OpenTofu to extend HCL with custom functions from providers for data transformation, validation, and computation beyond built-in capabilities.
 

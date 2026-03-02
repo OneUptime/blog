@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Volumes, Storage, DevOps
+Tags: Ansible, Docker, VOLUME, Storage, DevOps
 
 Description: Configure Docker container volume mounts with Ansible including bind mounts, named volumes, tmpfs, and read-only configurations.
 

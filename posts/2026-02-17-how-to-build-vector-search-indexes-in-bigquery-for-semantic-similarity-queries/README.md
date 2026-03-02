@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, Vector Search, Embeddings, Machine Learning
+Tags: GCP, BigQuery, Vector Search, Embedding, Machine Learning
 
 Description: Learn how to create and use vector search indexes in BigQuery to perform fast semantic similarity queries on embedding vectors at warehouse scale.
 

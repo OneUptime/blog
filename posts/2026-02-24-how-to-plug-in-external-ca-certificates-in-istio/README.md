@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, External CA, Security, PKI, Kubernetes
+Tags: Istio, Certificate, External CA, Security, PKI, Kubernetes
 
 Description: Step-by-step instructions for replacing Istio's self-signed CA with your own external CA certificates for production-grade mTLS.
 

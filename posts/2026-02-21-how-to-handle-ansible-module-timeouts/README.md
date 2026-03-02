@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Modules, Timeouts, Automation
+Tags: Ansible, Modules, Timeout, Automation
 
 Description: Learn how to handle module-level timeouts in Ansible for modules that have built-in timeout parameters and for those that do not.
 

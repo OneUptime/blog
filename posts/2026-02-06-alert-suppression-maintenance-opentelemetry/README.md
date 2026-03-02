@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Alert Suppression, Maintenance Windows, Prometheus, Alertmanager
+Tags: OpenTelemetry, Alert Suppression, Maintenance Window, Prometheus, Alertmanager
 
 Description: Configure alert suppression windows and scheduled maintenance silences for OpenTelemetry-based alerting pipelines.
 

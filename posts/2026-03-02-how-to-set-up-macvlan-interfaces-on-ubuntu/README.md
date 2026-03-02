@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, MacVLAN, Virtual Interfaces
+Tags: Ubuntu, Networking, Macvlan, Virtual Interfaces
 
 Description: A practical guide to creating and configuring MacVLAN interfaces on Ubuntu, covering modes, use cases, and persistent configuration with netplan and systemd-networkd.
 

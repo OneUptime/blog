@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Clusters, vSphere, High Availability
+Tags: Ansible, VMware, Cluster, vSphere, High Availability
 
 Description: Learn how to create and manage VMware vSphere clusters with Ansible including HA, DRS, and cluster configuration for production environments.
 

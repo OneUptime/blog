@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditionals, Package Management, DevOps
+Tags: Ansible, Conditional, Package Management, DevOps
 
 Description: Learn how to use Ansible conditionals to check package versions and make smart decisions in your playbooks based on installed software versions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Linux, DevOps, Services
+Tags: Ubuntu, systemd, Linux, DevOps, Service
 
 Description: Learn how to use systemd's Type=notify to signal when your service is ready, enabling precise startup ordering and dependency management on Ubuntu.
 

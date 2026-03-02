@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Configuration, Validation, Errors, Troubleshooting
+Tags: Istio, Configuration, Validation, Error, Troubleshooting
 
 Description: A practical guide to diagnosing and fixing Istio configuration validation errors including schema issues, reference problems, and conflicting rules.
 

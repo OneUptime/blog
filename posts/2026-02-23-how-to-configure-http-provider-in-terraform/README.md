@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, HTTP, API, Infrastructure as Code
+Tags: Terraform, Provider, HTTP, API, Infrastructure as Code
 
 Description: Learn how to use the HTTP provider in Terraform to fetch data from REST APIs and web endpoints for use in your infrastructure configuration.
 

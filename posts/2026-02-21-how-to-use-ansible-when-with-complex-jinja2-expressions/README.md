@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Conditionals, Advanced Automation
+Tags: Ansible, Jinja2, Conditional, Advanced Automation
 
 Description: Learn how to write complex Jinja2 expressions in Ansible when conditionals using filters, tests, ternary operators, and nested logic.
 

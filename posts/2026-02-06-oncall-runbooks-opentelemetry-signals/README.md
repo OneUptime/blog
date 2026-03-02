@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Runbooks, On-Call, Incident Response, Automation, Observability, SRE, Operations
+Tags: OpenTelemetry, Runbook, On-Call, Incident Response, Automation, Observability, SRE, Operations
 
 Description: Learn how to build intelligent on-call runbooks that leverage OpenTelemetry signals to provide context-aware diagnostic steps and automated remediation suggestions.
 

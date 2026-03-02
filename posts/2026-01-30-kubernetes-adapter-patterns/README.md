@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Design Patterns, Microservices, Observability
+Tags: Kubernetes, Design Pattern, Microservices, Observability
 
 Description: Implement the adapter pattern in Kubernetes with sidecar containers that transform application output to standard formats for monitoring and logging.
 

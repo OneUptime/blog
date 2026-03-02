@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, App Engine, WebSockets, Real-Time, Flexible Environment
+Tags: GCP, App Engine, WebSocket, Real-Time, Flexible Environment
 
 Description: Build real-time applications on App Engine Flexible Environment using WebSockets with practical examples for chat, live updates, and notification systems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, OpenAI, Cost Optimization, Tokens, GPT-4, Monitoring, FinOps
+Tags: Azure, OpenAI, Cost Optimization, Token, GPT-4, Monitoring, FinOps
 
 Description: Practical strategies for monitoring and reducing token usage in Azure OpenAI Service to keep costs under control without sacrificing quality.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, Docker, Containers
+Tags: AWS, EC2, Docker, Container
 
 Description: A practical guide to running Docker containers directly on EC2 instances without using ECS or EKS, including Docker Compose setups and production considerations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MySQL, Database, Locks, Deadlocks, Performance, Troubleshooting, InnoDB
+Tags: MySQL, Database, Locks, Deadlock, Performance, Troubleshooting, InnoDB
 
 Description: Learn how to diagnose and resolve MySQL lock wait timeout errors including identifying blocking queries, preventing deadlocks, and optimizing transaction handling.
 

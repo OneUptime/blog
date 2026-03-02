@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Message Queues, Architecture, Distributed Systems, Backend
+Tags: Message Queue, Architecture, Distributed Systems, Backend
 
 Description: Learn how to design message queue architecture for reliable asynchronous communication.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Debugging, Nodes
+Tags: Kubernetes, Debugging, Node
 
 Description: Learn how to deploy debug pods on specific Kubernetes nodes for node-level troubleshooting, hardware diagnosis, and infrastructure debugging.
 

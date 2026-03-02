@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Windows, Environment Variables, Configuration, Automation
+Tags: Ansible, Windows, Environment Variable, Configuration, Automation
 
 Description: Set and manage Windows environment variables at the system and user level using the Ansible win_environment module.
 

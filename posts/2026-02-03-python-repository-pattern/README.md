@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Repository Pattern, Design Patterns, SQLAlchemy, Unit Testing, Clean Architecture, Domain-Driven Design
+Tags: Python, Repository Pattern, Design Pattern, SQLAlchemy, Unit Testing, Clean Architecture, Domain-Driven Design
 
 Description: Learn how to implement the repository pattern in Python to decouple your domain logic from data access, enable easy testing with in-memory implementations, and integrate with the unit of work pattern.
 

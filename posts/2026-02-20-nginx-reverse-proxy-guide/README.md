@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Reverse Proxy, Microservices, Load Balancing, Configuration
+Tags: NGINX, Reverse Proxy, Microservices, Load Balancing, Configuration
 
 Description: Learn how to configure Nginx as a reverse proxy for microservices with upstream backends, health checks, and load balancing.
 

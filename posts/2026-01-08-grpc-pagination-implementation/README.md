@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, pagination, cursor-based pagination, page tokens, protocol buffers, streaming, API design
+Tags: gRPC, Pagination, cursor-based pagination, page tokens, Protocol Buffers, Streaming, API Design
 
 Description: Learn how to implement efficient pagination in gRPC services using cursor-based pagination, page tokens, and streaming for large datasets.
 

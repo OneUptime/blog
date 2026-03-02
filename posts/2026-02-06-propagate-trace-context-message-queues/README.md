@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Distributed Tracing, Context Propagation, Kafka, RabbitMQ, SQS, Message Queues
+Tags: OpenTelemetry, Distributed Tracing, Context Propagation, Kafka, RabbitMQ, SQS, Message Queue
 
 Description: Learn how to propagate OpenTelemetry trace context across message queues like Kafka, RabbitMQ, and SQS to maintain end-to-end distributed traces.
 

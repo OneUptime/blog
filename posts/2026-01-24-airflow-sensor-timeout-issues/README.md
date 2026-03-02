@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Airflow, Sensors, Timeout, Data Pipelines, Workflow Orchestration, DAG, Python
+Tags: Apache Airflow, Sensors, Timeout, Data Pipeline, Workflow Orchestration, DAG, Python
 
 Description: A practical guide to diagnosing and fixing sensor timeout issues in Apache Airflow with configuration examples and best practices.
 

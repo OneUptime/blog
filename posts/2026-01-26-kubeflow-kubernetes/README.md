@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubeflow, Kubernetes, Machine Learning, MLOps, Pipelines
+Tags: Kubeflow, Kubernetes, Machine Learning, MLOps, Pipeline
 
 Description: A beginner's guide to Kubeflow on Kubernetes covering installation, notebooks, pipelines, and model serving with KServe.
 

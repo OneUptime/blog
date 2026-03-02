@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Auth0, Authentication, Identity, Infrastructure as Code
+Tags: Terraform, Provider, Auth0, Authentication, Identity, Infrastructure as Code
 
 Description: Learn how to configure the Auth0 provider in Terraform to manage applications, connections, roles, and authentication settings as code.
 

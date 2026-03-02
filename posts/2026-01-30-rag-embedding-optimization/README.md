@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RAG, Embeddings, Optimization, Performance
+Tags: RAG, Embedding, Optimization, Performance
 
 Description: Learn to create embedding optimization for faster and more efficient vector generation.
 

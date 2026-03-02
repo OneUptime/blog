@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Troubleshooting, MergeTree, Parts, Performance, Merges, Insert Optimization, Database
+Tags: ClickHouse, Troubleshooting, MergeTree, Parts, Performance, MERGE, Insert Optimization, Database
 
 Description: A practical guide to diagnosing and fixing Too Many Parts errors in ClickHouse, covering merge optimization, insert batching strategies, and table configuration for high-throughput workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Jinja2, Batch Processing
+Tags: Ansible, Filter, Jinja2, Batch Processing
 
 Description: Learn how to use the batch filter in Ansible to split lists into fixed-size chunks for parallel processing, pagination, and staged deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, migration, server migration, containers, volumes, docker save, docker load
+Tags: Docker, Migration, server migration, Container, VOLUME, docker save, docker load
 
 Description: Migrate Docker containers, images, and volumes from one server to another with minimal downtime using practical step-by-step procedures.
 

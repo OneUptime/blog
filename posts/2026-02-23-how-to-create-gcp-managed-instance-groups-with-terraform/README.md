@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, Compute Engine, Managed Instance Groups, Infrastructure as Code, Auto Scaling
+Tags: Terraform, GCP, Compute Engine, Managed Instance Group, Infrastructure as Code, Auto Scaling
 
 Description: Learn how to create and configure GCP Managed Instance Groups using Terraform, including auto-scaling, health checks, rolling updates, and named ports for load balancing.
 

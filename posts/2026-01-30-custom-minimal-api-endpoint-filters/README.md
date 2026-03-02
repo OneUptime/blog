@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: .NET, C#, ASP.NET Core, Minimal APIs, Endpoint Filters, Web API
+Tags: .NET, C#, ASP.NET Core, Minimal API, Endpoint Filters, Web API
 
 Description: Learn how to build custom endpoint filters for ASP.NET Core Minimal APIs.
 

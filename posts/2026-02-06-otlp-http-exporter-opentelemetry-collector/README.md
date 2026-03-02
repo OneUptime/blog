@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, OTLP, HTTP, Observability
+Tags: OpenTelemetry, Collector, Exporter, OTLP, HTTP, Observability
 
 Description: A practical guide to configuring the OTLP HTTP exporter in OpenTelemetry Collector with real YAML examples, authentication patterns, retry logic, compression options.
 

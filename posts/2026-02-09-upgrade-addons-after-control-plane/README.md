@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Addons, Upgrades
+Tags: Kubernetes, Addons, Upgrade
 
 Description: Learn how to safely upgrade Kubernetes addons after control plane upgrades, including CoreDNS, kube-proxy, CNI plugins, and cloud provider addons with version compatibility checks.
 

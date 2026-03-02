@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Search Performance, Autocomplete, Histograms
+Tags: OpenTelemetry, Search Performance, Autocomplete, Histogram
 
 Description: Monitor e-commerce search autocomplete and typeahead performance using OpenTelemetry histograms to ensure fast and relevant suggestions.
 

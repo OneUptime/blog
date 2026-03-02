@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Remote Write, Long-term Storage, Metrics, Thanos, Cortex, Observability
+Tags: Prometheus, Remote Write, Long-Term Storage, Metrics, Thanos, Cortex, Observability
 
 Description: Configure Prometheus remote write to send metrics to external storage systems for long-term retention, high availability, and global aggregation.
 

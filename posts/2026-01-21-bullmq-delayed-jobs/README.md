@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: BullMQ, Node.js, Redis, Delayed Jobs, Job Scheduling, Background Jobs
+Tags: BullMQ, Node.js, Redis, Delayed Job, Job Scheduling, Background Jobs
 
 Description: A comprehensive guide to implementing delayed jobs with BullMQ, including scheduling jobs for future execution, managing delays dynamically.
 

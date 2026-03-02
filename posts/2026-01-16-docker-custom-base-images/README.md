@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Base Images, Scratch, Security, Optimization
+Tags: Docker, Base Image, Scratch, Security, Optimization
 
 Description: Learn how to create custom Docker base images from scratch, build minimal images for security and performance, and understand when to use scratch, distroless, and custom base images.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Arc, On-Premises, Hybrid Cloud, Server Management, Connected Machine Agent, Infrastructure
+Tags: Azure, Azure Arc, On-Premise, Hybrid Cloud, Server Management, Connected Machine Agent, Infrastructure
 
 Description: Step-by-step guide to onboarding on-premises servers to Azure Arc so you can manage them alongside your cloud resources from the Azure Portal.
 

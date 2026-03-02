@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Private Endpoints, AWS, Azure, GCP, Multi-Cloud, Networking, Infrastructure as Code
+Tags: Terraform, Private Endpoint, AWS, Azure, GCP, Multi-Cloud, Networking, Infrastructure as Code
 
 Description: Learn how to create private endpoints across AWS, Azure, and GCP using Terraform for secure access to cloud services without public internet exposure.
 

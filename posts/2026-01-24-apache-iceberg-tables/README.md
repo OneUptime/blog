@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Iceberg, Data Lake, Data Engineering, Big Data, Table Format, Data Pipelines, Analytics
+Tags: Apache Iceberg, Data Lake, Data Engineering, Big Data, Table Format, Data Pipeline, Analytics
 
 Description: Learn how to work with Apache Iceberg tables including schema evolution, time travel queries, partition management, and performance optimization for modern data lakes.
 

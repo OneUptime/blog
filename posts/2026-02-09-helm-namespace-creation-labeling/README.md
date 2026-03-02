@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, Namespaces
+Tags: Helm, Kubernetes, Namespace
 
 Description: Configure Helm charts to automatically create and label namespaces with proper metadata, resource quotas, and network policies for organized cluster management.
 

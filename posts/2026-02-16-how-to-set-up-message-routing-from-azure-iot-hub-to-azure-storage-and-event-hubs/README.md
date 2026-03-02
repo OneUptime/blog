@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure IoT Hub, Message Routing, Event Hubs, Azure Storage, IoT, Telemetry, Data Pipeline
+Tags: Azure IoT Hub, Message Routing, Event Hub, Azure Storage, IoT, Telemetry, Data Pipeline
 
 Description: Learn how to configure message routing in Azure IoT Hub to direct device telemetry to Azure Storage for archival and Event Hubs for real-time processing.
 

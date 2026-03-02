@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, CIS Benchmarks, Security, Compliance
+Tags: Terraform, AWS, CIS Benchmark, Security, Compliance
 
 Description: Implement CIS AWS Foundations Benchmark controls with Terraform including identity management, logging, monitoring, networking, and automated compliance checking.
 

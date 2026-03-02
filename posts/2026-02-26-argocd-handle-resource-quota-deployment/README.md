@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Resource Quota, Deployments
+Tags: ArgoCD, GitOps, Kubernetes, Resource Quota, Deployment
 
 Description: Learn how to handle Kubernetes resource quotas during ArgoCD deployments including surge capacity planning, quota management, and strategies for quota-constrained environments.
 

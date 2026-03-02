@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Vault, API Keys, Security, Automation
+Tags: Ansible, Vault, API Key, Security, Automation
 
 Description: Learn how to securely store and manage API keys using Ansible Vault so your automation can access external services without exposing credentials.
 

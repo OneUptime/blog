@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, datetime, Time Zones, Date Parsing, Timestamps
+Tags: Python, datetime, Time Zones, Date Parsing, Timestamp
 
 Description: Master Python's datetime module for handling dates, times, and time zones. Learn parsing, formatting, arithmetic, and best practices for production applications.
 

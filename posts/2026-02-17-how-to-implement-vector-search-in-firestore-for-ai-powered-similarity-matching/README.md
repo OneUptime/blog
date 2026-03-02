@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Firestore, Vector Search, AI, Embeddings, Similarity Search
+Tags: GCP, Firestore, Vector Search, AI, Embedding, Similarity Search
 
 Description: Learn how to store vector embeddings in Firestore and use its built-in vector search to find similar documents for recommendation engines, semantic search, and AI applications.
 

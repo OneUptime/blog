@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Docker, Docker Compose, Containers, DevOps, Infrastructure as Code
+Tags: Terraform, Docker, Docker Compose, Container, DevOps, Infrastructure as Code
 
 Description: Learn how to use Terraform with Docker Compose to provision cloud infrastructure and deploy containerized applications together in a unified workflow.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Hybrid Cloud, Kubernetes, Multicluster, Service Mesh
+Tags: Istio, Hybrid Cloud, Kubernetes, MultiCluster, Service Mesh
 
 Description: A step-by-step guide for setting up Istio across hybrid cloud environments spanning on-premises data centers and public cloud providers.
 

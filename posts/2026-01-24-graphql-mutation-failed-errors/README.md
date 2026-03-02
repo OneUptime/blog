@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GraphQL, API Development, Mutations, Error Handling, Debugging, Backend Development, Node.js
+Tags: GraphQL, API Development, Mutation, Error Handling, Debugging, Backend Development, Node.js
 
 Description: Learn how to diagnose and fix common 'Mutation Failed' errors in GraphQL APIs, including validation issues, resolver problems, and database transaction failures.
 

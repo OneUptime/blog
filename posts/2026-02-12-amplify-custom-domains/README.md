@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Amplify, DNS, Custom Domains
+Tags: AWS, Amplify, DNS, Custom Domain
 
 Description: Step-by-step guide to connecting a custom domain to your AWS Amplify app, including subdomains, SSL certificates, and DNS configuration.
 

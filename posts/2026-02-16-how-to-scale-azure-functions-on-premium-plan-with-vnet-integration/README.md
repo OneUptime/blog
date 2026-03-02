@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Functions, Premium Plan, VNET Integration, Scaling, Networking, Azure, Security
+Tags: Azure Functions, Premium Plan, VNet Integration, Scaling, Networking, Azure, Security
 
 Description: Configure Azure Functions Premium plan with VNET integration for secure access to private resources while maintaining automatic scaling capabilities.
 

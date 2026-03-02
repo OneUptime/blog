@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, File Patterns
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, File Patterns
 
 Description: Learn how to use globbing patterns in the ArgoCD ApplicationSet Git file generator to match config files across directories and subdirectories.
 

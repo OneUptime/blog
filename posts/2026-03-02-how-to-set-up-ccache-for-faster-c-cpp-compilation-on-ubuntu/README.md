@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, ccache, Compilation, Build Tools, Development
+Tags: Ubuntu, ccache, Compilation, Build Tool, Development
 
 Description: Learn how to configure ccache on Ubuntu to dramatically speed up repeated C and C++ compilations by caching compiler output and reusing it on subsequent builds.
 

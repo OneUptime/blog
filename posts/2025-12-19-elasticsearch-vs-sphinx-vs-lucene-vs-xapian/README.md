@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Sphinx, Lucene, Xapian, Search Engines, Full-Text Search, Comparison
+Tags: Elasticsearch, Sphinx, Lucene, Xapian, Search Engine, Full-Text Search, Comparison
 
 Description: A detailed comparison of popular search engines - Elasticsearch, Sphinx, Lucene, and Xapian.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Disaster Recovery, Documentation, SRE, Runbooks
+Tags: Disaster Recovery, Documentation, SRE, Runbook
 
 Description: Learn how to create comprehensive disaster recovery documentation.
 

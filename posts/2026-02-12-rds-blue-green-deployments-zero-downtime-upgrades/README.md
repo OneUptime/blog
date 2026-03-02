@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, RDS, Blue-Green, Deployments, Database
+Tags: AWS, RDS, Blue-Green, Deployment, Database
 
 Description: Use Amazon RDS Blue/Green Deployments to perform database engine upgrades, parameter changes, and schema modifications with minimal downtime.
 

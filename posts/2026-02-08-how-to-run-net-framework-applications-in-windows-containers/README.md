@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, .NET Framework, windows containers, ASP.NET, WCF, containerization, legacy modernization
+Tags: Docker, .NET Framework, Windows Containers, ASP.NET, WCF, Containerization, Legacy Modernization
 
 Description: Containerize .NET Framework applications in Windows Docker containers to modernize legacy workloads without rewriting application code.
 

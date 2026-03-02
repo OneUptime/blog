@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Site Reliability Engineering, Metrics, Observability, SLOs, OpenTelemetry, OneUptime
+Tags: Site Reliability Engineering, Metrics, Observability, SLO, OpenTelemetry, OneUptime
 
 Description: A concise guide to the metrics every SRE team should monitor, grouped by outcome, with notes on instrumentation and decision triggers.
 

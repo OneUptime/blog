@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Compose, Extends, Configuration, DevOps
+Tags: Docker, Compose, Extend, Configuration, DevOps
 
 Description: Learn how to use Docker Compose extends and includes for reusable configurations, reducing duplication across environments.
 

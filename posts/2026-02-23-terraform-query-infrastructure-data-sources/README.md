@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Data Sources, Infrastructure as Code, Cloud, DevOps
+Tags: Terraform, Data Source, Infrastructure as Code, Cloud, DevOps
 
 Description: Learn how to use Terraform data sources to query and reference existing infrastructure that is managed outside your current Terraform configuration for dynamic lookups.
 

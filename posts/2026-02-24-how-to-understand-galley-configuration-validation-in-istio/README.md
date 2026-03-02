@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Galley, Configuration Validation, Kubernetes, Webhooks
+Tags: Istio, Galley, Configuration Validation, Kubernetes, Webhook
 
 Description: Learn how Galley handles configuration validation in Istio, preventing invalid mesh configurations from being applied to your Kubernetes cluster.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Data Sources, Infrastructure as Code, Cloud, IaC, DevOps
+Tags: Terraform, Azure, Data Source, Infrastructure as Code, Cloud, IaC, DevOps
 
 Description: Learn how to use Terraform data sources to reference and query existing Azure resources without importing them into your state file.
 

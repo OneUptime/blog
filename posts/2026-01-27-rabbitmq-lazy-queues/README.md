@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Message Queues, Performance, Memory Management, DevOps, Microservices
+Tags: RabbitMQ, Message Queue, Performance, Memory Management, DevOps, Microservices
 
 Description: Learn how to implement RabbitMQ lazy queues to handle large messages efficiently by storing them on disk instead of memory, reducing memory pressure and improving system stability.
 

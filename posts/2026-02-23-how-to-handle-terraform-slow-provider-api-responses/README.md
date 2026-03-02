@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Performance, API, Cloud Providers, Troubleshooting
+Tags: Terraform, Performance, API, Cloud Provider, Troubleshooting
 
 Description: Diagnose and mitigate slow cloud provider API responses that cause Terraform plans and applies to take much longer than expected.
 

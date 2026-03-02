@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Capacity Providers, Auto Scaling, Containers
+Tags: AWS, ECS, Capacity Provider, Auto Scaling, Container
 
 Description: Learn how to use ECS capacity providers to manage compute capacity for your containerized workloads, including auto scaling groups and Fargate strategies.
 

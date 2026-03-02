@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Upgrades, Testing, Migration, Infrastructure as Code, DevOps
+Tags: Terraform, Upgrade, Testing, Migration, Infrastructure as Code, DevOps
 
 Description: Learn how to safely test Terraform version upgrades and module upgrades before deploying to production with plan comparison, staged rollouts, and automated validation.
 

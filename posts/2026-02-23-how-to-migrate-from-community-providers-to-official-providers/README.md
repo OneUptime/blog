@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Community, Migration, Infrastructure as Code
+Tags: Terraform, Provider, Community, Migration, Infrastructure as Code
 
 Description: Learn how to migrate Terraform resources from community-maintained providers to official HashiCorp or vendor-maintained providers safely and efficiently.
 

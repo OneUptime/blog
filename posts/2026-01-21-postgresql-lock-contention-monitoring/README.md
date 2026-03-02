@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Locks, Monitoring, Performance, Deadlocks
+Tags: PostgreSQL, Locks, Monitoring, Performance, Deadlock
 
 Description: A guide to monitoring PostgreSQL lock contention, detecting deadlocks, and resolving blocking queries.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Pub/Sub, Cloud Monitoring, Message Queues, Alerting
+Tags: GCP, Pub/Sub, Cloud Monitoring, Message Queue, Alerting
 
 Description: Learn how to monitor Pub/Sub subscription backlogs and processing latency using Cloud Monitoring to prevent message processing bottlenecks.
 

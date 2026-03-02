@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Elasticsearch, Vector Search, Embeddings, AI
+Tags: Elasticsearch, Vector Search, Embedding, AI
 
 Description: A practical guide to implementing semantic search in Elasticsearch using dense vectors, covering mapping configuration, HNSW tuning, and hybrid search strategies.
 

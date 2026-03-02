@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Service Bus, Dead-Letter Queue, Messaging, Troubleshooting, Queues
+Tags: Azure, Service Bus, Dead-Letter Queue, Messaging, Troubleshooting, Queue
 
 Description: Diagnose and resolve Azure Service Bus dead-letter queue message buildup by identifying common causes like processing failures and TTL expiration.
 

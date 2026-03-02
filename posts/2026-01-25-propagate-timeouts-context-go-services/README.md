@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Context, Timeouts, Microservices, Reliability
+Tags: Go, Context, Timeout, Microservices, Reliability
 
 Description: Learn how to properly propagate timeouts across service boundaries in Go using context, preventing cascading failures and ensuring predictable latency in distributed systems.
 

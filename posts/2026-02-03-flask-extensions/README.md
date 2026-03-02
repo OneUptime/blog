@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Flask, Extensions, Web Development, Application Factory, Configuration, Packaging
+Tags: Python, Flask, Extension, Web Development, Application Factory, Configuration, Packaging
 
 Description: Learn how to build Flask extensions from scratch, covering the init_app pattern, application factory compatibility, configuration management, and packaging for distribution.
 

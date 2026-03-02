@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Zookeeper, Coordination, Distributed Systems, Apache, DevOps
+Tags: ZooKeeper, Coordination, Distributed Systems, Apache, DevOps
 
 Description: Learn how to set up and configure Apache Zookeeper for distributed coordination, including cluster setup, znodes, watches, and common coordination patterns like leader election.
 

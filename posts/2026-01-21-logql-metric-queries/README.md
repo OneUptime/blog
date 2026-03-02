@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana Loki, LogQL, Metrics, Aggregations, Rate, Count Over Time, Observability
+Tags: Grafana Loki, LogQL, Metrics, Aggregation, Rate, Count Over Time, Observability
 
 Description: A comprehensive guide to LogQL metric queries in Grafana Loki, covering rate, count_over_time, sum, avg, quantile, and aggregation functions for log-based metrics.
 

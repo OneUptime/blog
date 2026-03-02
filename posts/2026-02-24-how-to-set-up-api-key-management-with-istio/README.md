@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, API Keys, Authentication, Security, EnvoyFilter
+Tags: Istio, API Key, Authentication, Security, EnvoyFilter
 
 Description: How to implement API key validation and management using Istio with custom EnvoyFilter configurations and external authorization.
 

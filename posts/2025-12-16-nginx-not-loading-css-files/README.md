@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, Web Server, CSS, MIME Types, Troubleshooting
+Tags: NGINX, Web Server, CSS, MIME Types, Troubleshooting
 
 Description: Learn how to diagnose and fix Nginx not serving CSS files correctly, including MIME type issues, path problems, permissions errors, and Content Security Policy conflicts.
 

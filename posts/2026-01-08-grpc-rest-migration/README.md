@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: grpc, rest, migration, grpc-gateway, api, microservices, backwards-compatibility, gradual-rollout
+Tags: gRPC, REST, Migration, grpc-gateway, API, Microservices, backwards-compatibility, gradual-rollout
 
 Description: Learn strategies for incrementally migrating from REST to gRPC while maintaining backwards compatibility, using grpc-gateway for dual protocol support, and executing a phased rollout.
 

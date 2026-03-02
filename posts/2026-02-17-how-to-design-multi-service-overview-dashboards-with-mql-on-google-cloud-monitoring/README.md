@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Monitoring, MQL, Dashboards, Observability
+Tags: GCP, Cloud Monitoring, MQL, Dashboard, Observability
 
 Description: Learn how to design multi-service overview dashboards using Monitoring Query Language (MQL) on Google Cloud Monitoring for unified visibility across your infrastructure.
 

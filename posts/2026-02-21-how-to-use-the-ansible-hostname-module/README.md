@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, hostname, Linux, System Configuration
+Tags: Ansible, Hostname, Linux, System Configuration
 
 Description: Learn how to set and manage Linux hostnames with the Ansible hostname module across different distributions and init systems.
 

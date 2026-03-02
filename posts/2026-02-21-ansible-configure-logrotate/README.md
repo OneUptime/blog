@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Logrotate, Logging, Linux, DevOps
+Tags: Ansible, logrotate, Logging, Linux, DevOps
 
 Description: Automate logrotate configuration across your Linux infrastructure using Ansible for managing log file rotation, compression, and retention policies.
 

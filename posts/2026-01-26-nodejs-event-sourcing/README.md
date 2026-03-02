@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Node.js, Event Sourcing, TypeScript, CQRS, Architecture, Backend, Design Patterns
+Tags: Node.js, Event Sourcing, TypeScript, CQRS, Architecture, Backend, Design Pattern
 
 Description: Learn how to build event sourcing systems in Node.js from scratch. This guide covers event stores, aggregates, projections, snapshots, and CQRS patterns with practical TypeScript examples.
 

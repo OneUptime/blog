@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, MySQL, InnoDB, Locking, Deadlocks, Troubleshooting
+Tags: GCP, Cloud SQL, MySQL, InnoDB, Locking, Deadlock, Troubleshooting
 
 Description: How to diagnose and resolve InnoDB lock wait timeout exceeded errors on Cloud SQL MySQL instances, including finding blocking transactions and preventing lock contention.
 

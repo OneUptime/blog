@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Fluent Bit, Kubernetes, Operators
+Tags: Fluent Bit, Kubernetes, Operator
 
 Description: Learn how to deploy and configure Fluent Operator for managing Fluent Bit log pipelines declaratively using Kubernetes CRDs, enabling GitOps workflows and simplified log collection management.
 

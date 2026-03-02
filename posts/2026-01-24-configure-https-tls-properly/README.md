@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Security, HTTPS, TLS, SSL, Certificates, Web Security, Nginx, Apache
+Tags: Security, HTTPS, TLS, SSL, Certificate, Web Security, NGINX, Apache
 
 Description: Learn how to properly configure HTTPS/TLS for your web servers with modern cipher suites, certificate management, and security headers.
 

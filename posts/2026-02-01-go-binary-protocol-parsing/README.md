@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Binary, Parsing, Protocols, Networking, encoding/binary
+Tags: Go, Golang, Binary, Parsing, Protocol, Networking, encoding/binary
 
 Description: A practical guide to parsing and encoding binary protocols in Go using encoding/binary and bytes packages.
 

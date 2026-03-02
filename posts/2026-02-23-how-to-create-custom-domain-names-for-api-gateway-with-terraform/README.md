@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, API Gateway, Route53, ACM, Custom Domains, Infrastructure as Code
+Tags: Terraform, AWS, API Gateway, Route53, ACM, Custom Domain, Infrastructure as Code
 
 Description: Learn how to create custom domain names for AWS API Gateway with Terraform, including ACM certificate setup, Route53 DNS records, and base path mappings for production APIs.
 

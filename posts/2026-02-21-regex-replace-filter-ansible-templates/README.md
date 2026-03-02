@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Regex
+Tags: Ansible, Jinja2, Filter, Regex
 
 Description: Learn how to use the regex_replace filter in Ansible templates to perform pattern-based string transformations on your variables.
 

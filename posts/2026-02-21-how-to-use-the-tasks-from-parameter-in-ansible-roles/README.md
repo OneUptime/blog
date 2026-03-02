@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Roles, Tasks, Automation
+Tags: Ansible, Roles, Task, Automation
 
 Description: Master the tasks_from parameter in Ansible roles to selectively run specific task files instead of the default main.yml entry point.
 

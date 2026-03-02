@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Presence Detection, Online Status, Real-Time, WebSocket, Chat Applications
+Tags: Redis, Presence Detection, Online Status, Real-Time, WebSocket, Chat Application
 
 Description: A comprehensive guide to implementing real-time presence detection with Redis, covering online/offline status tracking, last seen timestamps, presence heartbeats, and scaling strategies.
 

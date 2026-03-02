@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Deploy, Canary, Rollouts, DevOps
+Tags: GCP, Cloud Deploy, Canary, Rollout, DevOps
 
 Description: Master the management of rollouts and phases in Google Cloud Deploy canary deployments, including advancing, pausing, and rolling back canary releases.
 

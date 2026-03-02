@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Templates
+Tags: Ansible, Jinja2, Filter, Template
 
 Description: Learn how to use Jinja2 filters in Ansible templates to transform, format, and manipulate data for dynamic configuration file generation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Gemini, Vertex AI, Conversational AI, Chatbots
+Tags: GCP, Gemini, Vertex AI, Conversational AI, Chatbot
 
 Description: A practical guide to building multi-turn conversational applications using Gemini on Vertex AI with context management, session handling, and production patterns.
 

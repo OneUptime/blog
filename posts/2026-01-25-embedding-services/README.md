@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MLOps, Embeddings, NLP, Vector Search, OpenAI, Sentence Transformers, AI
+Tags: MLOps, Embedding, NLP, Vector Search, OpenAI, Sentence Transformers, AI
 
 Description: Learn how to configure and deploy embedding services for converting text into vectors, covering model selection, batching strategies, caching, and production deployment patterns.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Next.js, WebSocket, Real-time, Socket.IO, Server-Sent Events
+Tags: Next.js, WebSocket, Real-Time, Socket.IO, Server-Sent Events
 
 Description: Learn how to implement WebSocket connections in Next.js for real-time features including chat, notifications, and live updates.
 

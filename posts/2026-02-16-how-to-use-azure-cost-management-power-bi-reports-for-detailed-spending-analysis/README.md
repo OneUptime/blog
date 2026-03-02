@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Cost Management, Power BI, FinOps, Reporting, Cloud Costs, Analytics
+Tags: Azure, Cost Management, Power BI, FinOps, Reporting, Cloud Cost, Analytics
 
 Description: Learn how to connect Azure Cost Management to Power BI for detailed spending analysis dashboards and reports with visual breakdowns.
 

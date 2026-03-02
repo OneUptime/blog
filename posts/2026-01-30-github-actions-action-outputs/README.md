@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: GitHub Actions, CI/CD, Outputs, Automation
+Tags: GitHub Actions, CI/CD, Output, Automation
 
 Description: Learn how to define, set, and consume outputs in GitHub Actions to pass data between steps, jobs, and reusable workflows.
 

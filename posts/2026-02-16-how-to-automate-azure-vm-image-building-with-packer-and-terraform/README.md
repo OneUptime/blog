@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Packer, Terraform, Azure, VM Images, Automation, Infrastructure as Code, Golden Images
+Tags: Packer, Terraform, Azure, VM Image, Automation, Infrastructure as Code, Golden Image
 
 Description: Automate Azure VM image building with HashiCorp Packer and deploy VMs from custom images using Terraform for consistent and reproducible server configurations.
 

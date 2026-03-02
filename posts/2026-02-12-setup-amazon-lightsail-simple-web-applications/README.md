@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Lightsail, Web Applications, Hosting
+Tags: AWS, Lightsail, Web Application, Hosting
 
 Description: Get started with Amazon Lightsail for hosting simple web applications with predictable pricing, including instance setup, networking, and domain configuration.
 

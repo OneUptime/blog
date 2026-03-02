@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Lua, Envoy, Filters, EnvoyFilter
+Tags: Istio, Lua, Envoy, Filter, EnvoyFilter
 
 Description: How to write and deploy Lua filters in Istio Envoy proxies for custom request and response processing.
 

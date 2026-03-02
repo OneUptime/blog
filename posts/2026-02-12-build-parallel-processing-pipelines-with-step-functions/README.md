@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Step Functions, Parallel Processing, Serverless, Workflows, Lambda
+Tags: AWS, Step Functions, Parallel Processing, Serverless, Workflow, Lambda
 
 Description: Learn how to use AWS Step Functions Parallel and Map states to build efficient parallel processing pipelines
 

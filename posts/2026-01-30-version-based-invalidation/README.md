@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Caching, Versioning, Invalidation, ETags
+Tags: Caching, Versioning, Invalidation, ETag
 
 Description: Learn to build version-based cache invalidation using ETags and version numbers.
 

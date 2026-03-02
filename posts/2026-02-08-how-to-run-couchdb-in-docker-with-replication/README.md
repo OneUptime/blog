@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, CouchDB, Databases, NoSQL, Replication, DevOps
+Tags: Docker, CouchDB, Database, NoSQL, Replication, DevOps
 
 Description: Complete guide to running Apache CouchDB in Docker with master-master replication and document management
 

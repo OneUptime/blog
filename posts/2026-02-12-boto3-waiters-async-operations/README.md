@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Boto3, Python, Async
+Tags: AWS, boto3, Python, Async
 
 Description: Learn how to use Boto3 waiters to handle asynchronous AWS operations gracefully, including built-in waiters, custom waiters, and best practices for polling.
 

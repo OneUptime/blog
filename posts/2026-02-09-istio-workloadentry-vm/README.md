@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Istio, Service Mesh, Virtual Machines, Kubernetes, Hybrid Cloud
+Tags: Istio, Service Mesh, Virtual Machine, Kubernetes, Hybrid Cloud
 
 Description: Learn how to integrate virtual machines into your Istio service mesh using WorkloadEntry resources for seamless hybrid cloud architectures.
 

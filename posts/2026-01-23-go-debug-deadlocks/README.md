@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Deadlocks, Concurrency, Goroutines, Channels, Debugging
+Tags: Go, Golang, Deadlock, Concurrency, Goroutines, Channels, Debugging
 
 Description: Learn to identify, prevent, and debug deadlock situations in Go concurrent programs including channel deadlocks, mutex deadlocks, and goroutine leaks.
 

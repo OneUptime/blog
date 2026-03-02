@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Envoy, Health Checks, Reliability
+Tags: Envoy, Health Check, Reliability
 
 Description: Learn how to configure active and passive health checks in Envoy to automatically detect and remove unhealthy backend endpoints from load balancing.
 

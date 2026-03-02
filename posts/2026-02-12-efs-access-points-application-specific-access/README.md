@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EFS, Access Points, Security, Storage
+Tags: AWS, EFS, Access Point, Security, Storage
 
 Description: Learn how to create and use EFS access points to provide application-specific entry points into your file system with enforced user identity and root directories.
 

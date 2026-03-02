@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, Assert, Validation, Playbooks
+Tags: Ansible, Testing, Assert, Validation, Playbook
 
 Description: Build self-testing Ansible playbooks using assert modules for inline validation of configuration state and service health.
 

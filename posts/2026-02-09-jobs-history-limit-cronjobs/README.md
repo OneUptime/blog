@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CronJobs, Resource Management
+Tags: Kubernetes, CronJob, Resource Management
 
 Description: Learn how to configure job history limits in Kubernetes CronJobs to automatically clean up old job records and prevent cluster clutter while retaining enough history for debugging.
 

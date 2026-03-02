@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Artifact Registry, Azure Container Registry, Docker, Containers, Cloud Migration
+Tags: GCP, Google Artifact Registry, Azure Container Registry, Docker, Container, Cloud Migration
 
 Description: A hands-on guide to migrating container images from Azure Container Registry to Google Artifact Registry, covering bulk image transfer, authentication setup, and CI/CD pipeline updates.
 

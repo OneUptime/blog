@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, Naming Conventions, Infrastructure as Code, Best Practices
+Tags: Terraform, Workspace, Naming Convention, Infrastructure as Code, Best Practices
 
 Description: Establish clear workspace naming conventions using terraform.workspace and learn how to use workspace names for resource management.
 

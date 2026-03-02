@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, Monitoring, Dashboards, Infrastructure as Code
+Tags: Terraform, GCP, Monitoring, Dashboard, Infrastructure as Code
 
 Description: Learn how to create Google Cloud Monitoring dashboards using Terraform to visualize metrics, logs, and service health in a consistent and reproducible way.
 

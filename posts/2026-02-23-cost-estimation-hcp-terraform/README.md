@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Cost Estimation, FinOps, Cloud Costs, DevOps
+Tags: Terraform, HCP Terraform, Cost Estimation, FinOps, Cloud Cost, DevOps
 
 Description: Enable and use cost estimation in HCP Terraform to see the monthly cost impact of infrastructure changes before applying them, with policy integration for budget guardrails.
 

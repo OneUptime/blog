@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Troubleshooting, Connections, Performance, DevOps
+Tags: Redis, Troubleshooting, Connection, Performance, DevOps
 
 Description: Resolve the Redis max clients error by understanding connection limits, implementing connection pooling, and identifying connection leaks in your application.
 

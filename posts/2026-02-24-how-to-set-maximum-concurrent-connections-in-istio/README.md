@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Service Mesh, Circuit Breaking, Connections, Kubernetes
+Tags: Istio, Service Mesh, Circuit Breaking, Connection, Kubernetes
 
 Description: How to configure maximum concurrent TCP and HTTP connections in Istio using DestinationRule connection pool settings to protect services from overload.
 

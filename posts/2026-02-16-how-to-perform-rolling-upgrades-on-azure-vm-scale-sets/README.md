@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, VM Scale Sets, Rolling Upgrades, Deployment Strategy, Zero Downtime, DevOps
+Tags: Azure, VM Scale Sets, Rolling Upgrade, Deployment Strategy, Zero Downtime, DevOps
 
 Description: A practical guide to performing rolling upgrades on Azure VM Scale Sets for zero-downtime deployments with health monitoring and rollback.
 

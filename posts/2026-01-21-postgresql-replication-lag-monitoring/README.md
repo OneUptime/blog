@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Replication, Monitoring, Lag, High Availability, Streaming Replication
+Tags: PostgreSQL, Replication, Monitoring, LAG, High Availability, Streaming Replication
 
 Description: A comprehensive guide to monitoring PostgreSQL replication lag, understanding lag metrics, and setting up alerts to ensure data consistency.
 

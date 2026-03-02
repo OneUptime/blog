@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Site Reliability Engineering, SRE, Runbooks, Automation, Incident Response, DevOps, Operational Excellence
+Tags: Site Reliability Engineering, SRE, Runbook, Automation, Incident Response, DevOps, Operational Excellence
 
 Description: Learn how to transform manual runbooks into automated workflows that reduce incident response time and eliminate human error during high-stress situations.
 

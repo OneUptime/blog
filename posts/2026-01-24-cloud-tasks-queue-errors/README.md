@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cloud Tasks, Google Cloud, Queue, Errors, Troubleshooting, GCP, Distributed Systems
+Tags: Cloud Tasks, Google Cloud, Queue, Error, Troubleshooting, GCP, Distributed Systems
 
 Description: Learn how to diagnose and fix common Google Cloud Tasks queue errors including permission issues, rate limiting, and task execution failures.
 

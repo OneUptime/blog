@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Blue-Green, Upgrades
+Tags: Kubernetes, Blue-Green, Upgrade
 
 Description: Learn how to implement blue-green cluster upgrade strategies for Kubernetes control plane changes with zero downtime and instant rollback capabilities.
 

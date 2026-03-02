@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Scheduling, Plugins
+Tags: Kubernetes, Scheduling, Plugin
 
 Description: Learn how to extend Kubernetes scheduler with custom scoring plugins to implement specialized pod placement logic using the scheduler plugins framework.
 

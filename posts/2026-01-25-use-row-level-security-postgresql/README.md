@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Database, Security, RLS, Row-Level Security, Access Control, Multi-tenant
+Tags: PostgreSQL, Database, Security, RLS, Row-Level Security, Access Control, Multi-Tenant
 
 Description: Learn how to implement row-level security (RLS) in PostgreSQL to control data access at the row level. This guide covers policies, multi-tenant applications, and security best practices.
 

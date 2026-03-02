@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Multicluster, Kubernetes, Service Mesh, High Availability
+Tags: Istio, MultiCluster, Kubernetes, Service Mesh, High Availability
 
 Description: A complete guide to configuring multi-primary multicluster deployments in Istio where each cluster has its own control plane for redundancy and resilience.
 

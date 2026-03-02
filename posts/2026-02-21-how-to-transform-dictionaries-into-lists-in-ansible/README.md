@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Data Transformation, Jinja2, Filters
+Tags: Ansible, Data Transformation, Jinja2, Filter
 
 Description: Learn how to convert dictionaries into lists in Ansible using dict2items, Jinja2 loops, and custom filters for flexible playbook data handling.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Log Rotation, Logging, DevOps, Linux, System Administration, Disk Management, Logrotate
+Tags: Log Rotation, Logging, DevOps, Linux, System Administration, Disk Management, logrotate
 
 Description: Learn how to configure effective log rotation strategies to manage disk space, maintain performance, and ensure compliance.
 

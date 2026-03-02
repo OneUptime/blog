@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Delegation, Serial, Rolling Updates
+Tags: Ansible, Delegation, SERIAL, Rolling Update
 
 Description: Learn how to combine Ansible delegation with serial execution for controlled rolling updates across your infrastructure.
 

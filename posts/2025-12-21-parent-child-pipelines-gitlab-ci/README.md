@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab, CI/CD, Pipelines, Parent-Child, Microservices, Monorepo
+Tags: GitLab, CI/CD, Pipeline, Parent-Child, Microservices, Monorepo
 
 Description: Learn how to use parent-child pipelines in GitLab CI for modular, maintainable CI/CD configurations. This guide covers triggering child pipelines, passing variables, and managing complex workflows.
 

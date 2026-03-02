@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Service Quotas, Limits, Infrastructure as Code, Governance
+Tags: Terraform, AWS, Service Quotas, Limit, Infrastructure as Code, Governance
 
 Description: Learn how to manage and request AWS service quota increases using Terraform to prevent hitting resource limits in production environments.
 

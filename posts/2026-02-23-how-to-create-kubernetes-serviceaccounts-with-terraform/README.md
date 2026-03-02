@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, ServiceAccounts, Security, RBAC, Infrastructure as Code
+Tags: Terraform, Kubernetes, ServiceAccount, Security, RBAC, Infrastructure as Code
 
 Description: How to create and configure Kubernetes ServiceAccounts with Terraform for pod identity, RBAC integration, and cloud IAM workload identity.
 

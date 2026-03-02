@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: JWT, Authentication, Security, Troubleshooting, Tokens, Cryptography
+Tags: JWT, Authentication, Security, Troubleshooting, Token, Cryptography
 
 Description: Learn how to diagnose and fix 'Invalid Signature' errors in JWT tokens with practical debugging techniques and code examples.
 

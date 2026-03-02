@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Real-Time, Collaborative Editing, Node.js, WebSocket, CRDT, OT, Yjs, Socket.io
+Tags: Real-Time, Collaborative Editing, Node.js, WebSocket, CRDT, OT, Yjs, Socket.IO
 
 Description: Learn how to build real-time collaborative editing features in Node.js using CRDTs and WebSockets.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Blob Storage, Lifecycle Management, Cost Optimization, Storage, Cloud Costs, Data Management
+Tags: Azure, Blob Storage, Lifecycle Management, Cost Optimization, Storage, Cloud Cost, Data Management
 
 Description: Learn how to use Azure Blob Storage lifecycle management policies to automatically tier and delete data for significant cost savings.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, WebSocket, Real-time, Proxy, Socket.IO
+Tags: NGINX, WebSocket, Real-Time, Proxy, Socket.IO
 
 Description: Learn how to configure Nginx to proxy WebSocket connections, handle the HTTP upgrade handshake, and maintain persistent connections for real-time applications.
 

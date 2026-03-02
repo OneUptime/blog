@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Templates, Conditionals
+Tags: Ansible, Jinja2, Template, Conditional
 
 Description: Learn how to use Jinja2 if, elif, and else statements in Ansible templates to create dynamic configuration files with conditional sections.
 

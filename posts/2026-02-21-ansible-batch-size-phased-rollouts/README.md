@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Batch Size, Rollouts, Deployment, Serial
+Tags: Ansible, Batch Size, Rollout, Deployment, SERIAL
 
 Description: Control Ansible batch sizes using serial with fixed numbers, percentages, and progressive lists to implement phased deployment rollouts.
 

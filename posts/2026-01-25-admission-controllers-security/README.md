@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Admission Controllers, Security, OPA, Gatekeeper, Kyverno, Policy Enforcement
+Tags: Kubernetes, Admission Controller, Security, OPA, Gatekeeper, Kyverno, Policy Enforcement
 
 Description: Learn how to implement admission controllers for Kubernetes security policy enforcement. This guide covers validating and mutating webhooks, OPA Gatekeeper, and Kyverno with practical examples.
 

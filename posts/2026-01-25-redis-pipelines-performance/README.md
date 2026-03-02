@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Performance, Pipelines, Optimization, Latency
+Tags: Redis, Performance, Pipeline, Optimization, Latency
 
 Description: Learn how to use Redis pipelines to dramatically improve performance by batching commands, reducing network round trips, and handling bulk operations efficiently.
 

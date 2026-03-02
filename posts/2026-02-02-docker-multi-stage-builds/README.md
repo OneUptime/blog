@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Multi-stage, Builds, Optimization
+Tags: Docker, Multi-Stage, Build, Optimization
 
 Description: Learn how to use multi-stage Docker builds to create smaller, faster, and more secure container images by separating build-time dependencies from runtime.
 

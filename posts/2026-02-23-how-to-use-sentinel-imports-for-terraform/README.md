@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Sentinel, Policy as Code, HashiCorp, Imports, Infrastructure as Code
+Tags: Terraform, Sentinel, Policy as Code, HashiCorp, Import, Infrastructure as Code
 
 Description: A comprehensive guide to understanding and using Sentinel imports for Terraform including tfplan, tfconfig, tfstate, and tfrun to build effective infrastructure policies.
 

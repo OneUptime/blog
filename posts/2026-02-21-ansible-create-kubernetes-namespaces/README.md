@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Namespaces, Organization, DevOps
+Tags: Ansible, Kubernetes, Namespace, Organization, DevOps
 
 Description: Create and manage Kubernetes namespaces with Ansible including labels, annotations, resource quotas, and network policies.
 

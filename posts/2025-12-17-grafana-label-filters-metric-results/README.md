@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Prometheus, PromQL, Labels, Filters, Queries, Dashboard Variables
+Tags: Grafana, Prometheus, PromQL, Labels, Filter, Queries, Dashboard Variables
 
 Description: Learn how to create dynamic label filters in Grafana that are populated based on metric query results.
 

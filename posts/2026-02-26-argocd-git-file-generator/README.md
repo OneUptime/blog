@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Automation
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Automation
 
 Description: Learn how to use the ArgoCD ApplicationSet Git file generator to create applications dynamically from JSON or YAML configuration files stored in your Git repository.
 

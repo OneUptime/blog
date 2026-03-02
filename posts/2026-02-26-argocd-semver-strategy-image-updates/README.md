@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Image Updater, Semver
+Tags: ArgoCD, GitOps, Kubernetes, Image Updater, SemVer
 
 Description: Learn how to use the semver update strategy in ArgoCD Image Updater to automatically deploy container images based on semantic versioning constraints like major, minor, and patch ranges.
 

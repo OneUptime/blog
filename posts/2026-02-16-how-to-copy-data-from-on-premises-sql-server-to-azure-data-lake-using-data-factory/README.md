@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Data Factory, SQL Server, Azure Data Lake, Data Migration, Self-Hosted IR, On-Premises
+Tags: Azure Data Factory, SQL Server, Azure Data Lake, Data Migration, Self-Hosted IR, On-Premise
 
 Description: A complete walkthrough for copying data from an on-premises SQL Server database to Azure Data Lake Storage Gen2 using Azure Data Factory.
 

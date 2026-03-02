@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Availability Sets, High Availability, Infrastructure as Code, Virtual Machines
+Tags: Terraform, Azure, Availability Sets, High Availability, Infrastructure as Code, Virtual Machine
 
 Description: Learn how to create Azure Availability Sets with Terraform to ensure your virtual machines are distributed across fault and update domains for high availability.
 

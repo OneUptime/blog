@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, IoT, OTA Updates, IoT Core, Device Management, Firmware
+Tags: AWS, IoT, OTA Update, IoT Core, Device Management, Firmware
 
 Description: Learn how to implement over-the-air firmware updates for IoT devices using AWS IoT Core Jobs and best practices for safe fleet-wide rollouts.
 

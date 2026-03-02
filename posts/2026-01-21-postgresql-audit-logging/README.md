@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Audit Logging, Compliance, Security, Triggers, pgaudit
+Tags: PostgreSQL, Audit Logging, Compliance, Security, Trigger, pgAudit
 
 Description: A comprehensive guide to implementing audit logging in PostgreSQL, covering trigger-based logging, pgaudit extension, CDC patterns, and compliance requirements.
 

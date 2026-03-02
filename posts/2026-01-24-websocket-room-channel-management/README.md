@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Real-time, Node.js, Socket.IO, Architecture, Pub/Sub
+Tags: WebSocket, Real-Time, Node.js, Socket.IO, Architecture, Pub/Sub
 
 Description: A practical guide to implementing room and channel management in WebSocket applications, including patterns for grouping connections, broadcasting messages, and scaling across multiple servers.
 

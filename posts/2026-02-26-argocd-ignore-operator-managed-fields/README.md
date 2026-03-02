@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Operators, Diff Customization
+Tags: ArgoCD, GitOps, Kubernetes, Operator, Diff Customization
 
 Description: Learn how to configure ArgoCD to ignore fields managed by Kubernetes operators to prevent false OutOfSync status and reconciliation conflicts.
 

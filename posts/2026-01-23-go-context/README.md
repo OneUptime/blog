@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Context, Cancellation, Timeouts, Concurrency, Goroutines
+Tags: Go, Golang, Context, Cancellation, Timeout, Concurrency, Goroutines
 
 Description: Master Go's context package for handling cancellation, timeouts, and request-scoped values. Learn patterns for propagating context through your application.
 

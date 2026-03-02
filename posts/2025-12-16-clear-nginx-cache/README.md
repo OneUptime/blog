@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Cache, Performance, Troubleshooting, Proxy Cache, FastCGI Cache
+Tags: NGINX, Cache, Performance, Troubleshooting, Proxy Cache, FastCGI Cache
 
 Description: A complete guide to clearing Nginx cache including proxy cache, FastCGI cache, and browser cache. Learn manual and automated cache purging methods with practical examples.
 

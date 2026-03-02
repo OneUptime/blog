@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Redaction, Security, PII, Privacy, GDPR, Compliance
+Tags: OpenTelemetry, Collector, Processor, Redaction, Security, PII, Privacy, GDPR, Compliance
 
 Description: Learn how to configure the redaction processor in OpenTelemetry Collector to automatically detect and remove sensitive data like credit cards, SSNs, API keys, and PII from telemetry before export.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, TCP, Networking, Binary Protocols, Backend
+Tags: Node.js, TCP, Networking, Binary Protocol, Backend
 
 Description: Learn how to implement custom binary protocols over TCP in Node.js, including message framing, parsing, and handling partial reads.
 

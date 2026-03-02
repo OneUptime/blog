@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebAssembly, Wasm, Rust, Envoy, Tutorial
+Tags: Istio, WebAssembly, WASM, Rust, Envoy, Tutorial
 
 Description: A step-by-step tutorial for building your first WebAssembly plugin for Istio using Rust and the proxy-wasm SDK.
 

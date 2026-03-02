@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, REST API, Applications
+Tags: ArgoCD, GitOps, Kubernetes, REST API, Application
 
 Description: Learn how to list and filter ArgoCD applications using the REST API with practical examples for querying, filtering, and processing application data.
 

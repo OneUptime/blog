@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kubectl, Productivity, CLI, Shell
+Tags: Kubernetes, kubectl, Productivity, CLI, Shell
 
 Description: Build powerful kubectl aliases and shell functions to accelerate Kubernetes workflows, reduce typing, and automate common operations with practical examples for daily development tasks.
 

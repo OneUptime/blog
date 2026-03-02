@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Variables, Interactive, Playbooks
+Tags: Ansible, Variables, Interactive, Playbook
 
 Description: Learn how to use vars_prompt in Ansible to collect user input at runtime for passwords, confirmations, and deployment parameters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Private Endpoints, Storage Account, Network Security, Private Link, Virtual Network
+Tags: Azure, Private Endpoint, Storage Account, Network Security, Private Link, Virtual Network
 
 Description: Learn how to set up Azure Private Endpoints for storage accounts to route all traffic through your virtual network and eliminate public internet exposure.
 

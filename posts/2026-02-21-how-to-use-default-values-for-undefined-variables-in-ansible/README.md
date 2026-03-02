@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Variables, Jinja2, Filters, DevOps
+Tags: Ansible, Variables, Jinja2, Filter, DevOps
 
 Description: Learn how to use the default filter and other techniques to handle undefined variables gracefully in Ansible playbooks without causing errors.
 

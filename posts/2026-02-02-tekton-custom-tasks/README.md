@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Tekton, Kubernetes, CI/CD, Custom Tasks, Cloud Native, DevOps, Pipelines
+Tags: Tekton, Kubernetes, CI/CD, Custom Tasks, Cloud Native, DevOps, Pipeline
 
 Description: A practical guide to building Tekton Custom Tasks for extending your CI/CD pipelines with custom logic, external integrations, and specialized workflow steps.
 

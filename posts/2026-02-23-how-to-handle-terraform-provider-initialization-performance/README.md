@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Initialization, Performance, CI/CD
+Tags: Terraform, Provider, Initialization, Performance, CI/CD
 
 Description: Speed up Terraform provider initialization by reducing download times, caching plugins, and optimizing multi-provider configurations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, SaaS, Billing, Stripe, DynamoDB, Lambda, EventBridge, Subscriptions
+Tags: AWS, SaaS, Billing, Stripe, DynamoDB, Lambda, EventBridge, Subscription
 
 Description: Build a production-grade SaaS billing system on AWS with subscription management, usage metering, invoicing, and payment processing
 

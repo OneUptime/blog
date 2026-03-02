@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Private CA, TLS, Certificates, Security
+Tags: AWS, Private CA, TLS, Certificate, Security
 
 Description: Set up AWS Private Certificate Authority to issue and manage TLS certificates for internal services, mutual TLS, and private domain encryption.
 

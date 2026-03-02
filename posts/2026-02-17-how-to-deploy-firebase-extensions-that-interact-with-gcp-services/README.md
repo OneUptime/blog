@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Firebase, GCP, Extensions, Cloud Functions, Integration
+Tags: Firebase, GCP, Extension, Cloud Functions, Integration
 
 Description: A hands-on guide to installing and configuring Firebase Extensions that connect with broader GCP services like BigQuery, Cloud Storage, and Pub/Sub.
 

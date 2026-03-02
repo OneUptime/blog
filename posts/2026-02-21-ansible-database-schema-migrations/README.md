@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Database, Migrations, PostgreSQL, DevOps
+Tags: Ansible, Database, Migration, PostgreSQL, DevOps
 
 Description: Automate database schema migrations safely with Ansible playbooks that handle version tracking, rollback procedures, and multi-environment deployments.
 

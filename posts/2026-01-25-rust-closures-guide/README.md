@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Closures, Functional Programming, Iterators, Performance
+Tags: Rust, Closures, Functional Programming, Iterator, Performance
 
 Description: A comprehensive guide to closures in Rust. Learn about closure syntax, capturing variables, the Fn traits, and practical use cases with clear examples.
 

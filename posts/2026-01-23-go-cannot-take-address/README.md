@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Errors, Pointers, Address, Memory
+Tags: Go, Golang, Error, Pointers, Address, Memory
 
 Description: Learn how to fix 'cannot take address of' errors in Go when trying to get pointers to temporary values, literals, and map values.
 

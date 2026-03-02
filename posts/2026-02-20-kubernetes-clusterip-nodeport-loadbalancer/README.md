@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Services, Networking, ClusterIP, NodePort
+Tags: Kubernetes, Service, Networking, ClusterIP, NodePort
 
 Description: A comprehensive guide to Kubernetes service types, when to use each, and how traffic flows through ClusterIP, NodePort, and LoadBalancer services.
 

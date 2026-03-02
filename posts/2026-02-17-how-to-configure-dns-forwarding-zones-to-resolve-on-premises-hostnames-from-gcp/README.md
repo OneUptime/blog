@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud DNS, DNS Forwarding, On-Premises, Hybrid Cloud
+Tags: GCP, Cloud DNS, DNS Forwarding, On-Premise, Hybrid Cloud
 
 Description: Learn how to set up DNS forwarding zones in Google Cloud DNS to resolve on-premises hostnames from GCP VMs through VPN or Interconnect connectivity.
 

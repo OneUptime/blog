@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Auto-Scaling, Message Queues, Kubernetes
+Tags: OpenTelemetry, Auto-Scaling, Message Queue, Kubernetes
 
 Description: A practical guide to instrumenting message queue depth with OpenTelemetry and using those metrics to drive consumer auto-scaling decisions.
 

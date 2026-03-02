@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Services, Endpoints, External Services
+Tags: Istio, Kubernetes, Service, Endpoints, External Services
 
 Description: Configure Istio to work with Kubernetes services that have no pod selectors, including manual endpoints, external service routing, and hybrid architectures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Redis, Caching, Database, Containers
+Tags: Docker, Redis, Caching, Database, Container
 
 Description: Learn how to run Redis in Docker with persistence options, custom configuration, password authentication, and production-ready settings for caching and data storage.
 

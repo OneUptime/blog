@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Jinja2, Data Transformation
+Tags: Ansible, Filter, Jinja2, Data Transformation
 
 Description: Learn how to use the Ansible map filter to transform lists by extracting attributes, applying filters, and performing bulk operations on collection elements.
 

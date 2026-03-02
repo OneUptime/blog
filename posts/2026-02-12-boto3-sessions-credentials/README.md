@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Boto3, Python, Credentials, SDK
+Tags: AWS, boto3, Python, Credentials, SDK
 
 Description: A comprehensive guide to managing Boto3 sessions, credential chains, and best practices for handling AWS authentication in Python applications.
 

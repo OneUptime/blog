@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Automation, Hybrid Runbook Worker, On-Premises, Hybrid Cloud, DevOps, Infrastructure
+Tags: Azure, Azure Automation, Hybrid Runbook Worker, On-Premise, Hybrid Cloud, DevOps, Infrastructure
 
 Description: Learn how to configure Azure Automation Hybrid Runbook Workers to run automation scripts against on-premises servers and resources.
 

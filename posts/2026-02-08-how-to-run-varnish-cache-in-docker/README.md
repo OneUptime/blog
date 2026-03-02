@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Varnish, Caching, Web Servers, Performance, DevOps
+Tags: Docker, Varnish, Caching, Web Server, Performance, DevOps
 
 Description: Deploy Varnish HTTP cache in Docker to accelerate your web applications with configurable caching rules and VCL configuration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, Databases
+Tags: CockroachDB, Kubernetes, Database
 
 Description: Learn how to deploy CockroachDB in a multi-region Kubernetes configuration using the CockroachDB operator for geo-distributed, highly available database clusters with automated failover.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Rate Limiting, API Gateway, Algorithms, Backend
+Tags: Rate Limiting, API Gateway, Algorithm, Backend
 
 Description: Learn how to implement the token bucket algorithm for flexible rate limiting with burst support.
 

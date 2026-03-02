@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, IAM, Data Sources, Infrastructure as Code
+Tags: Terraform, AWS, IAM, Data Source, Infrastructure as Code
 
 Description: Learn how to use the aws_iam_policy_document data source to define IAM policies natively in HCL with full validation and policy merging support.
 

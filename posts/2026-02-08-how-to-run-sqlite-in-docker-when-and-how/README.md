@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, SQLite, Databases, DevOps, Lightweight, Containers
+Tags: Docker, SQLite, Database, DevOps, Lightweight, Container
 
 Description: When and how to use SQLite inside Docker containers, including practical patterns for embedded database workloads
 

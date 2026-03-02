@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, concat Function, Lists, HCL, Infrastructure as Code, Collections
+Tags: Terraform, concat Function, Lists, HCL, Infrastructure as Code, Collection
 
 Description: Learn how to use the concat function in Terraform to merge multiple lists into a single flat list for building dynamic resource configurations.
 

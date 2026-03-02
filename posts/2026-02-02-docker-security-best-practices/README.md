@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Security, Containers, Best Practices, DevOps, DevSecOps
+Tags: Docker, Security, Container, Best Practices, DevOps, DevSecOps
 
 Description: A comprehensive guide to securing Docker containers in production, covering image hardening, runtime security, network isolation, secrets management, and vulnerability scanning strategies.
 

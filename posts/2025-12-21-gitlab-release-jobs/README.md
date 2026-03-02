@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Releases, Versioning, CI/CD, DevOps, Changelog
+Tags: GitLab CI, Release, Versioning, CI/CD, DevOps, Changelog
 
 Description: Learn how to use release jobs in GitLab CI to automate creating releases with changelogs, assets, and version tags. This guide covers the release keyword, semantic versioning, and release automation.
 

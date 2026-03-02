@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWX, Execution Environments, Containers, DevOps
+Tags: Ansible, AWX, Execution Environment, Container, DevOps
 
 Description: Build and configure custom AWX execution environments to package Python dependencies, collections, and system libraries for consistent playbook runs.
 

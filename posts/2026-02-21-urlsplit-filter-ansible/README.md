@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Networking
+Tags: Ansible, Jinja2, Filter, Networking
 
 Description: Learn how to use the urlsplit filter in Ansible to parse URLs into their component parts for flexible network configuration.
 

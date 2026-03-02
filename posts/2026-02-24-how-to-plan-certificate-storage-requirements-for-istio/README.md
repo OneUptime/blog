@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, Security, mTLS, Storage
+Tags: Istio, Certificate, Security, mTLS, Storage
 
 Description: A practical guide to planning and managing certificate storage for Istio mTLS including CA certificates, workload identities, and rotation strategies.
 

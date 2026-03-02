@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Files, SMB, Windows, File Shares, Network Drive, Azure Storage
+Tags: Azure, Azure Files, SMB, Windows, File Share, Network Drive, Azure Storage
 
 Description: Step-by-step instructions for mounting an Azure File Share as a mapped network drive on Windows using SMB protocol with persistent and on-demand configurations.
 

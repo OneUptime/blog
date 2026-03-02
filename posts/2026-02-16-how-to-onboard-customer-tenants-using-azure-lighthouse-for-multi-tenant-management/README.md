@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Lighthouse, Multi-Tenant, Cloud Management, Managed Services, Azure Active Directory, Delegation
+Tags: Azure, Azure Lighthouse, Multi-Tenant, Cloud Management, Managed Service, Azure Active Directory, Delegation
 
 Description: A practical guide to onboarding customer tenants using Azure Lighthouse so you can manage resources across multiple Azure AD tenants from a single pane of glass.
 

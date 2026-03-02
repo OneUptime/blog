@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Infrastructure as Code, Expressions, Maps, Collections
+Tags: Terraform, HCL, Infrastructure as Code, Expressions, Maps, Collection
 
 Description: Learn how to use Terraform for expressions with maps to transform, filter, restructure, and generate map data structures for dynamic infrastructure configuration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Zookeeper, Distributed Locking, Coordination, Apache, Concurrency
+Tags: ZooKeeper, Distributed Locking, Coordination, Apache, Concurrency
 
 Description: Learn how to implement distributed locks using Apache Zookeeper for coordinating access to shared resources across multiple processes and machines.
 

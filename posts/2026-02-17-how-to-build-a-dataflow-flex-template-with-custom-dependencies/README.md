@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Dataflow, Flex Templates, Apache Beam, Docker, Custom Dependencies
+Tags: GCP, Dataflow, Flex Template, Apache Beam, Docker, Custom Dependencies
 
 Description: Learn how to build Dataflow Flex Templates that package custom dependencies and libraries into a Docker container for production pipelines.
 

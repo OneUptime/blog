@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Outputs, Infrastructure as Code, Code Reuse
+Tags: Terraform, Modules, Output, Infrastructure as Code, Code Reuse
 
 Description: Learn how to define and export output values from Terraform modules so that calling configurations can access resource attributes, IDs, and computed values.
 

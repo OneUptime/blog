@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Security
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Security
 
 Description: Learn how to configure security policies for ArgoCD ApplicationSets to prevent unauthorized application creation, restrict generator usage, and enforce deployment boundaries.
 

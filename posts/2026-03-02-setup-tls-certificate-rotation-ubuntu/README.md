@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, TLS, Certificates, Security, Automation
+Tags: Ubuntu, TLS, Certificate, Security, Automation
 
 Description: Configure automated TLS certificate rotation on Ubuntu to prevent service outages from expired certificates using systemd timers, scripting, and proper service reload strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Nginx Unit, Web Servers, Application Server, DevOps, Python, Node.js
+Tags: Docker, Nginx Unit, Web Server, Application Server, DevOps, Python, Node.js
 
 Description: Deploy Nginx Unit in Docker as a universal application server with dynamic configuration for Python, Node.js, and more
 

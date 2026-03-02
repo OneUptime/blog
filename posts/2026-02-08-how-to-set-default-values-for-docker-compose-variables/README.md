@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker Compose, Environment Variables, Configuration, Defaults, DevOps, Docker
+Tags: Docker Compose, Environment Variable, Configuration, Defaults, DevOps, Docker
 
 Description: Complete guide to setting default values for Docker Compose variables using built-in syntax, .env files, and shell techniques.
 

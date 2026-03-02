@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, docker compose, exec, debugging, development, containers, CLI
+Tags: Docker, Docker Compose, EXEC, Debugging, Development, Container, CLI
 
 Description: Master the docker compose exec command for running ad-hoc commands, debugging, and managing running services.
 

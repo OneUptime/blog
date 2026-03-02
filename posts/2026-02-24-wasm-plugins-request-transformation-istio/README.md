@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebAssembly, Wasm, Request Transformation, Envoy
+Tags: Istio, WebAssembly, WASM, Request Transformation, Envoy
 
 Description: Building Wasm plugins in Istio for transforming HTTP requests and responses including header manipulation, body rewriting, and URL routing.
 

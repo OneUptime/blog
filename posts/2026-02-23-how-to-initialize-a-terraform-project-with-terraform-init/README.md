@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Initialization, terraform init, Providers, Backend, DevOps
+Tags: Terraform, Initialization, terraform init, Provider, Backend, DevOps
 
 Description: Deep dive into terraform init covering provider downloads, backend configuration, module installation, and all the flags you need to know.
 

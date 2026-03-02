@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Batch, Jobs, Tasks, HPC, Parallel Computing, Monitoring
+Tags: Azure, Batch, Jobs, Task, HPC, Parallel Computing, Monitoring
 
 Description: Learn how to create jobs, submit tasks, manage dependencies, and monitor execution progress in Azure Batch for large-scale parallel workloads.
 

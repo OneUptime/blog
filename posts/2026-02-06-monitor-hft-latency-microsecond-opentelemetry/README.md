@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, High-Frequency Trading, Latency Monitoring, Custom Exporters
+Tags: OpenTelemetry, High-Frequency Trading, Latency Monitoring, Custom Exporter
 
 Description: Learn how to build custom OpenTelemetry exporters that capture and report HFT system latency at microsecond precision.
 

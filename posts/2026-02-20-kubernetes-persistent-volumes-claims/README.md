@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Storage, Persistent Volumes, PVC, StatefulSet
+Tags: Kubernetes, Storage, Persistent Volume, PVC, StatefulSet
 
 Description: A comprehensive guide to Kubernetes persistent storage including PV, PVC, StorageClasses, and how to provision storage for stateful workloads.
 

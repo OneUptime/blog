@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Consumer Acknowledgments, Message Queues, Reliability, At-Least-Once Delivery, DevOps
+Tags: RabbitMQ, Consumer Acknowledgments, Message Queue, Reliability, At-Least-Once Delivery, DevOps
 
 Description: Learn how to implement consumer acknowledgments in RabbitMQ to ensure reliable message processing with practical examples covering manual acks, nacks, and requeue strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Incident Management, Communication, SRE, Teams
+Tags: Incident Management, Communication, SRE, Team
 
 Description: Learn how to establish effective internal communication during incidents.
 

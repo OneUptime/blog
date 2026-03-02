@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Operator, CRDs, Automation
+Tags: Istio, Kubernetes, Operator, CRD, Automation
 
 Description: Build and use Kubernetes operators to manage Istio custom resource definitions for automated mesh configuration and lifecycle management.
 

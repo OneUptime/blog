@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Thread Pools, Performance, Concurrency, Java, Python, Node.js, Backend, Optimization
+Tags: Thread Pool, Performance, Concurrency, Java, Python, Node.js, Backend, Optimization
 
 Description: Learn how to tune thread pools for optimal performance in production applications.
 

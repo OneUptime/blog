@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Terraform, Cloud Run, Serverless, Containers, Infrastructure as Code
+Tags: GCP, Terraform, Cloud Run, Serverless, Container, Infrastructure as Code
 
 Description: Learn how to deploy and manage Google Cloud Run services using Terraform, including traffic splitting, custom domains, VPC connectivity, and autoscaling configuration.
 

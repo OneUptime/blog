@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Volumes, Bind Mounts, DevOps, Data Persistence
+Tags: Docker, VOLUME, Bind Mounts, DevOps, Data Persistence
 
 Description: Learn the differences between Docker bind mounts and named volumes, when to use each, and how to configure them for development, production, and CI/CD environments.
 

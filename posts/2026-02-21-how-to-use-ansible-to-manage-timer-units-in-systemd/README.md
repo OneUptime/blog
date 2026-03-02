@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, systemd, Timers, Linux, Automation
+Tags: Ansible, systemd, Timer, Linux, Automation
 
 Description: Learn how to create and manage systemd timer units with Ansible as a modern replacement for cron jobs with better logging and dependency control.
 

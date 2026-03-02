@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Regex
+Tags: Ansible, Jinja2, Filter, Regex
 
 Description: Learn how to use the regex_search filter in Ansible to extract matching patterns from strings using regular expressions.
 

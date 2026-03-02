@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, RBAC, Operators, Leader Election, Namespace
+Tags: Kubernetes, RBAC, Operator, Leader Election, Namespace
 
 Description: Learn how to create RBAC roles for namespace-scoped operators that include leader election permissions, enabling high availability without granting excessive cluster-wide privileges.
 

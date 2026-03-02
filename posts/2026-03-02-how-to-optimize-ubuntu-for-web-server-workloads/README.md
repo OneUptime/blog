@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Web Server, Performance Tuning, Nginx, Kernel
+Tags: Ubuntu, Web Server, Performance Tuning, NGINX, Kernel
 
 Description: Tune Ubuntu kernel networking, file descriptor limits, and memory settings to maximize web server throughput, reduce latency, and handle high concurrent connection loads.
 

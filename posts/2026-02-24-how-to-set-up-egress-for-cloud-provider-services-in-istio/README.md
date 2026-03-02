@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Egress, Cloud Providers, AWS, GCP, Azure
+Tags: Istio, Egress, Cloud Provider, AWS, GCP, Azure
 
 Description: Configure Istio egress rules for AWS, GCP, and Azure cloud services including S3, BigQuery, Blob Storage, and managed databases.
 

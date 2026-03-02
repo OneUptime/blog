@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana Loki, TLS, SSL, Encryption, Security, Certificates, mTLS
+Tags: Grafana Loki, TLS, SSL, Encryption, Security, Certificate, mTLS
 
 Description: A comprehensive guide to configuring TLS encryption for Grafana Loki, covering certificate generation, server configuration, client setup, and mutual TLS for secure log transport.
 

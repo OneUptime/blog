@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Logic Apps, ISE, Integration Service Environment, VNET, Enterprise Integration, Network Isolation
+Tags: Azure, Logic Apps, ISE, Integration Service Environment, VNet, Enterprise Integration, Network Isolation
 
 Description: Deploy Azure Logic Apps in an Integration Service Environment for VNET integration, network isolation, and dedicated compute capacity.
 

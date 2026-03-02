@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, PromQL, Errors, Troubleshooting, Vector Selectors, Range Vectors, Monitoring, Observability
+Tags: Prometheus, PromQL, Error, Troubleshooting, Vector Selectors, Range Vectors, Monitoring, Observability
 
 Description: Learn how to fix the 'ranges only allowed for vector selectors' error in Prometheus. This guide explains instant vs range vectors, common causes, and practical solutions.
 

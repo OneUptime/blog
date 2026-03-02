@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, regex, Input Validation, Variables, Infrastructure as Code, HCL
+Tags: Terraform, Regex, Input Validation, Variables, Infrastructure as Code, HCL
 
 Description: Learn how to use Terraform's regex and regexall functions along with validation blocks to enforce input constraints and catch configuration errors early.
 

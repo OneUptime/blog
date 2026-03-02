@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Namespaces, Service Mesh, Security
+Tags: Istio, Kubernetes, Namespace, Service Mesh, Security
 
 Description: A practical guide to managing Kubernetes namespaces in Istio including sidecar injection, isolation policies, and resource scoping for production meshes.
 

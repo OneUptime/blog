@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Automation, DevOps
+Tags: Ansible, Plugin, Automation, DevOps
 
 Description: Learn how to create custom Ansible connection plugins to communicate with hosts using non-standard protocols, APIs, or proprietary systems beyond SSH and WinRM.
 

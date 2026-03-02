@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: GraphQL, Subscriptions, Real-time, WebSocket
+Tags: GraphQL, Subscription, Real-Time, WebSocket
 
 Description: Build production-ready GraphQL subscriptions with WebSocket transport, scalable PubSub backends, filtering, authentication, and horizontal scaling patterns.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Tekton, CI/CD, Pipelines, Cloud Native
+Tags: Helm, Kubernetes, DevOps, Tekton, CI/CD, Pipeline, Cloud Native
 
 Description: Complete guide to building Helm deployment pipelines using Tekton for cloud-native CI/CD automation on Kubernetes.
 

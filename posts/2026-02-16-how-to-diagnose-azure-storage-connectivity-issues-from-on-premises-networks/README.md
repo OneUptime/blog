@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Storage, Networking, On-Premises, Connectivity, Troubleshooting, Hybrid Cloud
+Tags: Azure, Azure Storage, Networking, On-Premise, Connectivity, Troubleshooting, Hybrid Cloud
 
 Description: A practical guide to diagnosing and resolving connectivity problems between on-premises networks and Azure Storage accounts.
 

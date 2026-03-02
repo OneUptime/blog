@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, DNS, Virtual Machines, Service Mesh, Networking
+Tags: Istio, DNS, Virtual Machine, Service Mesh, Networking
 
 Description: Learn how to properly configure DNS resolution for virtual machine workloads integrated into an Istio service mesh.
 

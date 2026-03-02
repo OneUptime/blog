@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CDKTF, Infrastructure as Code, Version Management, Upgrades
+Tags: Terraform, CDKTF, Infrastructure as Code, Version Management, Upgrade
 
 Description: A practical guide to handling CDKTF version upgrades safely, covering breaking changes, provider compatibility, dependency updates, and testing strategies.
 

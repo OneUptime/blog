@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Secrets, Security
+Tags: ArgoCD, GitOps, Kubernetes, Secret, Security
 
 Description: A comprehensive guide to managing the full lifecycle of Kubernetes secrets with ArgoCD, from creation through rotation to deletion, using GitOps best practices.
 

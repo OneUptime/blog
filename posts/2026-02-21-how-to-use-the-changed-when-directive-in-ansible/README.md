@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Idempotency, DevOps, Playbooks
+Tags: Ansible, Idempotency, DevOps, Playbook
 
 Description: Learn how to use the changed_when directive in Ansible to control when tasks report as changed and maintain accurate playbook output.
 

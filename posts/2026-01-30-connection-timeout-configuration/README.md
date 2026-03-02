@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Database, Timeouts, Reliability, Configuration
+Tags: Database, Timeout, Reliability, Configuration
 
 Description: Learn to implement connection timeout configuration for preventing resource exhaustion and improving reliability.
 

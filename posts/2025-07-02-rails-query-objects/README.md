@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby, Rails, Query Objects, Design Patterns, ActiveRecord, Clean Code
+Tags: Ruby, Rails, Query Objects, Design Pattern, ActiveRecord, Clean Code
 
 Description: Learn how to implement the Query Objects pattern in Ruby on Rails to keep your models clean, improve testability, and build maintainable database queries.
 

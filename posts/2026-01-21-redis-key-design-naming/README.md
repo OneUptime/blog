@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Key Design, Naming Conventions, Best Practices, Data Modeling, Performance, Scalability
+Tags: Redis, Key Design, Naming Convention, Best Practices, Data Modeling, Performance, Scalability
 
 Description: A comprehensive guide to Redis key design and naming conventions. Learn patterns for organizing keys, avoiding common pitfalls, and designing scalable key structures for production applications.
 

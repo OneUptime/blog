@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby, Rails, Multi-tenancy, SaaS, Database, Architecture
+Tags: Ruby, Rails, Multi-Tenancy, SaaS, Database, Architecture
 
 Description: Learn how to implement multi-tenancy in Ruby on Rails applications.
 

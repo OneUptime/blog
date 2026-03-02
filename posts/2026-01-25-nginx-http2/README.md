@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, HTTP/2, Performance, SSL, Web Server
+Tags: NGINX, HTTP/2, Performance, SSL, Web Server
 
 Description: Learn how to enable and configure HTTP/2 in Nginx for improved performance through multiplexing, header compression, and server push capabilities.
 

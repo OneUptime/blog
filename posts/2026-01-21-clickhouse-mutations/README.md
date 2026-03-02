@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Mutations, ALTER TABLE, TTL, Data Lifecycle, Database, Operations, Performance
+Tags: ClickHouse, Mutation, ALTER TABLE, TTL, Data Lifecycle, Database, Operations, Performance
 
 Description: A comprehensive guide to handling mutations in ClickHouse, covering ALTER TABLE operations, UPDATE and DELETE queries, TTL-based data management.
 

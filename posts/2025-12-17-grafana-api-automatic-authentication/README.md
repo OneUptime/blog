@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, API, Authentication, Security, Automation, Service Accounts, Tokens
+Tags: Grafana, API, Authentication, Security, Automation, Service Account, Token
 
 Description: Learn how to configure automatic authentication with the Grafana API using API keys, service accounts, and OAuth tokens.
 

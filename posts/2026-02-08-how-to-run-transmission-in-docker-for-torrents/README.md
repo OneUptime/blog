@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, transmission, torrent, bittorrent, self-hosted, download-manager
+Tags: Docker, transmission, torrent, bittorrent, Self-Hosted, download-manager
 
 Description: Deploy the Transmission BitTorrent client in Docker with a web interface for managing torrent downloads on a headless server.
 

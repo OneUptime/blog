@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Upgrades, Migration
+Tags: ArgoCD, GitOps, Kubernetes, Upgrade, Migration
 
 Description: Step-by-step guide to upgrading ArgoCD from version 2.10 to 2.11 covering breaking changes, new features, ApplicationSet improvements, and migration steps.
 

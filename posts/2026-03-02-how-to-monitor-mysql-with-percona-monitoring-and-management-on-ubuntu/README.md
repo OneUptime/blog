@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, MySQL, Monitoring, Percona, Databases
+Tags: Ubuntu, MySQL, Monitoring, Percona, Database
 
 Description: Set up Percona Monitoring and Management (PMM) on Ubuntu to get deep visibility into MySQL performance, query analytics, and system metrics.
 

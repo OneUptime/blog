@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Attributes Processor, Data Enrichment, Telemetry Transformation
+Tags: OpenTelemetry, Collector, Processor, Attributes Processor, Data Enrichment, Telemetry Transformation
 
 Description: Master the attributes processor in OpenTelemetry Collector to enrich, modify, and sanitize span and metric attributes for better observability and data quality.
 

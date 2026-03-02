@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, Systemd, Services, System Administration, Automation
+Tags: Linux, systemd, Service, System Administration, Automation
 
 Description: Learn how to create, manage, and troubleshoot systemd services on Linux for running applications and daemons.
 

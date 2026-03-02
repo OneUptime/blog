@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CIDR, Networking, VPC, Subnets, Infrastructure as Code
+Tags: Terraform, CIDR, Networking, VPC, Subnet, Infrastructure as Code
 
 Description: Learn how to create CIDR blocks dynamically in Terraform using cidrsubnet, cidrhost, and other built-in functions for flexible network address management.
 

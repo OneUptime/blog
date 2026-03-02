@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, NestJS, Custom Spans, Controllers, Services, TypeScript
+Tags: OpenTelemetry, NestJS, Custom Spans, Controller, Service, TypeScript
 
 Description: Master creating custom OpenTelemetry spans in NestJS applications to trace business logic, add context to operations, and build detailed observability for controllers and services.
 

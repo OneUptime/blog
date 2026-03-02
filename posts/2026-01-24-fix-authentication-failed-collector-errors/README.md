@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Authentication, Troubleshooting, Security, Observability, Errors
+Tags: OpenTelemetry, Collector, Authentication, Troubleshooting, Security, Observability, Error
 
 Description: A practical guide to diagnosing and fixing authentication errors in OpenTelemetry Collector deployments, covering common causes and solutions.
 

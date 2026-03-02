@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Memory Limiter, Reliability, Resource Management
+Tags: OpenTelemetry, Collector, Processor, Memory Limiter, Reliability, Resource Management
 
 Description: Learn how to configure the memory limiter processor in OpenTelemetry Collector to prevent out-of-memory crashes, protect system stability, and handle traffic spikes gracefully.
 

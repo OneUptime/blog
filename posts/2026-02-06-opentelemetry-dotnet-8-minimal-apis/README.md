@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, .NET 8, Minimal APIs, C#, Tracing, Metrics
+Tags: OpenTelemetry, .NET 8, Minimal API, C#, Tracing, Metrics
 
 Description: Learn how to instrument .NET 8 Minimal APIs with OpenTelemetry for distributed tracing, metrics collection, and comprehensive observability.
 

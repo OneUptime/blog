@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Root CA, Certificates, PKI, Security
+Tags: Istio, Root CA, Certificate, PKI, Security
 
 Description: Step-by-step instructions for configuring a custom root certificate authority for Istio, replacing the default self-signed CA with your organization's PKI infrastructure.
 

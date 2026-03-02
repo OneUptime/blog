@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, OpenSearch, Observability, Telemetry
+Tags: OpenTelemetry, Collector, Exporter, OpenSearch, Observability, Telemetry
 
 Description: Learn how to configure the OpenSearch exporter in OpenTelemetry Collector to send traces, metrics, and logs to OpenSearch for powerful search and analytics capabilities.
 

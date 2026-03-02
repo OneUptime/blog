@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Azure Service Bus, DAPR, Kubernetes, Messaging, Event-Driven, Microservices
+Tags: AKS, Azure Service Bus, Dapr, Kubernetes, Messaging, Event-Driven, Microservices
 
 Description: Complete guide to integrating Azure Service Bus with AKS pods using DAPR input and output bindings for event-driven architectures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Team Management, Engineering Culture, Leadership, Organizational Design, Startups
+Tags: Team Management, Engineering Culture, Leadership, Organizational Design, Startup
 
 Description: Middle managers have become the organizational equivalent of technical debt- layers that slow everything down without adding clear value.
 

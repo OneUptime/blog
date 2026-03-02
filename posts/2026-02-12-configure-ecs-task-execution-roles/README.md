@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, IAM, Security, Containers
+Tags: AWS, ECS, IAM, Security, Container
 
 Description: A practical guide to configuring ECS task execution roles, which control how ECS pulls images, fetches secrets, and writes logs on behalf of your tasks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: API, Performance, Compression, Gzip, Brotli, HTTP, Backend, Nginx
+Tags: API, Performance, Compression, Gzip, Brotli, HTTP, Backend, NGINX
 
 Description: Learn how to configure gzip and Brotli compression for APIs to reduce bandwidth usage and improve response times.
 

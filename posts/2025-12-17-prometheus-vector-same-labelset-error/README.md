@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, PromQL, Debugging, Metrics, Monitoring, Errors
+Tags: Prometheus, PromQL, Debugging, Metrics, Monitoring, Error
 
 Description: Learn how to diagnose and fix the common Prometheus error 'vector cannot contain metrics with the same labelset'.
 

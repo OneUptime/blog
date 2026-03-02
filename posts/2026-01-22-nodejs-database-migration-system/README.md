@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, TypeScript, Database, Migrations, PostgreSQL, DevOps, Backend
+Tags: Node.js, TypeScript, Database, Migration, PostgreSQL, DevOps, Backend
 
 Description: Learn how to build a robust database migration system in Node.js from scratch.
 

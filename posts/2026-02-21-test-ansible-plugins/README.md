@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Testing, Python, CI/CD
+Tags: Ansible, Plugin, Testing, Python, CI/CD
 
 Description: A practical guide to testing Ansible plugins with unit tests, integration tests, and ansible-test for reliable plugin development.
 

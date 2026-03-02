@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CrashLoopBackOff, Debugging, Troubleshooting, Pods, Logs, kubectl
+Tags: Kubernetes, CrashLoopBackOff, Debugging, Troubleshooting, POD, Logs, kubectl
 
 Description: CrashLoopBackOff is one of the most common issues in Kubernetes. This guide walks through a systematic approach to diagnosing and fixing pods that keep crashing.
 

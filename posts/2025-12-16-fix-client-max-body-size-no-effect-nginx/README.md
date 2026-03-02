@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Troubleshooting, File Upload, Configuration, Proxy, PHP
+Tags: NGINX, Troubleshooting, File Upload, Configuration, Proxy, PHP
 
 Description: Learn why client_max_body_size might not work as expected in Nginx and how to properly configure upload limits across all contexts including proxy and FastCGI configurations.
 

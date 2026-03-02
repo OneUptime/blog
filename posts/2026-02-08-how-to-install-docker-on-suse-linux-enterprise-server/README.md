@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, SUSE, SLES, Linux, Installation, DevOps, Containers, Enterprise
+Tags: Docker, SUSE, SLES, Linux, Installation, DevOps, Container, Enterprise
 
 Description: How to install and configure Docker on SUSE Linux Enterprise Server (SLES), including SUSEConnect module activation and enterprise-specific setup steps.
 

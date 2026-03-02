@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Namespaces, Security
+Tags: Kubernetes, Namespace, Security
 
 Description: Learn how to automate namespace onboarding in Kubernetes with automated secret injection, RBAC configuration, and resource quota setup for streamlined multi-tenant environments.
 

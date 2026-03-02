@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Containers, DevOps, CI/CD
+Tags: Ansible, Docker, Container, DevOps, CI/CD
 
 Description: Run Ansible inside a Docker container for portable, reproducible automation with no local installation required, ideal for CI/CD pipelines.
 

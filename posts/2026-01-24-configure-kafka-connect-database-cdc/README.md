@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kafka, Kafka Connect, CDC, Database, Debezium, Data Streaming, PostgreSQL, MySQL, Real-time
+Tags: Kafka, Kafka Connect, CDC, Database, Debezium, Data Streaming, PostgreSQL, MySQL, Real-Time
 
 Description: A comprehensive guide to setting up Kafka Connect with Debezium for capturing database changes and streaming them in real-time to Kafka topics.
 

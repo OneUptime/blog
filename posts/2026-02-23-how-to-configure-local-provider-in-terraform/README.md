@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Local Provider, File Management, Infrastructure as Code
+Tags: Terraform, Provider, Local Provider, File Management, Infrastructure as Code
 
 Description: Learn how to use the Local provider in Terraform to manage local files and directories, generate configs, and write outputs to disk.
 

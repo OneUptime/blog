@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TCP/IP, Networking, Protocols, HTTP, Application Development
+Tags: TCP/IP, Networking, Protocol, HTTP, Application Development
 
 Description: A practical guide to TCP/IP networking fundamentals including the protocol stack, connection lifecycle, and common issues.
 

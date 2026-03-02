@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, AKS, Kubernetes, Infrastructure as Code, DevOps, Containers
+Tags: Terraform, Azure, AKS, Kubernetes, Infrastructure as Code, DevOps, Container
 
 Description: Learn how to create and configure an Azure Kubernetes Service (AKS) cluster using Terraform with networking, identity, and monitoring setup included.
 

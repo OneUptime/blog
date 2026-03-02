@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, mTLS, Certificates, Security
+Tags: OpenTelemetry, mTLS, Certificate, Security
 
 Description: Monitor mTLS certificate validation and TLS handshake failures with OpenTelemetry metrics to catch certificate issues before they cause outages.
 

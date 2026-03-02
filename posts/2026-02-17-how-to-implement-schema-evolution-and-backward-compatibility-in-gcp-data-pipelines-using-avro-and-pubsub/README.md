@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Pub/Sub, Avro, Schema Evolution, Data Pipelines, Schema Registry, Data Engineering
+Tags: GCP, Pub/Sub, Avro, Schema Evolution, Data Pipeline, Schema Registry, Data Engineering
 
 Description: Learn how to handle schema evolution and maintain backward compatibility in GCP data pipelines using Avro schemas with Pub/Sub Schema Registry for reliable message processing.
 

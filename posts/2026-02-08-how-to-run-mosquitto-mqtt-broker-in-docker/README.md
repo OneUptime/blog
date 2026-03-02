@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Mosquitto, MQTT, IoT, Message Queues, DevOps
+Tags: Docker, Mosquitto, MQTT, IoT, Message Queue, DevOps
 
 Description: Deploy the Eclipse Mosquitto MQTT broker in Docker with authentication, TLS encryption, and persistent message storage.
 

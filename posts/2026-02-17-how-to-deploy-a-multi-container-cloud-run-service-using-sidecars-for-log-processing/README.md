@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Sidecars, Containers, Log Processing
+Tags: GCP, Cloud Run, Sidecar, Container, Log Processing
 
 Description: Learn how to deploy a multi-container Cloud Run service with sidecar containers for log processing, metrics collection, and other auxiliary tasks alongside your main application.
 

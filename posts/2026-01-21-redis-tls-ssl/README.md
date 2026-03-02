@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, TLS, SSL, Security, Encryption, Certificates, Production
+Tags: Redis, TLS, SSL, Security, Encryption, Certificate, Production
 
 Description: A comprehensive guide to configuring TLS/SSL encryption for Redis, covering certificate generation, server configuration, client connections in Python, Node.
 

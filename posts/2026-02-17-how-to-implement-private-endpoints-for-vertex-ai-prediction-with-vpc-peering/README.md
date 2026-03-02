@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Vertex AI, VPC Peering, Private Endpoints, Security
+Tags: GCP, Vertex AI, VPC Peering, Private Endpoint, Security
 
 Description: A practical guide to configuring private prediction endpoints on Vertex AI using VPC peering to keep model inference traffic off the public internet.
 

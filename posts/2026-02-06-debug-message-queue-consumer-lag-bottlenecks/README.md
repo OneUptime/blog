@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Message Queues, Kafka, Consumer Lag, Performance
+Tags: OpenTelemetry, Message Queue, Kafka, Consumer Lag, Performance
 
 Description: Debug message queue consumer lag and processing bottlenecks using OpenTelemetry traces and metrics for Kafka and RabbitMQ systems.
 

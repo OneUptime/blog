@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Security, CIS Benchmarks, Compliance, Kubernetes
+Tags: Istio, Security, CIS Benchmark, Compliance, Kubernetes
 
 Description: How to configure Istio to meet CIS benchmark requirements for Kubernetes and service mesh security compliance.
 

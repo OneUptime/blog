@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RabbitMQ, Stream Queues, Message Queues, Event Streaming, Distributed Systems, AMQP, High Throughput, Offset-Based Consumption
+Tags: RabbitMQ, Stream Queues, Message Queue, Event Streaming, Distributed Systems, AMQP, High Throughput, Offset-Based Consumption
 
 Description: A comprehensive guide to building RabbitMQ Stream Queues for high-throughput, replay-capable message streaming.
 

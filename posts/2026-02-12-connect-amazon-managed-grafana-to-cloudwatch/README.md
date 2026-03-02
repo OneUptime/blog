@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Grafana, CloudWatch, Monitoring, Observability, Dashboards
+Tags: AWS, Grafana, CloudWatch, Monitoring, Observability, Dashboard
 
 Description: Connect Amazon Managed Grafana to CloudWatch for building real-time monitoring dashboards with metrics, logs, and alarms visualization
 

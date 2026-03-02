@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Security, Shell
+Tags: Ansible, Jinja2, Filter, Security, Shell
 
 Description: Learn how to use the quote filter in Ansible to safely escape shell arguments and prevent command injection vulnerabilities.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, API Keys, Security, API Restrictions, Google Cloud
+Tags: GCP, API Key, Security, API Restrictions, Google Cloud
 
 Description: Learn how to secure your GCP API keys by applying application restrictions, IP restrictions, and API-level restrictions to prevent unauthorized usage and abuse.
 

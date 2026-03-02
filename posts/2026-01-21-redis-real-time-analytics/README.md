@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Analytics, Real-Time, Counters, Time-Series, Performance
+Tags: Redis, Analytics, Real-Time, Counter, Time-Series, Performance
 
 Description: A comprehensive guide to building real-time analytics systems with Redis, covering counters, time-series data, aggregations, and practical implementation patterns.
 

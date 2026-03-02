@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Tracing, Debugging, Observability, Spans
+Tags: OpenTelemetry, Tracing, Debugging, Observability, Span
 
 Description: Learn how to diagnose and fix common 'span not exported' issues in OpenTelemetry, including configuration problems, sampling issues, and exporter errors.
 

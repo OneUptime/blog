@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Workbooks, Sharing, Publishing, Collaboration, Azure Monitor, Templates
+Tags: Azure, Azure Workbooks, Sharing, Publishing, Collaboration, Azure Monitor, Template
 
 Description: Learn how to share and publish Azure Workbooks across your organization using shared reports, templates, and ARM templates for consistent monitoring experiences.
 

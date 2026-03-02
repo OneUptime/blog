@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Execution Environments, System Packages, bindep
+Tags: Ansible, Execution Environment, System Packages, bindep
 
 Description: Add OS-level system packages to Ansible Execution Environments using bindep with platform selectors and build-time dependencies.
 

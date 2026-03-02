@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Span, Traces, Observability, Distributed Tracing
+Tags: OpenTelemetry, Collector, Processor, Span, Traces, Observability, Distributed Tracing
 
 Description: Learn how to configure the Span Processor in OpenTelemetry Collector to transform, enrich, and optimize trace spans for better distributed tracing visibility.
 

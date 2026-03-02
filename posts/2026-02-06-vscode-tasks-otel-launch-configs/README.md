@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, VS Code, Launch Configurations, Tasks, Developer Productivity
+Tags: OpenTelemetry, VS Code, Launch Configurations, Task, Developer Productivity
 
 Description: Create VS Code tasks and launch configurations that automatically set up OpenTelemetry tracing when you run or debug your application.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, Auto-Configuration, Starters, Enterprise
+Tags: Java, Spring Boot, Auto-Configuration, Starter, Enterprise
 
 Description: Create reusable Spring Boot starters with auto-configuration, conditional beans, and custom properties for sharing common functionality across projects.
 

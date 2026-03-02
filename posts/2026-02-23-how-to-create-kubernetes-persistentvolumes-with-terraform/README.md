@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, PersistentVolumes, Storage, Infrastructure as Code
+Tags: Terraform, Kubernetes, PersistentVolume, Storage, Infrastructure as Code
 
 Description: How to create and manage Kubernetes PersistentVolumes with Terraform for providing durable storage to your cluster workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, ModuleNotFoundError, Import, Packages, Virtual Environments
+Tags: Python, ModuleNotFoundError, Import, Package, Virtual Environment
 
 Description: Understand and resolve Python's ModuleNotFoundError with practical solutions for import issues, path problems, and virtual environment configurations.
 

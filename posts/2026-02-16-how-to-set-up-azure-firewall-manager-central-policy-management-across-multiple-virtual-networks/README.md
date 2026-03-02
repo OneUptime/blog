@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Firewall, Firewall Manager, Network Security, Central Policy, Hub-and-Spoke, Virtual Networks
+Tags: Azure, Azure Firewall, Firewall Manager, Network Security, Central Policy, Hub-and-Spoke, Virtual Network
 
 Description: Learn how to use Azure Firewall Manager to create and manage centralized firewall policies across multiple virtual networks and regions in your Azure environment.
 

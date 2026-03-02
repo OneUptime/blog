@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Latency, Histograms, Percentiles, Prometheus
+Tags: OpenTelemetry, Latency, Histogram, Percentiles, Prometheus
 
 Description: Build percentile-based latency alerts using OpenTelemetry histogram metrics with P50, P95, and P99 thresholds.
 

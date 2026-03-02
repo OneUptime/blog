@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, App Service, Security, IP Restrictions, Access Control, Networking, Cloud Computing
+Tags: Azure, App Service, Security, IP Restriction, Access Control, Networking, Cloud Computing
 
 Description: How to lock down your Azure App Service using IP restrictions and access rules to control which clients can reach your application.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Version Management, Infrastructure as Code, DevOps
+Tags: Terraform, Provider, Version Management, Infrastructure as Code, DevOps
 
 Description: Learn how to manage Terraform provider versions effectively, including version constraints, lock files, upgrades, and best practices for stable infrastructure deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Security, Secrets, SOPS
+Tags: Helm, Kubernetes, DevOps, Security, Secret, SOPS
 
 Description: Learn how to encrypt and manage sensitive values in Helm charts using helm-secrets plugin and Mozilla SOPS for secure GitOps workflows.
 

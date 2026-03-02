@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Maintenance Windows, Kubernetes Upgrades, Node OS, Azure, Cluster Management, Operations
+Tags: AKS, Maintenance Window, Kubernetes Upgrades, Node OS, Azure, Cluster Management, Operations
 
 Description: How to configure AKS maintenance windows to control when node OS patches and Kubernetes version upgrades happen to minimize disruption.
 

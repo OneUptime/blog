@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Load Balancers, Networking, Kubernetes, Infrastructure
+Tags: Istio, Load Balancer, Networking, Kubernetes, Infrastructure
 
 Description: Practical guide to integrating third-party load balancers like F5, HAProxy, and Citrix with Istio service mesh.
 

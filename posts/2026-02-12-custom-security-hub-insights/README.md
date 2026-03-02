@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Security Hub, Insights, Security, Dashboards
+Tags: AWS, Security Hub, Insights, Security, Dashboard
 
 Description: Learn how to create custom AWS Security Hub insights to build focused views of your security findings, track trends, and identify the most critical issues across your environment.
 

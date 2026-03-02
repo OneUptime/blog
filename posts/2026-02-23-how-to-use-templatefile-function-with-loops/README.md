@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, String Functions, HCL, DevOps, Templates
+Tags: Terraform, Infrastructure as Code, String Functions, HCL, DevOps, Template
 
 Description: Learn how to use loops inside Terraform templatefile templates with the for directive, including iteration over lists, maps, nested loops, and indexed loops.
 

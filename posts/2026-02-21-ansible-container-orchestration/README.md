@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Containers, Docker, Kubernetes, Orchestration
+Tags: Ansible, Container, Docker, Kubernetes, Orchestration
 
 Description: Learn how to use Ansible to manage container workloads including Docker Compose deployments, Kubernetes cluster setup, and container lifecycle management.
 

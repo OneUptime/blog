@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Containers, Resources, Kubernetes, ECS, Performance
+Tags: Terraform, Container, Resource, Kubernetes, ECS, Performance
 
 Description: Learn how to configure container resource limits and requests in Terraform for Kubernetes, ECS, and other platforms to ensure optimal performance and stability.
 

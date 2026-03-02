@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, ASP.NET Core, C#, SignalR, WebSockets, Real-time, Notifications
+Tags: .NET, ASP.NET Core, C#, SignalR, WebSocket, Real-Time, Notifications
 
 Description: Learn how to implement real-time functionality in ASP.NET Core applications using SignalR.
 

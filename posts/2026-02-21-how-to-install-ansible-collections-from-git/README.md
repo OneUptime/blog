@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Git, Collections, DevOps, Version Control
+Tags: Ansible, Git, Collection, DevOps, Version Control
 
 Description: How to install Ansible collections directly from Git repositories including GitHub, GitLab, and private repos with branch and tag pinning.
 

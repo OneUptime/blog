@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Containers, Images
+Tags: Kubernetes, Container, Images
 
 Description: Master Kubernetes imagePullPolicy settings with Always, IfNotPresent, and Never strategies to control when container images are pulled, optimize startup time.
 

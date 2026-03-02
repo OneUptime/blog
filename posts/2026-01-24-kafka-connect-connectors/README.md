@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kafka, Kafka Connect, Data Integration, Connectors, ETL, Streaming
+Tags: Kafka, Kafka Connect, Data Integration, Connector, ETL, Streaming
 
 Description: Learn how to configure Kafka Connect connectors for data integration, including source and sink connectors, transformations, and production best practices.
 

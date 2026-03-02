@@ -2,7 +2,7 @@
 
 Author: [devneelpatel](https://www.github.com/devneelpatel)
 
-Tags: DataDog, Open Source
+Tags: Datadog, Open Source
 
 Description: Building an open-source alternative to Datadog enhances cost-efficiency, observability, and data privacy, offering a net-positive impact on the software world.
 

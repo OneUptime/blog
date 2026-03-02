@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Key Vault, Private Endpoints, Private Link, Security, Networking, Secrets Management
+Tags: Azure, Key Vault, Private Endpoint, Private Link, Security, Networking, Secrets Management
 
 Description: Secure Azure Key Vault by configuring private endpoints to restrict access from public networks and keep secret retrieval within your virtual network.
 

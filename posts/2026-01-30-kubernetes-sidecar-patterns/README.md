@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecar, Patterns, Containers, DevOps
+Tags: Kubernetes, Sidecar, Patterns, Container, DevOps
 
 Description: Implement Kubernetes sidecar patterns for logging, monitoring, proxying, and configuration with shared volumes and networking.
 

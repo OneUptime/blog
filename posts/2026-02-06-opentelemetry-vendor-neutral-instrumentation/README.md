@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Vendor Neutral, Instrumentation, Portability, Standards
+Tags: OpenTelemetry, Vendor Neutral, Instrumentation, Portability, Standard
 
 Description: An in-depth look at why OpenTelemetry's vendor-neutral approach matters and how it provides true portability for your observability instrumentation.
 

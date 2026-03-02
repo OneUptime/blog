@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Jobs, CronJobs, Batch Processing, DevOps, Container Orchestration, Scheduling
+Tags: Kubernetes, Jobs, CronJob, Batch Processing, DevOps, Container Orchestration, Scheduling
 
 Description: A practical guide to running batch workloads and scheduled tasks in Kubernetes using Jobs and CronJobs, covering configuration options, failure handling, parallelism, and production best practices.
 

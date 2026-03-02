@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, TCP, Non-HTTP, Databases, Service Mesh, Protocols
+Tags: Istio, TCP, Non-HTTP, Database, Service Mesh, Protocol
 
 Description: Configure Istio to properly handle non-HTTP services like databases, message queues, and custom TCP protocols with correct routing and mTLS support.
 

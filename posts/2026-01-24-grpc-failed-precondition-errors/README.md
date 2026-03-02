@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, failed precondition, error handling, state management, concurrency, optimistic locking, microservices
+Tags: gRPC, failed precondition, Error Handling, State Management, Concurrency, Optimistic Locking, Microservices
 
 Description: A comprehensive guide to understanding and handling FAILED_PRECONDITION errors in gRPC, including state validation patterns, optimistic locking, and recovery strategies.
 

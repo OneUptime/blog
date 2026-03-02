@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: TypeScript, NestJS, WebSockets, Real-time, Socket.io
+Tags: TypeScript, NestJS, WebSocket, Real-Time, Socket.IO
 
 Description: Learn how to implement WebSockets in NestJS using gateways, including event handling, rooms, authentication, and scaling considerations.
 

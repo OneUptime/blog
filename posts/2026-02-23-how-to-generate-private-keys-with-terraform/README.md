@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, TLS, Private Keys, Cryptography, Security, Infrastructure as Code
+Tags: Terraform, TLS, Private Key, Cryptography, Security, Infrastructure as Code
 
 Description: Learn how to generate RSA, ECDSA, and ED25519 private keys with Terraform using the tls_private_key resource for certificates, SSH access, and encryption.
 

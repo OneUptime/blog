@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, API Rate Limiting, Quotas, Troubleshooting, Cloud APIs
+Tags: GCP, API Rate Limiting, Quota, Troubleshooting, Cloud API
 
 Description: Learn how to diagnose and resolve HTTP 429 Too Many Requests errors from Google Cloud Platform APIs using rate limiting strategies, exponential backoff, and quota management.
 

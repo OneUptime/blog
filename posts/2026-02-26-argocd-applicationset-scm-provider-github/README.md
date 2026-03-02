@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, GitHub
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, GitHub
 
 Description: Learn how to use the ArgoCD ApplicationSet SCM Provider generator for GitHub to automatically discover repositories and create applications based on your organization's repository structure.
 

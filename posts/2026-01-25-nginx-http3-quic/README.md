@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, HTTP/3, QUIC, Performance, UDP
+Tags: NGINX, HTTP/3, QUIC, Performance, UDP
 
 Description: Learn how to enable HTTP/3 with QUIC protocol in Nginx for faster connections, reduced latency, and improved performance on unreliable networks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Container Registry, Mirrors, Performance, Images
+Tags: Kubernetes, Container Registry, Mirror, Performance, Images
 
 Description: Learn how to configure registry mirrors to accelerate image pulls and reduce bandwidth in Kubernetes clusters.
 

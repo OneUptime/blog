@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Podman, Migration, Containers, DevOps
+Tags: Docker, Podman, Migration, Container, DevOps
 
 Description: Learn how to migrate from Docker Desktop to Podman, including command translation, Docker Compose compatibility, and handling edge cases.
 

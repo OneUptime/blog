@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, Long Polling, Real-time, Chat, Backend
+Tags: Node.js, Long Polling, Real-Time, Chat, Backend
 
 Description: Learn how to implement long polling for real-time chat applications in Node.js, with message ordering, connection management, and scaling strategies.
 

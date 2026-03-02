@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Hybrid NEG, Load Balancer, On-Premises, Hybrid Cloud
+Tags: GCP, Hybrid NEG, Load Balancer, On-Premise, Hybrid Cloud
 
 Description: Learn how to use hybrid connectivity network endpoint groups in GCP to route load balancer traffic to on-premises or other cloud backends through VPN or Interconnect.
 

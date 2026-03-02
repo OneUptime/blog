@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Docker, Containers, Docker Provider, Infrastructure as Code, DevOps
+Tags: Terraform, Docker, Container, Docker Provider, Infrastructure as Code, DevOps
 
 Description: Learn how to create and manage Docker containers using Terraform including container configuration, networking, volumes, health checks, and resource limits.
 

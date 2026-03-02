@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Tasks, Node.js, Express, Queues, Google Cloud
+Tags: GCP, Cloud Tasks, Node.js, Express, Queue, Google Cloud
 
 Description: Learn how to create and process Google Cloud Tasks from a Node.js Express application with automatic retry configuration for reliable task execution.
 

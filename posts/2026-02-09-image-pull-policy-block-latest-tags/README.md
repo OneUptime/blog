@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Container Images
+Tags: Kubernetes, Security, Container Image
 
 Description: Learn how to enforce image pull policies and block the use of latest tags in Kubernetes to ensure reproducible deployments and prevent security vulnerabilities from untested images.
 

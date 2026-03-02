@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Performance, Real-time, Scaling, Node.js, Python, Load Balancing, Monitoring
+Tags: WebSocket, Performance, Real-Time, Scaling, Node.js, Python, Load Balancing, Monitoring
 
 Description: A practical guide to identifying and fixing common WebSocket performance issues, including connection management, message handling, scaling strategies, and monitoring techniques.
 

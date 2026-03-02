@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Device Plugins, GPU, Hardware
+Tags: Kubernetes, Device Plugin, GPU, Hardware
 
 Description: Learn to implement device plugins for exposing hardware resources like GPUs, FPGAs, and custom devices to Kubernetes workloads.
 

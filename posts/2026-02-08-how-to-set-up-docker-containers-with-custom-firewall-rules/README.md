@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, firewall, iptables, security, networking, nftables, container security
+Tags: Docker, Firewall, iptables, Security, Networking, nftables, Container Security
 
 Description: Practical guide to configuring custom firewall rules for Docker containers using iptables and Docker network policies.
 

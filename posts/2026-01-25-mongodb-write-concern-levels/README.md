@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Write Concern, Durability, Replica Sets, Consistency
+Tags: MongoDB, Write Concern, Durability, Replica Set, Consistency
 
 Description: Learn how to configure MongoDB write concern levels to balance durability, performance, and availability based on your application requirements.
 

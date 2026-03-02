@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Spring Apps, Custom Domains, TLS, SSL, Certificates, DNS
+Tags: Azure, Spring Apps, Custom Domain, TLS, SSL, Certificate, DNS
 
 Description: Step-by-step instructions for mapping custom domains and configuring TLS certificates on Azure Spring Apps for production-ready HTTPS endpoints.
 

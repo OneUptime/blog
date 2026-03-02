@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Configuration, Config-rs, Environment Variables, TOML
+Tags: Rust, Configuration, config-rs, Environment Variable, TOML
 
 Description: A practical guide to managing application configuration in Rust using config-rs with multiple sources and type safety.
 

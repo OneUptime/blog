@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, ResourceQuotas, Resource Management, Infrastructure as Code
+Tags: Terraform, Kubernetes, ResourceQuota, Resource Management, Infrastructure as Code
 
 Description: How to create Kubernetes ResourceQuotas with Terraform to limit resource consumption per namespace and prevent cluster resource exhaustion.
 

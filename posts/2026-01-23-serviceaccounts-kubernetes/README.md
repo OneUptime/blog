@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ServiceAccounts, RBAC, Security, Authentication
+Tags: Kubernetes, ServiceAccount, RBAC, Security, Authentication
 
 Description: Learn how to create and manage ServiceAccounts in Kubernetes for pod identity and API access. This guide covers RBAC bindings, token management, and security best practices.
 

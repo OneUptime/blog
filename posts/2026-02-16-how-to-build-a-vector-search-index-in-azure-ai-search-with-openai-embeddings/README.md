@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure AI Search, Vector Search, OpenAI, Embeddings, Semantic Search, Azure, AI
+Tags: Azure AI Search, Vector Search, OpenAI, Embedding, Semantic Search, Azure, AI
 
 Description: Step-by-step guide to building a vector search index in Azure AI Search using OpenAI embeddings for semantic similarity search.
 

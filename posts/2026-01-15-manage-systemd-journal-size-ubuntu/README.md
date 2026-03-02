@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Systemd, Linux, Journal, Logging, DevOps, Server Administration, Disk Management
+Tags: Ubuntu, systemd, Linux, Journal, Logging, DevOps, Server Administration, Disk Management
 
 Description: A comprehensive guide to controlling systemd journal disk usage on Ubuntu through configuration, vacuuming, retention policies, and monitoring strategies.
 

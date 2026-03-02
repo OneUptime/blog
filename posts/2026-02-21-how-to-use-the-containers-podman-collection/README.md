@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Podman, Containers, DevOps
+Tags: Ansible, Podman, Container, DevOps
 
 Description: Manage Podman containers, pods, images, and networks with Ansible using the containers.podman collection for rootless container automation.
 

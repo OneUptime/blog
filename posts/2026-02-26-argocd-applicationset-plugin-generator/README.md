@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet
 
 Description: Learn how to use the ArgoCD ApplicationSet Plugin generator to create custom generators that call external APIs or run scripts to produce application parameters dynamically.
 

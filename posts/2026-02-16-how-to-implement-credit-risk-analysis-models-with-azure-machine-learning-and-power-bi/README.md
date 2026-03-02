@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Machine Learning, Power BI, Credit Risk, Financial Services, Data Science, Risk Analysis, Fintech
+Tags: Azure Machine Learning, Power BI, Credit Risk, Financial Services, Data Science, Risk Analysis, FinTech
 
 Description: Implement credit risk analysis models using Azure Machine Learning for model training and Power BI for interactive risk dashboards.
 

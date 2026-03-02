@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Containers, Security, Linux, DevOps
+Tags: Docker, Container, Security, Linux, DevOps
 
 Description: Set up Docker rootless mode on Linux, understand the trade-offs, work around networking limitations, and know when rootless containers matter.
 

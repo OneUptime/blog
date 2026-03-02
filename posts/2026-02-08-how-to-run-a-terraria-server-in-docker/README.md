@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Terraria, Game Server, Containers, Self-Hosted, Gaming, Multiplayer, TShock
+Tags: Docker, Terraria, Game Server, Container, Self-Hosted, Gaming, Multiplayer, TShock
 
 Description: Set up a dedicated Terraria multiplayer server in Docker using TShock, with world management, plugin support, and automated backups for your adventures.
 

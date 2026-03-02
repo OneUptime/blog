@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, CI/CD, Service Containers, Docker, Testing, Databases
+Tags: GitHub Actions, CI/CD, Service Containers, Docker, Testing, Database
 
 Description: Learn how to use service containers in GitHub Actions to run databases, caches, and other dependencies alongside your tests for realistic integration testing.
 

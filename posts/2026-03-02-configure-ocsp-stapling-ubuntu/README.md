@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, SSL/TLS, Nginx, Apache
+Tags: Ubuntu, SSL/TLS, NGINX, Apache
 
 Description: Learn how to configure OCSP stapling on Ubuntu with Nginx and Apache to improve TLS performance and certificate revocation checking without client-to-CA round trips.
 

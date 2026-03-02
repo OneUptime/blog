@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Security, OWASP, Configuration, DevOps, Hardening, Best Practices, Node.js, Python, Nginx
+Tags: Security, OWASP, Configuration, DevOps, Hardening, Best Practices, Node.js, Python, NGINX
 
 Description: Learn how to identify and fix security misconfiguration vulnerabilities in web applications, servers, and cloud infrastructure with practical examples.
 

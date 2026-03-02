@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Containers, Resource Management, DevOps, Linux, Kubernetes, Container Security
+Tags: Podman, Container, Resource Management, DevOps, Linux, Kubernetes, Container Security
 
 Description: A practical guide to configuring resource sharing between containers in Podman pods, covering namespace sharing, volume mounts, network configuration, and resource limits for production workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: DevOps, Environments, Blue-Green, Consistency
+Tags: DevOps, Environment, Blue-Green, Consistency
 
 Description: Learn to implement environment parity for consistent staging and production environments.
 

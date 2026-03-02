@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Composer, Airflow, Connections, Variables
+Tags: GCP, Cloud Composer, Airflow, Connection, Variables
 
 Description: Learn how to manage Airflow Connections and Variables in Cloud Composer to securely store credentials and configuration for your DAGs.
 

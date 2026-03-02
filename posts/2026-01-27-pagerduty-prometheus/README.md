@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PagerDuty, Prometheus, Alertmanager, Incident Management, On-call, Monitoring, DevOps, SRE
+Tags: PagerDuty, Prometheus, Alertmanager, Incident Management, On-Call, Monitoring, DevOps, SRE
 
 Description: Learn how to integrate Prometheus Alertmanager with PagerDuty for automated incident management and on-call alerting.
 

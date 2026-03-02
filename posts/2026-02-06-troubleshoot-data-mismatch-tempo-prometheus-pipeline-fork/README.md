@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Grafana Tempo, Prometheus, Collector Pipelines
+Tags: OpenTelemetry, Grafana Tempo, Prometheus, Collector Pipeline
 
 Description: Fix data inconsistencies between Tempo and Prometheus caused by incorrect pipeline forking in the OpenTelemetry Collector.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Automation, Source Control, GitHub, Runbooks, DevOps, Version Control, CI/CD
+Tags: Azure Automation, Source Control, GitHub, Runbook, DevOps, Version Control, CI/CD
 
 Description: Learn how to connect Azure Automation to a GitHub repository for version-controlled runbooks with automatic sync and collaborative development workflows.
 

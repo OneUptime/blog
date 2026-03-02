@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Dictionaries, Data Structures, Best Practices, Conditionals
+Tags: Python, Dictionaries, Data Structures, Best Practices, Conditional
 
 Description: Learn the right ways to check for dictionary keys in Python, from the simple in operator to handling missing keys gracefully with get() and setdefault().
 

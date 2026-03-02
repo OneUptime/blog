@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Honeycomb, Markers, Observability, Deployments, Events
+Tags: OpenTelemetry, Collector, Exporter, Honeycomb, Markers, Observability, Deployment, Events
 
 Description: Learn how to configure the Honeycomb Marker exporter in OpenTelemetry Collector to track deployments, releases, and significant events in your observability timeline.
 

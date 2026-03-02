@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Helm
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Helm
 
 Description: Learn how to use Helm-style template syntax in ArgoCD ApplicationSets as an alternative to the default fasttemplate substitution.
 

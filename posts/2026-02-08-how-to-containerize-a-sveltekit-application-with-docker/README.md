@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, sveltekit, svelte, containerization, node.js, adapter-node
+Tags: Docker, SvelteKit, Svelte, Containerization, Node.js, adapter-node
 
 Description: Build optimized Docker images for SvelteKit applications using the Node.js adapter
 

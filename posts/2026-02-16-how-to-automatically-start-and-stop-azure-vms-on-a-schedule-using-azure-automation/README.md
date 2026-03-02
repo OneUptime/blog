@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Automation, Virtual Machines, Cost Optimization, Scheduling, PowerShell, FinOps
+Tags: Azure, Azure Automation, Virtual Machine, Cost Optimization, Scheduling, PowerShell, FinOps
 
 Description: Save money on Azure by automatically shutting down development and test VMs outside business hours using Azure Automation runbooks and schedules.
 

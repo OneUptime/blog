@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, C#, WebSockets, ASP.NET Core, Real-time
+Tags: .NET, C#, WebSocket, ASP.NET Core, Real-Time
 
 Description: Learn how to build production-ready WebSocket services in ASP.NET Core with connection management, message broadcasting, authentication, and horizontal scaling patterns.
 

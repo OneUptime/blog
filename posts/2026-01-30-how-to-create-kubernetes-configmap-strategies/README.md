@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, ConfigMaps, Configuration, DevOps
+Tags: Kubernetes, ConfigMap, Configuration, DevOps
 
 Description: Learn strategies for managing ConfigMaps in Kubernetes including immutable configs, hot reloading, and environment-specific values.
 

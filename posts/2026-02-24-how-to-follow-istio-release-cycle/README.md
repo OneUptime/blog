@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Releases, Upgrades, Kubernetes, DevOps
+Tags: Istio, Release, Upgrade, Kubernetes, DevOps
 
 Description: Understanding the Istio release cycle including support windows, version compatibility, and strategies for planning upgrades in production environments.
 

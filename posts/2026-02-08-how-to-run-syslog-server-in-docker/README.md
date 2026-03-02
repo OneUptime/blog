@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Syslog, Logging, Rsyslog, Syslog-ng, Log Management, Network Monitoring
+Tags: Docker, Syslog, Logging, rsyslog, syslog-ng, Log Management, Network Monitoring
 
 Description: Deploy a centralized syslog server in Docker to collect, parse, and store log messages from servers, network devices, and applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RAG, Embeddings, AI, NLP
+Tags: RAG, Embedding, AI, NLP
 
 Description: A practical guide to building embedding generation pipelines for semantic search, RAG applications, and AI-powered features using Python and TypeScript.
 

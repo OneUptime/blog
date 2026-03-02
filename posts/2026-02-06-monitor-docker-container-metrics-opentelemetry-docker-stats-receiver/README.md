@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Docker, Monitoring, Metrics, Containers, Observability
+Tags: OpenTelemetry, Docker, Monitoring, Metrics, Container, Observability
 
 Description: A practical guide to collecting Docker container metrics like CPU, memory, network, and disk I/O using the OpenTelemetry Collector's Docker Stats Receiver.
 

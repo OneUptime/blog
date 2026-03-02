@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Functions, Relay, Hybrid Connections, On-Premises, Serverless, Integration
+Tags: Azure, Functions, Relay, Hybrid Connections, On-Premise, Serverless, Integration
 
 Description: Connect Azure Functions to on-premises databases and APIs using Azure Relay Hybrid Connections for secure serverless-to-on-premises communication.
 

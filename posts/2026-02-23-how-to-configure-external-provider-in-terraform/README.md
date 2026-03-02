@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, External Provider, Scripting, Infrastructure as Code
+Tags: Terraform, Provider, External Provider, Scripting, Infrastructure as Code
 
 Description: Learn how to use the External provider in Terraform to integrate custom scripts and external programs into your infrastructure workflow.
 

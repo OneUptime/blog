@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Replica Sets, High Availability, Failover, Database
+Tags: MongoDB, Replica Set, High Availability, Failover, Database
 
 Description: A complete guide to setting up MongoDB replica sets for high availability, including configuration, automatic failover, and monitoring strategies.
 

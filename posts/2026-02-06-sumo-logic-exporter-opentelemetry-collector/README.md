@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Sumo Logic, Observability, Monitoring, Logs, Metrics, Traces
+Tags: OpenTelemetry, Collector, Exporter, Sumo Logic, Observability, Monitoring, Logs, Metrics, Traces
 
 Description: Learn how to configure the Sumo Logic exporter in OpenTelemetry Collector to send telemetry data to Sumo Logic's cloud-native observability platform with practical YAML examples.
 

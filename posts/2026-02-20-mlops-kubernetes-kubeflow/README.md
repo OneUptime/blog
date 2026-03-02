@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MLOps, Kubernetes, Kubeflow, Machine Learning, Pipelines
+Tags: MLOps, Kubernetes, Kubeflow, Machine Learning, Pipeline
 
 Description: Learn how to set up MLOps pipelines on Kubernetes using Kubeflow for model training, serving, and experiment tracking.
 

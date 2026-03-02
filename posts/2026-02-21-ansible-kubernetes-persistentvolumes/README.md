@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, PersistentVolumes, Storage, DevOps
+Tags: Ansible, Kubernetes, PersistentVolume, Storage, DevOps
 
 Description: Learn how to create and manage Kubernetes PersistentVolumes with Ansible for NFS, local storage, cloud disks, and other storage backends.
 

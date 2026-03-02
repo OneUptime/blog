@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Nginx, Reverse Proxy, Docker, Self-Hosted
+Tags: Ubuntu, NGINX, Reverse Proxy, Docker, Self-Hosted
 
 Description: Install Nginx Proxy Manager on Ubuntu using Docker Compose to manage reverse proxies, SSL certificates, and access control through a web interface without editing Nginx config files manually.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Deadline Propagation, Timeouts, Kubernetes, Microservices
+Tags: Istio, Deadline Propagation, Timeout, Kubernetes, Microservices
 
 Description: How to implement deadline propagation in Istio service mesh so downstream services know how much time they have left to process a request in a microservice chain.
 

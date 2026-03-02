@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: FinOps, Cost Optimization, Reviews, Process
+Tags: FinOps, Cost Optimization, Review, Process
 
 Description: Learn how to conduct effective cost reviews for continuous optimization.
 

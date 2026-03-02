@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connectors, Service Graph, Service Mesh, Distributed Tracing
+Tags: OpenTelemetry, Collector, Connector, Service Graph, Service Mesh, Distributed Tracing
 
 Description: Learn how to configure the Service Graph Connector in OpenTelemetry Collector to automatically generate service topology metrics from distributed traces for dependency mapping and analysis.
 

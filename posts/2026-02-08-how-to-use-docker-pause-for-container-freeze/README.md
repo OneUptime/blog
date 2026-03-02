@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, docker pause, containers, cgroups, freezer, resource management, debugging
+Tags: Docker, docker pause, Container, cgroups, freezer, Resource Management, Debugging
 
 Description: Learn how to freeze and unfreeze Docker containers with docker pause and unpause for debugging and resource control.
 

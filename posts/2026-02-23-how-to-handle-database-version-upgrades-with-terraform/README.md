@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Database, Upgrades, RDS, Aurora, Infrastructure as Code
+Tags: Terraform, AWS, Database, Upgrade, RDS, Aurora, Infrastructure as Code
 
 Description: Learn how to safely manage database engine version upgrades using Terraform including planning, testing, and executing major and minor version upgrades.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Multi-Subscription, Providers, AzureRM, Enterprise
+Tags: Terraform, Azure, Multi-Subscription, Provider, AzureRM, Enterprise
 
 Description: Learn how to configure the Terraform AzureRM provider to manage resources across multiple Azure subscriptions using provider aliases and practical patterns.
 

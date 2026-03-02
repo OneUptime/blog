@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, Meteor, WebSocket, Node.js, Deployment
+Tags: NGINX, Meteor, WebSocket, Node.js, Deployment
 
 Description: Learn how to configure Nginx as a reverse proxy for Meteor applications, including WebSocket support, sticky sessions, SSL termination, and production-ready optimizations.
 

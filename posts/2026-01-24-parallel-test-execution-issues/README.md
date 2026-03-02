@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Parallel Testing, Test Execution, Jest, Pytest, Test Isolation, CI/CD, Performance, Concurrency
+Tags: Parallel Testing, Test Execution, Jest, pytest, Test Isolation, CI/CD, Performance, Concurrency
 
 Description: Learn how to identify and fix common issues with parallel test execution including race conditions, resource conflicts, and test isolation problems.
 

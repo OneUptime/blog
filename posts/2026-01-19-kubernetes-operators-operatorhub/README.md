@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Operators, OperatorHub, OLM, CRDs, Automation, DevOps
+Tags: Kubernetes, Operator, OperatorHub, OLM, CRD, Automation, DevOps
 
 Description: Learn how to discover, install, and use Kubernetes Operators from OperatorHub to automate complex application lifecycle management with the Operator Lifecycle Manager.
 

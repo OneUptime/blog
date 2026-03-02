@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure IoT Central, Custom Dashboards, Real-Time Data, IoT Visualization, Device Monitoring, Data Analytics, Dashboard Design
+Tags: Azure IoT Central, Custom Dashboard, Real-Time Data, IoT Visualization, Device Monitoring, Data Analytics, Dashboard Design
 
 Description: A practical guide to building custom dashboards in Azure IoT Central that display real-time device telemetry, properties, and fleet-level analytics.
 

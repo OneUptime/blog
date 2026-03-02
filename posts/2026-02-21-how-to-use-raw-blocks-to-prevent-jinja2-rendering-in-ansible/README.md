@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Templates, Raw Blocks, Configuration Management
+Tags: Ansible, Jinja2, Template, Raw Blocks, Configuration Management
 
 Description: Learn how to use raw blocks in Ansible templates to prevent Jinja2 from processing sections of your template that should be output literally.
 

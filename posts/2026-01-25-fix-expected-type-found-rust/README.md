@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Type System, Errors, Debugging, Syntax
+Tags: Rust, Type System, Error, Debugging, Syntax
 
 Description: Learn how to diagnose and fix 'expected type, found' errors in Rust. Understand common causes and discover patterns to resolve type mismatches.
 

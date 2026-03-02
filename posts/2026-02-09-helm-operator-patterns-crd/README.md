@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, Operators
+Tags: Helm, Kubernetes, Operator
 
 Description: Learn how to build Helm operator patterns that watch for custom resource definition changes and automatically manage chart deployments with real code examples.
 

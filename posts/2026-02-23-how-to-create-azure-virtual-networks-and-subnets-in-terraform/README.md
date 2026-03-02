@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Virtual Network, Subnets, Networking, Infrastructure as Code
+Tags: Terraform, Azure, Virtual Network, Subnet, Networking, Infrastructure as Code
 
 Description: Complete guide to creating Azure Virtual Networks and Subnets with Terraform, including address planning, peering, service endpoints, and hub-spoke architectures.
 

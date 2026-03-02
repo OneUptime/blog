@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Landing Zones, Enterprise Scale, Cloud Adoption Framework, Infrastructure as Code, Governance
+Tags: Terraform, Azure, Landing Zone, Enterprise Scale, Cloud Adoption Framework, Infrastructure as Code, Governance
 
 Description: Step-by-step guide to deploying Azure landing zones using the Terraform Enterprise Scale module for governance, security, and scalable cloud foundations.
 

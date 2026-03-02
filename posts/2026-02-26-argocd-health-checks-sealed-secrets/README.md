@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Sealed Secrets, Health Checks
+Tags: ArgoCD, GitOps, Kubernetes, Sealed Secrets, Health Check
 
 Description: Learn how to configure ArgoCD health checks for Bitnami Sealed Secrets to detect decryption failures and key rotation issues before they cause outages.
 

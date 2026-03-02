@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, .NET, Kestrel, Nginx, ASP.NET
+Tags: Ubuntu, .NET, Kestrel, NGINX, ASP.NET
 
 Description: Deploy an ASP.NET Core application on Ubuntu using Kestrel as the web server with Nginx as a reverse proxy, including systemd service setup and HTTPS configuration.
 

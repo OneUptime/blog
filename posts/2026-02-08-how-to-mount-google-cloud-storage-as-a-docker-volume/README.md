@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Google Cloud, GCS, Volumes, Cloud Storage, DevOps, Containers
+Tags: Docker, Google Cloud, GCS, VOLUME, Cloud Storage, DevOps, Container
 
 Description: Learn how to mount Google Cloud Storage buckets as Docker volumes using gcsfuse, volume plugins, and sidecar patterns for persistent cloud storage.
 

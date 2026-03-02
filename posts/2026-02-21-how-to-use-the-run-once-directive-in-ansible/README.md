@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Playbooks, Task Execution, DevOps
+Tags: Ansible, Playbook, Task Execution, DevOps
 
 Description: Learn how to use the run_once directive in Ansible to execute tasks on only one host in a group, perfect for database migrations and one-time setup.
 

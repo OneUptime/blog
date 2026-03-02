@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Interconnect, Hybrid Cloud, Networking, On-Premises
+Tags: GCP, Cloud Interconnect, Hybrid Cloud, Networking, On-Premise
 
 Description: A practical guide to establishing hybrid connectivity between your on-premises data centers and Google Cloud Platform using Dedicated and Partner Cloud Interconnect.
 

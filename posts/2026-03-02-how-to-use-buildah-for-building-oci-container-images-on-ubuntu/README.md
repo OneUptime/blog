@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Buildah, Containers, OCI, Podman
+Tags: Ubuntu, Buildah, Container, OCI, Podman
 
 Description: Build OCI-compliant container images on Ubuntu using Buildah without a Docker daemon, including rootless builds, multi-stage builds, and image manipulation workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditionals, String Matching, Jinja2
+Tags: Ansible, Conditional, String Matching, Jinja2
 
 Description: Learn how to perform string matching in Ansible conditionals using filters like match, search, contains, startswith, and endswith.
 

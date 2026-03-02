@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provider Development, Data Sources, Go, Infrastructure as Code
+Tags: Terraform, Provider Development, Data Source, Go, Infrastructure as Code
 
 Description: Learn how to implement data sources in a Terraform provider to let users query and reference existing resources without managing their lifecycle through Terraform.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, YAML, Quoting, Strings, Best Practices
+Tags: Ansible, YAML, Quoting, String, Best Practices
 
 Description: Master string quoting rules in Ansible YAML to prevent type coercion, handle special characters, and avoid common parsing issues.
 

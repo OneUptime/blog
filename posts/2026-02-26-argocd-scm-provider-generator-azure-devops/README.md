@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Azure DevOps
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Azure DevOps
 
 Description: Learn how to configure the ArgoCD ApplicationSet SCM provider generator for Azure DevOps to automatically discover repositories and create applications from your Azure DevOps organization.
 

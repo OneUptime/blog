@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Multi-Cloud, Infrastructure as Code, Configuration
+Tags: Terraform, Provider, Multi-Cloud, Infrastructure as Code, Configuration
 
 Description: Learn how to configure and use multiple instances of the same or different providers in a single Terraform configuration using aliases, for multi-region and multi-account deployments.
 

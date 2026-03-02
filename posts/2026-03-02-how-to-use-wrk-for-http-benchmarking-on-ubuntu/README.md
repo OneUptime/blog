@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Performance, Benchmarking, Web Servers, Networking
+Tags: Ubuntu, Performance, Benchmarking, Web Server, Networking
 
 Description: Learn how to install and use wrk for high-performance HTTP benchmarking on Ubuntu, including custom Lua scripts for POST requests, dynamic headers, and pipeline testing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Chroma, Ollama, AI, Vector Database, Local AI, Search, Machine Learning, Embeddings
+Tags: Docker, Chroma, Ollama, AI, Vector Database, Local AI, Search, Machine Learning, Embedding
 
 Description: Learn how to set up Chroma vector database and Ollama LLM in Docker for building local AI-powered search systems.
 

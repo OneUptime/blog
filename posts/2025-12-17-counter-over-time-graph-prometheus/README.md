@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, PromQL, Grafana, Metrics, Counters, Monitoring
+Tags: Prometheus, PromQL, Grafana, Metrics, Counter, Monitoring
 
 Description: Learn how to properly visualize Prometheus counters over time using rate(), increase(), and irate() functions. This guide covers common pitfalls and best practices for counter visualization.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Prometheus, Remote Write, Metrics, Observability
+Tags: OpenTelemetry, Collector, Exporter, Prometheus, Remote Write, Metrics, Observability
 
 Description: A detailed guide to configuring the Prometheus Remote Write exporter in OpenTelemetry Collector for push-based metrics delivery to Prometheus, Cortex, Thanos, Mimir.
 

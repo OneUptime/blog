@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Django, Python, WebSockets, Channels, Real-time
+Tags: Django, Python, WebSocket, Channels, Real-Time
 
 Description: A comprehensive guide to implementing WebSockets in Django using Django Channels.
 

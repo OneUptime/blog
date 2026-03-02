@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EKS, Kubernetes, Troubleshooting, Nodes
+Tags: AWS, EKS, Kubernetes, Troubleshooting, Node
 
 Description: Diagnose and resolve EKS node NotReady issues, including kubelet failures, resource exhaustion, networking problems, and instance health checks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Exchanges, Queues, Messaging, Message Broker, Distributed Systems, AMQP, Event-Driven
+Tags: RabbitMQ, Exchange, Queue, Messaging, Message Broker, Distributed Systems, AMQP, Event-Driven
 
 Description: A comprehensive guide to creating and configuring exchanges and queues in RabbitMQ, covering all exchange types, queue options, bindings, and production best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenShift, Operators, Kubernetes, Automation, DevOps
+Tags: OpenShift, Operator, Kubernetes, Automation, DevOps
 
 Description: Learn how OpenShift Operators work, how to install them from OperatorHub, configure them safely, and manage upgrades in production.
 

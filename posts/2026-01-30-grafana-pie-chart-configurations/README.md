@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboards, Visualization
+Tags: Grafana, Observability, Dashboard, Visualization
 
 Description: A complete guide to creating effective pie charts in Grafana for visualizing proportional data, resource allocation, and categorical distributions.
 

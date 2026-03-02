@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSets, Monitoring
+Tags: Kubernetes, DaemonSet, Monitoring
 
 Description: Implement node problem detector as a DaemonSet to automatically identify, report, and remediate node-level issues in your Kubernetes cluster.
 

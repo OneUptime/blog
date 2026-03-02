@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, SSL, Certificates, Delegation, Security
+Tags: Ansible, SSL, Certificate, Delegation, Security
 
 Description: Learn how to use Ansible delegation to manage SSL/TLS certificates across your infrastructure using a centralized certificate authority.
 

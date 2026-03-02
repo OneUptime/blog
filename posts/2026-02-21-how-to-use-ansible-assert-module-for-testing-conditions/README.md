@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, Validation, Playbooks
+Tags: Ansible, Testing, Validation, Playbook
 
 Description: Learn how to use the Ansible assert module to validate conditions, enforce requirements, and build self-checking playbooks with clear error messages.
 

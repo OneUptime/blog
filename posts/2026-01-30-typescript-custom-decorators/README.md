@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Decorators, JavaScript, Design Patterns, Metaprogramming
+Tags: TypeScript, Decorators, JavaScript, Design Pattern, Metaprogramming
 
 Description: Create powerful TypeScript decorators for classes, methods, properties, and parameters with practical examples for validation, logging, and caching.
 

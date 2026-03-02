@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Roles, Conditionals, Playbook Logic
+Tags: Ansible, Roles, Conditional, Playbook Logic
 
 Description: Learn how to conditionally apply Ansible roles using when clauses based on facts, variables, group membership, and more.
 

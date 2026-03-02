@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Security, AuthorizationPolicy, Namespaces, Kubernetes
+Tags: Istio, Security, AuthorizationPolicy, Namespace, Kubernetes
 
 Description: Block traffic from specific Kubernetes namespaces using Istio AuthorizationPolicy DENY rules for namespace-level isolation and security.
 

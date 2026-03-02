@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Django, Search, Full-text Search, PostgreSQL
+Tags: Python, Django, Search, Full-Text Search, PostgreSQL
 
 Description: A comprehensive guide to implementing full-text search in Django using PostgreSQL's built-in capabilities, covering search vectors, ranking, and query optimization.
 

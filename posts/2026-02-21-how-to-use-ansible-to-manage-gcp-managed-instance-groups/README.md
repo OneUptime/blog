@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, GCP, Managed Instance Groups, Autoscaling, Infrastructure as Code
+Tags: Ansible, GCP, Managed Instance Group, Autoscaling, Infrastructure as Code
 
 Description: A practical guide to creating and managing GCP Managed Instance Groups with Ansible including autoscaling, rolling updates, and health checks.
 

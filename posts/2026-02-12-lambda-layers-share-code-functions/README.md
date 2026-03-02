@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Lambda, Layers, Serverless
+Tags: AWS, Lambda, Layer, Serverless
 
 Description: Learn how to create and use AWS Lambda Layers to share libraries, utilities, and custom runtimes across multiple Lambda functions efficiently.
 

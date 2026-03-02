@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Roles, Files, Configuration Management
+Tags: Ansible, Roles, File, Configuration Management
 
 Description: Learn how to use the files directory in Ansible roles to manage static files, scripts, and binary assets deployed to remote hosts.
 

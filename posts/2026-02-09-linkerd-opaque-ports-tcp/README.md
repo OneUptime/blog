@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linkerd, Kubernetes, TCP, Service Mesh, Protocols
+Tags: Linkerd, Kubernetes, TCP, Service Mesh, Protocol
 
 Description: Learn how to configure Linkerd opaque ports to handle non-HTTP TCP protocols like databases, message queues, and custom protocols while maintaining mTLS encryption and connection-level metrics.
 

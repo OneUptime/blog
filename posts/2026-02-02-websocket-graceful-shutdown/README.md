@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Graceful Shutdown, Node.js, Real-time, Server Management, Production
+Tags: WebSocket, Graceful Shutdown, Node.js, Real-Time, Server Management, Production
 
 Description: Learn how to implement graceful shutdown for WebSocket servers to ensure clean connection termination, prevent data loss, and maintain reliability during deployments and restarts.
 

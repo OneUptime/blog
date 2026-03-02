@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OAuth2, Authentication, Troubleshooting, Security, API, Errors
+Tags: OAuth2, Authentication, Troubleshooting, Security, API, Error
 
 Description: Learn how to diagnose and fix 'unsupported_grant_type' errors in OAuth2 implementations with practical examples and solutions.
 

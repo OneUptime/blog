@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Event-Driven Architecture, RabbitMQ, Kafka, Microservices, Message Queues, DevOps
+Tags: Docker, Event-Driven Architecture, RabbitMQ, Kafka, Microservices, Message Queue, DevOps
 
 Description: Build event-driven microservices with Docker using message brokers like RabbitMQ and Kafka for scalable, decoupled communication.
 

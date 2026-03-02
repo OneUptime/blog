@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: DevOps, Progressive Delivery, Argo Rollouts, Deployments
+Tags: DevOps, Progressive Delivery, Argo Rollouts, Deployment
 
 Description: Learn to implement progressive rollout for automated phased deployments.
 

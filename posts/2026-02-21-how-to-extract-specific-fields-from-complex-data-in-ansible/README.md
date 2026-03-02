@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Data Extraction, Filters, JSON
+Tags: Ansible, Data Extraction, Filter, JSON
 
 Description: Learn how to extract specific fields from complex nested data structures in Ansible using map, json_query, dot notation, and custom Jinja2 expressions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provider Development, Timeouts, Infrastructure as Code, Custom Providers
+Tags: Terraform, Provider Development, Timeout, Infrastructure as Code, Custom Provider
 
 Description: Learn how to implement configurable timeouts in custom Terraform provider resources for create, read, update, and delete operations to handle long-running infrastructure tasks.
 

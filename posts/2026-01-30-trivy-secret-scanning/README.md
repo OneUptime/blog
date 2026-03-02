@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Trivy, Security, Secrets, Scanning
+Tags: Trivy, Security, Secret, Scanning
 
 Description: Learn how to detect and prevent credential leaks in your codebase using Trivy secret scanning with built-in patterns and custom rules.
 

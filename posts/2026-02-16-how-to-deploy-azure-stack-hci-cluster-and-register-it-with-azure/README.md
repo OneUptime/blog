@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Stack HCI, Hybrid Cloud, Cluster, Infrastructure, On-Premises, Windows Server
+Tags: Azure, Azure Stack HCI, Hybrid Cloud, Cluster, Infrastructure, On-Premise, Windows Server
 
 Description: A complete guide to deploying an Azure Stack HCI cluster on your own hardware and registering it with Azure for hybrid cloud management.
 

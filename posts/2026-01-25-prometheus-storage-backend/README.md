@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Storage, TSDB, Remote Storage, Long-term Retention, Metrics Storage, Performance Tuning, Observability
+Tags: Prometheus, Storage, TSDB, Remote Storage, Long-Term Retention, Metrics Storage, Performance Tuning, Observability
 
 Description: A comprehensive guide to configuring Prometheus storage backends.
 

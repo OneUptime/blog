@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Platform, Quotas, Resource Management, Cloud Infrastructure, Troubleshooting
+Tags: GCP, Google Cloud Platform, Quota, Resource Management, Cloud Infrastructure, Troubleshooting
 
 Description: Learn how to diagnose, prevent, and resolve quota exceeded errors in Google Cloud Platform through monitoring, requests, and resource optimization.
 

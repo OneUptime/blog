@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Sampling, Debugging, TraceState, Tracing, Observability
+Tags: OpenTelemetry, Sampling, Debugging, tracestate, Tracing, Observability
 
 Description: Use the W3C tracestate header and custom sampling attributes to understand why traces were sampled or dropped across services.
 

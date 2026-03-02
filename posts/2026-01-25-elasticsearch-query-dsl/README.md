@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Query DSL, Search, Full-Text Search, Filters, Boolean Queries
+Tags: Elasticsearch, Query DSL, Search, Full-Text Search, Filter, Boolean Queries
 
 Description: A comprehensive guide to Elasticsearch Query DSL covering match queries, bool queries, filters, term queries, range queries, and advanced query composition for building powerful search functionality.
 

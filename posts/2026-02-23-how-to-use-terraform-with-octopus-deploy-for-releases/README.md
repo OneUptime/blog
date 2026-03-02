@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Octopus Deploy, Releases, DevOps, Infrastructure as Code, CI/CD, Deployment
+Tags: Terraform, Octopus Deploy, Release, DevOps, Infrastructure as Code, CI/CD, Deployment
 
 Description: Learn how to integrate Terraform with Octopus Deploy to manage infrastructure provisioning as part of your release management and deployment process.
 

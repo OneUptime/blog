@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2 Filters, Conditionals, Automation
+Tags: Ansible, Jinja2 Filters, Conditional, Automation
 
 Description: Master the Ansible select and reject filters to filter lists based on test conditions for cleaner and more expressive playbook logic.
 

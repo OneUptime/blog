@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Cartesian Product, Testing
+Tags: Ansible, Filter, Cartesian Product, Testing
 
 Description: Learn how to use the product filter in Ansible to generate Cartesian products from multiple lists for test matrices, configuration generation, and more.
 

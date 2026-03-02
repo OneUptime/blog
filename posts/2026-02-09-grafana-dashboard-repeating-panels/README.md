@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Kubernetes, Dashboards, Visualization, Templating
+Tags: Grafana, Kubernetes, Dashboard, Visualization, Templating
 
 Description: Learn how to create Grafana dashboard templates with repeating panels that automatically generate visualizations for all Kubernetes namespaces dynamically.
 

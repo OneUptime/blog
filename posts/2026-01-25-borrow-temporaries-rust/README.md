@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Lifetimes, Temporaries, References, Borrow Checker
+Tags: Rust, Lifetimes, Temporaries, Reference, Borrow Checker
 
 Description: Learn how Rust handles temporary values and when you can borrow them. Understand temporary lifetime extension and common pitfalls when working with temporaries in Rust.
 

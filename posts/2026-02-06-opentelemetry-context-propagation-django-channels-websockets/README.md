@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Django Channels, WebSockets, Context Propagation, Python
+Tags: OpenTelemetry, Django Channels, WebSocket, Context Propagation, Python
 
 Description: Master OpenTelemetry context propagation in Django Channels to trace WebSocket connections, track real-time message flows, and maintain distributed tracing across async operations.
 

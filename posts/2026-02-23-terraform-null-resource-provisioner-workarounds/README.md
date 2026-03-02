@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, null_resource, Provisioners, Workarounds, Infrastructure as Code
+Tags: Terraform, null_resource, Provisioner, Workarounds, Infrastructure as Code
 
 Description: Learn how to use the null_resource in Terraform to run provisioners independently of any real infrastructure resource, using triggers to control when they re-execute.
 

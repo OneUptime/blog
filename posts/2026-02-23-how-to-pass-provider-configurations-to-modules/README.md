@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Providers, Multi-Region, Multi-Account, Infrastructure as Code
+Tags: Terraform, Modules, Provider, Multi-Region, Multi-Account, Infrastructure as Code
 
 Description: A practical guide to passing provider configurations to Terraform modules, covering implicit inheritance, explicit passing, configuration_aliases, and real-world multi-region patterns.
 

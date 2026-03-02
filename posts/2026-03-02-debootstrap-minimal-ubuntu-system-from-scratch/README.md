@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Debootstrap, Minimal, Chroot, Advanced
+Tags: Ubuntu, Debootstrap, Minimal, chroot, Advanced
 
 Description: Learn how to use debootstrap to build a minimal Ubuntu system from scratch, configure it manually, install a bootloader, and understand how Linux system construction works at a fundamental level.
 

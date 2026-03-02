@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Compute Engine, Autoscaling, Cloud Monitoring, Managed Instance Groups
+Tags: GCP, Compute Engine, Autoscaling, Cloud Monitoring, Managed Instance Group
 
 Description: Learn how to configure autoscaling for managed instance groups based on custom Cloud Monitoring metrics, going beyond simple CPU-based scaling.
 

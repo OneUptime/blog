@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Configuration Validator, Schema Validation, Environment Variables
+Tags: OpenTelemetry, Configuration Validator, Schema Validation, Environment Variable
 
 Description: Use the OpenTelemetry configuration validator tool to substitute environment variables and validate your YAML config files.
 

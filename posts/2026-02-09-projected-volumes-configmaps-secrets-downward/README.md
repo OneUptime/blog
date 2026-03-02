@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Volumes, ConfigMap, Secrets
+Tags: Kubernetes, VOLUME, ConfigMap, Secret
 
 Description: Master the use of projected volumes in Kubernetes to combine multiple volume sources including ConfigMaps, Secrets, DownwardAPI.
 

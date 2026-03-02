@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Software Architecture, Refactoring, Continuous Delivery, Design Patterns, Legacy Code
+Tags: Software Architecture, Refactoring, Continuous Delivery, Design Pattern, Legacy Code
 
 Description: A hands-on guide to replacing legacy components without feature branches or big-bang deployments.
 

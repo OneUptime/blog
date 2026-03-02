@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Publisher Confirms, Message Reliability, At-Least-Once Delivery, Message Queues, DevOps
+Tags: RabbitMQ, Publisher Confirms, Message Reliability, At-Least-Once Delivery, Message Queue, DevOps
 
 Description: Learn how to implement publisher confirms in RabbitMQ to guarantee message delivery from publishers to brokers with practical examples in Python and Node.js.
 

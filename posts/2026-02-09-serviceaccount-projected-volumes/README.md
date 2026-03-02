@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ServiceAccounts, Storage
+Tags: Kubernetes, ServiceAccount, Storage
 
 Description: Configure Kubernetes ServiceAccount tokens using projected volumes with custom mount paths, multiple tokens, and combined resources for flexible pod credential management.
 

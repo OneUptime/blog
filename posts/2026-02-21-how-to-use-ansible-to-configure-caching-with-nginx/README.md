@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Nginx, Caching, Performance, DevOps
+Tags: Ansible, NGINX, Caching, Performance, DevOps
 
 Description: Automate Nginx proxy caching and static asset caching configuration with Ansible to improve web application performance across your infrastructure.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, Templates, Functions
+Tags: Helm, Kubernetes, Template, Functions
 
 Description: Learn how to create custom Helm template functions to simplify Kubernetes deployments.
 

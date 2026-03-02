@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby, Rails, Docker, Containers, DevOps, Deployment
+Tags: Ruby, Rails, Docker, Container, DevOps, Deployment
 
 Description: A comprehensive guide to containerizing Ruby on Rails applications with Docker.
 

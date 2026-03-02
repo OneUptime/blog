@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Alembic, Database, Migrations, SQLAlchemy, PostgreSQL
+Tags: Python, Alembic, Database, Migration, SQLAlchemy, PostgreSQL
 
 Description: Learn how to handle database migrations in Python applications using Alembic.
 

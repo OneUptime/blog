@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PHP, Laravel, Search, Full-text Search, Scout, Elasticsearch
+Tags: PHP, Laravel, Search, Full-Text Search, Scout, Elasticsearch
 
 Description: A practical guide to implementing full-text search in Laravel using Scout, database drivers, and Elasticsearch for scalable search functionality.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, PASETO, Security, Authentication, Tokens
+Tags: Go, PASETO, Security, Authentication, Token
 
 Description: Use PASETO (Platform-Agnostic Security Tokens) in Go as a more secure alternative to JWT with simpler implementation and better defaults.
 

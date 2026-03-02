@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Troubleshooting, Exporters, Debugging, Data Loss
+Tags: OpenTelemetry, Collector, Troubleshooting, Exporter, Debugging, Data Loss
 
 Description: Diagnose and resolve issues when OpenTelemetry Collector receives data but fails to export it to backends, including queue problems, authentication failures, and network issues.
 

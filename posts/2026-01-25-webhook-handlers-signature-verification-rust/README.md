@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Webhooks, Security, Signature Verification, API
+Tags: Rust, Webhook, Security, Signature Verification, API
 
 Description: Learn how to build secure webhook handlers in Rust with HMAC signature verification.
 

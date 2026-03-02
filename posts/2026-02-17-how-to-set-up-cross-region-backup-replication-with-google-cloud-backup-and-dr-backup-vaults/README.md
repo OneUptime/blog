@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud, Backup and DR, Cross-Region Replication, Disaster Recovery, Backup Vaults
+Tags: GCP, Google Cloud, Backup and DR, Cross-Region Replication, Disaster Recovery, Backup Vault
 
 Description: Learn how to configure cross-region backup replication using Google Cloud Backup and DR backup vaults to protect against regional outages and disasters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure AD B2C, Custom Policies, SaaS, User Journeys, Identity Experience Framework, Authentication, Identity
+Tags: Azure AD B2C, Custom Policies, SaaS, User Journey, Identity Experience Framework, Authentication, Identity
 
 Description: Set up Azure AD B2C custom policies to build advanced user journeys for SaaS applications including progressive profiling and conditional MFA.
 

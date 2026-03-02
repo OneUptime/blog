@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, CRDs, Kubernetes, Troubleshooting, Configuration Management
+Tags: Istio, CRD, Kubernetes, Troubleshooting, Configuration Management
 
 Description: How to identify, resolve, and prevent conflicts between Istio Custom Resource Definitions including overlapping routes, duplicate policies, and merge issues.
 

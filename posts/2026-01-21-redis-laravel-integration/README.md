@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Laravel, PHP, Caching, Sessions, Queues, Horizon
+Tags: Redis, Laravel, PHP, Caching, Sessions, Queue, Horizon
 
 Description: A comprehensive guide to integrating Redis with Laravel applications, covering cache, sessions, queues, broadcasting, and Laravel Horizon for queue monitoring.
 

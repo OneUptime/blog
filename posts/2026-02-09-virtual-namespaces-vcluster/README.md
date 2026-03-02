@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Namespaces, Multi-tenancy
+Tags: Kubernetes, Namespace, Multi-Tenancy
 
 Description: Learn how to implement virtual Kubernetes clusters using vcluster to achieve strong namespace isolation, improved multi-tenancy, and cost-effective cluster management.
 

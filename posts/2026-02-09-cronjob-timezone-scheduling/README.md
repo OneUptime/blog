@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CronJobs, Scheduling, Timezone
+Tags: Kubernetes, CronJob, Scheduling, Timezone
 
 Description: Master timezone-aware scheduling in Kubernetes CronJobs using the timeZone field to ensure jobs run at the correct local time regardless of cluster location.
 

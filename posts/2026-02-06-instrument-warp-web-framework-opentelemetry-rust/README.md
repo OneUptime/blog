@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Rust, Warp, Web Framework, Tracing, Filters
+Tags: OpenTelemetry, Rust, Warp, Web Framework, Tracing, Filter
 
 Description: Implement comprehensive distributed tracing for Warp web applications using OpenTelemetry to monitor HTTP requests, filters, and handler performance.
 

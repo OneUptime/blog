@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Troubleshooting, Node.js, Broadcasting, Real-time, Debugging
+Tags: WebSocket, Troubleshooting, Node.js, Broadcasting, Real-Time, Debugging
 
 Description: Diagnose and resolve common WebSocket broadcast failures including connection state issues, buffer overflows, and handling stale connections gracefully.
 

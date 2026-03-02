@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Zookeeper, Distributed Systems, Coordination, Metrics, Observability
+Tags: OpenTelemetry, Collector, ZooKeeper, Distributed Systems, Coordination, Metrics, Observability
 
 Description: Configure the Zookeeper receiver in OpenTelemetry Collector to monitor Apache Zookeeper clusters, track coordination service health, measure latency.
 

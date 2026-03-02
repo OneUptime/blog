@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: TypeScript, State Machines, Design Patterns, Type Safety
+Tags: TypeScript, State Machines, Design Pattern, Type Safety
 
 Description: Create compile-time verified state machines in TypeScript using discriminated unions, exhaustive checking, and the XState library integration.
 

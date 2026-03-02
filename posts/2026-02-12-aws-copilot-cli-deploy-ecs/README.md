@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Copilot CLI, Deployment, Containers
+Tags: AWS, ECS, Copilot CLI, Deployment, Container
 
 Description: Learn how to use the AWS Copilot CLI to deploy containerized applications to ECS without writing CloudFormation or Terraform from scratch.
 

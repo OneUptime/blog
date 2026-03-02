@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Interfaces, Dependency Injection, Testing, Architecture
+Tags: Go, interface, Dependency Injection, Testing, Architecture
 
 Description: Learn how to use Go interfaces for clean dependency injection. This guide covers interface design, constructor injection, and testable architecture patterns.
 

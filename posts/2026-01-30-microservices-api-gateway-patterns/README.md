@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Microservices, API Gateway, Architecture, Design Patterns
+Tags: Microservices, API Gateway, Architecture, Design Pattern
 
 Description: Design API gateway patterns for microservices including routing, aggregation, authentication, and rate limiting with practical implementation examples.
 

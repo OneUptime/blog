@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, borg, borgbackup, backup, deduplication, self-hosted, encryption
+Tags: Docker, borg, BorgBackup, Backup, Deduplication, Self-Hosted, Encryption
 
 Description: Deploy BorgBackup in Docker as a centralized backup server with encryption, deduplication, and efficient storage management.
 

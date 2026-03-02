@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Argo, Rollouts, Canary, Blue-Green
+Tags: Helm, Kubernetes, DevOps, Argo, Rollout, Canary, Blue-Green
 
 Description: Complete guide to deploying Argo Rollouts with Helm for progressive delivery including canary deployments, blue-green deployments, and automated rollbacks.
 

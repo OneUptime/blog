@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Bare Metal, On-Premises
+Tags: ArgoCD, GitOps, Kubernetes, Bare Metal, On-Premise
 
 Description: Learn how to deploy and configure ArgoCD on bare-metal Kubernetes clusters with MetalLB, local storage, and production networking considerations.
 

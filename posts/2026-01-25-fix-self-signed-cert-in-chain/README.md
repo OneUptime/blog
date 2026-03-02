@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NodeJS, SSL, TLS, Certificates, Security
+Tags: NodeJS, SSL, TLS, Certificate, Security
 
 Description: Resolve the SELF_SIGNED_CERT_IN_CHAIN error in Node.js by properly adding custom CA certificates to the trust chain.
 

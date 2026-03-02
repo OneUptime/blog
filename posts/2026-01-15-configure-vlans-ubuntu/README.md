@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, VLANs, Networking, Linux, Network Administration, Netplan, Docker, Network Segmentation
+Tags: Ubuntu, VLAN, Networking, Linux, Network Administration, Netplan, Docker, Network Segmentation
 
 Description: A comprehensive guide to configuring VLANs on Ubuntu, covering Netplan, ifupdown, inter-VLAN routing, Docker integration, and troubleshooting.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, RabbitMQ, Message Queues, Automation
+Tags: Ansible, RabbitMQ, Message Queue, Automation
 
 Description: A practical guide to managing RabbitMQ servers with Ansible using the community.rabbitmq collection for exchanges, queues, users, and policies.
 

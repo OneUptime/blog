@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Environments, DevOps, Deployment, CI/CD
+Tags: GitLab CI, Environment, DevOps, Deployment, CI/CD
 
 Description: Learn how to use GitLab CI environments to manage deployments across development, staging, and production.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Python, Asyncio, Concurrency, Event Loop
+Tags: Python, asyncio, Concurrency, Event Loop
 
 Description: Learn how asyncio event loops work in Python and how to customize them for advanced concurrency patterns.
 

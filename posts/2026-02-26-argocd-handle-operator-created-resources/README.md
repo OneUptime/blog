@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Operators, Resource Management
+Tags: ArgoCD, GitOps, Kubernetes, Operator, Resource Management
 
 Description: Learn how to handle Kubernetes resources dynamically created by operators in ArgoCD, including tracking, health checks, and avoiding sync conflicts with operator-managed resources.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elixir, Phoenix, Channels, WebSockets, Real-time
+Tags: Elixir, Phoenix, Channels, WebSocket, Real-Time
 
 Description: Learn how to configure Phoenix Channels for real-time communication in Elixir applications.
 

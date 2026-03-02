@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Advisor, Cost Optimization, Unused Resources, FinOps, Cloud Costs, Governance
+Tags: Azure, Azure Advisor, Cost Optimization, Unused Resources, FinOps, Cloud Cost, Governance
 
 Description: Learn how to use Azure Advisor and other tools to find and clean up unused Azure resources that waste money every month.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collections, Plugins, Filter Plugins, Lookup Plugins
+Tags: Ansible, Collection, Plugin, Filter Plugins, Lookup Plugins
 
 Description: How to write and add various plugin types to an Ansible collection including filter, lookup, callback, inventory, and connection plugins.
 

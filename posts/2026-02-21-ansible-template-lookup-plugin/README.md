@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Lookup Plugins, Templates, Jinja2, Configuration
+Tags: Ansible, Lookup Plugins, Template, Jinja2, Configuration
 
 Description: Learn how to use the Ansible template lookup plugin to render Jinja2 templates inline and use the result as a string in playbooks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Tekton, Results, CI/CD, Kubernetes, DevOps
+Tags: Tekton, Result, CI/CD, Kubernetes, DevOps
 
 Description: Learn how to configure Tekton Results to store and query pipeline run metadata and logs at scale.
 

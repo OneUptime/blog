@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Traffic Management, Virtual Machines, Service Mesh, Networking
+Tags: Istio, Traffic Management, Virtual Machine, Service Mesh, Networking
 
 Description: Step-by-step guide to setting up traffic routing, load balancing, and failover policies for VM workloads in Istio.
 

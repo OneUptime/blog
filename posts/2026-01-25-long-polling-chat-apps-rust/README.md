@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Long Polling, Chat, Real-time, HTTP
+Tags: Rust, Long Polling, Chat, Real-Time, HTTP
 
 Description: A practical guide to implementing long-polling in Rust for chat applications, covering async request handling, timeout management, and message broadcasting with Axum and Tokio.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Nginx, Configuration, Web Server, Performance
+Tags: Ubuntu, NGINX, Configuration, Web Server, Performance
 
 Description: Use the Nginx map directive to create dynamic variables based on request attributes, enabling clean, efficient configuration for routing, redirects, and access control.
 

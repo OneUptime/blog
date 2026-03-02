@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, IIS, windows containers, web server, ASP.NET, Windows Server, containerization
+Tags: Docker, IIS, Windows Containers, Web Server, ASP.NET, Windows Server, Containerization
 
 Description: Run Internet Information Services (IIS) in a Windows Docker container to host ASP.NET applications and static websites in isolated environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Templates, Troubleshooting, DevOps
+Tags: Ansible, Jinja2, Template, Troubleshooting, DevOps
 
 Description: Fix Ansible template rendering failures caused by Jinja2 syntax errors, undefined variables, and filter issues in template files.
 

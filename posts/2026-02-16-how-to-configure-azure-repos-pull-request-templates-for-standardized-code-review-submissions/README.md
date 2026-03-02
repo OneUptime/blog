@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Repos, Pull Requests, Code Review, Templates, Azure DevOps, Developer Experience
+Tags: Azure Repos, Pull Requests, Code Review, Template, Azure DevOps, Developer Experience
 
 Description: Set up pull request templates in Azure Repos to standardize code review submissions with consistent descriptions, checklists, and context for reviewers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Apache Beam, Dataflow, Python, Data Pipelines
+Tags: GCP, Apache Beam, Dataflow, Python, Data Pipeline
 
 Description: A practical guide to building custom Apache Beam transforms in Python for Google Cloud Dataflow, covering PTransforms, DoFns, combiners, and composite transforms.
 

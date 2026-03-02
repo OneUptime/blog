@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, SignalR, Notification Hubs, Real-Time, Mobile Development, WebSockets
+Tags: Azure, SignalR, Notification Hub, Real-Time, Mobile Development, WebSocket
 
 Description: Build a real-time mobile notification system combining Azure SignalR Service for in-app messaging with Notification Hubs for push notifications.
 

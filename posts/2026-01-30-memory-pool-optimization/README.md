@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Performance, Memory, Optimization, Resources
+Tags: Performance, Memory, Optimization, Resource
 
 Description: Learn how to implement memory pools to reduce allocation overhead, prevent fragmentation, and achieve predictable performance in resource-intensive applications.
 

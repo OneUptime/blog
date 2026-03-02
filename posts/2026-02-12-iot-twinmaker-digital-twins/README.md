@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, IoT TwinMaker, Digital Twins, IoT, 3D Visualization, Monitoring
+Tags: AWS, IoT TwinMaker, Digital Twin, IoT, 3D Visualization, Monitoring
 
 Description: Build digital twins of physical systems using AWS IoT TwinMaker to visualize real-time IoT data in 3D models and composite dashboards
 

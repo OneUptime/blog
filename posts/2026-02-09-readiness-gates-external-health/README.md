@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Readiness Gates, Health Checks, External Integration
+Tags: Kubernetes, Readiness Gates, Health Check, External Integration
 
 Description: Integrate external health check systems with Kubernetes using readiness gates to control pod readiness based on criteria beyond built-in probe mechanisms, enabling sophisticated traffic management.
 

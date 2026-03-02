@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Hybrid Cloud, On-Premises, Cloud Migration, Infrastructure
+Tags: Ansible, Hybrid Cloud, On-Premise, Cloud Migration, Infrastructure
 
 Description: Set up and manage hybrid cloud infrastructure with Ansible bridging on-premises data centers and public cloud environments.
 

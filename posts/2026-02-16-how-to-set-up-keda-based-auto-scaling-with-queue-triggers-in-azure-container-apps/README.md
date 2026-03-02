@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Container Apps, KEDA, Auto-Scaling, Queue Triggers, Service Bus, Serverless
+Tags: Azure, Container Apps, KEDA, Auto-Scaling, Queue Trigger, Service Bus, Serverless
 
 Description: A detailed guide to configuring KEDA-based auto-scaling with queue triggers in Azure Container Apps for event-driven workloads.
 

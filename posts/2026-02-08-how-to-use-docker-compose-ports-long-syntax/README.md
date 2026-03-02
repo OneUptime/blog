@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, Ports, Networking, Configuration, Containers
+Tags: Docker, Docker Compose, Port, Networking, Configuration, Container
 
 Description: Master Docker Compose ports long syntax for precise control over port publishing, protocols, and host binding.
 

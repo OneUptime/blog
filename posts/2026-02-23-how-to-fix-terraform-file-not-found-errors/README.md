@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, Infrastructure as Code, Files
+Tags: Terraform, Troubleshooting, Infrastructure as Code, File
 
 Description: Resolve Terraform file not found errors caused by incorrect paths, missing files, path references in modules, and working directory confusion.
 

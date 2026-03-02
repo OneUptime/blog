@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Containers, Secrets, Security, AWS, Kubernetes
+Tags: Terraform, Container, Secret, Security, AWS, Kubernetes
 
 Description: Learn how to securely manage container secrets in Terraform using secret management services, encryption, and best practices for protecting sensitive configuration data.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Testing, Security, Secrets, CICD
+Tags: Testing, Security, Secret, CICD
 
 Description: Prevent credentials from leaking into your repositories by integrating secret detection tools into your CI/CD pipeline.
 

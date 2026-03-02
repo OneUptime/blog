@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Chaos Engineering, Runbooks, Incident Response, Kubernetes
+Tags: Istio, Chaos Engineering, Runbook, Incident Response, Kubernetes
 
 Description: How to build structured chaos engineering runbooks using Istio fault injection to systematically validate service resilience and document expected behavior.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, Templates, Rendering, Spans, html/template
+Tags: OpenTelemetry, Go, Template, Rendering, Span, html/template
 
 Description: Instrument Go template rendering with OpenTelemetry to trace execution time, identify slow templates, and monitor template function performance for server-side rendering optimization.
 

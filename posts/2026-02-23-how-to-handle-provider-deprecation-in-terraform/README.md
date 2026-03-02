@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Deprecation, Migration, Infrastructure as Code
+Tags: Terraform, Provider, Deprecation, Migration, Infrastructure as Code
 
 Description: Learn how to identify and handle deprecated Terraform providers, resources, and attributes before they are removed in future provider versions.
 

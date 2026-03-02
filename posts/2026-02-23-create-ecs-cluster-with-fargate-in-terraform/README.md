@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, Fargate, Containers, Serverless Containers
+Tags: Terraform, AWS, ECS, Fargate, Container, Serverless Containers
 
 Description: A hands-on guide to creating Amazon ECS clusters with AWS Fargate launch type in Terraform, covering cluster configuration, capacity providers, namespaces, and monitoring.
 

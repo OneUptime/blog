@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Swap, Linux, Memory Management, DevOps
+Tags: Ansible, SWAP, Linux, Memory Management, DevOps
 
 Description: Automate swap space configuration on Linux servers using Ansible playbooks to create swap files, swap partitions, and tune swappiness for optimal performance.
 

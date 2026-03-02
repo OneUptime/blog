@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Configuration, Environments, Kubernetes, GitOps
+Tags: Istio, Configuration, Environment, Kubernetes, GitOps
 
 Description: Strategies for managing Istio configuration differences across development, staging, and production environments without duplicating YAML.
 

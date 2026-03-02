@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connectors, Failover, High Availability, Reliability
+Tags: OpenTelemetry, Collector, Connector, Failover, High Availability, Reliability
 
 Description: Implement robust failover strategies in OpenTelemetry Collector using the Failover Connector to ensure continuous telemetry collection even when primary backends become unavailable.
 

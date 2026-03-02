@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Notification Hubs, Push Notifications, iOS, Android, APNs, FCM, Troubleshooting
+Tags: Azure, Notification Hub, Push Notifications, iOS, Android, APNs, FCM, Troubleshooting
 
 Description: Diagnose and resolve Azure Notification Hub push notification delivery failures for iOS and Android including certificate errors, token issues, and payload formatting.
 

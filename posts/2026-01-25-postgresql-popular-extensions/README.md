@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Database, Extensions, PostGIS, pg_stat_statements, TimescaleDB, Performance
+Tags: PostgreSQL, Database, Extension, PostGIS, pg_stat_statements, TimescaleDB, Performance
 
 Description: Discover the most useful PostgreSQL extensions for production databases.
 

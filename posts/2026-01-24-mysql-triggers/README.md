@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Database, Triggers, SQL, Automation, Data Integrity
+Tags: MySQL, Database, Trigger, SQL, Automation, Data Integrity
 
 Description: Learn how to create, manage, and debug MySQL triggers for automating database operations and maintaining data integrity.
 

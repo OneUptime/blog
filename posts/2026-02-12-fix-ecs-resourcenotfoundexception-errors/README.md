@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Debugging, Containers
+Tags: AWS, ECS, Debugging, Container
 
 Description: Troubleshoot and resolve ECS ResourceNotFoundException errors caused by missing clusters, services, task definitions, and incorrect ARN references.
 

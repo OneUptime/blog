@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machines, Serial Console, Troubleshooting, Boot Failures, Cloud Computing
+Tags: Azure, Virtual Machine, Serial Console, Troubleshooting, Boot Failures, Cloud Computing
 
 Description: Learn how to use Azure Serial Console to diagnose and fix VM boot failures including GRUB errors, fstab misconfigurations, and kernel panics.
 

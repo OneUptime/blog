@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Entity Framework Core, Azure SQL, CI/CD, Migrations, .NET, DevOps, Database
+Tags: Entity Framework Core, Azure SQL, CI/CD, Migration, .NET, DevOps, Database
 
 Description: Automate Entity Framework Core database migrations with Azure SQL Database in a CI/CD pipeline for safe and repeatable deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cloudflare, Open Source, Self-Hosting, Decentralization, Reliability, Security, Cdn, Ddos Protection
+Tags: Cloudflare, Open Source, Self-Hosting, Decentralization, Reliability, Security, CDN, DDoS Protection
 
 Description: Cloudflare powers a troubling percentage of the internet. When they go down, so does everyone else.
 

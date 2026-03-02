@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Kafka, Security, ACLs, Authorization, Authentication, SASL, DevOps
+Tags: Apache Kafka, Security, ACL, Authorization, Authentication, SASL, DevOps
 
 Description: A practical guide to implementing Kafka Access Control Lists (ACLs) for securing your cluster, including authentication setup, permission management, and best practices.
 

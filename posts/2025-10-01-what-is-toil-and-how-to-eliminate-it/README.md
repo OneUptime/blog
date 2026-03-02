@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Site Reliability Engineering, SRE, Toil, Automation, DevOps, Observability, On-call, Runbooks
+Tags: Site Reliability Engineering, SRE, Toil, Automation, DevOps, Observability, On-Call, Runbook
 
 Description: What toil really is (and isn’t), how to find and measure it, and pragmatic steps to eliminate it with automation, guardrails, and culture.
 

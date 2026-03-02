@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Concurrency, Semaphores, Performance
+Tags: Go, Concurrency, Semaphore, Performance
 
 Description: Learn how to implement and use semaphores in Go to control access to limited resources and manage concurrent operations effectively.
 

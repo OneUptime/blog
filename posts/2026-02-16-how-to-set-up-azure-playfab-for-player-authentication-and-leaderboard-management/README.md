@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure PlayFab, Game Development, Player Authentication, Leaderboards, Gaming, Backend Services, Identity Management
+Tags: Azure PlayFab, Game Development, Player Authentication, Leaderboards, Gaming, Backend Service, Identity Management
 
 Description: Set up Azure PlayFab for player authentication with multiple identity providers and leaderboard management for competitive gaming features.
 

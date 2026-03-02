@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Namespace Management
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Namespace Management
 
 Description: Learn how to configure ArgoCD ApplicationSets to be created and managed in namespaces other than the default argocd namespace for multi-tenant environments.
 

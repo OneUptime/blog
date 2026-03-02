@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Services, DevOps, Networking
+Tags: Ansible, Kubernetes, Service, DevOps, Networking
 
 Description: Learn how to create and manage Kubernetes Services using Ansible's k8s module with practical examples for ClusterIP, NodePort, and LoadBalancer types.
 

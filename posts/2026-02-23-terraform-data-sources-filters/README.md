@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Data Sources, Filters, AWS, Infrastructure as Code
+Tags: Terraform, Data Source, Filter, AWS, Infrastructure as Code
 
 Description: Learn how to use filter blocks in Terraform data sources to query cloud resources by attributes, tags, and states for dynamic infrastructure configuration.
 

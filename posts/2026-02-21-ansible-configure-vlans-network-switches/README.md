@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VLANs, Networking, Switch Configuration
+Tags: Ansible, VLAN, Networking, Switch Configuration
 
 Description: Learn how to automate VLAN creation, modification, and assignment across network switches using Ansible resource modules and playbooks.
 

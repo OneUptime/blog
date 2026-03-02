@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, Bridge Network, Linux, Containers, Virtual Networking
+Tags: Docker, Networking, Bridge Network, Linux, Container, Virtual Networking
 
 Description: Deep dive into how Docker bridge networking works internally, covering virtual interfaces, routing, and packet flow.
 

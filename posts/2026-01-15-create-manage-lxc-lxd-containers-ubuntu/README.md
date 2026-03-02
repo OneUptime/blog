@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, LXC, LXD, Containers, Virtualization, Tutorial
+Tags: Ubuntu, LXC, LXD, Container, Virtualization, Tutorial
 
 Description: Complete guide to using LXD for system containers on Ubuntu, providing lightweight virtualization with full OS experience.
 

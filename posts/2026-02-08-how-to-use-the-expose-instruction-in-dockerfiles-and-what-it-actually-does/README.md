@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, EXPOSE, Networking, Containers, DevOps
+Tags: Docker, Dockerfile, EXPOSE, Networking, Container, DevOps
 
 Description: Understand what the EXPOSE instruction actually does in Dockerfiles, what it does not do, and how to use it properly.
 

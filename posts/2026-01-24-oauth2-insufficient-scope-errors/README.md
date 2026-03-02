@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OAuth2, Authentication, Security, Scopes, Troubleshooting, API
+Tags: OAuth2, Authentication, Security, Scope, Troubleshooting, API
 
 Description: Learn how to diagnose and fix OAuth2 insufficient scope errors, including scope management, incremental authorization, and best practices for requesting permissions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECR, Security, Vulnerability Scanning, Containers
+Tags: AWS, ECR, Security, Vulnerability Scanning, Container
 
 Description: Learn how to enable and configure ECR image scanning to automatically detect vulnerabilities in your container images before they reach production.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: React, Nginx, React Router, SPA, Single Page Application, DevOps
+Tags: React, NGINX, React Router, SPA, Single Page Application, DevOps
 
 Description: Learn how to configure Nginx to properly serve React applications with client-side routing, fixing 404 errors when refreshing or directly accessing routes.
 

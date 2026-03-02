@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, RBAC, ServiceAccounts
+Tags: ArgoCD, GitOps, Kubernetes, RBAC, ServiceAccount
 
 Description: Learn how to deploy ServiceAccounts, Roles, ClusterRoles, and RoleBindings with ArgoCD for secure identity management and least-privilege access control.
 

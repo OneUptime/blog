@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, ZFS, Storage Driver, DevOps, Linux, Containers
+Tags: Docker, ZFS, Storage Driver, DevOps, Linux, Container
 
 Description: A practical guide to configuring Docker to use the ZFS storage driver for better snapshot management and data integrity.
 

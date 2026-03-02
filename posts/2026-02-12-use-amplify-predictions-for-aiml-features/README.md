@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Amplify, AI, ML, Predictions, Rekognition, Textract, Comprehend
+Tags: AWS, Amplify, AI, ML, Prediction, Rekognition, Textract, Comprehend
 
 Description: Add AI and ML features to your app using Amplify Predictions for image recognition, text extraction, language translation, and sentiment analysis.
 

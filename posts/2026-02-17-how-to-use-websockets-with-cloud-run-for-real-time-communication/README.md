@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, WebSockets, Real-Time, Server-Sent Events
+Tags: GCP, Cloud Run, WebSocket, Real-Time, Server-Sent Events
 
 Description: Learn how to implement WebSocket connections on Cloud Run for real-time features like live notifications, chat, and dashboards, including connection management and scaling considerations.
 

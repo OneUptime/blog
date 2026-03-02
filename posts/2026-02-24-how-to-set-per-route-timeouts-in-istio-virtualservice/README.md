@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Timeouts, VirtualService, Traffic Management, Kubernetes
+Tags: Istio, Timeout, VirtualService, Traffic Management, Kubernetes
 
 Description: Learn how to configure different timeout values for different routes in an Istio VirtualService to match the performance characteristics of each endpoint.
 

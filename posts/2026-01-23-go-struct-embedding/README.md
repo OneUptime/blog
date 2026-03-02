@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Structs, Embedding, Composition, Inheritance, OOP
+Tags: Go, Golang, Struct, Embedding, Composition, Inheritance, OOP
 
 Description: Learn how to use struct embedding in Go for composition over inheritance. Understand method promotion, embedding interfaces, and common patterns.
 

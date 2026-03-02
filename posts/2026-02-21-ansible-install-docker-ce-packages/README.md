@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Containers, Linux, DevOps
+Tags: Ansible, Docker, Container, Linux, DevOps
 
 Description: A step-by-step guide to installing Docker CE on Ubuntu and RHEL-based systems using Ansible, including repository setup, package installation, and post-install configuration.
 

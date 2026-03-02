@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Containers, Migration, DevOps
+Tags: Ansible, Docker, Container, Migration, DevOps
 
 Description: Use Ansible to systematically migrate traditional applications to containers with Dockerfile generation, image building, and orchestration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Terraform, Cloud SQL, Database, High Availability, Backups
+Tags: GCP, Terraform, Cloud SQL, Database, High Availability, Backup
 
 Description: Learn how to create and manage Google Cloud SQL instances with Terraform, including automated backups, high availability configuration, and security best practices.
 

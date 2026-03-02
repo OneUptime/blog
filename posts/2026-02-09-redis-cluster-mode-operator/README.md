@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Kubernetes, Operators, Clustering, Cache
+Tags: Redis, Kubernetes, Operator, Clustering, Cache
 
 Description: Learn how to deploy production-ready Redis Cluster mode on Kubernetes using the Redis Operator for automatic sharding, high availability, and horizontal scaling.
 

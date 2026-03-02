@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, networking, veth, bridge, iptables, container networking, linux networking
+Tags: Docker, Networking, veth, Bridge, iptables, Container Networking, linux networking
 
 Description: A hands-on guide to Docker networking internals covering veth pairs, Linux bridges, iptables rules, and how containers communicate with each other.
 

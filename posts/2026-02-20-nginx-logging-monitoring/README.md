@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Logging, Monitoring, Access Logs, Observability
+Tags: NGINX, Logging, Monitoring, Access Logs, Observability
 
 Description: Learn how to configure Nginx access and error logging with custom formats and integrate with monitoring tools.
 

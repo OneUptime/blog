@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, Prometheus, Alerting, Operator, Runbooks, SRE
+Tags: OpenTelemetry, Kubernetes, Prometheus, Alerting, Operator, Runbook, SRE
 
 Description: A complete guide to understanding, configuring, and responding to Prometheus alerts from the OpenTelemetry Operator in Kubernetes.
 

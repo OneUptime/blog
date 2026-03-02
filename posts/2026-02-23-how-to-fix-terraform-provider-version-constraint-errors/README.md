@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, Infrastructure as Code, Providers
+Tags: Terraform, Troubleshooting, Infrastructure as Code, Provider
 
 Description: Fix Terraform provider version constraint errors including conflicting constraints, lock file issues, and strategies for provider version management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, API Keys, Authentication, Security, Kubernetes
+Tags: Istio, API Key, Authentication, Security, Kubernetes
 
 Description: Implement API key validation in Istio using external authorization, Lua filters, or WASM plugins to secure your APIs with key-based access control.
 

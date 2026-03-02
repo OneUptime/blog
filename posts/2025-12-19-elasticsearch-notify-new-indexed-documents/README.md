@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Watcher, Alerts, Notifications, Real-time, Change Detection
+Tags: Elasticsearch, Watcher, Alerts, Notifications, Real-Time, Change Detection
 
 Description: Learn how to implement notifications for newly indexed documents in Elasticsearch using Watcher, change data capture patterns, and webhook integrations.
 

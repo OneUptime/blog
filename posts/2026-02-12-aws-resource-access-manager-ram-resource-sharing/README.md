@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, RAM, Resource Sharing, Multi-Account, Organizations
+Tags: AWS, RAM, Resource Sharing, Multi-Account, Organization
 
 Description: Learn how to use AWS Resource Access Manager to securely share resources like VPC subnets, Transit Gateways, and more across AWS accounts without duplication.
 

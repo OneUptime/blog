@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Applications
+Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Application
 
 Description: Resolve the ArgoCD already exists error when creating applications, covering duplicate application names, resource tracking conflicts, and shared resource issues.
 

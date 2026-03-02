@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Incident Response, SRE, Playbooks, On-Call, Reliability
+Tags: Incident Response, SRE, Playbook, On-Call, Reliability
 
 Description: Learn how to create effective incident response playbooks that guide teams through outages with clear steps, roles, and communication templates.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Consumers, Acknowledgments, Message Processing, Reliability
+Tags: RabbitMQ, Consumer, Acknowledgments, Message Processing, Reliability
 
 Description: Learn how to implement reliable RabbitMQ consumers using manual acknowledgments, negative acknowledgments, and requeue strategies.
 

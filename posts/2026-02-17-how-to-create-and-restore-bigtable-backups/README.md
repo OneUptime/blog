@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Bigtable, Backups, Disaster Recovery, Data Protection
+Tags: GCP, Cloud Bigtable, Backup, Disaster Recovery, Data Protection
 
 Description: A practical guide to creating, managing, and restoring Cloud Bigtable backups for data protection and disaster recovery scenarios.
 

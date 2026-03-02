@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Socket.io, WebSocket, Redis, Node.js, Scaling, Load Balancing, Clustering
+Tags: Socket.IO, WebSocket, Redis, Node.js, Scaling, Load Balancing, Clustering
 
 Description: Learn how to configure Socket.io across multiple servers using Redis adapter, sticky sessions, and proper load balancing for scalable real-time applications.
 

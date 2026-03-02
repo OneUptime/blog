@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, docker desktop, windows containers, linux containers, container switching, DevOps, development
+Tags: Docker, Docker Desktop, Windows Containers, Linux Containers, container switching, DevOps, Development
 
 Description: Learn how to switch between Linux and Windows container modes on Docker Desktop, understand when to use each, and manage mixed workloads.
 

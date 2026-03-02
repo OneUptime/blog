@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Rust, Tonic, gRPC, Tracing, Microservices
+Tags: OpenTelemetry, Rust, tonic, gRPC, Tracing, Microservices
 
 Description: Learn how to add distributed tracing to Rust gRPC services built with Tonic using OpenTelemetry for complete observability across microservices.
 

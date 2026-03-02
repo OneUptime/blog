@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Blueprints, Governance, Subscriptions, Compliance, Automation, Enterprise
+Tags: Azure, Blueprints, Governance, Subscription, Compliance, Automation, Enterprise
 
 Description: Learn how to assign Azure Blueprints to multiple subscriptions, update assignments when blueprint versions change, and automate the process at scale.
 

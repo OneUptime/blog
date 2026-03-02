@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Notification Hubs, Firebase, FCM v1, Android, Push Notifications, Migration
+Tags: Azure, Notification Hub, Firebase, FCM v1, Android, Push Notifications, Migration
 
 Description: Configure Azure Notification Hubs to work with the Firebase Cloud Messaging v1 API for sending push notifications to Android devices.
 

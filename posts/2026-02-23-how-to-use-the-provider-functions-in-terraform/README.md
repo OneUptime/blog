@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, DevOps, Providers, HCL, Infrastructure as Code, Terraform 1.8
+Tags: Terraform, DevOps, Provider, HCL, Infrastructure as Code, Terraform 1.8
 
 Description: Learn how to use provider-defined functions in Terraform 1.8 and later to access provider-specific logic directly in your HCL expressions and configurations.
 

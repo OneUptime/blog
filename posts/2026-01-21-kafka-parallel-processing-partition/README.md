@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Kafka, Parallel Processing, Consumer, Concurrency, Performance, Multi-threading, Java, Python
+Tags: Apache Kafka, Parallel Processing, Consumer, Concurrency, Performance, Multi-Threading, Java, Python
 
 Description: A comprehensive guide to implementing parallel processing within Kafka partitions, covering thread pool strategies, ordering guarantees, concurrent message handling.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Debugging, Error Handling, Timeouts, Context Cancellation
+Tags: gRPC, Debugging, Error Handling, Timeout, Context Cancellation
 
 Description: Learn how to diagnose and resolve gRPC canceled request errors caused by context cancellation, timeouts, and client disconnections.
 

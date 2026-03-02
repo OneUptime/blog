@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Run, AWS ECS, Fargate, Containers, Serverless, Cloud Migration
+Tags: GCP, Google Cloud Run, AWS ECS, Fargate, Container, Serverless, Cloud Migration
 
 Description: A practical guide to migrating containerized services from Amazon ECS Fargate to Google Cloud Run, covering task definition conversion, networking, and deployment strategies.
 

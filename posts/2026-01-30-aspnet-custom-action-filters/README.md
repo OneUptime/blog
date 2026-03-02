@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: CSharp, ASP.NET, Web Development, Filters
+Tags: CSharp, ASP.NET, Web Development, Filter
 
 Description: Learn to create custom action filters in ASP.NET Core for logging, validation, caching, and cross-cutting concerns with practical implementation examples.
 

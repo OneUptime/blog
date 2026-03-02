@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, CronJobs, Scheduling, Batch Processing, Infrastructure as Code
+Tags: Terraform, Kubernetes, CronJob, Scheduling, Batch Processing, Infrastructure as Code
 
 Description: How to create Kubernetes CronJobs using Terraform to schedule recurring tasks like backups, reports, and maintenance operations.
 

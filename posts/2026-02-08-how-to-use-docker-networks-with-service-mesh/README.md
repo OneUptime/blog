@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Service Mesh, Networking, Consul, Envoy, Microservices, Containers
+Tags: Docker, Service Mesh, Networking, Consul, Envoy, Microservices, Container
 
 Description: Implement a service mesh on Docker networks using Envoy and Consul for traffic management, observability, and security.
 

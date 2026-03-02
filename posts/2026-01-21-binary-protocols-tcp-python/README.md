@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, TCP, Binary Protocols, Networking, asyncio, Sockets, Protocol Buffers, Performance
+Tags: Python, TCP, Binary Protocol, Networking, asyncio, Sockets, Protocol Buffers, Performance
 
 Description: Learn how to implement binary protocol handlers over TCP in Python.
 

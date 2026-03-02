@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, App Engine, Secret Manager, Environment Variables, Configuration
+Tags: GCP, App Engine, Secret Manager, Environment Variable, Configuration
 
 Description: Learn how to manage application configuration on App Engine using environment variables for settings and Secret Manager for sensitive credentials.
 

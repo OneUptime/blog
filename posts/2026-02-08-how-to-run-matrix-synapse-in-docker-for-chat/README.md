@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Matrix, Synapse, Chat, Messaging, Self-Hosted, Containers, Federation, End-to-End Encryption
+Tags: Docker, Matrix, Synapse, Chat, Messaging, Self-Hosted, Container, Federation, End-to-End Encryption
 
 Description: Deploy Matrix Synapse in Docker for a self-hosted, federated chat platform with end-to-end encryption, bridging to other services, and full data ownership.
 

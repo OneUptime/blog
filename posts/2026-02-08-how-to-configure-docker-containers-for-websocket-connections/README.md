@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, websocket, containers, networking, nginx, reverse proxy, real-time
+Tags: Docker, WebSocket, Container, Networking, NGINX, Reverse Proxy, Real-Time
 
 Description: A practical guide to configuring Docker containers for reliable WebSocket connections in production environments.
 

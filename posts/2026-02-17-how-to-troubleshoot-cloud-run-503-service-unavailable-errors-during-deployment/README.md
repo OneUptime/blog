@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Troubleshooting, 503 Errors, Deployment, Google Cloud
+Tags: GCP, Cloud Run, Troubleshooting, 503 Error, Deployment, Google Cloud
 
 Description: Learn how to diagnose and fix Cloud Run 503 Service Unavailable errors that occur during deployment, including common causes and step-by-step solutions.
 

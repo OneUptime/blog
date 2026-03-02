@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, DuckDB, Analytics, Databases, OLAP, Data Engineering
+Tags: Docker, DuckDB, Analytics, Database, OLAP, Data Engineering
 
 Description: How to use DuckDB inside Docker containers for analytical queries on CSV, Parquet, and JSON data files
 

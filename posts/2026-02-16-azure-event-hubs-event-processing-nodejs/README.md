@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Event Hubs, Node.js, Event Processing, Streaming, TypeScript, Messaging
+Tags: Azure, Event Hub, Node.js, Event Processing, Streaming, TypeScript, Messaging
 
 Description: Learn how to produce and consume events using Azure Event Hubs with the @azure/event-hubs SDK in a Node.js application.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Django, Cloud SQL, Cloud Build, Database Migrations
+Tags: GCP, Django, Cloud SQL, Cloud Build, Database Migration
 
 Description: Learn how to safely run Django database migrations on Cloud SQL as part of your Cloud Build deployment pipeline with proper authentication and error handling.
 

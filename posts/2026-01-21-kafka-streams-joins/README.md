@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Apache Kafka, Kafka Streams, Stream Joins, Table Joins, Real-time Processing, Data Enrichment
+Tags: Apache Kafka, Kafka Streams, Stream Joins, Table Joins, Real-Time Processing, Data Enrichment
 
 Description: Learn how to implement joins in Kafka Streams, including KStream-KStream, KStream-KTable, KTable-KTable, and global table joins for data enrichment and correlation in real-time stream processing.
 

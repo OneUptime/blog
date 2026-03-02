@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, State Management, Secrets, Infrastructure as Code
+Tags: Terraform, Kubernetes, State Management, Secret, Infrastructure as Code
 
 Description: Learn how to store Terraform state in Kubernetes Secrets, including configuration steps, RBAC setup, namespace organization, encryption, and practical considerations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, Notifications, Slack, Teams, PagerDuty, Alerting, GitOps
+Tags: ArgoCD, Notifications, Slack, Team, PagerDuty, Alerting, GitOps
 
 Description: Set up ArgoCD notifications to alert your team about deployment events via Slack, Microsoft Teams, email, webhooks, and PagerDuty, with customizable templates and triggers.
 

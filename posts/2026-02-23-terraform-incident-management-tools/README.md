@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Incident Management, DevOps, PagerDuty, Opsgenie, On-Call
+Tags: Terraform, Incident Management, DevOps, PagerDuty, OpsGenie, On-Call
 
 Description: Learn how to use Terraform to configure incident management tools like PagerDuty, Opsgenie, and Rootly so your on-call rotations and escalation policies are version-controlled.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Security, API Keys, Rotation, Secrets Management
+Tags: Security, API Key, Rotation, Secrets Management
 
 Description: Learn to create API key rotation for secure credential lifecycle management.
 

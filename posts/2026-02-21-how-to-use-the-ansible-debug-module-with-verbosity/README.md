@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Debugging, Playbooks, Logging
+Tags: Ansible, Debugging, Playbook, Logging
 
 Description: Learn how to use the verbosity parameter in the Ansible debug module to control when debug output appears based on the playbook run verbosity level.
 

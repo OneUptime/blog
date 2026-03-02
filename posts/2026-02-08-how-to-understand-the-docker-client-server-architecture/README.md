@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, architecture, client-server, docker daemon, docker cli, containers, docker api
+Tags: Docker, Architecture, client-server, Docker Daemon, Docker CLI, Container, docker api
 
 Description: A practical guide to understanding Docker's client-server architecture, how the CLI communicates with the daemon, and how to use the Docker API directly.
 

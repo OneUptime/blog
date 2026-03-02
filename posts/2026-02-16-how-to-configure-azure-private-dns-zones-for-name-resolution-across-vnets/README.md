@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Private DNS, Virtual Networks, DNS Resolution, Private Endpoints, Networking, Azure DNS
+Tags: Azure, Private DNS, Virtual Network, DNS Resolution, Private Endpoint, Networking, Azure DNS
 
 Description: Learn how to configure Azure Private DNS Zones for reliable name resolution across multiple virtual networks and with private endpoints.
 

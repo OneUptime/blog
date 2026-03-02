@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Redis, WebSockets, Pub/Sub, Real-time, Scaling
+Tags: Redis, WebSocket, Pub/Sub, Real-Time, Scaling
 
 Description: Learn how to scale WebSocket applications using Redis pub/sub for message broadcasting across multiple server instances.
 

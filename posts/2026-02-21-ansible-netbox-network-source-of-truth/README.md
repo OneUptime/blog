@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Netbox, IPAM, Network Automation
+Tags: Ansible, NetBox, IPAM, Network Automation
 
 Description: Use Netbox as a dynamic inventory source and network source of truth with Ansible for automated network management.
 

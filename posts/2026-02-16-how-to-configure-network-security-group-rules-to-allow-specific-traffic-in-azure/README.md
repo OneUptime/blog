@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Network Security Groups, NSG, Azure Networking, Cloud Security, Firewall Rules
+Tags: Azure, Network Security Group, NSG, Azure Networking, Cloud Security, Firewall Rules
 
 Description: Step-by-step guide to configuring Azure Network Security Group rules for controlling inbound and outbound traffic to your cloud resources.
 

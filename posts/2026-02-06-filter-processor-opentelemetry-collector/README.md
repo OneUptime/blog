@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Filter Processor, Data Filtering, Cost Optimization, Sampling
+Tags: OpenTelemetry, Collector, Processor, Filter Processor, Data Filtering, Cost Optimization, Sampling
 
 Description: Master the filter processor in OpenTelemetry Collector to drop unwanted telemetry, reduce costs, eliminate noise, and control data volume with precision filtering rules.
 

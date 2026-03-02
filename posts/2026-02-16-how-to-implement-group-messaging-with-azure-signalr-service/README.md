@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, SignalR, Group Messaging, Real-Time, WebSockets, ASP.NET Core
+Tags: Azure, SignalR, Group Messaging, Real-Time, WebSocket, ASP.NET Core
 
 Description: A comprehensive guide to implementing group messaging with Azure SignalR Service for targeted real-time communication in multi-tenant and collaboration scenarios.
 

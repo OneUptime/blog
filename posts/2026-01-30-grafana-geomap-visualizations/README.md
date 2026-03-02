@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboards, Geomap
+Tags: Grafana, Observability, Dashboard, Geomap
 
 Description: A comprehensive guide to building geographic visualizations in Grafana for monitoring distributed infrastructure, user traffic, and regional performance metrics.
 

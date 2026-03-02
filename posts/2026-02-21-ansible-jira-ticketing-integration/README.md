@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, JIRA, Ticketing, DevOps
+Tags: Ansible, Jira, Ticketing, DevOps
 
 Description: Automate JIRA ticket creation and updates from Ansible playbooks for change tracking, incident documentation, and deployment records.
 

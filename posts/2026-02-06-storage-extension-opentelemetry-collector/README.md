@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extensions, Storage, Persistence, Reliability, Data Loss Prevention
+Tags: OpenTelemetry, Collector, Extension, Storage, Persistence, Reliability, Data Loss Prevention
 
 Description: Master the Storage extension configuration in OpenTelemetry Collector to implement persistent queuing, prevent data loss, and ensure reliable telemetry delivery during network outages.
 

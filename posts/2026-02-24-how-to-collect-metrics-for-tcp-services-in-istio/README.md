@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, TCP Metrics, Monitoring, Databases, Service Mesh
+Tags: Istio, TCP Metrics, Monitoring, Database, Service Mesh
 
 Description: Monitor TCP-based services in Istio including databases, message queues, and custom protocols using Istio's built-in TCP metrics and Prometheus.
 

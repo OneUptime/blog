@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Migrate, Hyper-V, Cloud Migration, Azure, Virtual Machines, Windows Server, Replication
+Tags: Azure Migrate, Hyper-V, Cloud Migration, Azure, Virtual Machine, Windows Server, Replication
 
 Description: Complete guide to migrating Hyper-V virtual machines to Azure using Azure Migrate, covering discovery, replication, test migration, and final cutover.
 

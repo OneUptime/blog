@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Networking, vSphere, Virtual Networks
+Tags: Ansible, VMware, Networking, vSphere, Virtual Network
 
 Description: Learn how to manage VMware virtual machine network adapters, VLANs, and network configurations with Ansible for consistent networking at scale.
 

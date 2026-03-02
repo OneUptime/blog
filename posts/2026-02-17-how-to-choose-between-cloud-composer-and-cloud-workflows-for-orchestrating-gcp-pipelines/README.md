@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Composer, Cloud Workflows, Airflow, Orchestration, Data Pipelines
+Tags: GCP, Cloud Composer, Cloud Workflows, Airflow, Orchestration, Data Pipeline
 
 Description: A practical comparison of Cloud Composer and Cloud Workflows to help you choose the right orchestration tool for your GCP pipeline needs.
 

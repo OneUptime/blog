@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Python, azure-mgmt, Virtual Machines, Resource Management, Infrastructure as Code, SDK
+Tags: Azure, Python, azure-mgmt, Virtual Machine, Resource Management, Infrastructure as Code, SDK
 
 Description: Learn how to create and manage Azure resource groups, virtual machines, and other infrastructure programmatically using the azure-mgmt Python SDKs.
 

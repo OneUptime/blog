@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, PowerShell, Automation, Runbooks, Infrastructure Maintenance, DevOps, Cloud
+Tags: Azure, PowerShell, Automation, Runbook, Infrastructure Maintenance, DevOps, Cloud
 
 Description: Create Azure Automation PowerShell runbooks to automate common infrastructure maintenance tasks like cleanup, scaling, and compliance checks.
 

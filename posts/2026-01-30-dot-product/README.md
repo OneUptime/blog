@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Vector Search, Dot Product, Machine Learning, Embeddings
+Tags: Vector Search, Dot Product, Machine Learning, Embedding
 
 Description: Learn to implement dot product similarity for vector search with SIMD optimization, normalization considerations, and maximum inner product search.
 

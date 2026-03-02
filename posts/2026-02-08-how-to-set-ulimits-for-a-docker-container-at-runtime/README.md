@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Containers, DevOps, Linux, Resource Management, Security
+Tags: Docker, Container, DevOps, Linux, Resource Management, Security
 
 Description: Learn how to configure ulimits for Docker containers at runtime to control file descriptors, process counts, and other resource limits.
 

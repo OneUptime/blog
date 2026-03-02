@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Bastion, Virtual Machines, Private Subnets, Networking, Remote Access, Troubleshooting
+Tags: Azure, Bastion, Virtual Machine, Private Subnet, Networking, Remote Access, Troubleshooting
 
 Description: Troubleshoot and resolve Azure Bastion connection failures to VMs in private subnets including NSG rules, subnet configuration, and connectivity issues.
 

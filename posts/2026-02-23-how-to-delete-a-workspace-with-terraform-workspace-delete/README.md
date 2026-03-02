@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, CLI Commands, State Management, Cleanup
+Tags: Terraform, Workspace, CLI Commands, State Management, Cleanup
 
 Description: A comprehensive guide to safely deleting Terraform workspaces using terraform workspace delete, including handling resources, force deletion, and cleanup automation.
 

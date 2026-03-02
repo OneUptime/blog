@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EKS, Kubernetes, StatefulSets, Storage
+Tags: AWS, EKS, Kubernetes, StatefulSet, Storage
 
 Description: Learn how to deploy and manage stateful applications like databases and message queues on Amazon EKS using StatefulSets, persistent volumes, and EBS storage.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Deployments, DevOps, Containers
+Tags: AWS, ECS, Deployment, DevOps, Container
 
 Description: Learn how to configure rolling deployments in ECS to update your services with zero downtime using minimum healthy percent and maximum percent settings.
 

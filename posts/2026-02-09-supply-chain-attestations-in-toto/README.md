@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Supply Chain, In-Toto, SLSA, Container Images
+Tags: Kubernetes, Security, Supply Chain, In-Toto, SLSA, Container Image
 
 Description: Implement in-toto supply chain attestations for Kubernetes container images to create verifiable evidence of build processes, establish provenance, and meet SLSA supply chain security requirements.
 

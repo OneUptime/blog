@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Lighthouse, Multi-Tenant, Azure Portal, Resource Management, Managed Services, Cross-Tenant
+Tags: Azure, Azure Lighthouse, Multi-Tenant, Azure Portal, Resource Management, Managed Service, Cross-Tenant
 
 Description: A hands-on guide to managing Azure resources across multiple tenants using Azure Lighthouse and the Azure Portal without switching directories.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Database, Troubleshooting, Connections, DROP DATABASE, Administration
+Tags: PostgreSQL, Database, Troubleshooting, Connection, DROP DATABASE, Administration
 
 Description: Learn how to fix 'database is being accessed by other users' errors in PostgreSQL. This guide covers how to identify and terminate active connections safely.
 

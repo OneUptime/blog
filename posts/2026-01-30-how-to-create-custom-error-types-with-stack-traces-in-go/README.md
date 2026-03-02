@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Errors, Debugging, Observability
+Tags: Go, Error, Debugging, Observability
 
 Description: Learn how to create custom error types in Go with stack traces using pkg/errors for better debugging and error tracking.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Django, File Uploads, Web Development, Backend Development, Media Files, Forms
+Tags: Python, Django, File Upload, Web Development, Backend Development, Media Files, Forms
 
 Description: Learn how to implement secure file uploads in Django with validation, storage backends, and best practices for handling user-uploaded content.
 

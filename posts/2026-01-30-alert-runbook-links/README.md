@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Alerting, SRE, Runbooks, Incident Response
+Tags: Alerting, SRE, Runbook, Incident Response
 
 Description: Learn how to integrate runbook links into alerts for streamlined incident response.
 

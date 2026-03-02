@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, Nginx, Web Server
+Tags: AWS, EC2, NGINX, Web Server
 
 Description: Complete guide to installing, configuring, and optimizing Nginx on EC2 for serving static sites, reverse proxying applications, and load balancing.
 

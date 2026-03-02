@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, HSTS, Web Security, Nginx, Apache
+Tags: Ansible, HSTS, Web Security, NGINX, Apache
 
 Description: Deploy HTTP Strict Transport Security (HSTS) headers across your web servers using Ansible to enforce HTTPS connections and prevent downgrade attacks.
 

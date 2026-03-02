@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Prometheus, Metrics, Observability
+Tags: OpenTelemetry, Collector, Exporter, Prometheus, Metrics, Observability
 
 Description: A comprehensive guide to configuring the Prometheus exporter in OpenTelemetry Collector, enabling Prometheus to scrape metrics via HTTP endpoints with practical YAML examples.
 

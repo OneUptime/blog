@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Multi-tenancy, SaaS, Data Isolation, Architecture
+Tags: Redis, Multi-Tenancy, SaaS, Data Isolation, Architecture
 
 Description: Learn how to safely isolate tenant data in Redis using key prefixes, separate databases, and namespacing strategies for multi-tenant SaaS applications.
 

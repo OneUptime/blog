@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, Database, Migrations, CI/CD, DevOps, PostgreSQL, Flyway
+Tags: GitHub Actions, Database, Migration, CI/CD, DevOps, PostgreSQL, Flyway
 
 Description: Learn how to safely run database migrations in your CI/CD pipeline with GitHub Actions, including validation, rollback strategies, and handling migrations across multiple environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Database, Migrations, PostgreSQL, CI/CD, DevOps
+Tags: Go, Database, Migration, PostgreSQL, CI/CD, DevOps
 
 Description: Implement robust database migrations in Go using golang-migrate with version control, rollbacks, and CI/CD pipeline integration.
 

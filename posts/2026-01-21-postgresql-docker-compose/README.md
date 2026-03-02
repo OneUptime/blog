@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Docker, Docker Compose, Containers, Database, DevOps
+Tags: PostgreSQL, Docker, Docker Compose, Container, Database, DevOps
 
 Description: A comprehensive guide to running PostgreSQL in Docker containers and Docker Compose, covering single-node setups, data persistence, networking, and production-ready configurations.
 

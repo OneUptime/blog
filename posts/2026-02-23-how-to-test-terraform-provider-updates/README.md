@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Testing, Upgrades, Infrastructure as Code, DevOps
+Tags: Terraform, Provider, Testing, Upgrade, Infrastructure as Code, DevOps
 
 Description: Learn how to safely test Terraform provider updates with plan comparison, automated compatibility testing, and staged rollout strategies that prevent breaking changes.
 

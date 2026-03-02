@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, AWS, Kinesis, Streaming, Data Pipeline, Real-time
+Tags: OpenTelemetry, Collector, Exporter, AWS, Kinesis, Streaming, Data Pipeline, Real-Time
 
 Description: Complete guide to configuring the AWS Kinesis exporter in OpenTelemetry Collector for real-time telemetry streaming with partition keys, encoding formats, and throughput optimization.
 

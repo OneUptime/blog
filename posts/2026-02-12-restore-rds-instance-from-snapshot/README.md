@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, RDS, Backups, Disaster Recovery
+Tags: AWS, RDS, Backup, Disaster Recovery
 
 Description: Learn how to restore an RDS instance from a snapshot, including configuration options, networking considerations, and post-restore steps.
 

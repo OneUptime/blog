@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, EMQX, MQTT, IoT, Message Queues, DevOps
+Tags: Docker, EMQX, MQTT, IoT, Message Queue, DevOps
 
 Description: Set up the EMQX MQTT broker in Docker for IoT messaging with clustering, authentication, and WebSocket support.
 

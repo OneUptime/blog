@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Sync Waves, Namespaces
+Tags: ArgoCD, GitOps, Kubernetes, Sync Waves, Namespace
 
 Description: Learn how to use ArgoCD sync waves to ensure namespaces are created before any resources that depend on them, preventing deployment failures in multi-namespace applications.
 

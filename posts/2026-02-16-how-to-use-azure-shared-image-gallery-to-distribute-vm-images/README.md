@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Shared Image Gallery, VM Images, Image Management, Cloud Infrastructure, DevOps
+Tags: Azure, Shared Image Gallery, VM Image, Image Management, Cloud Infrastructure, DevOps
 
 Description: A practical guide to creating and managing Azure Shared Image Gallery for distributing custom VM images across regions and subscriptions.
 

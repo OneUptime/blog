@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Hybrid Cloud, Multi-Cluster, On-Premises, Kubernetes
+Tags: Istio, Hybrid Cloud, Multi-Cluster, On-Premise, Kubernetes
 
 Description: How to configure Istio service mesh to span hybrid cloud environments connecting on-premises data centers with cloud Kubernetes clusters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy, Clusters, istioctl, Kubernetes, Service Mesh
+Tags: Istio, Envoy, Cluster, istioctl, Kubernetes, Service Mesh
 
 Description: Learn how to inspect Envoy cluster configuration using istioctl to debug upstream service connections, circuit breakers, and load balancing.
 

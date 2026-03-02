@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ConfigMaps, Binary Data
+Tags: Kubernetes, ConfigMap, Binary Data
 
 Description: Learn how to store binary files like images, certificates, and compiled binaries in Kubernetes ConfigMaps using the binaryData field for non-UTF8 content.
 

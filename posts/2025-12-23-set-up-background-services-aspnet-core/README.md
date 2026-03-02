@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, ASP.NET Core, C#, Background Services, IHostedService, Scheduling, Workers
+Tags: .NET, ASP.NET Core, C#, Background Services, IHostedService, Scheduling, Worker
 
 Description: Learn how to implement background services in ASP.NET Core using IHostedService and BackgroundService.
 

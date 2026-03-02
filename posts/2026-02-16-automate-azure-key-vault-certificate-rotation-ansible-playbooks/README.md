@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Ansible, Key Vault, Certificates, Automation, Security, Infrastructure as Code
+Tags: Azure, Ansible, Key Vault, Certificate, Automation, Security, Infrastructure as Code
 
 Description: Automate Azure Key Vault certificate rotation using Ansible playbooks to keep TLS certificates current and reduce manual security operations.
 

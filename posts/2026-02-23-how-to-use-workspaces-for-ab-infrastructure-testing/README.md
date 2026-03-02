@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, A/B Testing, Infrastructure as Code, DevOps, Performance
+Tags: Terraform, Workspace, A/B Testing, Infrastructure as Code, DevOps, Performance
 
 Description: Learn how to leverage Terraform workspaces to run A/B tests on infrastructure configurations and compare performance between setups.
 

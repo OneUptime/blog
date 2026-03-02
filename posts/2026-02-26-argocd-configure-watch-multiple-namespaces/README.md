@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Namespaces, Configuration
+Tags: ArgoCD, GitOps, Kubernetes, Namespace, Configuration
 
 Description: Learn how to configure ArgoCD to watch for Application resources across multiple Kubernetes namespaces with proper security controls and namespace patterns.
 

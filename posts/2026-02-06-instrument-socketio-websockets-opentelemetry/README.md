@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Socket.io, WebSockets, Node.js, Real-Time, Tracing
+Tags: OpenTelemetry, Socket.IO, WebSocket, Node.js, Real-Time, Tracing
 
 Description: Learn how to instrument Socket.io WebSocket connections with OpenTelemetry for comprehensive tracing of real-time events, connection lifecycle, and bidirectional communication patterns.
 

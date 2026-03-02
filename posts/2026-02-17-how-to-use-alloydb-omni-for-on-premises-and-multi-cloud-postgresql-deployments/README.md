@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, AlloyDB Omni, PostgreSQL, Multi-Cloud, On-Premises
+Tags: GCP, AlloyDB Omni, PostgreSQL, Multi-Cloud, On-Premise
 
 Description: A hands-on guide to deploying AlloyDB Omni for running Google's enhanced PostgreSQL engine on-premises, on other clouds, or anywhere you need it.
 

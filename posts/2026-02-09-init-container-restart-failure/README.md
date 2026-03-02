@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Containers, Error Handling
+Tags: Kubernetes, Init Container, Error Handling
 
 Description: Learn how to configure init container restart behavior, implement failure handling strategies, and build resilient initialization workflows in Kubernetes.
 

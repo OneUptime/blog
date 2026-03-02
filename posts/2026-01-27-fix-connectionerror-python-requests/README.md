@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Requests, ConnectionError, Networking, Error Handling, HTTP
+Tags: Python, Request, ConnectionError, Networking, Error Handling, HTTP
 
 Description: Learn how to diagnose and fix ConnectionError when using Python's requests library. This guide covers retry strategies, timeout handling, and best practices for reliable HTTP requests.
 

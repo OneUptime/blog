@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Bash, Shell Scripting, Linux, Process Substitution, Pipelines, Advanced Bash
+Tags: Bash, Shell Scripting, Linux, Process Substitution, Pipeline, Advanced Bash
 
 Description: Master Bash process substitution to pass command output as files, compare outputs, and build powerful data processing pipelines.
 

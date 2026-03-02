@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, IaC, Multi-Environment
+Tags: Terraform, Workspace, IaC, Multi-Environment
 
 Description: A comprehensive guide to building effective Terraform workspace patterns for managing multi-environment infrastructure.
 

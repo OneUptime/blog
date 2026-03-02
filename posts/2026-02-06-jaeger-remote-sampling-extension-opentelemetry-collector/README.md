@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extensions, Jaeger, Sampling, Distributed Tracing, Performance
+Tags: OpenTelemetry, Collector, Extension, Jaeger, Sampling, Distributed Tracing, Performance
 
 Description: Master the configuration of Jaeger Remote Sampling extension in OpenTelemetry Collector to implement dynamic, centralized sampling strategies for distributed tracing systems.
 

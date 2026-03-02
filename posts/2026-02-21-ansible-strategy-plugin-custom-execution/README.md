@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Strategy, Execution, Deployment
+Tags: Ansible, Plugin, Strategy, Execution, Deployment
 
 Description: Build custom Ansible strategy plugins to implement advanced execution patterns like rolling deploys, blue-green switching, and weighted batches.
 

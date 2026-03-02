@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditionals, register, Variables, Task Control
+Tags: Ansible, Conditional, Register, Variables, Task Control
 
 Description: Learn how to use registered variables in Ansible conditionals to make decisions based on the output of previous tasks.
 

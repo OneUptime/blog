@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Azure, Azure Data Explorer, ADX, Kusto, Observability
+Tags: OpenTelemetry, Collector, Exporter, Azure, Azure Data Explorer, ADX, Kusto, Observability
 
 Description: Learn how to configure the Azure Data Explorer exporter in the OpenTelemetry Collector for high-performance analytics and long-term telemetry data storage.
 

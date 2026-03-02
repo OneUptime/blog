@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Fluentbit, Logging
+Tags: ArgoCD, GitOps, Kubernetes, FluentBit, Logging
 
 Description: Learn how to deploy Fluent Bit and Fluentd for log collection and forwarding using ArgoCD with production-ready configurations and multi-destination routing.
 

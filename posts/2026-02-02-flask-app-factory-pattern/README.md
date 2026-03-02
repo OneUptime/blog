@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Python, Flask, Design Patterns, Project Structure, Best Practices
+Tags: Python, Flask, Design Pattern, Project Structure, Best Practices
 
 Description: Learn how to structure Flask applications using the application factory pattern for better testing, configuration management, and modularity.
 

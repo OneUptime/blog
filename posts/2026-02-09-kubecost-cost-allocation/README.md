@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kubecost, Cost Management, FinOps, Resource Analysis, Multi-tenancy
+Tags: Kubernetes, Kubecost, Cost Management, FinOps, Resource Analysis, Multi-Tenancy
 
 Description: Deploy Kubecost to gain visibility into Kubernetes costs, implement showback and chargeback, and identify optimization opportunities across namespaces and teams.
 

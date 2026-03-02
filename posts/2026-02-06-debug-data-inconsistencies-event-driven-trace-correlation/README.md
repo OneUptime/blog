@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Event-Driven, Data Consistency, Message Queues, Trace Correlation
+Tags: OpenTelemetry, Event-Driven, Data Consistency, Message Queue, Trace Correlation
 
 Description: Debug data inconsistencies in event-driven architectures by correlating OpenTelemetry traces across message queues and event handlers.
 

@@ -2,7 +2,7 @@
 
 Author: [mallersjamie](https://www.github.com/mallersjamie)
 
-Tags: Status Pages, StatusPage.io, Incident Management, Open Source, Reliability, Vendor Lock-in
+Tags: Status Page, StatusPage.io, Incident Management, Open Source, Reliability, Vendor Lock-in
 
 Description: Atlassian's StatusPage product suffered a 21-day critical outage on its System Metrics feature. Here's what happened, why it matters, and what you should do about it.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Linux, Kernel, Containers
+Tags: Ubuntu, Security, Linux, Kernel, Container
 
 Description: Learn how to use seccomp (Secure Computing Mode) on Ubuntu to restrict system calls available to processes, reducing the attack surface of applications and containers.
 

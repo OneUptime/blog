@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Namespaces, Debugging, Service Mesh, Network Policy
+Tags: Istio, Namespace, Debugging, Service Mesh, Network Policy
 
 Description: Debug and resolve issues with cross-namespace service communication in Istio, covering Sidecar resources, AuthorizationPolicies, and namespace isolation patterns.
 

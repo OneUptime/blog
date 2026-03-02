@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Containers, Orchestration, Docker, Kubernetes
+Tags: Ansible, Container, Orchestration, Docker, Kubernetes
 
 Description: Use Ansible to manage container orchestration across Docker Swarm and Kubernetes, handling deployments, scaling, and service management.
 

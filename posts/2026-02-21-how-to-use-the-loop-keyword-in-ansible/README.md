@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Loops, Automation, Playbooks
+Tags: Ansible, Loops, Automation, Playbook
 
 Description: A complete guide to using the loop keyword in Ansible to iterate over lists, dictionaries, and complex data structures in your playbooks.
 

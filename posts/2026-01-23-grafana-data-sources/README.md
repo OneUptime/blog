@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Data Sources, Prometheus, Loki, InfluxDB, Configuration, Monitoring
+Tags: Grafana, Data Source, Prometheus, Loki, InfluxDB, Configuration, Monitoring
 
 Description: A comprehensive guide to configuring data sources in Grafana, covering Prometheus, Loki, InfluxDB, PostgreSQL, and best practices for managing multiple sources in production.
 

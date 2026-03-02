@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, httpx, HTTP, Async, API, Requests
+Tags: Python, HTTPX, HTTP, Async, API, Request
 
 Description: Learn how to make async HTTP requests in Python using httpx. This guide covers sync and async clients, streaming, timeouts, retries, and advanced patterns.
 

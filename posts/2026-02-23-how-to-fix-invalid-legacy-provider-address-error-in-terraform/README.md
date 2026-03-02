@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, Providers, Migration, DevOps
+Tags: Terraform, Troubleshooting, Provider, Migration, DevOps
 
 Description: How to fix the Invalid Legacy Provider Address error in Terraform that appears after upgrading from Terraform 0.12 or 0.13 to newer versions.
 

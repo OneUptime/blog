@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Deno, Server-Sent Events, SSE, Real-time
+Tags: Deno, Server-Sent Events, SSE, Real-Time
 
 Description: Learn how to implement Server-Sent Events (SSE) in Deno for real-time server-to-client communication with practical examples including live dashboards and event streaming.
 

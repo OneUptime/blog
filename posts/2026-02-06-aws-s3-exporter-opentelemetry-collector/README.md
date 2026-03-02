@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, AWS, S3, Observability, Telemetry
+Tags: OpenTelemetry, Collector, Exporter, AWS, S3, Observability, Telemetry
 
 Description: Learn how to configure the AWS S3 exporter in the OpenTelemetry Collector to store traces, metrics, and logs in Amazon S3 for long-term retention and analysis.
 

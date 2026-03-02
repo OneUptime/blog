@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Execution Environments, Debugging, ansible-builder
+Tags: Ansible, Execution Environment, Debugging, ansible-builder
 
 Description: Diagnose and fix common Execution Environment build failures including dependency conflicts, network errors, and Containerfile issues.
 

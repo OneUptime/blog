@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Time Analysis, Event Processing, Aggregations, Analytics, Scripted Fields
+Tags: Elasticsearch, Time Analysis, Event Processing, Aggregation, Analytics, Scripted Fields
 
 Description: Learn how to calculate time differences between events in Elasticsearch using scripted fields, pipeline aggregations, and runtime fields for session analysis and event correlation.
 

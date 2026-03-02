@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Testing, Mocking, Jest, Native Modules, Mobile Development
+Tags: React Native, Testing, Mocking, Jest, Native Module, Mobile Development
 
 Description: Learn how to effectively mock native modules in React Native tests for reliable and fast unit testing.
 

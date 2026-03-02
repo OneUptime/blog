@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Namespaces, Configuration
+Tags: ArgoCD, GitOps, Kubernetes, Namespace, Configuration
 
 Description: Learn how to configure ArgoCD to automatically create Kubernetes namespaces before syncing application resources, covering sync options, Application specs, and ApplicationSet patterns.
 

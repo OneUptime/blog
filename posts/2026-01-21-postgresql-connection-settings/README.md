@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Connections, Configuration, Performance, max_connections
+Tags: PostgreSQL, Connection, Configuration, Performance, max_connections
 
 Description: A guide to optimizing PostgreSQL connection settings, covering max_connections, memory implications, and sizing strategies.
 

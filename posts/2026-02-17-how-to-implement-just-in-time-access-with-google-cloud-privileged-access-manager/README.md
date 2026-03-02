@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud, Privileged Access Manager, PAM, Just-in-Time Access, IAM, Security
+Tags: GCP, Google Cloud, Privileged Access Manager, PAM, Just-In-Time Access, IAM, Security
 
 Description: Learn how to implement just-in-time privileged access in Google Cloud using Privileged Access Manager to reduce standing privileges and improve security.
 

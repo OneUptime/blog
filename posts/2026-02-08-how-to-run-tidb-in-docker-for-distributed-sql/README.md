@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, TiDB, Distributed SQL, Databases, DevOps, MySQL
+Tags: Docker, TiDB, Distributed SQL, Database, DevOps, MySQL
 
 Description: Deploy TiDB distributed SQL database in Docker with TiKV storage nodes and PD scheduling for horizontal scalability
 

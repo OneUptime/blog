@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, Multi-Region, AWS, High Availability, Disaster Recovery
+Tags: Terraform, Workspace, Multi-Region, AWS, High Availability, Disaster Recovery
 
 Description: Learn how to use Terraform workspaces to deploy and manage infrastructure across multiple cloud regions, with patterns for region-specific configuration, cross-region dependencies.
 

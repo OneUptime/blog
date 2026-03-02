@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extensions, Azure, Authentication, Microsoft, Cloud Security
+Tags: OpenTelemetry, Collector, Extension, Azure, Authentication, Microsoft, Cloud Security
 
 Description: Complete guide to configuring Azure authentication extension in OpenTelemetry Collector for secure access to Azure Monitor and other Microsoft cloud services.
 

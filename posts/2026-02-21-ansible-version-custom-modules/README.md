@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Versioning, Module Development, Semver
+Tags: Ansible, Versioning, Module Development, SemVer
 
 Description: Implement version tracking for custom Ansible modules with semantic versioning and deprecation notices.
 

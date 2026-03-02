@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Resource Quotas, Cluster Management, DevOps
+Tags: Ansible, Kubernetes, Resource Quota, Cluster Management, DevOps
 
 Description: Set up Kubernetes Resource Quotas with Ansible to limit CPU, memory, storage, and object counts per namespace for multi-tenant clusters.
 

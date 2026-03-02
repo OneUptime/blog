@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Infrastructure as Code, Templates, String Directives
+Tags: Terraform, HCL, Infrastructure as Code, Template, String Directives
 
 Description: Learn how to use Terraform string directives with percent-brace syntax to add loops and conditional logic inside template strings and heredoc blocks.
 

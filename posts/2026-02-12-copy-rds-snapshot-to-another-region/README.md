@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, RDS, Disaster Recovery, Database, Snapshots
+Tags: AWS, RDS, Disaster Recovery, Database, Snapshot
 
 Description: Learn how to copy Amazon RDS snapshots across AWS regions for disaster recovery, compliance, and migration purposes using the AWS Console and CLI.
 

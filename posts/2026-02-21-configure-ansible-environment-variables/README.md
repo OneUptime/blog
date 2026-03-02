@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Configuration, Environment Variables, DevOps
+Tags: Ansible, Configuration, Environment Variable, DevOps
 
 Description: A complete guide to using environment variables to configure Ansible behavior, override settings, and pass secrets to playbooks.
 

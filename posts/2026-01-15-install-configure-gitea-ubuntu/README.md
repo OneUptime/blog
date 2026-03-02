@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Gitea, Git, DevOps, Self-hosted, Tutorial
+Tags: Ubuntu, Gitea, Git, DevOps, Self-Hosted, Tutorial
 
 Description: Complete guide to installing Gitea self-hosted Git service on Ubuntu for private code repositories.
 

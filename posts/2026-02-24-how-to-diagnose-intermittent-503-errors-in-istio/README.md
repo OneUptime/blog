@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, 503 Errors, Troubleshooting, Envoy, Debugging
+Tags: Istio, 503 Error, Troubleshooting, Envoy, Debugging
 
 Description: A comprehensive troubleshooting guide for tracking down the root cause of intermittent 503 Service Unavailable errors in Istio.
 

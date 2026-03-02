@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Bitbucket, Webhooks
+Tags: ArgoCD, GitOps, Kubernetes, Bitbucket, Webhook
 
 Description: Step-by-step guide to configuring Bitbucket Cloud and Bitbucket Server webhooks for ArgoCD to enable instant change detection on code push events.
 

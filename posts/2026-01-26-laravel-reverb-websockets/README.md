@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Laravel, WebSocket, Reverb, Real-time, PHP, Broadcasting, Pusher
+Tags: Laravel, WebSocket, Reverb, Real-Time, PHP, Broadcasting, Pusher
 
 Description: Learn how to build real-time WebSocket applications using Laravel Reverb, covering installation, configuration, channel authorization, and practical examples for chat and notifications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Well-Architected Framework, Cost Optimization, Cloud Costs, FinOps, Azure Advisor, Reserved Instances
+Tags: Azure, Well-Architected Framework, Cost Optimization, Cloud Cost, FinOps, Azure Advisor, Reserved Instances
 
 Description: A practical guide to applying Azure Well-Architected Framework cost optimization recommendations to reduce cloud spend without sacrificing performance.
 

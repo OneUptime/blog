@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Upgrades, Migration
+Tags: ArgoCD, GitOps, Kubernetes, Upgrade, Migration
 
 Description: Step-by-step guide to upgrading ArgoCD from version 2.8 to 2.9 covering breaking changes, CRD updates, new features, and rollback procedures.
 

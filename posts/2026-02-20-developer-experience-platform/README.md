@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Developer Experience, Platform Engineering, Kubernetes, IDP, DevOps
+Tags: Developer Experience, Platform Engineering, Kubernetes, IdP, DevOps
 
 Description: Learn how to build an internal developer platform on Kubernetes to improve developer productivity and reduce cognitive load.
 

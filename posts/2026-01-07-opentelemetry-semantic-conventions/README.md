@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Observability, Standards, Tracing, Metrics, Semantic Conventions
+Tags: OpenTelemetry, Observability, Standard, Tracing, Metrics, Semantic Conventions
 
 Description: Learn how to apply OpenTelemetry semantic conventions for consistent and interoperable telemetry data.
 

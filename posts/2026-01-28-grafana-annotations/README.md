@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Annotations, Observability, Monitoring, Dashboards
+Tags: Grafana, Annotations, Observability, Monitoring, Dashboard
 
 Description: Learn how to implement Grafana annotations to overlay events, deployments, and incidents on your dashboards for better context and correlation.
 

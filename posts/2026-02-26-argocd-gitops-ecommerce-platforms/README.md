@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, E-commerce, DevOps
+Tags: ArgoCD, GitOps, Kubernetes, E-Commerce, DevOps
 
 Description: Learn how to manage e-commerce platform infrastructure with ArgoCD, covering deployment strategies for sales events, cart and checkout services, payment processing, and traffic spike handling.
 

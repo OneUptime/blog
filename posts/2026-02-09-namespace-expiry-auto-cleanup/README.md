@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Namespaces, Automation
+Tags: Kubernetes, Namespace, Automation
 
 Description: Learn how to implement automatic namespace expiration and cleanup in Kubernetes for temporary development, testing, and preview environments to reduce resource waste.
 

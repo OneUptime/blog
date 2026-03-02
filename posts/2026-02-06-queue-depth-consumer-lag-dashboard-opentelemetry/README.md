@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Message Queues, Kafka, RabbitMQ, Consumer Lag
+Tags: OpenTelemetry, Message Queue, Kafka, RabbitMQ, Consumer Lag
 
 Description: Monitor message queue depth and consumer lag using OpenTelemetry messaging metrics for Kafka and RabbitMQ systems.
 

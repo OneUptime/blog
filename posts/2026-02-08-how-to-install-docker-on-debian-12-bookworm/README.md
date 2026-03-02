@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Debian, Linux, Installation, DevOps, Containers, Debian 12, Bookworm
+Tags: Docker, Debian, Linux, Installation, DevOps, Container, Debian 12, Bookworm
 
 Description: Step-by-step instructions for installing Docker Engine on Debian 12 Bookworm, covering repository setup, GPG key configuration, and post-install best practices.
 

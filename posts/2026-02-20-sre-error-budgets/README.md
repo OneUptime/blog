@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SRE, Error Budgets, Reliability, SLO, Service Management
+Tags: SRE, Error Budget, Reliability, SLO, Service Management
 
 Description: Learn how to implement SRE error budgets to balance feature velocity with service reliability and manage risk.
 

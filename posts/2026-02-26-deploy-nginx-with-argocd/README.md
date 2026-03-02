@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Nginx
+Tags: ArgoCD, GitOps, Kubernetes, NGINX
 
 Description: Step-by-step tutorial on deploying a simple Nginx application using ArgoCD with GitOps principles, from Git repository setup to production deployment.
 

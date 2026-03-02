@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Java, Maven, Build Tools, Project Structure
+Tags: Java, Maven, Build Tool, Project Structure
 
 Description: Learn how to structure multi-module Maven projects with proper dependency management, build configuration, and best practices for large Java applications.
 

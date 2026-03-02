@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Automation, Runbooks, PowerShell, Python, DevOps, Scheduling
+Tags: Azure, Automation, Runbook, PowerShell, Python, DevOps, Scheduling
 
 Description: A hands-on guide to creating, managing, and troubleshooting Azure Automation Runbooks for automating cloud operations.
 

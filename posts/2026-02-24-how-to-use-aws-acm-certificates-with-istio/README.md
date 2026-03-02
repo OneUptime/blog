@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, AWS, ACM, TLS, Certificates, EKS
+Tags: Istio, AWS, ACM, TLS, Certificate, EKS
 
 Description: How to use AWS Certificate Manager certificates with Istio ingress gateways on EKS for automated TLS certificate management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: PostgreSQL, Bloat Prevention, Vacuum, Performance
+Tags: PostgreSQL, Bloat Prevention, VACUUM, Performance
 
 Description: Learn to implement bloat prevention strategies with vacuum tuning, fillfactor optimization, and monitoring for healthy database maintenance.
 

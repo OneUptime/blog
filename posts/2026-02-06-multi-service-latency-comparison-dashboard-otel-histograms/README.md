@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Latency, Histograms, Grafana
+Tags: OpenTelemetry, Latency, Histogram, Grafana
 
 Description: Build a multi-service latency comparison dashboard using OpenTelemetry histogram metrics to spot outliers quickly.
 

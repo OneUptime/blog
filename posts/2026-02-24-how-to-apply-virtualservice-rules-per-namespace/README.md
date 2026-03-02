@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, VirtualService, Namespace, Multi-tenancy, Kubernetes
+Tags: Istio, VirtualService, Namespace, Multi-Tenancy, Kubernetes
 
 Description: Learn how to scope Istio VirtualService routing rules to specific namespaces for multi-team environments and namespace isolation.
 

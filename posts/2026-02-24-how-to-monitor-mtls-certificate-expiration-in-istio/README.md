@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Certificates, Monitoring, Observability
+Tags: Istio, mTLS, Certificate, Monitoring, Observability
 
 Description: How to monitor and alert on mTLS certificate expiration in Istio to prevent outages caused by expired certificates in the mesh.
 

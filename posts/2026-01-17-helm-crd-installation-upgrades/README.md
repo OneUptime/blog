@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, CRD, Custom Resources, Best Practices
+Tags: Helm, Kubernetes, DevOps, CRD, Custom Resource, Best Practices
 
 Description: Complete guide to managing Custom Resource Definitions (CRDs) lifecycle with Helm including installation, upgrades, and manual handling strategies.
 

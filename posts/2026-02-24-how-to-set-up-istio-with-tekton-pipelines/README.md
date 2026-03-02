@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Tekton, CI/CD, Kubernetes, Pipelines
+Tags: Istio, Tekton, CI/CD, Kubernetes, Pipeline
 
 Description: How to integrate Istio traffic management into Tekton CI/CD pipelines for automated canary deployments and traffic shifting.
 

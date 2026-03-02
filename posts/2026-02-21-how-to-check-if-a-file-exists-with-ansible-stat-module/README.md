@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, stat Module, File Management, Conditionals, Idempotency
+Tags: Ansible, stat Module, File Management, Conditional, Idempotency
 
 Description: Learn how to use the Ansible stat module to check file existence, permissions, size, and other attributes for conditional task execution.
 

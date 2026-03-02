@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Site Reliability Engineering, SRE, Runbooks, Incident Response, DevOps, Documentation, Operational Excellence
+Tags: Site Reliability Engineering, SRE, Runbook, Incident Response, DevOps, Documentation, Operational Excellence
 
 Description: A practical guide to creating runbooks that actually work during incidents - covering structure, writing style, testing, and maintenance strategies that keep your documentation useful.
 

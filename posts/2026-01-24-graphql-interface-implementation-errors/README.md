@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GraphQL, Interfaces, Type System, API Development, Error Handling, Node.js, Backend Development
+Tags: GraphQL, interface, Type System, API Development, Error Handling, Node.js, Backend Development
 
 Description: Learn how to diagnose and fix common interface implementation errors in GraphQL, including missing fields, type mismatches, and resolver issues.
 

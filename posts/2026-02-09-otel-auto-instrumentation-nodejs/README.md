@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Node.js, Observability, Tracing, Auto-instrumentation
+Tags: OpenTelemetry, Node.js, Observability, Tracing, Auto-Instrumentation
 
 Description: Learn how to configure OpenTelemetry auto-instrumentation with Node.js applications using the SDK auto-instrumentation packages for Express, Fastify, and other popular frameworks.
 

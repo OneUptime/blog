@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Rate Limiting, Security, API Protection, DoS Prevention
+Tags: NGINX, Rate Limiting, Security, API Protection, DoS Prevention
 
 Description: Learn how to implement rate limiting in Nginx to protect your applications from abuse, prevent DoS attacks, and ensure fair resource allocation across users.
 

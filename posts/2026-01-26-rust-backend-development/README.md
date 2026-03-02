@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Backend Development, Web API, Actix-web, Axum, REST API, Systems Programming
+Tags: Rust, Backend Development, Web API, Actix-web, axum, REST API, Systems Programming
 
 Description: A practical guide to building your first backend service with Rust, covering project setup, web frameworks, database integration, and deployment strategies.
 

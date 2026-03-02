@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Build, Docker, cloudbuild.yaml, CI/CD, Container Builds
+Tags: GCP, Cloud Build, Docker, cloudbuild.yaml, CI/CD, Container Build
 
 Description: A beginner-friendly guide to writing your first cloudbuild.yaml file for building Docker images using Google Cloud Build on GCP.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Troubleshooting, Gateway Timeout, Reverse Proxy, Performance, Timeout Configuration
+Tags: NGINX, Troubleshooting, Gateway Timeout, Reverse Proxy, Performance, Timeout Configuration
 
 Description: A comprehensive guide to diagnosing and fixing 504 Gateway Timeout errors in Nginx reverse proxy configurations, including timeout tuning, backend debugging, and performance optimization.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, CI/CD, Releases, Automation, DevOps, Semantic Versioning
+Tags: GitHub Actions, CI/CD, Release, Automation, DevOps, Semantic Versioning
 
 Description: Learn how to automate your entire release process with GitHub Actions, from version bumping to changelog generation, artifact publishing, and GitHub Release creation with practical examples.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Headless Services, Traffic Management, Kubernetes, Service Mesh
+Tags: Istio, Headless Service, Traffic Management, Kubernetes, Service Mesh
 
 Description: A practical guide to handling headless services in Istio traffic management, including DNS behavior, load balancing, and routing configuration.
 

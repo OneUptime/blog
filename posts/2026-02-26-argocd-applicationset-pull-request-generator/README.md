@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, CI/CD
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, CI/CD
 
 Description: Learn how to use the ArgoCD ApplicationSet Pull Request generator to create ephemeral preview environments for every pull request with automatic cleanup on merge.
 

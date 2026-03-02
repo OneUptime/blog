@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Timezone, Configuration, DevOps, Containers
+Tags: Docker, Timezone, Configuration, DevOps, Container
 
 Description: Learn how to configure timezones in Docker containers, synchronize time with the host, and handle timezone-aware applications for consistent behavior across environments.
 

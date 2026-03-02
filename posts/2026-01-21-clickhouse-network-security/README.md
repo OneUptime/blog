@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Network Security, Firewall, VPN, Private Endpoints, Security
+Tags: ClickHouse, Network Security, Firewall, VPN, Private Endpoint, Security
 
 Description: A comprehensive guide to securing ClickHouse network access with firewall rules, VPNs, private endpoints, and network isolation for production deployments.
 

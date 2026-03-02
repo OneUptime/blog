@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Sentinel, Policy as Code, Naming Conventions, Standards, Cloud Governance
+Tags: Terraform, Sentinel, Policy as Code, Naming Convention, Standard, Cloud Governance
 
 Description: Learn how to write Sentinel policies that enforce consistent naming conventions for cloud resources, Terraform configurations, and infrastructure components.
 

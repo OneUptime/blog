@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Billing, CUR, Cost Management, FinOps, Data Exports
+Tags: AWS, Billing, CUR, Cost Management, FinOps, Data Export
 
 Description: Learn how to create custom AWS billing reports using Cost and Usage Report 2.0 (Data Exports) for detailed cost analysis and chargeback reporting.
 

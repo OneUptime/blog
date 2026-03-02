@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, VMware, vSphere, Virtualization, Infrastructure as Code
+Tags: Terraform, Provider, VMware, vSphere, Virtualization, Infrastructure as Code
 
 Description: A practical guide to configuring the VMware vSphere provider in Terraform for managing virtual machines, networks, and storage in on-premises environments.
 

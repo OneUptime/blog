@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Logging, Structured Logging, tracing, OpenTelemetry, Observability, JSON
+Tags: Rust, Logging, Structured Logging, Tracing, OpenTelemetry, Observability, JSON
 
 Description: Learn how to implement structured logging in Rust using the tracing ecosystem with OpenTelemetry integration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Inventory, Conditionals, Infrastructure
+Tags: Ansible, Inventory, Conditional, Infrastructure
 
 Description: Learn how to use Ansible when conditionals with inventory group membership to apply different configurations across host groups.
 

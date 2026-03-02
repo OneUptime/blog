@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, State Management, Expressions, Data Sources, Infrastructure as Code
+Tags: Terraform, State Management, Expressions, Data Source, Infrastructure as Code
 
 Description: Learn how to reference and use state data in Terraform expressions, including resource attributes, outputs, remote state, and data sources for dynamic configurations.
 

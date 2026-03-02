@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, WAF, Security, Web Applications
+Tags: AWS, WAF, Security, Web Application
 
 Description: Learn how to configure AWS WAF rules to protect your web applications from common attacks including SQL injection, XSS, path traversal, and request smuggling.
 

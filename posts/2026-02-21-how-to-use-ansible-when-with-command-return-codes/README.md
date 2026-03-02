@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditionals, Shell Commands, Return Codes
+Tags: Ansible, Conditional, Shell Commands, Return Codes
 
 Description: Learn how to use command and shell module return codes in Ansible when conditionals to make decisions based on command exit status.
 

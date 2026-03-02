@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Service Maps, Distributed Tracing, Microservices, Topology, Observability
+Tags: OpenTelemetry, Service Map, Distributed Tracing, Microservices, Topology, Observability
 
 Description: Learn how to automatically generate and maintain service dependency maps from OpenTelemetry trace data to visualize your microservices architecture in real time.
 

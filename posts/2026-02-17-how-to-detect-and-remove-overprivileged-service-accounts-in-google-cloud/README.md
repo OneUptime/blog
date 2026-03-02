@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud, IAM, Service Accounts, Security, Least Privilege, Overprivileged
+Tags: GCP, Google Cloud, IAM, Service Account, Security, Least Privilege, Overprivileged
 
 Description: Learn how to detect overprivileged service accounts in Google Cloud and safely remove unnecessary permissions to follow the principle of least privilege.
 

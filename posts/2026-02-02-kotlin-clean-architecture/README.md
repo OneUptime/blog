@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kotlin, Clean Architecture, Android, Design Patterns, SOLID
+Tags: Kotlin, Clean Architecture, Android, Design Pattern, SOLID
 
 Description: Apply clean architecture principles in Kotlin projects to build maintainable, testable, and scalable applications.
 

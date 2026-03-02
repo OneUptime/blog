@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Binary Protocols, TCP, Kubernetes, Envoy, Service Mesh
+Tags: Istio, Binary Protocol, TCP, Kubernetes, Envoy, Service Mesh
 
 Description: Learn how to configure Istio to handle custom binary protocols over TCP including port naming, connection management, and telemetry for non-HTTP services.
 

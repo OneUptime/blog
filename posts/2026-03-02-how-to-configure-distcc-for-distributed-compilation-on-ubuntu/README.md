@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, distcc, Compilation, Build Tools, Development
+Tags: Ubuntu, distcc, Compilation, Build Tool, Development
 
 Description: Learn how to configure distcc on Ubuntu to distribute C and C++ compilation across multiple machines, dramatically reducing build times for large projects.
 

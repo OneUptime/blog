@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Unique Constraints, NULL Values, Indexes, Database Design
+Tags: PostgreSQL, Unique Constraint, NULL Values, Indexes, Database Design
 
 Description: Learn how to handle NULL values in PostgreSQL unique constraints. This guide covers partial indexes, NULLS NOT DISTINCT, and practical patterns for enforcing uniqueness with optional fields.
 

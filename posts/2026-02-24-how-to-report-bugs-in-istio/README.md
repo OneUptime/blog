@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Bug Reports, Open Source, Troubleshooting, Community
+Tags: Istio, Bug Report, Open Source, Troubleshooting, Community
 
 Description: How to write effective bug reports for the Istio project that help maintainers reproduce and fix issues quickly with proper diagnostics and context.
 

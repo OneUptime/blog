@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Amazon Linux, AWS, Installation, DevOps, Containers, Cloud, EC2
+Tags: Docker, Amazon Linux, AWS, Installation, DevOps, Container, Cloud, EC2
 
 Description: A practical guide to installing Docker Engine on Amazon Linux 2023, with steps tailored for EC2 instances and AWS-specific considerations.
 

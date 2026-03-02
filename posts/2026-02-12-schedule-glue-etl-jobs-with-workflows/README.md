@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Glue, ETL, Workflows, Data Engineering
+Tags: AWS, Glue, ETL, Workflow, Data Engineering
 
 Description: Learn how to orchestrate multiple AWS Glue ETL jobs and crawlers into automated workflows with triggers, dependencies, and error handling.
 

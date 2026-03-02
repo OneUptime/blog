@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Serverless, Containers, Google Cloud, DevOps, Kubernetes
+Tags: GCP, Cloud Run, Serverless, Container, Google Cloud, DevOps, Kubernetes
 
 Description: Learn how to deploy, configure, and optimize Cloud Run services including traffic splitting, custom domains, scaling, and integration with other GCP services.
 

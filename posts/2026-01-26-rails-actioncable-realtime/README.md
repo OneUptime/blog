@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ruby on Rails, ActionCable, WebSockets, Real-Time, Backend Development
+Tags: Ruby on Rails, ActionCable, WebSocket, Real-Time, Backend Development
 
 Description: Learn how to build real-time features in Ruby on Rails applications using ActionCable. This guide covers channels, broadcasting, authentication, scaling with Redis, and production deployment patterns.
 

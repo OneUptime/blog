@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Linux, Systemd, Deployment, Service Management, Bare Metal
+Tags: OpenTelemetry, Collector, Linux, systemd, Deployment, Service Management, Bare Metal
 
 Description: Deploy OpenTelemetry Collectors as systemd services on Linux systems for reliable, production-ready telemetry collection with automatic startup, logging, and resource management.
 

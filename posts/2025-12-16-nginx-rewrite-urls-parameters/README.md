@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, URL Rewriting, Regex, Migration, SEO
+Tags: NGINX, URL Rewriting, Regex, Migration, SEO
 
 Description: Learn efficient techniques for rewriting large numbers of URLs with parameters in Nginx, including map directives, regex patterns, and performance optimization strategies.
 

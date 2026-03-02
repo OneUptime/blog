@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, ArgoCD, GitOps, ApplicationSets, Kubernetes, Multi-Cluster, Continuous Deployment
+Tags: AKS, ArgoCD, GitOps, ApplicationSet, Kubernetes, Multi-Cluster, Continuous Deployment
 
 Description: Learn how to use ArgoCD ApplicationSets to manage deployments across multiple AKS clusters from a single Git repository with automated synchronization.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, apt, Package Pinning, Ubuntu, DevOps
+Tags: Ansible, APT, Package Pinning, Ubuntu, DevOps
 
 Description: Learn how to pin package versions on Debian and Ubuntu using the Ansible apt module and apt preferences to prevent unwanted upgrades.
 

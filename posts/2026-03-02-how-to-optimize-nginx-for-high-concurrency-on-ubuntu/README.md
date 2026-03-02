@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Nginx, Performance, Web Server
+Tags: Ubuntu, NGINX, Performance, Web Server
 
 Description: A practical guide to tuning Nginx worker processes, connections, buffers, and OS-level settings to handle high concurrency on Ubuntu servers.
 

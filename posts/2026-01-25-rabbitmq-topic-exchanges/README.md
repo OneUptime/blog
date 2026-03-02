@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Topic Exchange, Message Routing, Pub/Sub, Message Queues, Event-Driven Architecture
+Tags: RabbitMQ, Topic Exchange, Message Routing, Pub/Sub, Message Queue, Event-Driven Architecture
 
 Description: Learn how to implement topic exchanges in RabbitMQ for flexible message routing using wildcard patterns, with practical examples in Python and Node.js.
 

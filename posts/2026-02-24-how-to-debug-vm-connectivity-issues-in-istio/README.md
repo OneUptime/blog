@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Virtual Machines, Debugging, Service Mesh, Networking, Troubleshooting
+Tags: Istio, Virtual Machine, Debugging, Service Mesh, Networking, Troubleshooting
 
 Description: A practical guide to diagnosing and fixing connectivity problems when integrating virtual machines into your Istio service mesh.
 

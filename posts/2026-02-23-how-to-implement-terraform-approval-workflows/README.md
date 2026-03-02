@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Approval Workflows, DevOps, GitOps, Governance
+Tags: Terraform, Approval Workflow, DevOps, GitOps, Governance
 
 Description: Learn how to implement robust Terraform approval workflows that balance speed with governance, ensuring infrastructure changes are reviewed and approved before deployment.
 

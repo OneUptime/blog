@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Sentry, Error Tracking, Performance Monitoring, Observability
+Tags: OpenTelemetry, Collector, Exporter, Sentry, Error Tracking, Performance Monitoring, Observability
 
 Description: Comprehensive guide to configuring the Sentry exporter in OpenTelemetry Collector for error tracking, performance monitoring, and application health insights.
 

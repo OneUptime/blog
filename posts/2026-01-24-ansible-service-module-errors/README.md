@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Service Module, Systemd, DevOps, Automation, Troubleshooting, Linux
+Tags: Ansible, Service Module, systemd, DevOps, Automation, Troubleshooting, Linux
 
 Description: Learn how to diagnose and fix common Ansible service module errors when starting, stopping, or managing system services.
 

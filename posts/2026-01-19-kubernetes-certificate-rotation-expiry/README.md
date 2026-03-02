@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Certificates, TLS, Security, PKI, Maintenance, DevOps
+Tags: Kubernetes, Certificate, TLS, Security, PKI, Maintenance, DevOps
 
 Description: Learn how to check certificate expiration dates, rotate Kubernetes control plane certificates, and automate certificate renewal to prevent cluster outages.
 

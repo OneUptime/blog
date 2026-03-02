@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Data Sources, Infrastructure as Code, DevOps
+Tags: Terraform, HCL, Data Source, Infrastructure as Code, DevOps
 
 Description: Learn how to reference data source attributes in Terraform using the data prefix to look up existing infrastructure and use those values in your configuration.
 

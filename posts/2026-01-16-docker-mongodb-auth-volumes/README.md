@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, MongoDB, Database, Containers, NoSQL
+Tags: Docker, MongoDB, Database, Container, NoSQL
 
 Description: Learn how to run MongoDB in Docker with authentication, persistent volumes, replica sets, initialization scripts, and production-ready configuration.
 

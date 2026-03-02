@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Terraform Enterprise, Agents, Custom Agents, Networking, DevOps
+Tags: Terraform, Terraform Enterprise, Agent, Custom Agents, Networking, DevOps
 
 Description: Learn how to deploy and configure custom Terraform Enterprise agents for running Terraform operations in private networks, restricted environments, and custom execution contexts.
 

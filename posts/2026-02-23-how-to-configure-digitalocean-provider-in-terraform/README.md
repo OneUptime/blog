@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, DigitalOcean, Cloud, Infrastructure as Code
+Tags: Terraform, Provider, DigitalOcean, Cloud, Infrastructure as Code
 
 Description: A complete guide to configuring the DigitalOcean provider in Terraform for managing droplets, databases, Kubernetes clusters, and other DO resources.
 

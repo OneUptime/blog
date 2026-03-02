@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EKS, Kubernetes, Upgrades, DevOps
+Tags: AWS, EKS, Kubernetes, Upgrade, DevOps
 
 Description: A comprehensive guide to upgrading Amazon EKS cluster versions safely, including control plane upgrades, node group updates, and add-on compatibility checks.
 

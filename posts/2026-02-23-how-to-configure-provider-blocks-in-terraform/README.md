@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Configuration, Infrastructure as Code, DevOps, Cloud
+Tags: Terraform, Provider, Configuration, Infrastructure as Code, DevOps, Cloud
 
 Description: Learn how to configure Terraform provider blocks including authentication, region settings, default tags, custom endpoints, proxy settings, and advanced configuration patterns.
 

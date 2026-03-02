@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, Flyway, Database, Migrations, SQL, PostgreSQL
+Tags: Java, Spring Boot, Flyway, Database, Migration, SQL, PostgreSQL
 
 Description: A comprehensive guide to managing database migrations with Flyway in Spring Boot applications. Learn versioned migrations, repeatable scripts, and rollback strategies.
 

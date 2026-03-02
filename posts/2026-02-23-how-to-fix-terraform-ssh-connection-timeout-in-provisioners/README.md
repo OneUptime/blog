@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, Infrastructure as Code, Provisioners, SSH
+Tags: Terraform, Troubleshooting, Infrastructure as Code, Provisioner, SSH
 
 Description: Fix Terraform SSH connection timeout errors in provisioners by debugging connectivity, configuring security groups, and handling key authentication issues.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, API Rate Limiting, AWS, Cloud Providers, DevOps
+Tags: Terraform, API Rate Limiting, AWS, Cloud Provider, DevOps
 
 Description: Practical techniques for handling cloud provider API rate limits when running Terraform at scale across large infrastructure.
 

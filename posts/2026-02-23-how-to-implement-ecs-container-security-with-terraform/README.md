@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Security, ECS, AWS, Containers
+Tags: Terraform, Security, ECS, AWS, Container
 
 Description: Learn how to secure AWS ECS services and tasks with Terraform, covering task roles, image scanning, network configuration, and runtime security.
 

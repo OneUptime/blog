@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Memory Leaks, Runtime Metrics, Debugging
+Tags: OpenTelemetry, Memory Leak, Runtime Metrics, Debugging
 
 Description: Debug production memory leaks by combining OpenTelemetry runtime metrics with heap profiling data to identify the exact code paths causing memory growth.
 

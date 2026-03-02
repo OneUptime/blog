@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Apache Kafka, Kafka Connect, Custom Connectors, Source Connector, Sink Connector, Data Integration
+Tags: Apache Kafka, Kafka Connect, Custom Connector, Source Connector, Sink Connector, Data Integration
 
 Description: Learn how to build custom Kafka Connect source and sink connectors, including connector design patterns, task implementation, offset management, and packaging for production deployment.
 

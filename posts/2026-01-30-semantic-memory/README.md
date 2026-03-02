@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AI Agents, Semantic Memory, Knowledge Graphs, Vector Storage
+Tags: AI Agents, Semantic Memory, Knowledge Graph, Vector Storage
 
 Description: Learn to implement semantic memory for AI agents with concept representation, relationship modeling, and knowledge inference for intelligent reasoning.
 

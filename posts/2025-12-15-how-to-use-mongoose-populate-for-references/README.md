@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Mongoose, Node.js, References, Populate, ODM
+Tags: MongoDB, Mongoose, Node.js, Reference, Populate, ODM
 
 Description: Master Mongoose populate to efficiently join referenced documents in MongoDB. Learn basic and advanced populate patterns, virtual population, and performance optimization techniques.
 

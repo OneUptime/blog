@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Containers, Security, Rootless, Linux, DevOps, Docker Alternative
+Tags: Podman, Container, Security, Rootless, Linux, DevOps, Docker Alternative
 
 Description: A comprehensive guide to running rootless containers with Podman, covering user namespace configuration, storage setup, and the security benefits of unprivileged container execution.
 

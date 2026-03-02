@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Shell Scripts, Migration, Automation
+Tags: Ansible, Shell Script, Migration, Automation
 
 Description: A practical guide to migrating your existing shell scripts to Ansible playbooks with side-by-side examples and a step-by-step migration strategy.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Service Mesh, Certificates, mTLS, Security
+Tags: Istio, Kubernetes, Service Mesh, Certificate, mTLS, Security
 
 Description: How to manage certificate rotation during Istio upgrades to prevent mTLS failures, including root CA migration and workload certificate handling.
 

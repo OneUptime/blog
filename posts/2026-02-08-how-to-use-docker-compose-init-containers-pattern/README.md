@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker Compose, Init Containers, Startup, DevOps, Docker, Patterns
+Tags: Docker Compose, Init Container, Startup, DevOps, Docker, Patterns
 
 Description: Implement the Kubernetes-style init container pattern in Docker Compose to run setup tasks before your main services start.
 

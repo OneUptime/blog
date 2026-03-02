@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Authentication, Passwordless, WebAuthn, Magic Links, Security, Passkeys, FIDO2
+Tags: Authentication, Passwordless, WebAuthn, Magic Link, Security, Passkeys, FIDO2
 
 Description: A practical guide to implementing passwordless authentication using magic links, WebAuthn passkeys, and one-time codes with security best practices.
 

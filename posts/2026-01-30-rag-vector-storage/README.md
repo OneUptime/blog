@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RAG, Vector Database, Storage, Embeddings
+Tags: RAG, Vector Database, Storage, Embedding
 
 Description: Learn to build vector storage for efficiently storing and retrieving embedding vectors.
 

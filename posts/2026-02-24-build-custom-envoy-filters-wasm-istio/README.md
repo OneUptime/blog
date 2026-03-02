@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebAssembly, Envoy, Wasm, Custom Filters
+Tags: Istio, WebAssembly, Envoy, WASM, Custom Filters
 
 Description: How to build custom Envoy filters using WebAssembly for Istio, replacing fragile EnvoyFilter resources with portable Wasm plugins.
 

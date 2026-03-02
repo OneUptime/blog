@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, setup, Facts, System Information, DevOps
+Tags: Ansible, Setup, Facts, System Information, DevOps
 
 Description: Use the Ansible setup module to manually gather system facts for debugging, conditional logic, and inventory enrichment.
 

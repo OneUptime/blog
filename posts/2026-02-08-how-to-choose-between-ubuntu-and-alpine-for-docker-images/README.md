@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Ubuntu, Alpine, Base Image, Image Size, Linux, Containers, Performance
+Tags: Docker, Ubuntu, Alpine, Base Image, Image Size, Linux, Container, Performance
 
 Description: A practical comparison of Ubuntu and Alpine as Docker base images, covering size, ecosystem, debugging, and production suitability.
 

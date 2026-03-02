@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, DNS, Containers, DevOps, Configuration
+Tags: Docker, Networking, DNS, Container, DevOps, Configuration
 
 Description: Learn how to add custom host aliases to Docker containers using --add-host, extra_hosts, and other methods for name resolution control.
 

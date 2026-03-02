@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, File Systems, Linux, Storage, DevOps
+Tags: Ansible, File System, Linux, Storage, DevOps
 
 Description: Learn how to create, manage, and maintain ext4, xfs, and btrfs file systems across your Linux servers using Ansible for consistent storage configuration.
 

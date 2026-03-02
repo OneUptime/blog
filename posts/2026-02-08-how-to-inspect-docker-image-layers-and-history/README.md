@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Images, Layers, History, Inspection, DevOps, Debugging, Optimization
+Tags: Docker, Images, Layer, History, Inspection, DevOps, Debugging, Optimization
 
 Description: Learn how to inspect Docker image layers and build history to debug image issues, understand size, and optimize your builds.
 

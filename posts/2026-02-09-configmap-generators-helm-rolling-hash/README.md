@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Helm, ConfigMaps
+Tags: Kubernetes, Helm, ConfigMap
 
 Description: Learn how to implement ConfigMap generators in Helm charts with automatic hash suffixes for zero-downtime configuration updates and safe rollbacks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Maintenance, Upgrades, CI/CD
+Tags: OpenTelemetry, Collector, Maintenance, Upgrade, CI/CD
 
 Description: Practical strategies for keeping your custom OpenTelemetry Collector distribution up to date with upstream releases and managing version upgrades safely.
 

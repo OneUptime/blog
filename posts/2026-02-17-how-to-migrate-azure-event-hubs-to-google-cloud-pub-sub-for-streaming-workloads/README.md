@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Pub/Sub, Azure Migration, Event Streaming, Messaging, Real-time Data
+Tags: GCP, Pub/Sub, Azure Migration, Event Streaming, Messaging, Real-Time Data
 
 Description: A step-by-step guide on migrating streaming workloads from Azure Event Hubs to Google Cloud Pub/Sub with architecture mapping and code examples.
 

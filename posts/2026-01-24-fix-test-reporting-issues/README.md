@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Testing, Test Reporting, CI/CD, JUnit, Jest, Pytest, Test Automation
+Tags: Testing, Test Reporting, CI/CD, JUnit, Jest, pytest, Test Automation
 
 Description: A comprehensive guide to diagnosing and fixing common test reporting issues across different testing frameworks and CI/CD systems.
 

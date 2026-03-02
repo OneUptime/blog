@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Jenkins, CI/CD, Groovy, Pipelines
+Tags: Jenkins, CI/CD, Groovy, Pipeline
 
 Description: A comprehensive guide to mastering Jenkins Scripted Pipelines.
 

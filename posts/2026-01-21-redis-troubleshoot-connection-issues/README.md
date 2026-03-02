@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Troubleshooting, Connections, Networking, Timeout, Debugging
+Tags: Redis, Troubleshooting, Connection, Networking, Timeout, Debugging
 
 Description: A comprehensive guide to troubleshooting Redis connection issues, covering timeout debugging, connection limits, network problems, and client-side tuning for reliable Redis connectivity.
 

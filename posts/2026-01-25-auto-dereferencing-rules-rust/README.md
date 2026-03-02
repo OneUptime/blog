@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Deref, References, Method Calls, Type Coercion
+Tags: Rust, Deref, Reference, Method Calls, Type Coercion
 
 Description: Learn how Rust automatically dereferences pointers and references when calling methods. Understand the Deref trait, method resolution, and when explicit dereferencing is needed.
 

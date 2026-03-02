@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure DevOps, Terraform, CI/CD, Pipelines, Infrastructure as Code, Approval Gates, DevOps
+Tags: Azure DevOps, Terraform, CI/CD, Pipeline, Infrastructure as Code, Approval Gates, DevOps
 
 Description: Build a complete Azure DevOps pipeline for Terraform with separate plan and apply stages, manual approval gates, and artifact publishing.
 

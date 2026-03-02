@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, DevOps, Conditionals, Automation, Infrastructure as Code, Configuration Management
+Tags: Ansible, DevOps, Conditional, Automation, Infrastructure as Code, Configuration Management
 
 Description: A comprehensive guide to using when conditionals in Ansible, covering basic comparisons, complex logic, variable testing, and common patterns for conditional task execution.
 

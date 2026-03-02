@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Compliance, OPA Gatekeeper, Monitoring, Dashboards, Grafana
+Tags: Kubernetes, Compliance, OPA Gatekeeper, Monitoring, Dashboard, Grafana
 
 Description: Build comprehensive compliance dashboards using OPA Gatekeeper audit results to visualize policy violations, track compliance trends, and generate reports for SOC2, HIPAA, and PCI-DSS audits.
 

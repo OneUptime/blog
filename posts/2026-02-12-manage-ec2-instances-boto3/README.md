@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, Boto3, Python
+Tags: AWS, EC2, boto3, Python
 
 Description: A practical guide to managing Amazon EC2 instances with Boto3 in Python, covering launching, stopping, tagging, monitoring, and automating instance lifecycle operations.
 

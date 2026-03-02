@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Vector Databases, Pinecone, Qdrant, Weaviate, Observability, AI Infrastructure, Performance Monitoring
+Tags: OpenTelemetry, Vector Database, Pinecone, Qdrant, Weaviate, Observability, AI Infrastructure, Performance Monitoring
 
 Description: Learn how to monitor vector database performance for Pinecone, Qdrant, and Weaviate using OpenTelemetry tracing, metrics, and custom instrumentation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Compute Engine, Snapshots, Backup, Disaster Recovery
+Tags: GCP, Compute Engine, Snapshot, Backup, Disaster Recovery
 
 Description: Learn how to configure snapshot schedules and policies for Compute Engine boot disks to automate backups and protect against data loss on GCP.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Headless Services, Kubernetes, StatefulSets, Service Mesh
+Tags: Istio, Headless Service, Kubernetes, StatefulSet, Service Mesh
 
 Description: Understand how Istio handles headless Kubernetes services, including DNS resolution, direct pod routing, StatefulSet integration, and common troubleshooting.
 

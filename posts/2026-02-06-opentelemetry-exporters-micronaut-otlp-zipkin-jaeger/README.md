@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Micronaut, Exporters, OTLP, Zipkin, Jaeger
+Tags: OpenTelemetry, Micronaut, Exporter, OTLP, Zipkin, Jaeger
 
 Description: Comprehensive guide to configuring and using different OpenTelemetry exporters in Micronaut applications including OTLP, Zipkin, and Jaeger for flexible trace backend integration.
 

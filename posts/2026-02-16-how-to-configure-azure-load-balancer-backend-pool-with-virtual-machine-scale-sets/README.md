@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Load Balancer, VMSS, Scale Sets, Auto Scaling, High Availability
+Tags: Azure, Load Balancer, VMSS, Scale Set, Auto Scaling, High Availability
 
 Description: Configure Azure Load Balancer backend pools with Virtual Machine Scale Sets for automatic scaling and load distribution across VM instances.
 

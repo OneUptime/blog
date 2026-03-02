@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana Loki, LogQL, Log Queries, Stream Selectors, Filters, Observability
+Tags: Grafana Loki, LogQL, Log Queries, Stream Selectors, Filter, Observability
 
 Description: A comprehensive guide to writing LogQL queries for Grafana Loki, covering stream selectors, line filters, label filters, parser expressions, and advanced query patterns.
 

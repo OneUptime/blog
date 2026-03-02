@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Dataclasses, Data Models, Type Hints, OOP, Clean Code
+Tags: Python, Dataclasses, Data Model, Type Hints, OOP, Clean Code
 
 Description: Learn how to use Python dataclasses to create clean, maintainable data models.
 

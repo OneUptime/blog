@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Locks, Troubleshooting, Deadlocks, Performance
+Tags: PostgreSQL, Locks, Troubleshooting, Deadlock, Performance
 
 Description: A guide to identifying and resolving PostgreSQL lock contention issues, including deadlock analysis and prevention strategies.
 

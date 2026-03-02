@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, State Management, Backups, Infrastructure as Code, DevOps, Disaster Recovery
+Tags: Terraform, State Management, Backup, Infrastructure as Code, DevOps, Disaster Recovery
 
 Description: Learn how to set up automated backups for your Terraform state files using S3 versioning, GCS snapshots, and custom scripts to prevent data loss and enable quick recovery.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extensions, Authentication, OAuth2, Security, API
+Tags: OpenTelemetry, Collector, Extension, Authentication, OAuth2, Security, API
 
 Description: Learn how to configure OAuth2 client credentials authentication in the OpenTelemetry Collector to automatically obtain and refresh access tokens for secure backend communication.
 

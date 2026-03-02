@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Queue Mirroring, High Availability, Replication, Message Queues, Clustering
+Tags: RabbitMQ, Queue Mirroring, High Availability, Replication, Message Queue, Clustering
 
 Description: Learn how to configure queue mirroring in RabbitMQ for high availability, including classic mirrored queues, quorum queues, and best practices for production deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Python, Gunicorn, Nginx, Web Server
+Tags: Ubuntu, Python, Gunicorn, NGINX, Web Server
 
 Description: Deploy a Python WSGI application using Gunicorn as the application server and Nginx as a reverse proxy on Ubuntu, with systemd service management.
 

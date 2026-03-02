@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Variables, Environment Variables, CI/CD, Security
+Tags: Terraform, Variables, Environment Variable, CI/CD, Security
 
 Description: Learn how to use TF_VAR_ prefixed environment variables to pass values to Terraform, including best practices for secrets, CI/CD integration, and type handling.
 

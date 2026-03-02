@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, Rancher, Fleet, GitOps, Multi-cluster, DevOps
+Tags: Helm, Kubernetes, Rancher, Fleet, GitOps, Multi-Cluster, DevOps
 
 Description: Complete guide to using Rancher Fleet for GitOps-based Helm deployments across multiple Kubernetes clusters at enterprise scale.
 

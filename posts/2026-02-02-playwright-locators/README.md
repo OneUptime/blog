@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Playwright, Testing, E2E, Locators, Test Automation, Web Testing
+Tags: Playwright, Testing, E2E, Locator, Test Automation, Web Testing
 
 Description: A comprehensive guide to using Playwright locators for reliable end-to-end testing. Learn about built-in locators, filtering strategies, chaining, best practices, and how to handle dynamic content.
 

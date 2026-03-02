@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Multi-tenancy, Resource Management
+Tags: ArgoCD, GitOps, Kubernetes, Multi-Tenancy, Resource Management
 
 Description: Learn how to manage Kubernetes resources that need to be shared across multiple ArgoCD applications without causing tracking conflicts or sync failures.
 

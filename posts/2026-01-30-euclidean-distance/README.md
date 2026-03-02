@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Vector Search, Distance Metrics, Machine Learning, Embeddings
+Tags: Vector Search, Distance Metrics, Machine Learning, Embedding
 
 Description: Learn to implement Euclidean distance for vector similarity with SIMD optimization, batch computation, and use case selection for spatial similarity search.
 

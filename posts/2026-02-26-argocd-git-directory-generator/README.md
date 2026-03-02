@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Automation
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Automation
 
 Description: Learn how to use the ArgoCD ApplicationSet Git directory generator to automatically discover and deploy applications from directory structures in your Git repository.
 

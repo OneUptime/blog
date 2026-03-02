@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Finalizers
+Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Finalizer
 
 Description: Learn how to diagnose and resolve finalizer-related issues that block ArgoCD application deletion, including stuck resources, misconfigured finalizers, and cleanup strategies.
 

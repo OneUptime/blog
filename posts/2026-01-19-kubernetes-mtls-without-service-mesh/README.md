@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, mTLS, TLS, Security, Certificates, Zero Trust, DevOps
+Tags: Kubernetes, mTLS, TLS, Security, Certificate, Zero Trust, DevOps
 
 Description: Learn how to implement mutual TLS (mTLS) between Kubernetes services without a service mesh using cert-manager, SPIFFE/SPIRE, or manual certificate management.
 

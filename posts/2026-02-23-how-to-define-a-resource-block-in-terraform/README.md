@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Resources, Infrastructure as Code, AWS
+Tags: Terraform, HCL, Resource, Infrastructure as Code, AWS
 
 Description: Learn the anatomy of a Terraform resource block, including resource types, names, arguments, attributes, and how to structure your resource definitions for clarity and maintainability.
 

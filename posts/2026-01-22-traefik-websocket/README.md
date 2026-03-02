@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Traefik, WebSocket, Real-time, Load Balancing, DevOps
+Tags: Traefik, WebSocket, Real-Time, Load Balancing, DevOps
 
 Description: Set up Traefik to handle WebSocket connections with proper upgrade handling, sticky sessions, and timeout configuration for real-time applications.
 

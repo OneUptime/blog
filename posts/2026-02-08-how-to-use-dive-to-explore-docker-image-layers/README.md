@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Images, Dive, Layers, Optimization, DevOps, Image Analysis
+Tags: Docker, Images, Dive, Layer, Optimization, DevOps, Image Analysis
 
 Description: Learn how to use the Dive tool to inspect Docker image layers, find wasted space, and optimize your container images for smaller sizes.
 

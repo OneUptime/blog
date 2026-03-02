@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Filestore, Cloud Storage FUSE, Persistent Disks, File Storage, NFS
+Tags: GCP, Filestore, Cloud Storage FUSE, Persistent Disk, File Storage, NFS
 
 Description: A practical comparison of Filestore, Cloud Storage FUSE, and Persistent Disks to help you pick the right file storage option on Google Cloud.
 

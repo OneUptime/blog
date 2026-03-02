@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Compression, gzip, Performance, EnvoyFilter, Kubernetes
+Tags: Istio, Compression, Gzip, Performance, EnvoyFilter, Kubernetes
 
 Description: Step-by-step guide to enabling gzip and other compression algorithms in Istio using EnvoyFilter to reduce bandwidth and improve response times.
 

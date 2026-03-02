@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Secret Manager, Environment Variables, Security, Google Cloud
+Tags: GCP, Cloud Run, Secret Manager, Environment Variable, Security, Google Cloud
 
 Description: Learn how to reference Google Cloud Secret Manager secrets directly in Cloud Run environment variables without modifying your application code.
 

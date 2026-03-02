@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Node.js, Pub/Sub, Real-time, Messaging, WebSocket
+Tags: Redis, Node.js, Pub/Sub, Real-Time, Messaging, WebSocket
 
 Description: Implement real-time messaging with Redis Pub/Sub in Node.js applications. Learn patterns for chat systems, notifications, and event broadcasting with practical examples.
 

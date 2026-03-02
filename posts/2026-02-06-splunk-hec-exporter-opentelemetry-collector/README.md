@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Splunk, HEC, Observability, Logs, Metrics
+Tags: OpenTelemetry, Collector, Exporter, Splunk, HEC, Observability, Logs, Metrics
 
 Description: Complete guide to configuring the Splunk HEC exporter in OpenTelemetry Collector for sending logs, metrics, and traces to Splunk Enterprise and Splunk Cloud.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ansible Galaxy, Offline, Air-Gapped, Collections
+Tags: Ansible, Ansible Galaxy, Offline, Air-Gapped, Collection
 
 Description: How to download Ansible collections for offline installation in air-gapped environments including dependency resolution and transfer workflows.
 

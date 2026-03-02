@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Services, Networking, Configuration, Troubleshooting
+Tags: Kubernetes, Service, Networking, Configuration, Troubleshooting
 
 Description: Learn the difference between targetPort, port, and nodePort in Kubernetes Services. This guide explains when to use each and how traffic flows through these ports.
 

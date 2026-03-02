@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Google Cloud Run, Containers, Tracing, Metrics, Observability
+Tags: OpenTelemetry, Google Cloud Run, Container, Tracing, Metrics, Observability
 
 Description: Step-by-step guide to configuring OpenTelemetry tracing and metrics for containerized services running on Google Cloud Run.
 

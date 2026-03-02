@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Load Balancing, Observability, Distributed Systems
+Tags: OpenTelemetry, Collector, Exporter, Load Balancing, Observability, Distributed Systems
 
 Description: Learn how to configure the load balancing exporter in the OpenTelemetry Collector to distribute telemetry data across multiple backend endpoints for improved reliability and performance.
 

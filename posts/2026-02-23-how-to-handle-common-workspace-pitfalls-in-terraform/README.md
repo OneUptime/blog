@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, Troubleshooting, Best Practices, Common Mistakes
+Tags: Terraform, Workspace, Troubleshooting, Best Practices, Common Mistakes
 
 Description: Identify and solve the most common Terraform workspace pitfalls including accidental applies, naming collisions, state corruption, and workspace sprawl with practical solutions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Null Provider, Provisioners, Infrastructure as Code
+Tags: Terraform, Provider, Null Provider, Provisioner, Infrastructure as Code
 
 Description: Learn how to configure and use the Null provider in Terraform for running provisioners, creating dependency chains, and triggering actions on changes.
 

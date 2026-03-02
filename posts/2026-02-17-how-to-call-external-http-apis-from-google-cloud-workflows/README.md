@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Workflows, HTTP APIs, Integration, REST APIs
+Tags: GCP, Cloud Workflows, HTTP API, Integration, REST API
 
 Description: Learn how to call external HTTP APIs from Google Cloud Workflows, including authentication, header management, response parsing, and error handling for third-party services.
 

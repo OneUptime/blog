@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Roles, Playbooks, Configuration Management
+Tags: Ansible, Roles, Playbook, Configuration Management
 
 Description: Learn how to share and reuse Ansible roles across multiple playbooks for cleaner infrastructure automation and better code organization.
 

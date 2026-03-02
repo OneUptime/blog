@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Logging, tracing, JSON, Observability
+Tags: Rust, Logging, Tracing, JSON, Observability
 
 Description: A hands-on guide to implementing structured JSON logging in Rust using the tracing ecosystem, with practical examples for production-ready observability.
 

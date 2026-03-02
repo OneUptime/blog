@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Earthly, CI/CD, Build Pipeline, DevOps, Containers
+Tags: Docker, Earthly, CI/CD, Build Pipeline, DevOps, Container
 
 Description: Learn how to create reproducible Docker build pipelines using Earthly for consistent builds across local and CI environments.
 

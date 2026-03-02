@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Rust, Database, Storage, Systems
+Tags: Rust, Database, Storage, System
 
 Description: Learn how to build a simple key-value database in Rust with persistence, indexing, and basic query operations.
 

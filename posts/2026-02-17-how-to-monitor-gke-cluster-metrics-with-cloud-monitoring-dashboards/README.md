@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Cloud Monitoring, Kubernetes, Dashboards
+Tags: GCP, GKE, Cloud Monitoring, Kubernetes, Dashboard
 
 Description: A practical guide to building Cloud Monitoring dashboards for GKE clusters, covering key metrics for nodes, pods, containers, and workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, whisper, speech-to-text, openai, transcription, ai, audio, docker compose
+Tags: Docker, whisper, Speech-to-Text, OpenAI, Transcription, AI, Audio, Docker Compose
 
 Description: Deploy OpenAI's Whisper speech-to-text model in Docker for accurate audio transcription with support for multiple languages and GPU acceleration.
 

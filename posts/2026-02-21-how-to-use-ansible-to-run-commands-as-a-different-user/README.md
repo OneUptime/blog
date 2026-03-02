@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Become, User Switching, Privilege Escalation
+Tags: Ansible, become, User Switching, Privilege Escalation
 
 Description: Learn how to run Ansible tasks as different users with become, become_user, and sudo to manage permissions and run application-specific commands.
 

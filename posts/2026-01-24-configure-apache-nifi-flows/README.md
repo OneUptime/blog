@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache NiFi, Data Engineering, ETL, Data Pipelines, Data Integration, Flow Configuration
+Tags: Apache NiFi, Data Engineering, ETL, Data Pipeline, Data Integration, Flow Configuration
 
 Description: A practical guide to configuring Apache NiFi flows for building robust data pipelines with processors, connections, and flow management best practices.
 

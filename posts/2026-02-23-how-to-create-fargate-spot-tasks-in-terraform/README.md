@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, Fargate, Spot, Cost Optimization, Containers, Infrastructure as Code
+Tags: Terraform, AWS, ECS, Fargate, Spot, Cost Optimization, Container, Infrastructure as Code
 
 Description: Learn how to use Fargate Spot with ECS in Terraform to run containers at up to 70% discount while handling interruptions gracefully for fault-tolerant workloads.
 

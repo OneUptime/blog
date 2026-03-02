@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Loops, Conditionals, Playbook Design
+Tags: Ansible, Loops, Conditional, Playbook Design
 
 Description: Learn how to combine Ansible loop with when conditionals to selectively process items, skip iterations, and build smart automation workflows.
 

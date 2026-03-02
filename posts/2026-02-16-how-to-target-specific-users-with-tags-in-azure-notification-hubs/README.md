@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Notification Hubs, Tags, Targeting, Push Notifications, Segmentation, Mobile
+Tags: Azure, Notification Hub, Tags, Targeting, Push Notifications, Segmentation, Mobile
 
 Description: Learn how to use tags and tag expressions in Azure Notification Hubs to send targeted push notifications to specific users and segments.
 

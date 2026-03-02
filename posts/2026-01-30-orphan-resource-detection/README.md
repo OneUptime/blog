@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cost Optimization, Cloud, Resources, FinOps
+Tags: Cost Optimization, Cloud, Resource, FinOps
 
 Description: Find and eliminate forgotten cloud resources that silently drain your budget every month.
 

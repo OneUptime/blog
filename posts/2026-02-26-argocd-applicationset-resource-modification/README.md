@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Security
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Security
 
 Description: Learn how to control what ApplicationSets can modify on generated Applications using resource modification policies and update strategies in ArgoCD.
 

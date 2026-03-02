@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Exporters, OTLP, Observability, Collector, Telemetry, Backend Integration
+Tags: OpenTelemetry, Exporter, OTLP, Observability, Collector, Telemetry, Backend Integration
 
 Description: Learn how to configure OpenTelemetry exporters to send traces, metrics, and logs to various backends with proper authentication, retry logic, and performance tuning.
 

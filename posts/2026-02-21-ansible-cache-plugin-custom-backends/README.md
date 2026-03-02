@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Caching, Redis, DynamoDB
+Tags: Ansible, Plugin, Caching, Redis, DynamoDB
 
 Description: Build Ansible cache plugins for custom storage backends like DynamoDB, Consul, and S3 to share facts across your automation fleet.
 

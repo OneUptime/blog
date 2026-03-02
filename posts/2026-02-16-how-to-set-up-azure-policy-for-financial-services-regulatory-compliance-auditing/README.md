@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Policy, Financial Services, Regulatory Compliance, Auditing, Azure Governance, Cloud Security, Fintech
+Tags: Azure Policy, Financial Services, Regulatory Compliance, Auditing, Azure Governance, Cloud Security, FinTech
 
 Description: Learn how to configure Azure Policy for financial services regulatory compliance auditing including SOX, PCI DSS, and GDPR frameworks.
 

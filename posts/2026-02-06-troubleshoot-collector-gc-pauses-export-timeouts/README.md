@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Garbage Collection, Timeouts
+Tags: OpenTelemetry, Collector, Garbage Collection, Timeout
 
 Description: Diagnose and fix intermittent span export timeouts in the OpenTelemetry Collector caused by Go garbage collection pauses.
 

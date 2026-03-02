@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Storage, Throttling, 503 Errors, Troubleshooting, Performance, Cloud Storage
+Tags: Azure, Azure Storage, Throttling, 503 Error, Troubleshooting, Performance, Cloud Storage
 
 Description: Learn how to identify, diagnose, and resolve Azure Storage throttling issues and 503 Service Unavailable errors that impact application performance.
 

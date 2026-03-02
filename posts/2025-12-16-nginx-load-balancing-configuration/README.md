@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Load Balancing, High Availability, Scaling, DevOps, Infrastructure
+Tags: NGINX, Load Balancing, High Availability, Scaling, DevOps, Infrastructure
 
 Description: Learn how to configure Nginx as a load balancer to distribute traffic across multiple backend servers, including different balancing algorithms, health checks, and session persistence.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Multi-Tenant, Pipeline Isolation, Collector, Exporters
+Tags: OpenTelemetry, Multi-Tenant, Pipeline Isolation, Collector, Exporter
 
 Description: Set up complete tenant isolation in the OpenTelemetry Collector with dedicated pipelines and exporters for each tenant.
 

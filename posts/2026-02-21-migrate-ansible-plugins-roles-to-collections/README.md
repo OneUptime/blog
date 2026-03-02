@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Collections, Migration, Best Practices
+Tags: Ansible, Plugin, Collection, Migration, Best Practices
 
 Description: Step-by-step guide to migrating Ansible plugins from roles and local directories into properly structured collections.
 

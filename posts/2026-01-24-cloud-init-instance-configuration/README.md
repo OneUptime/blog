@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cloud-init, Cloud Computing, DevOps, Infrastructure Automation, AWS, Azure, GCP
+Tags: cloud-init, Cloud Computing, DevOps, Infrastructure Automation, AWS, Azure, GCP
 
 Description: Use cloud-init to configure cloud instances at boot time with user data scripts, package installation, file creation, and integration with configuration management tools.
 

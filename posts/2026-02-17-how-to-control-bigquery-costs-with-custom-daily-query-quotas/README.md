@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, Cost Control, Quotas, Google Cloud
+Tags: GCP, BigQuery, Cost Control, Quota, Google Cloud
 
 Description: Learn how to set up custom daily query quotas in BigQuery to prevent runaway costs from expensive queries and keep your data analytics spending predictable.
 

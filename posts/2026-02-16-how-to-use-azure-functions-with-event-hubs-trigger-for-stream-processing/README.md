@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Functions, Event Hubs, Stream Processing, Serverless, Real-Time, Data Pipeline
+Tags: Azure, Functions, Event Hub, Stream Processing, Serverless, Real-Time, Data Pipeline
 
 Description: Process real-time data streams using Azure Functions with Event Hubs triggers for scalable serverless stream processing pipelines.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, AWS, Elastic Beanstalk, File Upload, Troubleshooting
+Tags: NGINX, AWS, Elastic Beanstalk, File Upload, Troubleshooting
 
 Description: Learn how to resolve the 413 Request Entity Too Large error in Nginx when deploying applications on AWS Elastic Beanstalk.
 

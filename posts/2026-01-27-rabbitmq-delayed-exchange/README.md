@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RabbitMQ, Delayed Messages, Message Queues, Scheduling, Distributed Systems, Node.js, Retries
+Tags: RabbitMQ, Delayed Messages, Message Queue, Scheduling, Distributed Systems, Node.js, Retries
 
 Description: A comprehensive guide to implementing delayed message delivery in RabbitMQ using the delayed message exchange plugin.
 

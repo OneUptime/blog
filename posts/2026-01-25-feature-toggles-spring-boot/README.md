@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, Feature Toggles, Feature Flags, DevOps
+Tags: Java, Spring Boot, Feature Toggle, Feature Flags, DevOps
 
 Description: Learn how to implement feature toggles in Spring Boot applications to safely deploy new features, run A/B tests, and control functionality at runtime without redeploying your application.
 

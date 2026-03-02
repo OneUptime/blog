@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, gRPC, Timeouts, Kubernetes, Envoy
+Tags: Istio, gRPC, Timeout, Kubernetes, Envoy
 
 Description: Understand and configure gRPC timeout behavior in Istio, covering route timeouts, per-try timeouts, idle timeouts, and common timeout pitfalls.
 

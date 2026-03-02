@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Pre-commit, Code Quality, Git Hooks, Linting, Developer Experience
+Tags: Pre-Commit, Code Quality, Git Hooks, Linting, Developer Experience
 
 Description: Learn how to set up pre-commit hooks that automatically check code quality before commits, catching issues early and maintaining consistent standards across your team.
 

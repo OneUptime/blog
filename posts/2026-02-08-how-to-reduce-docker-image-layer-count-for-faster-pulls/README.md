@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Performance, Image Optimization, Layers, Docker Build, CI/CD, DevOps
+Tags: Docker, Performance, Image Optimization, Layer, Docker Build, CI/CD, DevOps
 
 Description: Learn practical techniques to reduce Docker image layer count for faster pulls, smaller images, and more efficient registry storage and network transfer.
 

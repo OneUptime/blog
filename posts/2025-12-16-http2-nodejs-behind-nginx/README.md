@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, NodeJS, HTTP2, Performance, DevOps
+Tags: NGINX, NodeJS, HTTP2, Performance, DevOps
 
 Description: Learn how to configure HTTP/2 between clients and Nginx, and optimize the connection between Nginx and your Node.js backend for maximum performance.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, React, Configuration, tsconfig, JSX, Build Tools, Vite, Create React App
+Tags: TypeScript, React, Configuration, tsconfig, JSX, Build Tool, Vite, Create React App
 
 Description: Learn how to properly configure TypeScript for React projects including tsconfig settings, JSX handling, and common setup patterns.
 

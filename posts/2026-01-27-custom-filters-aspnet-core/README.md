@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, C#, ASP.NET Core, Filters, Middleware, Web API
+Tags: .NET, C#, ASP.NET Core, Filter, Middleware, Web API
 
 Description: Learn how to build custom filters in ASP.NET Core for cross-cutting concerns like authorization, validation, caching, and logging. This guide covers all filter types with practical examples.
 

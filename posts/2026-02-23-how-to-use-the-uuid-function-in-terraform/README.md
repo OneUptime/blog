@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, uuid, Unique Identifiers, Resource Naming, Infrastructure as Code
+Tags: Terraform, UUID, Unique Identifiers, Resource Naming, Infrastructure as Code
 
 Description: Learn how to use Terraform's uuid function to generate unique identifiers for resources, understand its behavior across plan and apply, and avoid common pitfalls.
 

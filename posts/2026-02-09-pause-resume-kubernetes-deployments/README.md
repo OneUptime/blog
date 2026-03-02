@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployments, DevOps
+Tags: Kubernetes, Deployment, DevOps
 
 Description: Learn how to pause and resume Kubernetes deployments to perform multi-step updates safely, preventing automatic rollout progression during complex configuration changes.
 

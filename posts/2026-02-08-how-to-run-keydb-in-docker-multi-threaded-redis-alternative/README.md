@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, KeyDB, Redis, Caching, Databases, DevOps
+Tags: Docker, KeyDB, Redis, Caching, Database, DevOps
 
 Description: Deploy KeyDB in Docker as a multi-threaded drop-in Redis replacement with higher throughput and active replication
 

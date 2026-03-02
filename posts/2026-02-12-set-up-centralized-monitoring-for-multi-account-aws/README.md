@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Monitoring, Multi-Account, CloudWatch, Organizations, Observability
+Tags: AWS, Monitoring, Multi-Account, CloudWatch, Organization, Observability
 
 Description: Build a centralized monitoring architecture across multiple AWS accounts using CloudWatch cross-account observability and Organizations integration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, PostgreSQL, Database, Docker, Kubernetes, Troubleshooting, Errors
+Tags: Grafana, PostgreSQL, Database, Docker, Kubernetes, Troubleshooting, Error
 
 Description: Learn how to diagnose and fix the 'pq: could not resize shared memory segment' error in Grafana.
 

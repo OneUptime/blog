@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Registry, Troubleshooting, DevOps, Containers
+Tags: Docker, Registry, Troubleshooting, DevOps, Container
 
 Description: Diagnose and fix Docker image pull failures from registries including authentication errors, network issues, manifest problems, and rate limiting.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CodeCatalyst, CI/CD, Workflows, DevOps, Automation
+Tags: AWS, CodeCatalyst, CI/CD, Workflow, DevOps, Automation
 
 Description: Learn how to create and configure CodeCatalyst Workflows for continuous integration and continuous deployment with build, test, and deploy actions.
 

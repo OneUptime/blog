@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Identity, SPIFFE, Certificates, Security
+Tags: Istio, Identity, SPIFFE, Certificate, Security
 
 Description: A step-by-step walkthrough of how Istio provisions cryptographic identities to workloads using SPIFFE, SDS, and Kubernetes service accounts.
 

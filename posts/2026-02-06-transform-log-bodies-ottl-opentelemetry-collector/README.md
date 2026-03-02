@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, OTTL, Processors, Log Processing, Transform Processor
+Tags: OpenTelemetry, Collector, OTTL, Processor, Log Processing, Transform Processor
 
 Description: Learn how to transform log bodies using OpenTelemetry Transformation Language (OTTL) in the OpenTelemetry Collector with practical examples and YAML configurations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, CNI, Containers, Networking, Kubernetes
+Tags: Ubuntu, CNI, Container, Networking, Kubernetes
 
 Description: Learn how CNI plugins work on Ubuntu, how to install and configure them for container networking, and how to create custom network configurations for different use cases.
 

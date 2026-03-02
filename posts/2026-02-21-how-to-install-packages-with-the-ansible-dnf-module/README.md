@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, dnf, RHEL, Fedora, Package Management
+Tags: Ansible, DNF, RHEL, Fedora, Package Management
 
 Description: A hands-on guide to installing packages on RHEL, CentOS, and Fedora using the Ansible dnf module with real-world examples.
 

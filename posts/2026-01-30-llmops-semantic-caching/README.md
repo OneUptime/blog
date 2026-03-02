@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: LLMOps, Semantic Caching, Embeddings, Cost Optimization
+Tags: LLMOps, Semantic Caching, Embedding, Cost Optimization
 
 Description: Learn to build semantic caching for matching semantically similar queries to cached responses.
 

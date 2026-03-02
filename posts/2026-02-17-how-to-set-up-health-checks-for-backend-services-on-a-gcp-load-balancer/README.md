@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Load Balancer, Health Checks, Backend Services, Monitoring
+Tags: GCP, Load Balancer, Health Check, Backend Service, Monitoring
 
 Description: A complete guide to configuring health checks for GCP load balancer backend services, covering HTTP, HTTPS, TCP, and gRPC health checks with best practices.
 

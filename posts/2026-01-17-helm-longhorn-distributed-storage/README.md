@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, Longhorn, Storage, Persistent Volumes, DevOps, Rancher
+Tags: Helm, Kubernetes, Longhorn, Storage, Persistent Volume, DevOps, Rancher
 
 Description: Complete guide to deploying Longhorn distributed storage using Helm including replication, snapshots, backups, and disaster recovery configuration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Runners, Auto-scaling, DevOps, Infrastructure, Cloud
+Tags: GitLab CI, Runners, Auto-Scaling, DevOps, Infrastructure, Cloud
 
 Description: Learn how to configure GitLab CI runners with auto-scaling capabilities to handle variable workloads efficiently while minimizing infrastructure costs.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, 503 Errors, Debugging, Access Logs, Envoy, Troubleshooting
+Tags: Istio, 503 Error, Debugging, Access Logs, Envoy, Troubleshooting
 
 Description: A systematic approach to debugging 503 Service Unavailable errors in Istio using access logs, response flags, and proxy configuration tools.
 

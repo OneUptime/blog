@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kafka, Streams, State Store, Real-time
+Tags: Kafka, Streams, State Store, Real-Time
 
 Description: Create custom state stores in Kafka Streams for specialized storage requirements with custom serialization and query capabilities.
 

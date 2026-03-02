@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Wasm, WebAssembly, Service Mesh, Kubernetes, Envoy
+Tags: Istio, WASM, WebAssembly, Service Mesh, Kubernetes, Envoy
 
 Description: Learn how to manage the full lifecycle of Wasm plugins in Istio including deployment, updates, rollback, and cleanup strategies.
 

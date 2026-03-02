@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, Annotations, Nginx
+Tags: Kubernetes, Ingress, Annotations, NGINX
 
 Description: Learn to implement Ingress annotations for SSL, rate limiting, rewrites, and authentication with nginx and other ingress controllers.
 

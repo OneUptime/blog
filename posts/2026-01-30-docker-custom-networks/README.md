@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, DevOps, Containers
+Tags: Docker, Networking, DevOps, Container
 
 Description: Master Docker networking with custom bridge networks, network isolation, DNS resolution, and multi-host networking for containerized applications.
 

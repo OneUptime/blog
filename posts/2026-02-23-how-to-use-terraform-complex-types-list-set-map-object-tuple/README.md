@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Infrastructure as Code, Types, Variables, Collections
+Tags: Terraform, HCL, Infrastructure as Code, Types, Variables, Collection
 
 Description: Learn how to use Terraform's complex types including list, set, map, object, and tuple to model real infrastructure data and build flexible configurations.
 

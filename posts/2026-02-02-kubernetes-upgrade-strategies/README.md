@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Upgrades, Rolling Updates, Blue-Green, Canary, DevOps, High Availability
+Tags: Kubernetes, Upgrade, Rolling Update, Blue-Green, Canary, DevOps, High Availability
 
 Description: A practical guide to Kubernetes upgrade strategies including rolling updates, blue-green deployments, canary releases, and in-place upgrades with real-world examples and automation scripts.
 

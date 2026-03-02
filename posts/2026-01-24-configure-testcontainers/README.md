@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Testing, TestContainers, Docker, Integration Tests, Databases, Java, Python, Node.js
+Tags: Testing, Testcontainers, Docker, Integration Tests, Database, Java, Python, Node.js
 
 Description: Learn how to use TestContainers to run real databases, message queues, and other services in Docker containers during integration tests.
 

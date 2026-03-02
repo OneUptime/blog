@@ -2,7 +2,7 @@
 
 Author: [devneelpatel](https://www.github.com/devneelpatel)
 
-Tags: OpenAPI, Open Source, Standards, Interoperability, API
+Tags: OpenAPI, Open Source, Standard, Interoperability, API
 
 Description: OneUptime now provides a comprehensive OpenAPI 3.0 specification covering our entire API surface.
 

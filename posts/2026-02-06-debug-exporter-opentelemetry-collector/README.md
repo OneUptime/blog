@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Debug, Troubleshooting, Development
+Tags: OpenTelemetry, Collector, Exporter, Debug, Troubleshooting, Development
 
 Description: A practical guide to configuring the Debug exporter in OpenTelemetry Collector for troubleshooting telemetry pipelines, with examples of logging verbosity levels, sampling strategies.
 

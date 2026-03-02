@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, File Shares, Azure Files, Infrastructure as Code, Cloud Storage, SMB
+Tags: Terraform, Azure, File Share, Azure Files, Infrastructure as Code, Cloud Storage, SMB
 
 Description: Learn how to create and manage Azure File Shares in Terraform with quotas, access tiers, snapshots, and integration with on-premises or AKS workloads.
 

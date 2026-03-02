@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, SDK, Version Management, Dependency Management, DevOps, Upgrades
+Tags: OpenTelemetry, SDK, Version Management, Dependency Management, DevOps, Upgrade
 
 Description: Learn how to coordinate OpenTelemetry SDK version upgrades across multiple teams and services to avoid compatibility issues and minimize disruption.
 

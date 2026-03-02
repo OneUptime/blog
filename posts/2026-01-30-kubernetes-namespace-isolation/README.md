@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Multi-tenancy, DevOps
+Tags: Kubernetes, Security, Multi-Tenancy, DevOps
 
 Description: Implement namespace isolation in Kubernetes using network policies, resource quotas, and RBAC for secure multi-tenant cluster environments.
 

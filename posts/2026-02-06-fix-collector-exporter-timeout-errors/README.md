@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Troubleshooting, Exporters, Timeout, Performance
+Tags: OpenTelemetry, Collector, Troubleshooting, Exporter, Timeout, Performance
 
 Description: Practical guide to diagnosing and resolving timeout errors in OpenTelemetry Collector exporters with configuration examples and optimization techniques.
 

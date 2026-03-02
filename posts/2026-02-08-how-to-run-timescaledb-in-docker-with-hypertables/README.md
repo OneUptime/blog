@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, TimescaleDB, Databases, Time-Series, DevOps, PostgreSQL
+Tags: Docker, TimescaleDB, Database, Time-Series, DevOps, PostgreSQL
 
 Description: A practical guide to running TimescaleDB in Docker containers with hypertable configuration for time-series data workloads
 

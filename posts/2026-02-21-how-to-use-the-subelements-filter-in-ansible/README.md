@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Loops, Data Transformation, Automation
+Tags: Ansible, Filter, Loops, Data Transformation, Automation
 
 Description: Learn how to use the subelements filter in Ansible to iterate over nested list attributes within a list of dictionaries for complex task loops.
 

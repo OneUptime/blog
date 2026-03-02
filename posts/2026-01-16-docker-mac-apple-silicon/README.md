@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Mac, Apple Silicon, M1, Performance
+Tags: Docker, MAC, Apple Silicon, M1, Performance
 
 Description: Configure Docker Desktop for M1/M2/M3/M4 Macs. Covers multi-architecture images, Rosetta emulation for AMD64, VirtioFS volumes, and fixing common ARM64 compatibility issues.
 

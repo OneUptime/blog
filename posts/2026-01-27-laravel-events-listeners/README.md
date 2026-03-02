@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Laravel, PHP, Events, Listeners, Architecture, Design Patterns
+Tags: Laravel, PHP, Events, Listeners, Architecture, Design Pattern
 
 Description: Learn how to use Laravel's event system for decoupled application architecture, including event creation, listeners, subscribers, and queue integration.
 

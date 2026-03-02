@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Set Operations, Filters, Data Manipulation
+Tags: Ansible, Set Operations, Filter, Data Manipulation
 
 Description: Learn how to use union, intersect, difference, and symmetric_difference set operations in Ansible for comparing and combining lists effectively.
 

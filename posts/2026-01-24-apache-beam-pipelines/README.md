@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Beam, Data Pipelines, Stream Processing, Batch Processing, Google Dataflow, Apache Flink, Data Engineering
+Tags: Apache Beam, Data Pipeline, Stream Processing, Batch Processing, Google Dataflow, Apache Flink, Data Engineering
 
 Description: Learn how to build, deploy, and manage Apache Beam pipelines for both batch and stream processing with practical examples and best practices.
 

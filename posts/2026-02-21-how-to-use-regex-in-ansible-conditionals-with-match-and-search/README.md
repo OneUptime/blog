@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Regex, Conditionals, Jinja2, Automation
+Tags: Ansible, Regex, Conditional, Jinja2, Automation
 
 Description: Learn how to use regex_match and regex_search in Ansible when conditionals for pattern matching in strings and command output.
 

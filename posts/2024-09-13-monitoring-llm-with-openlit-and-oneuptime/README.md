@@ -2,7 +2,7 @@
 
 Author: [AmanAgarwal041](https://github.com/AmanAgarwal041)
 
-Tags: LLM Observability, Openlit, OpenTelemetry
+Tags: LLM Observability, OpenLIT, OpenTelemetry
 
 Description: How to monitor LLMs using tools like Openlit & OpenTelemetry to ensure accurate outputs, improve data retrieval, and optimize costs, with OneUptime for visualizing performance metrics.
 

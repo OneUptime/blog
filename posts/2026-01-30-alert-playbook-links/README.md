@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Alerting, Playbooks, Incident Response, SRE
+Tags: Alerting, Playbook, Incident Response, SRE
 
 Description: Learn how to link alerts to response playbooks for consistent incident handling.
 

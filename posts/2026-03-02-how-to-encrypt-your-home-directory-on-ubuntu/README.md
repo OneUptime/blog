@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Encryption, Privacy, ecryptfs
+Tags: Ubuntu, Security, Encryption, Privacy, eCryptfs
 
 Description: Encrypt your home directory on Ubuntu using eCryptfs or migrate to full disk encryption, protecting personal data from unauthorized access with practical setup and migration procedures.
 

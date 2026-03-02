@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Certificates
+Tags: Kubernetes, Security, Certificate
 
 Description: Learn how to configure automatic certificate rotation for kubelet client certificates to maintain secure cluster communication without manual intervention.
 

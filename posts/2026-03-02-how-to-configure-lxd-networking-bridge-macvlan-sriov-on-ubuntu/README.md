@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LXD, Networking, Containers, Virtualization
+Tags: Ubuntu, LXD, Networking, Container, Virtualization
 
 Description: A detailed guide to configuring LXD network modes including bridge networking, macvlan, and SR-IOV for containers and VMs on Ubuntu.
 

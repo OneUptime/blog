@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, Testing, Containers, Isolation, DevOps
+Tags: Docker, Networking, Testing, Container, Isolation, DevOps
 
 Description: Learn how to create fully isolated Docker networks for testing, preventing containers from accessing the internet or other networks.
 

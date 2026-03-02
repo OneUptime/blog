@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Containers, DevOps, Reliability, Graceful Shutdown
+Tags: Docker, Container, DevOps, Reliability, Graceful Shutdown
 
 Description: Learn how to implement graceful shutdown in Docker containers, handle SIGTERM signals properly, and avoid dropped connections during deployments and scaling events.
 

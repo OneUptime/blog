@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Data Sources, Local Files, Infrastructure as Code, Configuration
+Tags: Terraform, Data Source, Local Files, Infrastructure as Code, Configuration
 
 Description: Learn how to use the local_file data source in Terraform to read local files from disk and use their content in your infrastructure configuration dynamically.
 

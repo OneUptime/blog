@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Rolling Updates, Deployment, Zero Downtime
+Tags: Istio, Kubernetes, Rolling Update, Deployment, Zero Downtime
 
 Description: How to handle Kubernetes rolling updates when running Istio, including connection draining, startup probes, and avoiding dropped requests during deployments.
 

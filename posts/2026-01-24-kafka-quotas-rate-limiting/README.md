@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Apache Kafka, Rate Limiting, Quotas, Performance, Multi-tenancy, DevOps, Streaming
+Tags: Apache Kafka, Rate Limiting, Quota, Performance, Multi-Tenancy, DevOps, Streaming
 
 Description: Learn how to configure Kafka quotas to implement rate limiting, protect your cluster from runaway clients, and ensure fair resource sharing in multi-tenant environments.
 

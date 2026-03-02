@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, TLS, Certificates
+Tags: Kubernetes, TLS, Certificate
 
 Description: Learn how to configure cert-manager ClusterIssuer resources for cluster-wide certificate management and understand the differences between Issuer and ClusterIssuer configurations.
 

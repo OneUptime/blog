@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Vue.js, Error Boundaries, Exceptions, Spans, Error Tracking
+Tags: OpenTelemetry, Vue.js, Error Boundaries, Exceptions, Span, Error Tracking
 
 Description: Learn how to capture and report Vue.js errors as OpenTelemetry exception spans, including component errors, async errors, and unhandled rejections for comprehensive error tracking.
 

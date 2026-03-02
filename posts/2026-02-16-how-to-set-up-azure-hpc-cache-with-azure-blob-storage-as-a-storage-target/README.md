@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, HPC Cache, Blob Storage, High Performance Computing, NFS, Caching, Data Pipelines
+Tags: Azure, HPC Cache, Blob Storage, High Performance Computing, NFS, Caching, Data Pipeline
 
 Description: A step-by-step guide to deploying Azure HPC Cache with Azure Blob Storage as a backend storage target for high-performance computing workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Load Balancer, URL Maps, Routing, Google Cloud
+Tags: GCP, Load Balancer, URL Map, Routing, Google Cloud
 
 Description: Learn how to configure URL maps for path-based and host-based routing on GCP load balancers to direct traffic to different backend services based on request URLs.
 

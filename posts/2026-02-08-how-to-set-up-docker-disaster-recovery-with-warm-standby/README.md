@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, disaster recovery, warm standby, high availability, replication, failover, infrastructure
+Tags: Docker, Disaster Recovery, Warm Standby, High Availability, Replication, Failover, Infrastructure
 
 Description: Set up a warm standby Docker disaster recovery environment with automated replication, health checks, and failover procedures.
 

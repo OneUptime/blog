@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DevOps, CI/CD, Build Systems, Docker, Reproducibility, Nix, Bazel
+Tags: DevOps, CI/CD, Build System, Docker, Reproducibility, Nix, Bazel
 
 Description: A practical guide to achieving reproducible builds that produce identical outputs regardless of when or where they run.
 

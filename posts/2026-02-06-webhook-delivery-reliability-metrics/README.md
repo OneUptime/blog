@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Webhooks, Metrics, Reliability Monitoring
+Tags: OpenTelemetry, Webhook, Metrics, Reliability Monitoring
 
 Description: Build comprehensive webhook delivery monitoring with OpenTelemetry metrics tracking success rates, retry counts, and delivery latency.
 

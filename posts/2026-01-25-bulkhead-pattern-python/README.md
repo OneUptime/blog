@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Bulkhead Pattern, Resilience, Fault Isolation, asyncio, Design Patterns, Microservices
+Tags: Python, Bulkhead Pattern, Resilience, Fault Isolation, asyncio, Design Pattern, Microservices
 
 Description: Learn how to implement the bulkhead pattern in Python to isolate failures and prevent cascading outages.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Connection Draining, Rolling Updates, Zero Downtime
+Tags: Kubernetes, Connection Draining, Rolling Update, Zero Downtime
 
 Description: Implement connection draining strategies that allow in-flight requests to complete gracefully during rolling updates, preventing connection errors and ensuring zero-downtime deployments.
 

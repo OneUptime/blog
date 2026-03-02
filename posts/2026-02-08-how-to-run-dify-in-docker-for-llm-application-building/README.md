@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, dify, llm, ai applications, rag, chatbot, docker compose, self-hosted
+Tags: Docker, dify, LLM, AI Applications, RAG, Chatbot, Docker Compose, Self-Hosted
 
 Description: Deploy Dify in Docker to build LLM-powered applications with a visual workflow editor, RAG pipelines, chatbots, and agent capabilities.
 

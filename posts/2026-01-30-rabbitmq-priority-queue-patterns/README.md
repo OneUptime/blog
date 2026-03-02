@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RabbitMQ, Priority Queues, Messaging, Patterns
+Tags: RabbitMQ, Priority Queue, Messaging, Patterns
 
 Description: Configure RabbitMQ priority queues for message ordering by importance with proper consumer handling and performance considerations.
 

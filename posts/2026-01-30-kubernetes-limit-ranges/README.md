@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Resource Management, Multi-tenancy, DevOps
+Tags: Kubernetes, Resource Management, Multi-Tenancy, DevOps
 
 Description: Configure LimitRange resources in Kubernetes to set default, minimum, and maximum resource constraints for containers and pods in namespaces.
 

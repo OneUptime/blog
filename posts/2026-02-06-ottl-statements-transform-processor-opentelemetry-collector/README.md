@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, OTTL, Transform, Data Transformation
+Tags: OpenTelemetry, Collector, Processor, OTTL, Transform, Data Transformation
 
 Description: Master OTTL (OpenTelemetry Transformation Language) statements in the Transform processor to manipulate telemetry attributes, resources, and more with powerful expressions.
 

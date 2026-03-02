@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Read Preferences, Consistency, Replica Sets, Performance
+Tags: MongoDB, Read Preferences, Consistency, Replica Set, Performance
 
 Description: Learn how to configure MongoDB read preferences to balance consistency, availability, and latency across replica set members with practical examples.
 

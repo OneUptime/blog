@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Eventarc, Event Filtering, Triggers, Event-Driven
+Tags: GCP, Eventarc, Event Filtering, Trigger, Event-Driven
 
 Description: Learn how to use event filters in Google Cloud Eventarc triggers to route events based on attributes, resource paths, and custom criteria for precise event routing.
 

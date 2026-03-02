@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, localai, openai, api, llm, self-hosted, ai, docker compose
+Tags: Docker, localai, OpenAI, API, LLM, Self-Hosted, AI, Docker Compose
 
 Description: Deploy LocalAI in Docker to run a self-hosted OpenAI-compatible API for text generation, embeddings, image generation, and speech processing.
 

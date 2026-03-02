@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Data Transformation, Automation
+Tags: Ansible, Filter, Data Transformation, Automation
 
 Description: Learn how to use the Ansible items2dict filter to convert lists of key-value pairs into dictionaries for cleaner data handling in loops.
 

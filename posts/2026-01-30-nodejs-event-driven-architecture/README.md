@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, Event-Driven, Architecture, EventEmitter, Design Patterns
+Tags: Node.js, Event-Driven, Architecture, EventEmitter, Design Pattern
 
 Description: Learn how to build scalable event-driven applications in Node.js using EventEmitter, custom events, and async patterns for decoupled systems.
 

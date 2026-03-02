@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, App Signing, iOS, Android, Code Signing, Certificates, Mobile Development
+Tags: React Native, App Signing, iOS, Android, Code Signing, Certificate, Mobile Development
 
 Description: Learn how to properly configure code signing for iOS and Android React Native apps for distribution.
 

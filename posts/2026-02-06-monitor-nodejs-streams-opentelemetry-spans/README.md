@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Node.js, Streams, Monitoring, Performance, Spans
+Tags: OpenTelemetry, Node.js, Streams, Monitoring, Performance, Span
 
 Description: Learn how to instrument Node.js streams with OpenTelemetry spans to track data flow, measure throughput, and identify bottlenecks in your streaming pipelines.
 

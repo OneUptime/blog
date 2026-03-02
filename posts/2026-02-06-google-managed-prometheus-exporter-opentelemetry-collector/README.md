@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Google Cloud, GCP, Prometheus, Managed Prometheus, GMP, Monitoring
+Tags: OpenTelemetry, Collector, Exporter, Google Cloud, GCP, Prometheus, Managed Prometheus, GMP, Monitoring
 
 Description: Complete guide to configuring the Google Managed Prometheus exporter in the OpenTelemetry Collector for scalable metrics monitoring on Google Cloud Platform.
 

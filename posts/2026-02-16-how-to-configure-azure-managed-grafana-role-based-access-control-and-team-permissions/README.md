@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Managed Grafana, RBAC, Access Control, Teams, Azure Active Directory, Permissions
+Tags: Azure, Managed Grafana, RBAC, Access Control, Team, Azure Active Directory, Permissions
 
 Description: Learn how to configure role-based access control and team permissions in Azure Managed Grafana to manage who can view and edit dashboards and data sources.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Testing, envtest, Controllers
+Tags: Kubernetes, Testing, envtest, Controller
 
 Description: Learn how to write comprehensive integration tests for Kubernetes controllers using envtest to run a real API server and etcd without requiring a full cluster.
 

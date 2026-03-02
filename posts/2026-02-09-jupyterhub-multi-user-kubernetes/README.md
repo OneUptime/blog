@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, JupyterHub, Data Science, Machine Learning, Notebooks
+Tags: Kubernetes, JupyterHub, Data Science, Machine Learning, Notebook
 
 Description: Deploy JupyterHub on Kubernetes to provide a multi-user notebook platform for data science teams with GPU support, persistent storage, and authentication.
 

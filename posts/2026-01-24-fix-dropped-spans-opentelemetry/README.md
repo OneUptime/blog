@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Tracing, Debugging, Performance, Observability, Spans, Collector, Troubleshooting
+Tags: OpenTelemetry, Tracing, Debugging, Performance, Observability, Span, Collector, Troubleshooting
 
 Description: A comprehensive guide to diagnosing and fixing dropped spans in OpenTelemetry, covering common causes and practical solutions.
 

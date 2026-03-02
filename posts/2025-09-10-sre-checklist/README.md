@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Site Reliability Engineering, SRE, Reliability, SLOs, Error Budgets, Observability, Incident Management, Automation, DevOps, Operations
+Tags: Site Reliability Engineering, SRE, Reliability, SLO, Error Budget, Observability, Incident Management, Automation, DevOps, Operations
 
 Description: A practical, progressive SRE checklist you can actually implement. Plain explanations. Focus on user impact. Start small, mature deliberately.
 

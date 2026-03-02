@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Load Balancer, URL Rewrite, URL Maps, Traffic Management
+Tags: GCP, Load Balancer, URL Rewrite, URL Map, Traffic Management
 
 Description: Learn how to configure URL rewrite rules on GCP External Application Load Balancer to modify request paths and hosts before they reach your backend services.
 

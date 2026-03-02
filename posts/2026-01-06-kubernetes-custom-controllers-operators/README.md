@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Operators, Custom Controllers, CRD, Go, Kubebuilder, DevOps
+Tags: Kubernetes, Operator, Custom Controllers, CRD, Go, Kubebuilder, DevOps
 
 Description: A comprehensive guide to building custom Kubernetes controllers and operators using Kubebuilder, including CRD design, reconciliation loops, and production deployment patterns.
 

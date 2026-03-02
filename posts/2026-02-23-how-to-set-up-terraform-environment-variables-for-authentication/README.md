@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Authentication, Environment Variables, AWS, Azure, GCP, DevOps, Security
+Tags: Terraform, Authentication, Environment Variable, AWS, Azure, GCP, DevOps, Security
 
 Description: Learn how to configure Terraform authentication using environment variables for AWS, Azure, GCP, and Terraform Cloud without hardcoding credentials in your code.
 

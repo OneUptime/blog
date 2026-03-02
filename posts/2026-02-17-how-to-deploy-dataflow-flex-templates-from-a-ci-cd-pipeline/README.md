@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Dataflow, Flex Templates, CI/CD, DevOps, Cloud Build
+Tags: GCP, Dataflow, Flex Template, CI/CD, DevOps, Cloud Build
 
 Description: Learn how to automate the build, test, and deployment of Dataflow Flex Templates using CI/CD pipelines with Cloud Build and GitHub Actions.
 

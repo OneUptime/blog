@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Debugging, Node.js, Python, Frame Protocol, Error Handling, Real-time
+Tags: WebSocket, Debugging, Node.js, Python, Frame Protocol, Error Handling, Real-Time
 
 Description: A practical guide to diagnosing and fixing 'Invalid Frame Header' WebSocket errors caused by protocol violations, proxy misconfiguration, and data corruption.
 

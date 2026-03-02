@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Seedbox, Linux, Torrents, qBittorrent, Deluge, rTorrent, VPN, Server, Self-Hosting
+Tags: Ubuntu, Seedbox, Linux, torrent, qBittorrent, Deluge, rTorrent, VPN, Server, Self-Hosting
 
 Description: A comprehensive guide to building a fully-featured seedbox on Ubuntu with multiple torrent clients, VPN integration, automation, and monitoring.
 

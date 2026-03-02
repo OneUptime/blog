@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connectors, Exceptions, Error Tracking, Observability
+Tags: OpenTelemetry, Collector, Connector, Exceptions, Error Tracking, Observability
 
 Description: Master the Exceptions Connector in OpenTelemetry Collector to extract exception events from spans and transform them into structured logs for better error tracking and analysis.
 

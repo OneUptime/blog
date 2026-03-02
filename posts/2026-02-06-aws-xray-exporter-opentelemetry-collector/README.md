@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, AWS, X-Ray, Distributed Tracing, Cloud
+Tags: OpenTelemetry, Collector, Exporter, AWS, X-Ray, Distributed Tracing, Cloud
 
 Description: Comprehensive guide to configuring the AWS X-Ray exporter in OpenTelemetry Collector for distributed tracing in AWS environments with IAM roles, VPC endpoints, and service graphs.
 

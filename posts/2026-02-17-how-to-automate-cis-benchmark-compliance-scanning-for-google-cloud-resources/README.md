@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, CIS Benchmarks, Compliance Scanning, Security Command Center, Cloud Security
+Tags: GCP, CIS Benchmark, Compliance Scanning, Security Command Center, Cloud Security
 
 Description: Learn how to automate CIS Google Cloud Foundation Benchmark compliance scanning using Security Command Center, custom scripts, and Infrastructure as Code validation.
 

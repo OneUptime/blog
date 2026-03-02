@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Multi-Cluster
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Multi-Cluster
 
 Description: Learn how to use the ArgoCD ApplicationSet Cluster Decision Resource generator to integrate with external cluster management tools like Open Cluster Management for dynamic cluster targeting.
 

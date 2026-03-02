@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Environment Variables, Configuration, DevOps
+Tags: Ansible, Environment Variable, Configuration, DevOps
 
 Description: Learn how to set and manage environment variables when running commands in Ansible using the environment keyword at play, block, and task levels.
 

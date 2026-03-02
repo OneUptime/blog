@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DNS, Configuration, Pods
+Tags: Kubernetes, DNS, Configuration, POD
 
 Description: Learn how to configure custom DNS resolvers per pod using dnsConfig and nameservers in Kubernetes.
 

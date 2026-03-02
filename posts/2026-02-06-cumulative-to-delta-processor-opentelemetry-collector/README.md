@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Metrics, Cumulative, Delta, Data Transformation
+Tags: OpenTelemetry, Collector, Processor, Metrics, Cumulative, Delta, Data Transformation
 
 Description: Learn how to configure the cumulative to delta processor in OpenTelemetry Collector to convert cumulative metrics into delta metrics for backends that require rate-based data.
 

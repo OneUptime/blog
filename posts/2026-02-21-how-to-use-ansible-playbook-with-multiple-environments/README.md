@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Environments, Infrastructure, DevOps
+Tags: Ansible, Environment, Infrastructure, DevOps
 
 Description: Learn how to manage multiple environments like development, staging, and production with Ansible using separate inventories and group variables.
 

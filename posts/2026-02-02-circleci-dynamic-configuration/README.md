@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: CircleCI, CI/CD, DevOps, Automation, Pipelines, Dynamic Configuration
+Tags: CircleCI, CI/CD, DevOps, Automation, Pipeline, Dynamic Configuration
 
 Description: A practical guide to CircleCI dynamic configuration, covering setup, path filtering, conditional workflows, pipeline parameters, and advanced patterns for optimizing build times.
 

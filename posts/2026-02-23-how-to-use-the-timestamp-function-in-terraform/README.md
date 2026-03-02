@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, timestamp, Time Functions, Resource Triggers, Infrastructure as Code
+Tags: Terraform, Timestamp, Time Functions, Resource Triggers, Infrastructure as Code
 
 Description: Learn how to use Terraform's timestamp function to get the current time in UTC, format it for tags and names, and understand its behavior during plan and apply.
 

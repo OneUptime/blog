@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Jenkins, Blue Ocean, CI/CD, Pipelines, DevOps
+Tags: Jenkins, Blue Ocean, CI/CD, Pipeline, DevOps
 
 Description: Learn how to set up Jenkins Blue Ocean, convert freestyle jobs to pipelines, and visualize builds with the modern UI.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, assert, Validation, Variables, Best Practices
+Tags: Ansible, Assert, Validation, Variables, Best Practices
 
 Description: Learn how to use the Ansible assert module to validate variable values before task execution and catch configuration errors early.
 

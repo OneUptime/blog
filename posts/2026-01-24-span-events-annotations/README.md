@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Tracing, Spans, Events, Observability, Debugging
+Tags: OpenTelemetry, Tracing, Span, Events, Observability, Debugging
 
 Description: Learn how to effectively use span events and annotations in OpenTelemetry to capture detailed timing information, debug data, and contextual metadata within traces.
 

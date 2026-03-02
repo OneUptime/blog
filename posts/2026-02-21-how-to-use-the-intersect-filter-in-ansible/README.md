@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Set Operations, Automation, DevOps
+Tags: Ansible, Filter, Set Operations, Automation, DevOps
 
 Description: Learn how to use the intersect filter in Ansible to find common elements between two lists for access control and compliance checks.
 

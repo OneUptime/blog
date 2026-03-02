@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collections
+Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collection
 
 Description: Learn how to use the sort function in Terraform to order lists of strings lexicographically for consistent and predictable infrastructure configurations.
 

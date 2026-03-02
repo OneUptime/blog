@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Traffic Routing, Namespaces, Kubernetes, Service Mesh
+Tags: Istio, Traffic Routing, Namespace, Kubernetes, Service Mesh
 
 Description: Configure Istio to route traffic differently based on the source namespace of the calling service for multi-tenant and environment isolation.
 

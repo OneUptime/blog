@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Conditional Access, Named Locations, Microsoft Entra ID, IP Restrictions, Zero Trust, Security, Access Control
+Tags: Conditional Access, Named Locations, Microsoft Entra ID, IP Restriction, Zero Trust, Security, Access Control
 
 Description: A step-by-step guide to configuring named locations and using them in Conditional Access policies to enforce IP-based access restrictions in Microsoft Entra ID.
 

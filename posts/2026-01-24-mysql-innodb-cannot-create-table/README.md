@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, InnoDB, Errors, Troubleshooting, Foreign Keys, Database Administration
+Tags: MySQL, InnoDB, Error, Troubleshooting, Foreign Key, Database Administration
 
 Description: A practical guide to diagnosing and fixing InnoDB 'Cannot create table' errors including foreign key issues, tablespace problems, and data type mismatches.
 

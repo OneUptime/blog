@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Btrfs, Snapshots, System Recovery, Filesystem
+Tags: Ubuntu, Btrfs, Snapshot, System Recovery, Filesystem
 
 Description: A practical guide to using Btrfs snapshots on Ubuntu to roll back system changes, recover from failed upgrades, and protect your installation.
 

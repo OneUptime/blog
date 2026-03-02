@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provisioners, remote-exec, SSH, Infrastructure as Code
+Tags: Terraform, Provisioner, remote-exec, SSH, Infrastructure as Code
 
 Description: Learn how to use the remote-exec provisioner in Terraform to execute commands on remote resources over SSH or WinRM for post-creation configuration and bootstrapping.
 

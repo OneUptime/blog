@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, YAML
+Tags: Ansible, Jinja2, Filter, YAML
 
 Description: Learn how to use the to_yaml filter in Ansible templates to serialize data structures into YAML format for configuration files.
 

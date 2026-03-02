@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Nginx, Lua, Dynamic Routing, Web Server
+Tags: Ubuntu, NGINX, Lua, Dynamic Routing, Web Server
 
 Description: Configure Nginx with OpenResty or the lua-nginx-module on Ubuntu to implement dynamic routing logic, request transformation, and custom authentication using Lua scripts.
 

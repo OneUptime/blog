@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, TLS, Certificates, Security, Infrastructure as Code, PKI
+Tags: Terraform, TLS, Certificate, Security, Infrastructure as Code, PKI
 
 Description: Learn how to use the Terraform TLS provider to generate private keys, self-signed certificates, CSRs, and locally-signed certificates for your infrastructure.
 

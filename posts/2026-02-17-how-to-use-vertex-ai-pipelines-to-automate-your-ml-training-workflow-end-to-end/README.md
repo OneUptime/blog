@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Vertex AI, ML Pipelines, MLOps, Kubeflow
+Tags: GCP, Vertex AI, ML Pipeline, MLOps, Kubeflow
 
 Description: Learn how to build and run automated ML training pipelines on Vertex AI using the Kubeflow Pipelines SDK with practical examples.
 

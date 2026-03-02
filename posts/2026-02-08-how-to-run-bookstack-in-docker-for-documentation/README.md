@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, bookstack, documentation, wiki, self-hosted, knowledge-management
+Tags: Docker, BookStack, Documentation, Wiki, Self-Hosted, knowledge-management
 
 Description: Set up BookStack in Docker as a self-hosted documentation platform with organized shelves, books, chapters, and pages.
 

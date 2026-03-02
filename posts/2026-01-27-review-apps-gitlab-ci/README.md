@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Review Apps, Environments, CI/CD, DevOps, Testing
+Tags: GitLab CI, Review Apps, Environment, CI/CD, DevOps, Testing
 
 Description: Learn how to implement review apps in GitLab CI to create temporary environments for every merge request, enabling faster code review and testing.
 

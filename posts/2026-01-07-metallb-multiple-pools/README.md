@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MetalLB, Kubernetes, IP Management, Multi-tenant, Load Balancing
+Tags: MetalLB, Kubernetes, IP Management, Multi-Tenant, Load Balancing
 
 Description: A guide to configuring multiple IP address pools for different service types in MetalLB.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Fastly, CDN, Providers, Infrastructure as Code, Edge Computing
+Tags: Terraform, Fastly, CDN, Provider, Infrastructure as Code, Edge Computing
 
 Description: Step-by-step guide to configuring the Fastly provider in Terraform for managing CDN services, VCL configurations, edge dictionaries, and compute services programmatically.
 

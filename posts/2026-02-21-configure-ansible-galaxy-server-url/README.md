@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ansible Galaxy, Collections, DevOps, Configuration
+Tags: Ansible, Ansible Galaxy, Collection, DevOps, Configuration
 
 Description: Configure Ansible Galaxy to use custom server URLs, private registries, and Automation Hub for downloading collections and roles.
 

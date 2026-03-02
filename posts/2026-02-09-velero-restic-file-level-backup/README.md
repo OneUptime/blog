@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Restic, Kubernetes, Backup, Persistent Volumes
+Tags: Velero, restic, Kubernetes, Backup, Persistent Volume
 
 Description: Learn how to configure Velero with Restic for file-level backup of persistent volumes in Kubernetes. Complete guide covering installation, configuration, and optimization techniques.
 

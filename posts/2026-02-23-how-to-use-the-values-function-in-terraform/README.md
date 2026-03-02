@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collections
+Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collection
 
 Description: Learn how to use the values function in Terraform to extract all values from a map and work with them as a list for resource creation and data processing.
 

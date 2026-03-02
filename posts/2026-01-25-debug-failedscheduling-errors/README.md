@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Scheduling, Troubleshooting, DevOps, Nodes
+Tags: Kubernetes, Scheduling, Troubleshooting, DevOps, Node
 
 Description: Learn how to diagnose and resolve Kubernetes FailedScheduling errors, including insufficient resources, node selector mismatches, taint issues, and affinity rule conflicts.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Federation, Multi-Datacenter, Distributed Systems, High Availability, Message Queues
+Tags: RabbitMQ, Federation, Multi-Datacenter, Distributed Systems, High Availability, Message Queue
 
 Description: A practical guide to configuring RabbitMQ federation for multi-datacenter deployments, enabling message routing across geographically distributed clusters.
 

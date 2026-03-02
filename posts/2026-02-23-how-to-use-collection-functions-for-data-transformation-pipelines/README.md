@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collections, Best Practices
+Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collection, Best Practices
 
 Description: Learn how to build data transformation pipelines in Terraform by combining collection functions to reshape complex inputs into resource-ready configurations.
 

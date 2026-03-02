@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Vertex AI, Pipelines, TFX, MLOps
+Tags: GCP, Vertex AI, Pipeline, TFX, MLOps
 
 Description: Step-by-step guide to building and orchestrating multi-step machine learning workflows using Vertex AI Pipelines with TensorFlow Extended components.
 

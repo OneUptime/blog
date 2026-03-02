@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Docker, Containers, DevOps, Linux
+Tags: Podman, Docker, Container, DevOps, Linux
 
 Description: Learn how to use Podman as a drop-in replacement for Docker with rootless containers, pods, and seamless migration from Docker workflows.
 

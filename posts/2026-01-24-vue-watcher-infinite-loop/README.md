@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vue, Watchers, Debugging, JavaScript, Reactivity, Performance, Troubleshooting
+Tags: Vue, Watcher, Debugging, JavaScript, Reactivity, Performance, Troubleshooting
 
 Description: Learn how to identify and fix infinite loop issues in Vue watchers, including common causes, debugging techniques, and best practices for reactive data handling.
 

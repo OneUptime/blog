@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Subnets, CIDR, IP Addresses, Networking, Infrastructure as Code
+Tags: Terraform, AWS, Subnet, CIDR, IP Addresses, Networking, Infrastructure as Code
 
 Description: Learn how to calculate available IP addresses in AWS subnets with Terraform using CIDR functions, plan subnet sizing, and avoid IP exhaustion in your VPC architecture.
 

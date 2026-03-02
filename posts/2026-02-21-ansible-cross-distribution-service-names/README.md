@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Linux, Cross-Platform, Services, Systemd
+Tags: Ansible, Linux, Cross-Platform, Service, systemd
 
 Description: Map service names across Linux distributions in Ansible so your service management tasks work consistently on any OS.
 

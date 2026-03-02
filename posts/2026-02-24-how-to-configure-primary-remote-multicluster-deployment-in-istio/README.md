@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Multicluster, Primary-Remote, Kubernetes, Control Plane
+Tags: Istio, MultiCluster, Primary-Remote, Kubernetes, Control Plane
 
 Description: How to set up a primary-remote Istio multicluster deployment where one cluster runs the control plane and remotes connect to it.
 

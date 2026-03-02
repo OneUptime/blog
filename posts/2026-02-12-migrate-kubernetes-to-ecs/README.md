@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Kubernetes, Migration, Containers, DevOps
+Tags: AWS, ECS, Kubernetes, Migration, Container, DevOps
 
 Description: Plan and execute a migration from Kubernetes to Amazon ECS including mapping K8s concepts to ECS equivalents and handling the transition
 

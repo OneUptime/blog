@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, E-Commerce, Flash Sales, High Concurrency, Inventory Management, Performance
+Tags: Redis, E-Commerce, Flash Sale, High Concurrency, Inventory Management, Performance
 
 Description: A comprehensive guide to implementing high-concurrency flash sale systems with Redis for inventory management, rate limiting, and fair ordering.
 

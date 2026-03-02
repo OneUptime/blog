@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, Infrastructure as Code, Data Sources
+Tags: Terraform, Troubleshooting, Infrastructure as Code, Data Source
 
 Description: Fix Terraform external data source errors including script failures, JSON output issues, and common pitfalls with the external provider.
 

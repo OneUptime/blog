@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, HashiCorp Vault, Certificates, Security, PKI, Kubernetes
+Tags: Istio, HashiCorp Vault, Certificate, Security, PKI, Kubernetes
 
 Description: How to integrate HashiCorp Vault as the certificate authority for Istio, using Vault's PKI secrets engine to issue workload certificates.
 

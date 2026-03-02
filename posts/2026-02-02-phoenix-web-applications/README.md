@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Elixir, Phoenix, Web Development, MVC, Real-time
+Tags: Elixir, Phoenix, Web Development, MVC, Real-Time
 
 Description: A comprehensive guide to building web applications with Phoenix Framework, covering project setup, routing, controllers, templates, and database integration.
 

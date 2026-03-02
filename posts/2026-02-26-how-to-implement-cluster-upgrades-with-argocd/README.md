@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Multi-Cluster, Cluster Upgrades
+Tags: ArgoCD, GitOps, Kubernetes, Multi-Cluster, Cluster Upgrade
 
 Description: Learn how to implement Kubernetes cluster upgrades with ArgoCD using blue-green cluster patterns, rolling upgrades, and in-place upgrade strategies for zero-downtime updates.
 

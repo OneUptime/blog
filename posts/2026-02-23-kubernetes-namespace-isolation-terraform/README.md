@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Namespaces, Network Policies, RBAC, Security, DevOps
+Tags: Terraform, Kubernetes, Namespace, Network Policies, RBAC, Security, DevOps
 
 Description: Learn how to implement Kubernetes namespace isolation with Terraform using network policies, RBAC, resource quotas, and limit ranges for multi-tenant clusters.
 

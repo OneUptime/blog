@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Namespaces, Multi-Tenancy
+Tags: ArgoCD, GitOps, Kubernetes, Namespace, Multi-Tenancy
 
 Description: Learn how to configure ArgoCD to allow Application resources to be created in namespaces other than argocd, enabling better multi-tenant isolation and team autonomy.
 

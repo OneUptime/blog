@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Envoy, Filters, Proxy, Traffic Management, HTTP Filters, Network Filters, Load Balancing
+Tags: Envoy, Filter, Proxy, Traffic Management, HTTP Filters, Network Filters, Load Balancing
 
 Description: Learn how to configure and use Envoy's native filter system to customize request processing, add authentication, implement rate limiting, and transform traffic.
 

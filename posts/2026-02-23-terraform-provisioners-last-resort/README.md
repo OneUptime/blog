@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provisioners, Best Practices, Infrastructure as Code, Configuration Management
+Tags: Terraform, Provisioner, Best Practices, Infrastructure as Code, Configuration Management
 
 Description: Learn why Terraform documentation recommends provisioners as a last resort, what problems they cause, and what better alternatives exist for common provisioner use cases.
 

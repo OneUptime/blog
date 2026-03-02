@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, kind, Kubernetes, Docker, Local Development, Service Mesh
+Tags: Istio, Kind, Kubernetes, Docker, Local Development, Service Mesh
 
 Description: How to get Istio running on kind clusters for fast local development and CI pipeline testing with Docker-based Kubernetes.
 

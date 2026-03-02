@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Dataflow, Apache Beam, Streaming, Triggers
+Tags: GCP, Google Cloud Dataflow, Apache Beam, Streaming, Trigger
 
 Description: Learn how to configure triggers and accumulation modes in Google Cloud Dataflow streaming pipelines to control when results are emitted and how pane data is managed.
 

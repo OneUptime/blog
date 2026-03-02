@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, BFD, Timers, Performance
+Tags: Kubernetes, MetalLB, BFD, Timer, Performance
 
 Description: Learn how to tune BFD receive and transmit intervals in MetalLB to balance between fast failover detection and CPU overhead.
 

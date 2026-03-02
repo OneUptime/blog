@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Backup, Azure Files, File Shares, Recovery Services Vault, Snapshots, Data Protection, Cloud Storage
+Tags: Azure Backup, Azure Files, File Share, Recovery Services Vault, Snapshot, Data Protection, Cloud Storage
 
 Description: Learn how to configure Azure Backup for Azure File Shares with scheduled snapshots, retention policies, and file-level and share-level restore options.
 

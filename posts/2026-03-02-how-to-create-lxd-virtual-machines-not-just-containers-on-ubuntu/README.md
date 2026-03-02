@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LXD, Virtualization, KVM, Virtual Machines
+Tags: Ubuntu, LXD, Virtualization, KVM, Virtual Machine
 
 Description: Learn how to create full virtual machines (not just containers) using LXD on Ubuntu, including UEFI boot, resource configuration, and differences from LXD containers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Delayed Messages, Scheduling, Message Queues, Task Scheduling, Event-Driven Architecture
+Tags: RabbitMQ, Delayed Messages, Scheduling, Message Queue, Task Scheduling, Event-Driven Architecture
 
 Description: Learn how to implement delayed message delivery in RabbitMQ using the delayed message exchange plugin and TTL-based patterns for scheduling future tasks.
 

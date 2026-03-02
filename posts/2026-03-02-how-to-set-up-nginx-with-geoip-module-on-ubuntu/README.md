@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Nginx, GeoIP, Security, Web Server
+Tags: Ubuntu, NGINX, GeoIP, Security, Web Server
 
 Description: Configure Nginx with the GeoIP module on Ubuntu to restrict access, redirect users, or customize content based on their geographic location.
 

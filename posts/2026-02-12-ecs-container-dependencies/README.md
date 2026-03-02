@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Containers, Task Definition, DevOps
+Tags: AWS, ECS, Container, Task Definition, DevOps
 
 Description: Learn how to configure container startup and shutdown ordering in ECS task definitions using dependency conditions like START, HEALTHY, COMPLETE, and SUCCESS.
 

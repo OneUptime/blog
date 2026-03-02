@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Apigee, API Management, Azure Migration, API Gateway, APIs
+Tags: GCP, Apigee, API Management, Azure Migration, API Gateway, API
 
 Description: A comprehensive guide to migrating your API management layer from Azure API Management to Apigee on Google Cloud with practical steps and examples.
 

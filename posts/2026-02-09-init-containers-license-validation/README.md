@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Containers, Security
+Tags: Kubernetes, Init Container, Security
 
 Description: Learn how to implement init containers that validate software licenses, check entitlements, and verify compliance before allowing your application to start.
 

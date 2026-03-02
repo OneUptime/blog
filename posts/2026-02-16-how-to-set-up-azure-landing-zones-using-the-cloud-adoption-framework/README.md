@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Landing Zones, Cloud Adoption Framework, Governance, Enterprise Architecture, Infrastructure, Platform
+Tags: Azure, Landing Zone, Cloud Adoption Framework, Governance, Enterprise Architecture, Infrastructure, Platform
 
 Description: Set up Azure Landing Zones following the Cloud Adoption Framework to create a well-governed, scalable foundation for your cloud workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, InfluxDB, Time Series, Metrics, Monitoring, Observability
+Tags: OpenTelemetry, Collector, Exporter, InfluxDB, Time Series, Metrics, Monitoring, Observability
 
 Description: Learn how to configure the InfluxDB exporter in the OpenTelemetry Collector for time-series metrics storage and analysis with InfluxDB 2.x and 3.x.
 

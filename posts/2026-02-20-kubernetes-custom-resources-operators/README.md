@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRD, Operators, Custom Resources, Extensibility
+Tags: Kubernetes, CRD, Operator, Custom Resource, Extensibility
 
 Description: A guide to building Kubernetes custom resources and operators using the Operator SDK for extending Kubernetes functionality.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Spot Instances, Cost Optimization, Kubernetes, Azure, Batch Processing, Node Pools
+Tags: AKS, Spot Instances, Cost Optimization, Kubernetes, Azure, Batch Processing, Node Pool
 
 Description: Learn how to use AKS spot node pools to reduce compute costs by up to 90% for fault-tolerant batch workloads and development environments.
 

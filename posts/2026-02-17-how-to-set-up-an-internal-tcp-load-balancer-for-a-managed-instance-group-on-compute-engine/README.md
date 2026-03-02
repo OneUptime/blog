@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Compute Engine, Load Balancer, Internal TCP, Managed Instance Groups
+Tags: GCP, Compute Engine, Load Balancer, Internal TCP, Managed Instance Group
 
 Description: Learn how to set up an internal TCP load balancer for a managed instance group on GCP Compute Engine to distribute traffic across backend instances privately.
 

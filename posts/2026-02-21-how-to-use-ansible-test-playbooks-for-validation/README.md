@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, Validation, Playbooks, DevOps
+Tags: Ansible, Testing, Validation, Playbook, DevOps
 
 Description: How to write dedicated test playbooks that validate your Ansible roles and configurations using assertions, checks, and verification tasks.
 

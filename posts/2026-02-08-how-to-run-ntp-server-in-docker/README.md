@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, NTP, Time Synchronization, Chrony, Networking, Infrastructure
+Tags: Docker, NTP, Time Synchronization, chrony, Networking, Infrastructure
 
 Description: Deploy an NTP time synchronization server in Docker using Chrony to keep all your servers and network devices in sync.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, exit code 137, OOM killer, memory, troubleshooting, containers, SIGKILL
+Tags: Docker, exit code 137, OOM Killer, Memory, Troubleshooting, Container, SIGKILL
 
 Description: Diagnose and fix Docker containers exiting with code 137, typically caused by the OOM killer, manual kills, or insufficient memory limits.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machines, DNS, Networking, Custom DNS, Cloud Configuration
+Tags: Azure, Virtual Machine, DNS, Networking, Custom DNS, Cloud Configuration
 
 Description: Step-by-step guide to configuring custom DNS servers on Azure VMs at the VNet, NIC, and OS level with troubleshooting tips.
 

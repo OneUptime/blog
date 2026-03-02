@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Restic, Backup, DevOps, Data Protection, Linux
+Tags: restic, Backup, DevOps, Data Protection, Linux
 
 Description: Learn how to set up Restic for efficient, encrypted application backups with deduplication, including configuration for local storage, S3 backends, automated scheduling, and restore procedures.
 

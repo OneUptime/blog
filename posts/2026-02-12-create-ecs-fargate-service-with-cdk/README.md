@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CDK, ECS, Fargate, Containers
+Tags: AWS, CDK, ECS, Fargate, Container
 
 Description: Learn how to define and deploy an ECS Fargate service using AWS CDK with TypeScript, including task definitions, load balancers, and auto-scaling.
 

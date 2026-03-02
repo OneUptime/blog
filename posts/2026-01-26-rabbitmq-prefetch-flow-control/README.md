@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Prefetch, Flow Control, QoS, Performance Tuning, Message Queues
+Tags: RabbitMQ, Prefetch, Flow Control, QoS, Performance Tuning, Message Queue
 
 Description: Learn how to configure prefetch count in RabbitMQ for optimal flow control, balancing throughput and fair message distribution across consumers.
 

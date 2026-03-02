@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Journald, Receiver, Linux, Systemd Logs
+Tags: OpenTelemetry, Collector, journald, Receiver, Linux, Systemd Logs
 
 Description: Configure the Journald Receiver to collect systemd logs from Linux systems, filter by units, and integrate system logs into OpenTelemetry pipelines.
 

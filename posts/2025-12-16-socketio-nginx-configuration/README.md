@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Socket.io, Nginx, WebSocket, Real-time, Proxy, DevOps
+Tags: Socket.IO, NGINX, WebSocket, Real-Time, Proxy, DevOps
 
 Description: Learn how to properly configure Nginx as a reverse proxy for Socket.io applications, including WebSocket support, sticky sessions, and troubleshooting common connection issues.
 

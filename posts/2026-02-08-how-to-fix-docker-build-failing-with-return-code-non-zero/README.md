@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, build, non-zero exit code, troubleshooting, dockerfile, RUN instruction, debugging
+Tags: Docker, Build, non-zero exit code, Troubleshooting, Dockerfile, RUN instruction, Debugging
 
 Description: Diagnose and fix Docker build failures caused by non-zero return codes in RUN instructions with debugging techniques and practical workarounds.
 

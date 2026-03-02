@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Arc, Microsoft Defender, Cloud Security, Hybrid Cloud, On-Premises, Security Monitoring, Azure Cloud
+Tags: Azure Arc, Microsoft Defender, Cloud Security, Hybrid Cloud, On-Premise, Security Monitoring, Azure Cloud
 
 Description: Learn how to connect on-premises and multi-cloud servers to Microsoft Defender for Cloud using Azure Arc for unified security posture management and threat protection.
 

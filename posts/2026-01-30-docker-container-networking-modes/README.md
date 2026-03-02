@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, Container Networking, Network Modes
+Tags: Docker, Networking, Container Networking, Network Mode
 
 Description: Learn to implement Docker networking modes including bridge, host, none, and overlay for different connectivity requirements.
 

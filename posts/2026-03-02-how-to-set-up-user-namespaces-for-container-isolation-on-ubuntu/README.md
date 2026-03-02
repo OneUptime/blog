@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Docker, Containers, Linux
+Tags: Ubuntu, Security, Docker, Container, Linux
 
 Description: Learn how to configure Linux user namespaces to isolate container processes from the host, preventing privilege escalation and improving container security on Ubuntu.
 

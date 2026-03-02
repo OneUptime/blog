@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, LaunchDarkly, Feature Flags, Feature Toggles, A/B Testing
+Tags: Java, Spring Boot, LaunchDarkly, Feature Flags, Feature Toggle, A/B Testing
 
 Description: Learn how to implement feature flags in Spring Boot applications using LaunchDarkly. This guide covers SDK setup, flag evaluation, targeting rules, and best practices.
 

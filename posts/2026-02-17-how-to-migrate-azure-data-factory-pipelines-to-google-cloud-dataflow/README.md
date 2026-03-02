@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Dataflow, Azure Migration, Data Pipelines, ETL, Apache Beam
+Tags: GCP, Dataflow, Azure Migration, Data Pipeline, ETL, Apache Beam
 
 Description: A practical guide to migrating Azure Data Factory ETL pipelines to Google Cloud Dataflow using Apache Beam for batch and streaming workloads.
 

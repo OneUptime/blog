@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Pipenv, Dependencies, Virtual Environments
+Tags: Ansible, Python, Pipenv, Dependencies, Virtual Environment
 
 Description: Deploy Python projects that use Pipenv with Ansible including Pipfile.lock handling and environment variable management.
 

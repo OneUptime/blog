@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, Operators, Auto-Instrumentation, Observability, Cloud Native
+Tags: OpenTelemetry, Kubernetes, Operator, Auto-Instrumentation, Observability, Cloud Native
 
 Description: A guide to deploying the OpenTelemetry Operator for automatic instrumentation of Kubernetes workloads.
 

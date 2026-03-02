@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, EBS, Storage, Containers
+Tags: AWS, ECS, EBS, Storage, Container
 
 Description: Learn how to attach Amazon EBS volumes to ECS tasks for high-performance persistent block storage, including configuration for both EC2 and Fargate launch types.
 

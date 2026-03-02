@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Redis Enterprise, AWS ElastiCache, Managed Services, Cloud, Comparison
+Tags: Redis, Redis Enterprise, AWS ElastiCache, Managed Service, Cloud, Comparison
 
 Description: A comprehensive comparison of Redis deployment options including self-hosted Redis OSS, Redis Enterprise Cloud, and AWS ElastiCache covering features, pricing, performance, and use cases.
 

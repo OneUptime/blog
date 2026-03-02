@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Error Budgets, SRE, Reliability
+Tags: OpenTelemetry, Error Budget, SRE, Reliability
 
 Description: Use OpenTelemetry metrics to track error budget consumption, quantify reliability debt, and make data-driven decisions about fix prioritization.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Fargate, EC2, Containers
+Tags: AWS, ECS, Fargate, EC2, Container
 
 Description: A practical comparison of ECS Fargate and EC2 launch types, covering cost, performance, operational complexity, and use cases to help you make the right choice for your workload.
 

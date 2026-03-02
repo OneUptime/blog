@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Services, Networking, StatefulSets, DNS
+Tags: Kubernetes, Service, Networking, StatefulSet, DNS
 
 Description: Learn how to create and use headless Services in Kubernetes for direct pod-to-pod communication. This guide covers DNS records, StatefulSets, and practical use cases.
 

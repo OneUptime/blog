@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, DevOps, Containers, Best Practices
+Tags: Docker, Dockerfile, DevOps, Container, Best Practices
 
 Description: Understand the difference between ENTRYPOINT and CMD in Dockerfiles, when to use each, and how they combine to create flexible container configurations for development and production.
 

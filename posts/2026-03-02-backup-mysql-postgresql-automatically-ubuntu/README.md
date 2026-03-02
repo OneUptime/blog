@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backup, MySQL, PostgreSQL, Databases
+Tags: Ubuntu, Backup, MySQL, PostgreSQL, Database
 
 Description: Learn how to automate MySQL and PostgreSQL database backups on Ubuntu using dump tools, compression, rotation policies, and cron scheduling.
 

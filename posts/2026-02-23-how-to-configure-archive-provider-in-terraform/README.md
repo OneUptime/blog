@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Archive, Lambda, Infrastructure as Code
+Tags: Terraform, Provider, Archive, Lambda, Infrastructure as Code
 
 Description: Learn how to use the Archive provider in Terraform to create zip files for Lambda functions, Cloud Functions, and other deployment packages.
 

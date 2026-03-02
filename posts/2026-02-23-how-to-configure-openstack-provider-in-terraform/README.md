@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, OpenStack, Private Cloud, Infrastructure as Code
+Tags: Terraform, Provider, OpenStack, Private Cloud, Infrastructure as Code
 
 Description: A comprehensive guide to configuring the OpenStack provider in Terraform for managing compute instances, networks, storage, and other cloud resources.
 

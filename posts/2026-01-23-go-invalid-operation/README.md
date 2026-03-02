@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Errors, Types, Operations, Compiler
+Tags: Go, Golang, Error, Types, Operations, Compiler
 
 Description: Learn how to fix 'invalid operation' errors in Go, including type mismatches, unsupported operators, and interface assertions.
 

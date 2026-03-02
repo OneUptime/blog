@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, AWS Lambda, Lambda Extensions, Lifecycle, Monitoring, Serverless, Observability
+Tags: OpenTelemetry, AWS Lambda, Lambda Extension, Lifecycle, Monitoring, Serverless, Observability
 
 Description: Learn how to monitor and trace the AWS Lambda extension lifecycle phases using OpenTelemetry for deeper visibility into init, invoke, and shutdown behavior.
 

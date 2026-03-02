@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, DigitalOcean, App Platform, Cloud, PaaS, Deployment, DevOps, Containers
+Tags: Docker, DigitalOcean, App Platform, Cloud, PaaS, Deployment, DevOps, Container
 
 Description: Learn how to deploy Docker containers on DigitalOcean App Platform with automatic builds, scaling, and managed infrastructure.
 

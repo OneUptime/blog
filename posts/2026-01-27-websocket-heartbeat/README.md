@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: WebSocket, Heartbeat, Ping-Pong, Connection Health, Real-time, Node.js, DevOps
+Tags: WebSocket, Heartbeat, Ping-Pong, Connection Health, Real-Time, Node.js, DevOps
 
 Description: Learn how to implement WebSocket heartbeat mechanisms using protocol-level ping/pong frames and application-level heartbeats to detect stale connections and maintain reliable real-time communication.
 

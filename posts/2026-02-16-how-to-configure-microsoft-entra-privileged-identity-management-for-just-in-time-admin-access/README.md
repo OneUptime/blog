@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Microsoft Entra ID, PIM, Privileged Identity Management, Just-in-Time Access, Security, Zero Trust
+Tags: Azure, Microsoft Entra ID, PIM, Privileged Identity Management, Just-In-Time Access, Security, Zero Trust
 
 Description: Configure Privileged Identity Management in Microsoft Entra ID to provide just-in-time administrative access and reduce standing privilege risks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CNI, Networking, Plugins, Configuration
+Tags: Kubernetes, CNI, Networking, Plugin, Configuration
 
 Description: Learn how to chain CNI plugins to combine networking capabilities including bandwidth limiting, port mapping, firewall rules, and advanced traffic shaping in Kubernetes clusters.
 

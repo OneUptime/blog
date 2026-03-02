@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kafka, Kafka Connect, Data Integration, ETL, Streaming, Apache Kafka, Connectors, Real-Time Data
+Tags: Kafka, Kafka Connect, Data Integration, ETL, Streaming, Apache Kafka, Connector, Real-Time Data
 
 Description: A comprehensive guide to using Kafka Connect for data integration, covering architecture, source and sink connectors, transformations, deployment modes.
 

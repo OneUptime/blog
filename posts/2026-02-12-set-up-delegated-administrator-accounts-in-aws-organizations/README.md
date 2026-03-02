@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Organizations, Delegated Administrator, Multi-Account, Security, Governance
+Tags: AWS, Organization, Delegated Administrator, Multi-Account, Security, Governance
 
 Description: Learn how to set up delegated administrator accounts in AWS Organizations to distribute management responsibilities without sharing management account access.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Kubernetes, Resource Quotas, Limit Ranges, Azure, Capacity Planning, Multi-Tenancy
+Tags: AKS, Kubernetes, Resource Quota, Limit Ranges, Azure, Capacity Planning, Multi-Tenancy
 
 Description: A practical guide to implementing resource quotas and limit ranges on AKS to prevent resource hogging and ensure fair allocation across namespaces.
 

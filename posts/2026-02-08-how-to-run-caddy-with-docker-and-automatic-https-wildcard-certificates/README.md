@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Caddy, Web Servers, HTTPS, SSL, DevOps, Reverse Proxy
+Tags: Docker, Caddy, Web Server, HTTPS, SSL, DevOps, Reverse Proxy
 
 Description: Learn how to deploy Caddy web server in Docker with automatic HTTPS and wildcard certificate provisioning using Let's Encrypt and DNS challenges.
 

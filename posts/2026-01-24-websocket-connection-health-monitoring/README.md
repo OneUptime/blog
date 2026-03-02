@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Monitoring, Observability, Node.js, Real-time, Performance, Metrics
+Tags: WebSocket, Monitoring, Observability, Node.js, Real-Time, Performance, Metrics
 
 Description: Learn how to implement comprehensive health monitoring for WebSocket connections, including heartbeat mechanisms, latency tracking, and alerting on connection anomalies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, docker network, api testing, microservices, docker compose, networking
+Tags: Docker, Docker Network, API Testing, Microservices, Docker Compose, Networking
 
 Description: Learn how to configure Docker networks so multiple services can communicate during API integration testing.
 

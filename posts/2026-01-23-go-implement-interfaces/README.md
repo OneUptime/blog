@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Interfaces, Duck Typing, Polymorphism, Design Patterns
+Tags: Go, Golang, interface, Duck Typing, Polymorphism, Design Pattern
 
 Description: Learn how Go's implicit interface implementation works, common pitfalls, and best practices for designing clean, effective interfaces in your code.
 

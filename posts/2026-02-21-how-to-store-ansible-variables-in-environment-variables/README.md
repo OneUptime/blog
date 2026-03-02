@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Environment Variables, Variables, DevOps
+Tags: Ansible, Environment Variable, Variables, DevOps
 
 Description: Learn how to use operating system environment variables to pass configuration and secrets into Ansible playbooks without storing them in files.
 

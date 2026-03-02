@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, File Watcher, Debouncing, notify, File System
+Tags: Rust, File Watcher, Debouncing, NOTIFY, File System
 
 Description: Learn how to build a robust file watcher in Rust using the notify crate, with proper debouncing to handle rapid file system events without overwhelming your application.
 

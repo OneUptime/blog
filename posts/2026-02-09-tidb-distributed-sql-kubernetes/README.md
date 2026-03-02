@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TiDB, Kubernetes, Databases
+Tags: TiDB, Kubernetes, Database
 
 Description: Learn how to deploy and manage TiDB, a MySQL-compatible distributed SQL database, on Kubernetes using the TiDB Operator for horizontal scalability and high availability.
 

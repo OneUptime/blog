@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, HCL, Infrastructure as Code, Multi-Environment
+Tags: Terraform, Workspace, HCL, Infrastructure as Code, Multi-Environment
 
 Description: Learn how to use the terraform.workspace reference in Terraform to create environment-aware configurations that adapt based on the active workspace.
 

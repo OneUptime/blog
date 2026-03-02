@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Tracing, Cloud Providers, AWS X-Ray, Google Cloud Trace, Azure Monitor
+Tags: Istio, Tracing, Cloud Provider, AWS X-Ray, Google Cloud Trace, Azure Monitor
 
 Description: How to export distributed traces from Istio to major cloud provider tracing services including AWS X-Ray, Google Cloud Trace, and Azure Monitor.
 

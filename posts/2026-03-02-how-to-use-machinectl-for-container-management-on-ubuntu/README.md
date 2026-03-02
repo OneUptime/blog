@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Containers, machinectl, nspawn
+Tags: Ubuntu, systemd, Container, machinectl, nspawn
 
 Description: Use machinectl to manage systemd-nspawn containers on Ubuntu, including pulling images, starting machines, managing resources, and accessing container shells.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Postal, Mail Server, Email, SMTP, Self-Hosted, Containers, DevOps, Transactional Email
+Tags: Docker, Postal, Mail Server, Email, SMTP, Self-Hosted, Container, DevOps, Transactional Email
 
 Description: Deploy Postal, an open-source mail delivery platform, in Docker for handling transactional and outbound email with tracking, webhooks, and multiple organization support.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Next.js, Internationalization, i18n, Localization, React, Web Development, Multi-language
+Tags: Next.js, Internationalization, i18n, Localization, React, Web Development, Multi-Language
 
 Description: A complete guide to implementing internationalization (i18n) in Next.js applications with routing, translations, and best practices.
 

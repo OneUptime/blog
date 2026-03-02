@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NATS, Docker, Messaging, Microservices, Containers, Pub-Sub
+Tags: NATS, Docker, Messaging, Microservices, Container, Pub-Sub
 
 Description: Learn how to deploy and configure NATS messaging system with Docker, including single-node setup, clustering, JetStream persistence, and production-ready configurations with practical examples.
 

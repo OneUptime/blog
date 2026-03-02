@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: PostgreSQL, Vector Database, AI, RAG, Embeddings, Semantic Search
+Tags: PostgreSQL, Vector Database, AI, RAG, Embedding, Semantic Search
 
 Description: A practical guide to integrating pgvector with PostgreSQL for building AI-powered applications with semantic search, similarity matching, and retrieval-augmented generation.
 

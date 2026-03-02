@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Kubernetes, MicroK8s, Development, Containers
+Tags: Ubuntu, Kubernetes, MicroK8s, Development, Container
 
 Description: Complete guide to installing and configuring MicroK8s on Ubuntu for local development, including enabling add-ons, managing the cluster, and deploying test workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Database, Troubleshooting, Cursors, Performance
+Tags: MongoDB, Database, Troubleshooting, Cursor, Performance
 
 Description: Learn how to diagnose and fix MongoDB cursor killed errors caused by timeouts, server restarts, and resource constraints, with strategies for robust cursor handling and batch processing.
 

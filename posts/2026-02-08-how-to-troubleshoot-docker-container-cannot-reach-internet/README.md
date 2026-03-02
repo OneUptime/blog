@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, Troubleshooting, DNS, Containers, DevOps
+Tags: Docker, Networking, Troubleshooting, DNS, Container, DevOps
 
 Description: A systematic guide to diagnosing and fixing Docker containers that cannot reach the internet, covering DNS, routing, firewall, and bridge issues.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Travel Insurance, Policy Issuance, Fintech
+Tags: OpenTelemetry, Travel Insurance, Policy Issuance, FinTech
 
 Description: Trace travel insurance quoting and policy issuance workflows with OpenTelemetry for reliable and auditable insurance operations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Python, FastAPI, WebSockets, Real-time, Async
+Tags: Python, FastAPI, WebSocket, Real-Time, Async
 
 Description: Learn how to implement WebSocket connections in FastAPI for real-time communication, including connection management, broadcasting, and authentication.
 

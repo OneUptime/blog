@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CrashLoopBackOff, Debugging, Troubleshooting, Pods
+Tags: Kubernetes, CrashLoopBackOff, Debugging, Troubleshooting, POD
 
 Description: A systematic guide to debugging CrashLoopBackOff errors in Kubernetes including common causes and step-by-step resolution.
 

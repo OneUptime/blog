@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Namespaces, Authorization, Service Mesh
+Tags: Istio, Kubernetes, Namespace, Authorization, Service Mesh
 
 Description: Practical techniques for managing and controlling cross-namespace service communication in Istio using authorization policies and sidecar configurations.
 

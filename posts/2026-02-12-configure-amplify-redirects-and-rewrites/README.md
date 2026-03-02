@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Amplify, Redirects, Rewrites, Routing, SEO, Frontend
+Tags: AWS, Amplify, Redirect, Rewrites, Routing, SEO, Frontend
 
 Description: Complete guide to setting up redirects and rewrites in AWS Amplify for clean URLs, SEO migrations, and SPA routing
 

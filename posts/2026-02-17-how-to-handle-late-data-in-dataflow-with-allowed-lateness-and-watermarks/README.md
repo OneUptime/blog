@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Dataflow, Apache Beam, Streaming, Watermarks
+Tags: GCP, Google Cloud Dataflow, Apache Beam, Streaming, Watermark
 
 Description: Understand how watermarks and allowed lateness work in Google Cloud Dataflow to handle late-arriving data in streaming pipelines without losing records.
 

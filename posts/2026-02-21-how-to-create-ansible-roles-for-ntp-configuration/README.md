@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, NTP, Chrony, Time Synchronization, DevOps
+Tags: Ansible, NTP, chrony, Time Synchronization, DevOps
 
 Description: Build an Ansible role for consistent NTP time synchronization using Chrony across your entire server fleet with proper monitoring and alerting.
 

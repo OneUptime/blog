@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Variables, Filters, Data Transformation, DevOps
+Tags: Ansible, Variables, Filter, Data Transformation, DevOps
 
 Description: Learn how to convert between list and dictionary data structures in Ansible using dict2items, items2dict, zip, and other transformation filters.
 

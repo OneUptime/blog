@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Ownership, Move Semantics, Errors, Debugging
+Tags: Rust, Ownership, Move Semantics, Error, Debugging
 
 Description: Learn how to diagnose and fix 'use of moved value' errors in Rust. Understand move semantics and discover patterns to work with ownership correctly.
 

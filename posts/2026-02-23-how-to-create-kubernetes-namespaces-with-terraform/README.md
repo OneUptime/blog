@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Namespaces, Infrastructure as Code, DevOps
+Tags: Terraform, Kubernetes, Namespace, Infrastructure as Code, DevOps
 
 Description: A hands-on guide to creating and managing Kubernetes namespaces using Terraform with practical examples and best practices.
 

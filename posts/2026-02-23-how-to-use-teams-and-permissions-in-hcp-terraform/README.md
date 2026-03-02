@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Terraform Cloud, Teams, Permissions, Access Control, IAM
+Tags: Terraform, HCP Terraform, Terraform Cloud, Team, Permissions, Access Control, IAM
 
 Description: A practical guide to setting up teams and managing permissions in HCP Terraform to enforce proper access control across your organization.
 

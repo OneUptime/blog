@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Window Functions, Analytics, SQL, ROW_NUMBER, LAG, LEAD, Running Totals, Moving Averages
+Tags: ClickHouse, Window Functions, Analytics, SQL, ROW_NUMBER, LAG, LEAD, Running Totals, Moving Average
 
 Description: A comprehensive guide to using ClickHouse window functions for analytics, covering ROW_NUMBER, LAG, LEAD, running totals, moving averages, and advanced analytical patterns.
 

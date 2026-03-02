@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Golden Signals, Cloud Monitoring, Dashboards, SRE, Observability, Google Cloud
+Tags: GCP, Golden Signals, Cloud Monitoring, Dashboard, SRE, Observability, Google Cloud
 
 Description: Learn how to build unified observability dashboards on Google Cloud that combine all four golden signals - latency, traffic, errors, and saturation.
 

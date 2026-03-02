@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SRE, Observability, Monitoring, SLOs, SLIs, Error Budgets, Prometheus, Reliability
+Tags: SRE, Observability, Monitoring, SLO, SLI, Error Budget, Prometheus, Reliability
 
 Description: Learn how to define, measure, and manage Service Level Objectives to balance reliability with feature development velocity.
 

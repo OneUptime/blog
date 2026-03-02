@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Metrics, Views, Aggregation, Histograms, SDK, Observability
+Tags: OpenTelemetry, Metrics, Views, Aggregation, Histogram, SDK, Observability
 
 Description: Learn how to use OpenTelemetry metric views to customize aggregation types, histogram bucket boundaries, and attribute filtering at the SDK level.
 

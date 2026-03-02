@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Filestore, GKE, Kubernetes, ReadWriteMany, Persistent Volumes
+Tags: GCP, Filestore, GKE, Kubernetes, ReadWriteMany, Persistent Volume
 
 Description: Learn how to set up Filestore as a ReadWriteMany persistent volume backend for GKE workloads that require shared filesystem access across multiple pods.
 

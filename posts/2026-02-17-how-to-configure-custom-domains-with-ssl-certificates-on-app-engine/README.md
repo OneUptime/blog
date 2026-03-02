@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, App Engine, Custom Domains, SSL, HTTPS
+Tags: GCP, App Engine, Custom Domain, SSL, HTTPS
 
 Description: Step-by-step instructions for setting up custom domains and SSL certificates on Google App Engine for production-ready applications.
 

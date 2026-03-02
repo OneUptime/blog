@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Containers, DevOps, Maintenance, Storage
+Tags: Docker, Container, DevOps, Maintenance, Storage
 
 Description: Master docker system df, prune commands, dangling images, build cache, and reclaiming space safely without breaking running workloads.
 

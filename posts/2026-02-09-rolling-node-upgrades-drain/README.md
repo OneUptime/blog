@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Upgrades, Operations
+Tags: Kubernetes, Upgrade, Operations
 
 Description: Execute safe rolling worker node upgrades using kubectl drain and uncordon commands, minimizing application disruption through controlled pod evacuation and PodDisruptionBudgets.
 

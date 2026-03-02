@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Couchbase, Databases, NoSQL, Clustering, DevOps
+Tags: Docker, Couchbase, Database, NoSQL, Clustering, DevOps
 
 Description: Learn how to deploy a Couchbase cluster in Docker with multi-node setup, bucket configuration, and N1QL queries
 

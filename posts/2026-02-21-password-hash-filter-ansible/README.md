@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Security, User Management
+Tags: Ansible, Jinja2, Filter, Security, User Management
 
 Description: Learn how to use the password_hash filter in Ansible to generate secure password hashes for Linux user management and authentication.
 

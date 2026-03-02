@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Go, Kubectl, DevOps, CLI
+Tags: Kubernetes, Go, kubectl, DevOps, CLI
 
 Description: Learn how to build custom kubectl plugins in Go to automate team-specific Kubernetes workflows, reduce repetitive tasks, and extend kubectl functionality with practical examples and best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Serde, JSON, Serialization, Data Formats
+Tags: Rust, serde, JSON, Serialization, Data Formats
 
 Description: A comprehensive guide to using serde for serialization and deserialization in Rust. Learn derive macros, attributes, custom serializers, and working with JSON, YAML, and other formats.
 

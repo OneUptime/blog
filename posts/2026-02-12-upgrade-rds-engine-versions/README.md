@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, RDS, Upgrades, Database, Operations
+Tags: AWS, RDS, Upgrade, Database, Operations
 
 Description: A comprehensive guide to upgrading Amazon RDS database engine versions including minor and major version upgrades with testing strategies and rollback plans.
 

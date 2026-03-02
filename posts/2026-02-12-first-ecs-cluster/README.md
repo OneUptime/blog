@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Containers, Docker, Cloud
+Tags: AWS, ECS, Container, Docker, Cloud
 
 Description: A beginner-friendly guide to creating your first Amazon ECS cluster, covering cluster types, configuration options, and getting your cluster ready for running containers.
 

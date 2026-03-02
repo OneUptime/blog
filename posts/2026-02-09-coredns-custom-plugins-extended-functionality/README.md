@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CoreDNS, DNS, Go, Plugins
+Tags: Kubernetes, CoreDNS, DNS, Go, Plugin
 
 Description: Learn how to develop and deploy custom CoreDNS plugins to extend DNS functionality in Kubernetes with domain-specific logic, custom record types, and advanced query handling.
 

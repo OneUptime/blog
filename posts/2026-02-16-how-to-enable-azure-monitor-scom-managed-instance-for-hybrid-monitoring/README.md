@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Monitor, SCOM, Hybrid Monitoring, System Center, On-Premises, Azure Cloud, Infrastructure Monitoring
+Tags: Azure Monitor, SCOM, Hybrid Monitoring, System Center, On-Premise, Azure Cloud, Infrastructure Monitoring
 
 Description: Learn how to deploy Azure Monitor SCOM Managed Instance to extend your existing SCOM monitoring into Azure for hybrid infrastructure visibility.
 

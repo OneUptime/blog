@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Lightsail, Containers, Docker
+Tags: AWS, Lightsail, Container, Docker
 
 Description: Deploy containerized applications on Amazon Lightsail Container Service with step-by-step instructions for building, pushing, and managing Docker containers.
 

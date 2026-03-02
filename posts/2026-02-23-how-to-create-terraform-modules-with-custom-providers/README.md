@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Custom Providers, Provider Development, Infrastructure as Code
+Tags: Terraform, Modules, Custom Provider, Provider Development, Infrastructure as Code
 
 Description: Learn how to create Terraform modules that use custom or third-party providers for managing specialized infrastructure, internal APIs, and non-standard resources.
 

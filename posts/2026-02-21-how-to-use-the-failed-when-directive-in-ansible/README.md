@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Error Handling, DevOps, Playbooks
+Tags: Ansible, Error Handling, DevOps, Playbook
 
 Description: Learn how to use the failed_when directive in Ansible to define custom failure conditions and handle non-standard exit codes properly.
 

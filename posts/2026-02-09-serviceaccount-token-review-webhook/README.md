@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Authentication, Webhooks
+Tags: Kubernetes, Authentication, Webhook
 
 Description: Implement ServiceAccount token review using the TokenReview API to validate and authenticate webhook requests with Kubernetes identities for secure service integration.
 

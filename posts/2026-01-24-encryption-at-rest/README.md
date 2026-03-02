@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Security, Encryption, Data Protection, Databases, Cloud Security, Compliance
+Tags: Security, Encryption, Data Protection, Database, Cloud Security, Compliance
 
 Description: Learn how to implement encryption at rest to protect sensitive data in databases, file systems, and cloud storage.
 

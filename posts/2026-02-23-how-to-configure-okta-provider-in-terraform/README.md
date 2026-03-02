@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Okta, Identity, SSO, Infrastructure as Code
+Tags: Terraform, Provider, Okta, Identity, SSO, Infrastructure as Code
 
 Description: A practical guide to configuring the Okta provider in Terraform for managing applications, users, groups, policies, and SSO configurations as code.
 

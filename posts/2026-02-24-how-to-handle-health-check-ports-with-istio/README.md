@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Health Checks, Ports, Kubernetes, Networking
+Tags: Istio, Health Check, Port, Kubernetes, Networking
 
 Description: Manage health check port configurations in Istio, including dedicated health ports, port exclusions, and handling port conflicts with the sidecar proxy.
 

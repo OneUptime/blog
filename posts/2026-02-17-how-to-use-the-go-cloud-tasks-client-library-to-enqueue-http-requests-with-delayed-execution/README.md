@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Tasks, Go, Task Queues, Google Cloud, Serverless
+Tags: GCP, Cloud Tasks, Go, Task Queue, Google Cloud, Serverless
 
 Description: Learn how to use the Go Cloud Tasks client library to enqueue HTTP requests with delayed execution for background job processing on GCP.
 

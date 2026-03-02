@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: HashiCorp Vault, Docker, Secrets Management, Security, DevOps, Containers, Infrastructure
+Tags: HashiCorp Vault, Docker, Secrets Management, Security, DevOps, Container, Infrastructure
 
 Description: Learn how to deploy and configure HashiCorp Vault with Docker for secure secrets management.
 

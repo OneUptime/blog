@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: istio, distributed tracing, latency, jaeger, kiali, observability, microservices, kubernetes, telemetry
+Tags: Istio, Distributed Tracing, Latency, Jaeger, Kiali, Observability, Microservices, Kubernetes, Telemetry
 
 Description: Learn how to trace and analyze network latency between microservices using Istio's telemetry, Kiali dashboard, and Jaeger distributed tracing integration.
 

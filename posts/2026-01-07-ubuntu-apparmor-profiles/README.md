@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, AppArmor, Security, Containers
+Tags: Ubuntu, Linux, AppArmor, Security, Container
 
 Description: Write custom AppArmor profiles to confine applications on Ubuntu. Covers enforce vs complain modes, profile syntax, debugging denials, and Docker container integration.
 

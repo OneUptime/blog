@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: WebSocket, Connection Management, Node.js, Python, Go, Scaling, Real-time
+Tags: WebSocket, Connection Management, Node.js, Python, Go, Scaling, Real-Time
 
 Description: Learn how to handle WebSocket connection limits effectively with practical implementations including connection tracking, graceful rejection, load shedding strategies, and monitoring across Node.
 

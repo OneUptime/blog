@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Attributes, Grouping, Metrics, Resource, Cardinality
+Tags: OpenTelemetry, Collector, Processor, Attributes, Grouping, Metrics, Resource, Cardinality
 
 Description: Learn how to configure the group-by-attributes processor in OpenTelemetry Collector to reorganize telemetry attributes, reduce cardinality, optimize storage costs.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NodeJS, Nginx, DevOps, Reverse Proxy, Performance
+Tags: NodeJS, NGINX, DevOps, Reverse Proxy, Performance
 
 Description: Learn how to configure Nginx as a reverse proxy for Node.js applications, handle load balancing, SSL termination, and optimize performance for production deployments.
 

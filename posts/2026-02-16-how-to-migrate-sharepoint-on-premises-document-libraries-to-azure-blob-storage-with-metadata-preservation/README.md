@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SharePoint, Azure Blob Storage, Migration, Metadata, On-Premises, Cloud Migration, PowerShell
+Tags: SharePoint, Azure Blob Storage, Migration, Metadata, On-Premise, Cloud Migration, PowerShell
 
 Description: Migrate SharePoint on-premises document libraries to Azure Blob Storage while preserving metadata, permissions, and folder structure.
 

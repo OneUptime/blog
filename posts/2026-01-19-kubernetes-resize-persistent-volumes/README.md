@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Persistent Volumes, PVC, Storage, Volume Expansion, CSI, DevOps
+Tags: Kubernetes, Persistent Volume, PVC, Storage, Volume Expansion, CSI, DevOps
 
 Description: Learn how to expand Kubernetes Persistent Volumes without downtime using volume expansion features, including online resizing, storage class configuration, and handling different CSI drivers.
 

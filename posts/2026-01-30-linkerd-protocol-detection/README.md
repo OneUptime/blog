@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Linkerd, Kubernetes, ServiceMesh, Protocols
+Tags: Linkerd, Kubernetes, ServiceMesh, Protocol
 
 Description: Learn how Linkerd automatically detects protocols like HTTP, HTTP/2, gRPC, and TCP to enable smart traffic management without manual configuration.
 

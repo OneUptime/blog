@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, lsof, Debugging, Files, Sockets
+Tags: Kubernetes, lsof, Debugging, File, Sockets
 
 Description: Master lsof command to inspect open files, network sockets, and file descriptors in Kubernetes containers for troubleshooting.
 

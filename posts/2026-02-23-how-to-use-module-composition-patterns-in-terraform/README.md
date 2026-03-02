@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Composition, Design Patterns, Infrastructure as Code
+Tags: Terraform, Modules, Composition, Design Pattern, Infrastructure as Code
 
 Description: Explore practical module composition patterns in Terraform including layered architecture, facade modules, and hub-and-spoke designs for scalable infrastructure.
 

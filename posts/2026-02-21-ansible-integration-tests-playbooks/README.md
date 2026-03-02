@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, Integration, Playbooks, CI/CD
+Tags: Ansible, Testing, Integration, Playbook, CI/CD
 
 Description: Build integration tests for Ansible playbooks that validate multi-role interactions, service dependencies, and end-to-end workflows.
 

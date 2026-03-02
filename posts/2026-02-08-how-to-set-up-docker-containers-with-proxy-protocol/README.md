@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Proxy Protocol, Networking, Nginx, HAProxy, Load Balancing, Containers
+Tags: Docker, Proxy Protocol, Networking, NGINX, HAProxy, Load Balancing, Container
 
 Description: Configure Proxy Protocol for Docker containers to preserve client IP addresses across load balancers and reverse proxies.
 

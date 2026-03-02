@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Services, LoadBalancer, Networking, Troubleshooting
+Tags: Kubernetes, Service, LoadBalancer, Networking, Troubleshooting
 
 Description: Learn why Kubernetes Services show External IP as Pending and how to fix it. This guide covers cloud load balancers, MetalLB for bare metal, and alternative approaches.
 

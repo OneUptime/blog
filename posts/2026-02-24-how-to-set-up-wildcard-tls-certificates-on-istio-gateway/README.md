@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, TLS, Wildcard Certificates, Gateway, Kubernetes
+Tags: Istio, TLS, Wildcard Certificate, Gateway, Kubernetes
 
 Description: How to configure wildcard TLS certificates on Istio ingress gateway to serve all subdomains under a single domain with one certificate and automatic renewal.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Native Modules, Performance, iOS, Android, Bridge, TypeScript
+Tags: React Native, Native Module, Performance, iOS, Android, Bridge, TypeScript
 
 Description: Learn how to create native modules in React Native to handle CPU-intensive tasks with native performance on iOS and Android.
 

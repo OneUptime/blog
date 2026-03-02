@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Egress, Payments, Security, Kubernetes, PCI Compliance
+Tags: Istio, Egress, Payment, Security, Kubernetes, PCI Compliance
 
 Description: Configure Istio egress rules for payment service providers like Stripe, PayPal, and Braintree while maintaining PCI compliance and security best practices.
 

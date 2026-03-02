@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Authorization, Ports, Security, Kubernetes
+Tags: Istio, Authorization, Port, Security, Kubernetes
 
 Description: How to write Istio authorization policies that target specific ports, including HTTP ports, TCP ports, and multi-port workloads.
 

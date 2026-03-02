@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, RUN, Build Optimization, Layers, DevOps
+Tags: Docker, Dockerfile, RUN, Build Optimization, Layer, DevOps
 
 Description: Learn how to write efficient RUN instructions in Dockerfiles to minimize image size, reduce build times, and avoid common pitfalls.
 

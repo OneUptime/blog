@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, Filesystem, Containers
+Tags: Ubuntu, Linux, Filesystem, Container
 
 Description: Learn how OverlayFS works on Ubuntu and how to set up overlay mounts for layered filesystems, understanding the mechanism that powers Docker container layers.
 

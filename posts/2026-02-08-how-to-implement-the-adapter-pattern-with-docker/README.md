@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Adapter Pattern, Design Patterns, Microservices, Container Architecture, DevOps
+Tags: Docker, Adapter Pattern, Design Pattern, Microservices, Container Architecture, DevOps
 
 Description: Implement the Adapter container pattern in Docker to transform, normalize, and standardize interfaces between heterogeneous services.
 

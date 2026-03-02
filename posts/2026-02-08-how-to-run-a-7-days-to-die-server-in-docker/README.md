@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, 7 Days to Die, Game Server, Containers, Self-Hosted, Gaming, Multiplayer, Survival, Zombie
+Tags: Docker, 7 Days to Die, Game Server, Container, Self-Hosted, Gaming, Multiplayer, Survival, Zombie
 
 Description: Deploy a dedicated 7 Days to Die server in Docker with world customization, blood moon settings, player management, and automated backups.
 

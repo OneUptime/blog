@@ -2,7 +2,7 @@
 
 Author: [devneelpatel](https://www.github.com/devneelpatel)
 
-Tags: Kubernetes, Microk8s
+Tags: Kubernetes, MicroK8s
 
 Description: MetalLB is a load-balancer implementation for bare metal Kubernetes clusters, using standard routing protocols. This guide will help you configure MetalLB with Kubernetes (Microk8s).
 

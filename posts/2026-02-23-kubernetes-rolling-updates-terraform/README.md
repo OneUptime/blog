@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Rolling Updates, Deployment Strategy, Zero Downtime, DevOps
+Tags: Terraform, Kubernetes, Rolling Update, Deployment Strategy, Zero Downtime, DevOps
 
 Description: Learn how to configure Kubernetes rolling update strategies in Terraform, including maxSurge, maxUnavailable, rollback handling, and zero-downtime deployment patterns.
 

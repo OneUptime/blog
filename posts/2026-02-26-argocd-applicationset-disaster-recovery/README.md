@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Disaster Recovery
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Disaster Recovery
 
 Description: Learn how to design ArgoCD ApplicationSets for disaster recovery scenarios including failover clusters, multi-region deployments, and rapid environment reconstruction.
 

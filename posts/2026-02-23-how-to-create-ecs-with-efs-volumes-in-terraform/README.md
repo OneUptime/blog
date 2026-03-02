@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, EFS, Persistent Storage, Fargate, Containers, Infrastructure as Code
+Tags: Terraform, AWS, ECS, EFS, Persistent Storage, Fargate, Container, Infrastructure as Code
 
 Description: Learn how to mount EFS volumes in ECS tasks using Terraform for persistent shared storage across containers, including access points and encryption setup.
 

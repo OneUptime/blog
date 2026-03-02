@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, C#, IndexOutOfRangeException, Arrays, Collections, Troubleshooting
+Tags: .NET, C#, IndexOutOfRangeException, Arrays, Collection, Troubleshooting
 
 Description: Learn how to diagnose and prevent IndexOutOfRangeException errors in C# applications.
 

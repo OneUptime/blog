@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Debug Exporter, Collector, Troubleshooting, Local Development, Pipelines
+Tags: OpenTelemetry, Debug Exporter, Collector, Troubleshooting, Local Development, Pipeline
 
 Description: Learn how to use the OpenTelemetry Collector debug exporter to inspect telemetry data, troubleshoot pipeline issues, and validate configurations locally.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Reindex, Migration, Data, Zero Downtime, Index
+Tags: Elasticsearch, REINDEX, Migration, Data, Zero Downtime, Index
 
 Description: A comprehensive guide to reindexing data in Elasticsearch, covering the Reindex API, zero-downtime strategies, remote reindexing, and best practices for data migration.
 

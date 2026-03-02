@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Probes, Health Checks, Liveness, Readiness
+Tags: Kubernetes, Probe, Health Check, Liveness, Readiness
 
 Description: Best practices for configuring Kubernetes liveness, readiness, and startup probes to keep your applications healthy.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MySQL, Database, Connections, Performance, Troubleshooting, DevOps
+Tags: MySQL, Database, Connection, Performance, Troubleshooting, DevOps
 
 Description: Learn how to diagnose and resolve MySQL too many connections errors by tuning connection limits, implementing connection pooling, and identifying connection leaks.
 

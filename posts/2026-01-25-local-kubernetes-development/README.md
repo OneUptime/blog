@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Local Development, Developer Experience, DevOps, Containers
+Tags: Kubernetes, Local Development, Developer Experience, DevOps, Container
 
 Description: Learn how to set up a local Kubernetes development environment using tools like kind, minikube, and k3d for testing deployments before pushing to production clusters.
 

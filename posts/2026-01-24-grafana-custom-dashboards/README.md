@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Dashboards, Visualization, Monitoring, PromQL, Time Series
+Tags: Grafana, Dashboard, Visualization, Monitoring, PromQL, Time Series
 
 Description: Learn how to build custom Grafana dashboards from scratch, including panel configuration, query optimization, and layout techniques that make your data easy to understand.
 

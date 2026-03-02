@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Files, Snapshots, File Share, Backup, Data Recovery, Azure Storage
+Tags: Azure, Azure Files, Snapshot, File Share, Backup, Data Recovery, Azure Storage
 
 Description: Learn how to create, manage, and restore Azure File Share snapshots for point-in-time recovery of files, directories, and entire shares.
 

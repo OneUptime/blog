@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Laravel, PHP, Design Patterns, Clean Architecture, Testing, Backend Development
+Tags: Laravel, PHP, Design Pattern, Clean Architecture, Testing, Backend Development
 
 Description: A practical guide to implementing the repository pattern in Laravel for cleaner, testable, and maintainable code.
 

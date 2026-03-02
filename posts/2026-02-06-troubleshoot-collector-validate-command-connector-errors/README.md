@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Validation, Connectors
+Tags: OpenTelemetry, Collector, Validation, Connector
 
 Description: Work around limitations of the Collector validate command that does not catch connector pipeline wiring errors before deployment.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Controllers, Finalizers, Cleanup
+Tags: Kubernetes, Controller, Finalizer, Cleanup
 
 Description: Learn how to implement finalizers in Kubernetes controllers to perform cleanup operations before resources are deleted from etcd.
 

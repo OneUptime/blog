@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Infrastructure as Code, Operators, Expressions
+Tags: Terraform, HCL, Infrastructure as Code, Operator, Expressions
 
 Description: Learn how to use arithmetic, comparison, and logical operators in Terraform to build dynamic infrastructure configurations with calculated values and conditional logic.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Redis, Pub/Sub, Scaling, Node.js, Distributed Systems, Real-time
+Tags: WebSocket, Redis, Pub/Sub, Scaling, Node.js, Distributed Systems, Real-Time
 
 Description: A practical guide to scaling WebSocket applications across multiple servers using Redis Pub/Sub for message broadcasting and state synchronization.
 

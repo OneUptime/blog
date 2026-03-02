@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Containers, DevOps, Container Management, Automation
+Tags: Ansible, Docker, Container, DevOps, Container Management, Automation
 
 Description: Use Ansible to manage Docker hosts, build images, deploy containers, and orchestrate multi-container applications with the community.docker collection.
 

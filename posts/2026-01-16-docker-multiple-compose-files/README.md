@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, DevOps, Configuration, Environments
+Tags: Docker, Docker Compose, DevOps, Configuration, Environment
 
 Description: Learn how to use multiple Docker Compose files for different environments (development, staging, production), override configurations, and manage complex multi-service applications.
 

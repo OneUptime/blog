@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, RPM, RHEL, dnf, Package Management
+Tags: Ansible, RPM, RHEL, DNF, Package Management
 
 Description: How to install local RPM packages on RHEL, CentOS, and Fedora using the Ansible dnf module with dependency handling strategies.
 

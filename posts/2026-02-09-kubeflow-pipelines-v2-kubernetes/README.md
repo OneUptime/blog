@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kubeflow, ML Pipelines, MLOps, Machine Learning
+Tags: Kubernetes, Kubeflow, ML Pipeline, MLOps, Machine Learning
 
 Description: Build end-to-end machine learning pipelines with Kubeflow Pipelines V2 on Kubernetes for reproducible, scalable, and automated ML workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Operators, Kubernetes, Service Mesh, GitOps
+Tags: Istio, Operator, Kubernetes, Service Mesh, GitOps
 
 Description: A guide to using Istio Operator for declarative Istio lifecycle management.
 

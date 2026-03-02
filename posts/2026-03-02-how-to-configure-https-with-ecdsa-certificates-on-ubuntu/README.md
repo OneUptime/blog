@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, HTTPS, TLS, Nginx, Security
+Tags: Ubuntu, HTTPS, TLS, NGINX, Security
 
 Description: Configure HTTPS on Ubuntu using ECDSA certificates for faster TLS handshakes and smaller key sizes compared to RSA, with Nginx and Let's Encrypt examples.
 

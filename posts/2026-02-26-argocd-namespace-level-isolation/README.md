@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Multi-Tenancy, Namespaces
+Tags: ArgoCD, GitOps, Kubernetes, Multi-Tenancy, Namespace
 
 Description: Learn how to configure namespace-level isolation in ArgoCD to restrict teams to their own namespaces with AppProjects, destination restrictions, and namespace-scoped applications.
 

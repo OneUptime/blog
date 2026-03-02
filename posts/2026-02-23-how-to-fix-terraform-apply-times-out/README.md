@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, Performance, Timeouts, DevOps
+Tags: Terraform, Troubleshooting, Performance, Timeout, DevOps
 
 Description: How to fix Terraform apply timeout errors for slow-creating resources like RDS instances, EKS clusters, and CloudFront distributions.
 

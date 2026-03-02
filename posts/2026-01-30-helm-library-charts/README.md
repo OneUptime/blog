@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, Charts, DevOps, Templates
+Tags: Helm, Kubernetes, Charts, DevOps, Template
 
 Description: Create reusable Helm library charts with shared templates, helper functions, and common patterns for consistent Kubernetes deployments.
 

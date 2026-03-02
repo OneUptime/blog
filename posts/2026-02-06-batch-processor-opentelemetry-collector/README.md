@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Batch Processor, Performance, Configuration
+Tags: OpenTelemetry, Collector, Processor, Batch Processor, Performance, Configuration
 
 Description: A comprehensive guide to configuring the batch processor in OpenTelemetry Collector for optimal throughput, reduced network overhead, and efficient telemetry export with practical examples.
 

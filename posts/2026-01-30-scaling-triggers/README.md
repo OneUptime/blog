@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Auto-Scaling, Triggers, Kubernetes, Infrastructure
+Tags: Auto-Scaling, Trigger, Kubernetes, Infrastructure
 
 Description: Learn to configure CPU, memory, custom metrics, and predictive scaling triggers that automatically adjust your workloads based on real demand.
 

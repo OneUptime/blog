@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Resource Detectors, SDK, Custom Instrumentation, Observability, Telemetry
+Tags: OpenTelemetry, Resource Detector, SDK, Custom Instrumentation, Observability, Telemetry
 
 Description: Learn how to build custom resource detectors in OpenTelemetry to automatically enrich all telemetry signals with environment-specific metadata.
 

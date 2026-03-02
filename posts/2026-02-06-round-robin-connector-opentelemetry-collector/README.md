@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connectors, Round Robin, Load Balancing, Telemetry Pipeline
+Tags: OpenTelemetry, Collector, Connector, Round Robin, Load Balancing, Telemetry Pipeline
 
 Description: Learn how to configure and use the Round Robin connector in OpenTelemetry Collector to distribute telemetry data evenly across multiple pipelines for load balancing and parallel processing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Helm, CRDs
+Tags: ArgoCD, GitOps, Kubernetes, Helm, CRD
 
 Description: Learn how to skip Helm CRD installation in ArgoCD when CRDs are managed separately, with patterns for CRD lifecycle management in GitOps workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Documentation, Best Practices, DevOps, Standards
+Tags: Terraform, Documentation, Best Practices, DevOps, Standard
 
 Description: Learn how to create comprehensive Terraform best practices documentation that serves as a living reference for your engineering teams, covering code structure, state management, security, and more.
 

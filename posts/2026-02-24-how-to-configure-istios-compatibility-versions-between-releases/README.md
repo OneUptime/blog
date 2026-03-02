@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Upgrades, Compatibility, Kubernetes, Service Mesh
+Tags: Istio, Upgrade, Compatibility, Kubernetes, Service Mesh
 
 Description: How to use Istio's compatibility versions feature to maintain backward-compatible behavior during upgrades and manage breaking changes across releases.
 

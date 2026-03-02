@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Secrets, Multi-Cluster
+Tags: ArgoCD, GitOps, Kubernetes, Secret, Multi-Cluster
 
 Description: Learn how to manage and distribute secrets across multiple Kubernetes clusters in an ArgoCD multi-cluster setup, covering per-cluster stores, replication, and access patterns.
 

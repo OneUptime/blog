@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Set Operations, Automation, DevOps
+Tags: Ansible, Filter, Set Operations, Automation, DevOps
 
 Description: Learn how to use the union filter in Ansible to merge two lists together while automatically removing duplicate entries for clean configurations.
 

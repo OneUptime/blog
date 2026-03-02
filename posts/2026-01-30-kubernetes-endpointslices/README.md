@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, EndpointSlices, Service Discovery, Networking
+Tags: Kubernetes, EndpointSlice, Service Discovery, Networking
 
 Description: Learn to implement EndpointSlices for scalable service discovery with improved performance over traditional Endpoints for large clusters.
 

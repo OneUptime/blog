@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Metrics, Delta, Cumulative, Aggregation
+Tags: OpenTelemetry, Collector, Processor, Metrics, Delta, Cumulative, Aggregation
 
 Description: Learn how to configure the delta-to-cumulative processor in OpenTelemetry Collector to convert delta metrics into cumulative metrics, handle counter resets.
 

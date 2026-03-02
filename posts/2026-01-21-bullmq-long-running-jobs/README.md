@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: BullMQ, Node.js, Redis, Long-Running Jobs, Progress Tracking, Timeouts, Background Jobs
+Tags: BullMQ, Node.js, Redis, Long-Running Jobs, Progress Tracking, Timeout, Background Jobs
 
 Description: A comprehensive guide to handling long-running jobs in BullMQ, including progress tracking, timeout configuration, stall detection, checkpointing.
 

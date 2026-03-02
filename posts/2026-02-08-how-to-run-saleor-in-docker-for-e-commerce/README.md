@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Saleor, E-Commerce, Python, GraphQL, PostgreSQL, Redis, Headless Commerce, Containers
+Tags: Docker, Saleor, E-Commerce, Python, GraphQL, PostgreSQL, Redis, Headless Commerce, Container
 
 Description: Step-by-step guide to deploying Saleor, the GraphQL-first headless e-commerce platform, in Docker with PostgreSQL, Redis, and Jaeger for a complete development setup.
 

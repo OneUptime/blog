@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Spot Instances, Cost Optimization, Cloud Infrastructure, Node Pools
+Tags: Kubernetes, Spot Instances, Cost Optimization, Cloud Infrastructure, Node Pool
 
 Description: Deploy spot instance node pools in Kubernetes to reduce compute costs by up to 90% while maintaining application availability through proper workload placement.
 

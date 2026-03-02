@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Multi-Tenancy, Namespaces, Network Policies, RBAC, Kubernetes, Security
+Tags: AKS, Multi-Tenancy, Namespace, Network Policies, RBAC, Kubernetes, Security
 
 Description: Learn how to build a secure multi-tenant AKS cluster using namespace isolation, network policies, resource quotas, and RBAC to separate tenant workloads.
 

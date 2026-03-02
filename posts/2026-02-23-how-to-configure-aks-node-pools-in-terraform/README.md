@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, AKS, Kubernetes, Node Pools, Infrastructure as Code, DevOps
+Tags: Terraform, Azure, AKS, Kubernetes, Node Pool, Infrastructure as Code, DevOps
 
 Description: Learn how to configure multiple AKS node pools in Terraform including system pools, user pools, GPU pools, and spot instances for cost optimization.
 

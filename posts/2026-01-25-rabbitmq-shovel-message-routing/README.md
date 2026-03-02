@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Shovel, Message Routing, Data Migration, Message Queues, Integration
+Tags: RabbitMQ, Shovel, Message Routing, Data Migration, Message Queue, Integration
 
 Description: Learn how to use RabbitMQ Shovel plugin for reliable message routing between brokers, queues, and data centers with practical configuration examples.
 

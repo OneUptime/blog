@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, AzureRM, Providers, Infrastructure as Code, Cloud
+Tags: Terraform, Azure, AzureRM, Provider, Infrastructure as Code, Cloud
 
 Description: A complete guide to configuring the AzureRM provider in Terraform, covering authentication methods, required features, and practical setup for Azure infrastructure management.
 

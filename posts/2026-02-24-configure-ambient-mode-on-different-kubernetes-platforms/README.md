@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mode, Kubernetes, Cloud Platforms, GKE, EKS, AKS
+Tags: Istio, Ambient Mode, Kubernetes, Cloud Platform, GKE, EKS, AKS
 
 Description: Platform-specific configuration guide for running Istio ambient mode on GKE, EKS, AKS, kind, k3s, and other Kubernetes distributions.
 

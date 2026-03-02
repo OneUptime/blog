@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ExternalName, Services, DNS, External
+Tags: Kubernetes, ExternalName, Service, DNS, External
 
 Description: Learn how to use ExternalName services to map Kubernetes service names to external DNS names for seamless external service access.
 

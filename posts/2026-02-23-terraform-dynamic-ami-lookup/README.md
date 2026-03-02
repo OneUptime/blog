@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AMI, AWS, Data Sources, EC2, Infrastructure as Code
+Tags: Terraform, AMI, AWS, Data Source, EC2, Infrastructure as Code
 
 Description: Learn how to use the aws_ami data source in Terraform to dynamically look up AMI IDs by filters, owners, and naming conventions instead of hardcoding image identifiers.
 

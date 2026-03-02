@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Templates, Loops
+Tags: Ansible, Jinja2, Template, Loops
 
 Description: Learn how to use Jinja2 for loops in Ansible templates to generate repetitive configuration sections from lists and dictionaries dynamically.
 

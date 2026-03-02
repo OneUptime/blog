@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Jenkins, Docker, CI/CD, Containers, DevOps
+Tags: Jenkins, Docker, CI/CD, Container, DevOps
 
 Description: Learn how to run Jenkins builds in Docker, use Docker agents, and build container images safely in pipelines.
 

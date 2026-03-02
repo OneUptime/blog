@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubeflow, MLOps, Machine Learning, Kubernetes, Pipelines
+Tags: Kubeflow, MLOps, Machine Learning, Kubernetes, Pipeline
 
 Description: Learn how to build machine learning pipelines with Kubeflow Pipelines, including component creation, pipeline authoring, and orchestration on Kubernetes.
 

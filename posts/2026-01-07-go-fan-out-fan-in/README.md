@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Concurrency, Fan-Out, Fan-In, Design Patterns, Parallel Processing
+Tags: Go, Concurrency, Fan-Out, Fan-In, Design Pattern, Parallel Processing
 
 Description: Master the fan-out/fan-in concurrency pattern in Go for distributing work across multiple goroutines and collecting results efficiently.
 

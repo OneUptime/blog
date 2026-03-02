@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Message Queues, Workers, RabbitMQ, Kafka
+Tags: Istio, Kubernetes, Message Queue, Worker, RabbitMQ, Kafka
 
 Description: Practical guide to configuring Istio for queue worker pods that consume messages from RabbitMQ, Kafka, SQS, and other message brokers in Kubernetes.
 

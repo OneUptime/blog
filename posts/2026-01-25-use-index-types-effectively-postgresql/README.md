@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Database, Indexing, Performance, Query Optimization, B-tree, GIN, GiST
+Tags: PostgreSQL, Database, Indexing, Performance, Query Optimization, B-Tree, Gin, GiST
 
 Description: Learn how to choose and use the right index types in PostgreSQL. This guide covers B-tree, Hash, GIN, GiST, BRIN, and partial indexes with practical examples for optimal query performance.
 

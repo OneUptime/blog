@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, LEMP, Nginx, MySQL, PHP, Web Server, Tutorial
+Tags: Ubuntu, LEMP, NGINX, MySQL, PHP, Web Server, Tutorial
 
 Description: Step-by-step guide to installing and configuring a complete LEMP stack on Ubuntu for hosting PHP applications with Nginx.
 

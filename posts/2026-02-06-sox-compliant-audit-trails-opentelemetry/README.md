@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, SOX Compliance, Audit Trails, Structured Logging
+Tags: OpenTelemetry, SOX Compliance, Audit Trail, Structured Logging
 
 Description: Build tamper-evident audit trails for financial transactions using OpenTelemetry structured logging that satisfy SOX requirements.
 

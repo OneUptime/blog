@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Monitoring, JSON, Containers, DevOps, Metrics
+Tags: Docker, Monitoring, JSON, Container, DevOps, Metrics
 
 Description: Learn how to extract Docker container statistics in JSON format for monitoring, alerting, and integration with external tools.
 

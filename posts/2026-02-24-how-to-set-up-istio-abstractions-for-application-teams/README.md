@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Platform Engineering, Abstractions, Kubernetes, Service Mesh
+Tags: Istio, Platform Engineering, Abstraction, Kubernetes, Service Mesh
 
 Description: How to create meaningful abstractions over Istio that hide mesh complexity while giving application teams the networking features they need.
 

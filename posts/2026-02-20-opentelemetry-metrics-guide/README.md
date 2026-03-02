@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Metrics, Counters, Histograms, Observability
+Tags: OpenTelemetry, Metrics, Counter, Histogram, Observability
 
 Description: A guide to OpenTelemetry metric instruments including counters, gauges, histograms, and how to choose the right instrument.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Execution Environments, DevOps, Container Management
+Tags: Ansible, Execution Environment, DevOps, Container Management
 
 Description: Strategies for organizing, building, versioning, and maintaining multiple Ansible Execution Environments across teams and projects.
 

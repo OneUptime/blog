@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Database, Migrations, Tracing, Performance, DevOps
+Tags: OpenTelemetry, Database, Migration, Tracing, Performance, DevOps
 
 Description: Learn how to instrument database migrations with OpenTelemetry tracing to track execution time, detect failures, and build reliable migration pipelines.
 

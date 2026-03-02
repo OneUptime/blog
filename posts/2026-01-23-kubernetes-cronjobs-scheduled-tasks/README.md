@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CronJobs, Scheduling, Automation, DevOps
+Tags: Kubernetes, CronJob, Scheduling, Automation, DevOps
 
 Description: A comprehensive guide to creating and managing Kubernetes CronJobs for scheduled tasks, including cron syntax, concurrency policies, job history, and troubleshooting common issues.
 

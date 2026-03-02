@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Cost Optimization, Node Pools, Scheduled Scaling, FinOps
+Tags: Kubernetes, Cost Optimization, Node Pool, Scheduled Scaling, FinOps
 
 Description: Implement automated scheduled scaling for non-production Kubernetes node pools to scale down during off-hours and weekends, achieving 60-70% cost reduction on development and staging environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, SQL, Arrays, unnest, WITH ORDINALITY, Data Processing
+Tags: PostgreSQL, SQL, Arrays, UNNEST, WITH ORDINALITY, Data Processing
 
 Description: Learn how to expand PostgreSQL arrays into rows while preserving element positions using unnest() with WITH ORDINALITY. This guide covers syntax, practical examples, and common use cases.
 

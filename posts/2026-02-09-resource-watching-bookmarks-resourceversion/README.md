@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Watch, ResourceVersion
+Tags: Kubernetes, WATCH, ResourceVersion
 
 Description: Learn how to implement efficient resource watching in Kubernetes using bookmarks and resource versions to minimize API server load and handle watch reconnections reliably.
 

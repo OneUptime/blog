@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Spans, Tracing, Debugging
+Tags: OpenTelemetry, Span, Tracing, Debugging
 
 Description: Understand why missing Span.End() calls result in incomplete traces and learn reliable patterns to always close your spans.
 

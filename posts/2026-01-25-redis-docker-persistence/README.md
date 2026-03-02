@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Docker, Persistence, Containers, DevOps
+Tags: Redis, Docker, Persistence, Container, DevOps
 
 Description: Learn how to run Redis in Docker with data persistence using RDB snapshots, AOF logs, and volume mounts for production-ready container deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, SSL, Custom Domains, Troubleshooting
+Tags: GCP, Cloud Run, SSL, Custom Domain, Troubleshooting
 
 Description: How to diagnose and fix SSL certificate provisioning that gets stuck in pending status when configuring custom domains for Google Cloud Run services.
 

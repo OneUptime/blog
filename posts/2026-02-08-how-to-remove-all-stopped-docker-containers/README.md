@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Containers, Cleanup, Remove, Prune, DevOps, Disk Space
+Tags: Docker, Container, Cleanup, Remove, Prune, DevOps, Disk Space
 
 Description: Learn multiple methods to remove all stopped Docker containers, reclaim disk space, and keep your Docker environment clean and organized.
 

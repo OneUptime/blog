@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, VPC, Networking, Custom Mode, Subnets
+Tags: GCP, VPC, Networking, Custom Mode, Subnet
 
 Description: A practical guide to creating custom mode VPC networks in GCP, including subnet design, configuration steps, and why custom mode beats auto mode for production workloads.
 

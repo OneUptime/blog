@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, Vertex AI, Machine Learning, Notebooks, Infrastructure as Code
+Tags: Terraform, GCP, Vertex AI, Machine Learning, Notebook, Infrastructure as Code
 
 Description: Learn how to provision Vertex AI Workbench instances and managed notebooks on Google Cloud using Terraform for reproducible ML environments.
 

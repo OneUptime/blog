@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, IoT, Edge Computing, Azure IoT Hub, MQTT, Telemetry Pipelines, Observability
+Tags: OpenTelemetry, IoT, Edge Computing, Azure IoT Hub, MQTT, Telemetry Pipeline, Observability
 
 Description: Learn how to build an OpenTelemetry pipeline that connects IoT edge devices through hub gateways to a central observability backend with practical examples.
 

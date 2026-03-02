@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, App Runner, Containers, Serverless, DevOps
+Tags: AWS, App Runner, Container, Serverless, DevOps
 
 Description: Learn how to use AWS App Runner to deploy containerized web applications and APIs with minimal configuration, automatic scaling, and built-in HTTPS.
 

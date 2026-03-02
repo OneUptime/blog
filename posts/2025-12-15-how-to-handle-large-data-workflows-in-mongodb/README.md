@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Big Data, Performance, Batch Processing, Cursors, Aggregation
+Tags: MongoDB, Big Data, Performance, Batch Processing, Cursor, Aggregation
 
 Description: Learn techniques for handling large data workflows in MongoDB including cursor management, batch processing, streaming, and memory optimization for processing millions of documents efficiently.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, ConfigMaps, Configuration Management
+Tags: Ansible, Kubernetes, ConfigMap, Configuration Management
 
 Description: A practical guide to creating and managing Kubernetes ConfigMaps with Ansible, covering inline data, file-based configs, and environment variable injection.
 

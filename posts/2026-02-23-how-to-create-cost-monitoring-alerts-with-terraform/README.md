@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Cost Monitoring, AWS Budgets, FinOps, Infrastructure as Code, CloudWatch
+Tags: Terraform, Cost Monitoring, AWS Budget, FinOps, Infrastructure as Code, CloudWatch
 
 Description: Learn how to set up cost monitoring alerts with Terraform using AWS Budgets, CloudWatch billing alarms, and SNS notifications to prevent unexpected cloud spending.
 

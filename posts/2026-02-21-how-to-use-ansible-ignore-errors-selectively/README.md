@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Error Handling, Playbooks, DevOps
+Tags: Ansible, Error Handling, Playbook, DevOps
 
 Description: Learn how to use Ansible ignore_errors selectively to handle expected failures without masking real problems in your playbooks.
 

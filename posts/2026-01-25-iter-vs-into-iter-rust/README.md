@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Iterators, Ownership, References, Collections
+Tags: Rust, Iterator, Ownership, Reference, Collection
 
 Description: Learn the difference between iter(), into_iter(), and iter_mut() in Rust. Understand when each method is appropriate based on ownership needs and how they affect your data.
 

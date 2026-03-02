@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Debugging, Linux, Namespaces, Troubleshooting
+Tags: Kubernetes, Debugging, Linux, Namespace, Troubleshooting
 
 Description: Learn how to use nsenter to enter Kubernetes pod namespaces directly from the host node for deep system-level debugging and troubleshooting.
 

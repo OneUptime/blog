@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, CLI, Infrastructure as Code, DevOps
+Tags: Terraform, Provider, CLI, Infrastructure as Code, DevOps
 
 Description: Learn how to use the terraform providers command to inspect, list, and debug provider dependencies in your Terraform configurations for better infrastructure management.
 

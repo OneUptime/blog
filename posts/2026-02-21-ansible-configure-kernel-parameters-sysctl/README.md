@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, sysctl, Kernel, Linux, Performance Tuning
+Tags: Ansible, Sysctl, Kernel, Linux, Performance Tuning
 
 Description: Learn how to tune Linux kernel parameters using Ansible and sysctl for networking, memory, security, and performance optimization across your infrastructure.
 

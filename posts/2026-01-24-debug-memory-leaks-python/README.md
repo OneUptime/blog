@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Memory Leaks, Debugging, Performance, Memory Management
+Tags: Python, Memory Leak, Debugging, Performance, Memory Management
 
 Description: Learn to identify and fix memory leaks in Python applications using tracemalloc, objgraph, and memory_profiler. Understand common causes and prevention strategies.
 

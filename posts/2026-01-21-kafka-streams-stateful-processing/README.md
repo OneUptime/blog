@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Apache Kafka, Kafka Streams, Stateful Processing, State Stores, Aggregations, Stream Processing
+Tags: Apache Kafka, Kafka Streams, Stateful Processing, State Store, Aggregation, Stream Processing
 
 Description: Learn how to implement stateful stream processing with Kafka Streams, including state stores, aggregations, interactive queries, and fault-tolerant state management for real-time data processing.
 

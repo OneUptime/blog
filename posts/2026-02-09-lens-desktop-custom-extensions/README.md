@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Lens, IDE, DevOps, Extensions
+Tags: Kubernetes, Lens, IDE, DevOps, Extension
 
 Description: Master Lens Desktop extensions to enhance your Kubernetes cluster management workflow with custom visualizations, automated operations, and team-specific tooling through practical examples.
 

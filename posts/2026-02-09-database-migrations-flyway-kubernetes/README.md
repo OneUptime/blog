@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Flyway, Database Migrations
+Tags: Kubernetes, Flyway, Database Migration
 
 Description: Automate database schema migrations in Kubernetes using Flyway Jobs for version-controlled, repeatable database changes that run before application deployment.
 

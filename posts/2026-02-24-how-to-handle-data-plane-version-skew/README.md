@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Data Plane, Version Skew, Upgrades, Kubernetes
+Tags: Istio, Data Plane, Version Skew, Upgrade, Kubernetes
 
 Description: How to safely manage version differences between Istio control plane and data plane proxies during upgrades and rollouts.
 

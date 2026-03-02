@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, systemd, Linux, Services, System Administration
+Tags: Ansible, systemd, Linux, Service, System Administration
 
 Description: A comprehensive guide to the Ansible systemd_service module for managing systemd services, including unit management, scope control, and advanced systemd features.
 

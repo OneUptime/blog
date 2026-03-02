@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Database, Troubleshooting, Connections, Performance, Connection Pooling
+Tags: PostgreSQL, Database, Troubleshooting, Connection, Performance, Connection Pooling
 
 Description: Learn how to diagnose and fix 'too many clients already' errors in PostgreSQL. This guide covers connection management, pool configuration, and strategies to handle connection limits.
 

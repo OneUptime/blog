@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Responsive Design, Layouts, Screen Sizes, Mobile Development, Tablet
+Tags: React Native, Responsive Design, Layout, Screen Sizes, Mobile Development, Tablet
 
 Description: Learn how to create responsive layouts in React Native that adapt to different screen sizes, orientations, and devices.
 

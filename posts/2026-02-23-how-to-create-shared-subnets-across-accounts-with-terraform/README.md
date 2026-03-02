@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, VPC Sharing, AWS, RAM, Networking, Multi-Account, Subnets
+Tags: Terraform, VPC Sharing, AWS, RAM, Networking, Multi-Account, Subnet
 
 Description: Learn how to share VPC subnets across AWS accounts using Terraform and AWS Resource Access Manager for centralized network management.
 

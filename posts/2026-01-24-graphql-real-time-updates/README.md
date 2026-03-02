@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GraphQL, Subscriptions, Real-Time, WebSockets, PubSub, API Development, Node.js, React
+Tags: GraphQL, Subscription, Real-Time, WebSocket, PubSub, API Development, Node.js, React
 
 Description: Learn how to implement real-time updates in GraphQL using subscriptions, including WebSocket setup, PubSub patterns, and handling connection lifecycle.
 

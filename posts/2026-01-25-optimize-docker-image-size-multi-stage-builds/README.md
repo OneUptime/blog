@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Multi-Stage Builds, DevOps, Optimization, Containers
+Tags: Docker, Multi-Stage Build, DevOps, Optimization, Container
 
 Description: Learn how to dramatically reduce Docker image sizes using multi-stage builds, resulting in faster deployments, reduced storage costs, and improved security through smaller attack surfaces.
 

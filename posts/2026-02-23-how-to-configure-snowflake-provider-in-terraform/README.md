@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Snowflake, Data Warehouse, Infrastructure as Code
+Tags: Terraform, Provider, Snowflake, Data Warehouse, Infrastructure as Code
 
 Description: Learn how to configure the Snowflake provider in Terraform to manage warehouses, databases, schemas, roles, and grants in your data platform.
 

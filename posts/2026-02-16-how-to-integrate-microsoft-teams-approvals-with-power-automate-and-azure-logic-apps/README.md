@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microsoft Teams, Power Automate, Azure Logic Apps, Approvals, Workflow Automation, Business Process, Low-Code
+Tags: Microsoft Teams, Power Automate, Azure Logic Apps, Approval, Workflow Automation, Business Process, Low-Code
 
 Description: Integrate Microsoft Teams Approvals with Power Automate and Azure Logic Apps to build automated approval workflows triggered by business events.
 

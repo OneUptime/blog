@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Platform Engineering, Templates
+Tags: ArgoCD, GitOps, Kubernetes, Platform Engineering, Template
 
 Description: Learn how to create reusable ArgoCD application templates that platform consumers can adopt for consistent, production-ready deployments across teams.
 

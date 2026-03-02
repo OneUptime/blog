@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Git, Version Control, Troubleshooting, DevOps, Merge, Branch Management
+Tags: Git, Version Control, Troubleshooting, DevOps, MERGE, Branch Management
 
 Description: Learn how to diagnose and fix the confusing situation where Git says your branch is up to date but expected changes are missing.
 

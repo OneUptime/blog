@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, CrashLoopBackOff, Troubleshooting, Kubernetes, Init Containers, Debugging, Pods
+Tags: AKS, CrashLoopBackOff, Troubleshooting, Kubernetes, Init Container, Debugging, POD
 
 Description: Practical debugging guide for CrashLoopBackOff errors on AKS, including init container failures, with step-by-step diagnostic techniques.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, Cleanup, Cost Optimization, DevOps, Maintenance
+Tags: Terraform, Workspace, Cleanup, Cost Optimization, DevOps, Maintenance
 
 Description: Learn how to identify and safely remove unused Terraform workspaces along with their resources to reduce costs and state file clutter.
 

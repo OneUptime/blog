@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Namespaces, Troubleshooting, AuthorizationPolicy, Networking
+Tags: Istio, Namespace, Troubleshooting, AuthorizationPolicy, Networking
 
 Description: How to troubleshoot and fix problems with service-to-service communication across Kubernetes namespaces in an Istio mesh.
 

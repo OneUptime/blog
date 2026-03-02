@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Operators, Cluster-Scoped Resources
+Tags: Kubernetes, Operator, Cluster-Scoped Resources
 
 Description: Learn how to build operators that manage cluster-scoped resources, understanding the differences from namespace-scoped resources and handling RBAC permissions correctly.
 

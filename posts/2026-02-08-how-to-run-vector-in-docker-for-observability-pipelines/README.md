@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Vector, Observability, Logging, Metrics, DevOps, Pipelines
+Tags: Docker, Vector, Observability, Logging, Metrics, DevOps, Pipeline
 
 Description: Deploy Vector in Docker to build high-performance observability pipelines that collect, transform, and route logs and metrics.
 

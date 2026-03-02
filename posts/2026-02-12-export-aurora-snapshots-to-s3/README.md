@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Aurora, S3, Snapshots, Backup
+Tags: AWS, Aurora, S3, Snapshot, Backup
 
 Description: A complete guide to exporting Aurora database snapshots to Amazon S3 in Apache Parquet format for analytics, long-term archival, and data lake integration.
 

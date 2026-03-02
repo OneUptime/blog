@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, LimitRanges, Resource Management, Infrastructure as Code
+Tags: Terraform, Kubernetes, LimitRange, Resource Management, Infrastructure as Code
 
 Description: How to create Kubernetes LimitRanges with Terraform to set default resource constraints and prevent individual pods from consuming too many resources.
 

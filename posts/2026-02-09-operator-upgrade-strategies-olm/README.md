@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Operators, OLM
+Tags: Kubernetes, Operator, OLM
 
 Description: Learn how to implement operator upgrade strategies using Operator Lifecycle Manager, including seamless upgrades, rollback procedures, and version compatibility management.
 

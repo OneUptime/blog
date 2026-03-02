@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Desktop, Resource Management, Performance, DevOps, Containers
+Tags: Docker, Docker Desktop, Resource Management, Performance, DevOps, Container
 
 Description: Master Docker Desktop resource management settings to optimize CPU, memory, disk, and swap allocation for your workloads.
 

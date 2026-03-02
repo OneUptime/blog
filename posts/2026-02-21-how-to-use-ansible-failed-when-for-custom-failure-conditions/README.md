@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Error Handling, Playbooks, Automation
+Tags: Ansible, Error Handling, Playbook, Automation
 
 Description: Learn how to use Ansible failed_when to define custom failure conditions that go beyond simple return codes in your playbooks.
 

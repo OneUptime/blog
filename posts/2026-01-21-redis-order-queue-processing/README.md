@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, E-Commerce, Order Processing, Queues, Fulfillment, Workflow
+Tags: Redis, E-Commerce, Order Processing, Queue, Fulfillment, Workflow
 
 Description: A comprehensive guide to implementing order queue processing with Redis for order fulfillment, status tracking, and reliable workflow management.
 

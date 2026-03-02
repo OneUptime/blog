@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Upgrades, API
+Tags: Kubernetes, Upgrade, API
 
 Description: Identify and remediate deprecated Kubernetes APIs before cluster upgrades using pluto, kubent, and API server audit logs to prevent application breakage from removed API versions.
 

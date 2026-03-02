@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Docker, Message Queue, DevOps, Microservices, Containers
+Tags: RabbitMQ, Docker, Message Queue, DevOps, Microservices, Container
 
 Description: A comprehensive guide to running RabbitMQ in Docker containers. Learn container configuration, clustering, persistence, monitoring, and production best practices for reliable message queuing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Bun, WebSocket, Real-time, Pub/Sub
+Tags: Bun, WebSocket, Real-Time, Pub/Sub
 
 Description: Learn how to build scalable real-time applications using Bun's native WebSocket support, pub/sub patterns, Server-Sent Events, and Redis for horizontal scaling.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Multi-Tenancy, Security, Namespaces, RBAC, Resource Quotas, DevOps
+Tags: Kubernetes, Multi-Tenancy, Security, Namespace, RBAC, Resource Quota, DevOps
 
 Description: A practical guide to configuring Kubernetes for multi-tenancy, covering namespace isolation, RBAC, network policies, resource quotas, and hierarchical namespaces for secure shared clusters.
 

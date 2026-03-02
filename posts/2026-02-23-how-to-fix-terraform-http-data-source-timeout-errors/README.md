@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, Infrastructure as Code, Data Sources
+Tags: Terraform, Troubleshooting, Infrastructure as Code, Data Source
 
 Description: Fix Terraform HTTP data source timeout errors by configuring timeouts, handling SSL issues, managing proxy settings, and working with authentication.
 

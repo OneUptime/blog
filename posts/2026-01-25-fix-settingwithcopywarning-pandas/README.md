@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Pandas, Debugging, Data Science, DataFrames
+Tags: Python, Pandas, Debugging, Data Science, DataFrame
 
 Description: Understand why SettingWithCopyWarning occurs in pandas and learn how to fix it properly using .loc, .copy(), and correct chained indexing patterns.
 

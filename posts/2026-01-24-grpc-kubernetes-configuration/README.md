@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Kubernetes, microservices, load balancing, service mesh, health checks, deployment, configuration
+Tags: gRPC, Kubernetes, Microservices, Load Balancing, Service Mesh, Health Check, Deployment, Configuration
 
 Description: A comprehensive guide to deploying and configuring gRPC services on Kubernetes, covering load balancing, health checks, service discovery, and production best practices.
 

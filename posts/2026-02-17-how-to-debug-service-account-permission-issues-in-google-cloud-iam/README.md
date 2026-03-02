@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, IAM, Service Accounts, Permissions, Troubleshooting
+Tags: GCP, IAM, Service Account, Permissions, Troubleshooting
 
 Description: A practical guide to debugging service account permission issues in Google Cloud IAM, covering role bindings, impersonation, key management, and common pitfalls.
 

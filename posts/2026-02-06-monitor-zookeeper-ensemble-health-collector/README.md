@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Zookeeper, Distributed Systems, Ensemble, Health Monitoring, Metrics, Observability
+Tags: OpenTelemetry, Collector, ZooKeeper, Distributed Systems, Ensemble, Health Monitoring, Metrics, Observability
 
 Description: Learn how to monitor Apache Zookeeper ensemble health using the OpenTelemetry Collector to track quorum status, leader elections, and node synchronization.
 

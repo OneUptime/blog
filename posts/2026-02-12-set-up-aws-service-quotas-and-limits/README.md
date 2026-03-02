@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Service Quotas, Limits, Governance, Operations
+Tags: AWS, Service Quotas, Limit, Governance, Operations
 
 Description: Learn how to view, monitor, and manage AWS service quotas to prevent resource limits from blocking deployments and causing outages.
 

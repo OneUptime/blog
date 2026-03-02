@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy Proxy, Environment Variables, Kubernetes, Configuration
+Tags: Istio, Envoy Proxy, Environment Variable, Kubernetes, Configuration
 
 Description: A practical guide to setting custom environment variables on the Istio sidecar proxy using pod annotations and mesh-wide configuration options.
 

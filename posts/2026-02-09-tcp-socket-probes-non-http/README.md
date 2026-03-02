@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Checks, TCP Probes
+Tags: Kubernetes, Health Check, TCP Probes
 
 Description: Configure Kubernetes TCP socket probes to monitor non-HTTP services like databases, message queues, and TCP-based applications without implementing HTTP endpoints.
 

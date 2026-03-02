@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Keyspaces, Cassandra, Migration, Database, NoSQL
+Tags: AWS, Keyspace, Cassandra, Migration, Database, NoSQL
 
 Description: A practical guide to migrating your self-managed Apache Cassandra workloads to Amazon Keyspaces with minimal downtime and data loss.
 

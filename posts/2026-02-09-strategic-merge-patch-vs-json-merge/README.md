@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Patch, Resource Updates
+Tags: Kubernetes, PATCH, Resource Updates
 
 Description: Learn the differences between strategic merge patch and JSON merge patch in Kubernetes, understanding when to use each patch type for updating resources effectively.
 

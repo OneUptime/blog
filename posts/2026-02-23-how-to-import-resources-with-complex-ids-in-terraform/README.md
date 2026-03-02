@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Import, Resource IDs, State Management, Cloud Providers
+Tags: Terraform, Import, Resource IDs, State Management, Cloud Provider
 
 Description: Learn how to import Terraform resources that have complex, compound, or non-obvious resource identifiers across different cloud providers.
 

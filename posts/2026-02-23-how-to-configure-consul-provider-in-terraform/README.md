@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Consul, Service Discovery, Infrastructure as Code
+Tags: Terraform, Provider, Consul, Service Discovery, Infrastructure as Code
 
 Description: A practical guide to configuring the Consul provider in Terraform for managing key-value data, services, ACL policies, and prepared queries.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Upgrades, Tools
+Tags: Kubernetes, Upgrade, Tools
 
 Description: Migrate Kubernetes manifests from deprecated to current API versions using kubectl-convert, automating the remediation of API deprecations before cluster upgrades.
 

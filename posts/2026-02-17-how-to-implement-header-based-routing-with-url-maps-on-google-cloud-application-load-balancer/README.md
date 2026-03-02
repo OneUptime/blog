@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Load Balancer, Header-Based Routing, URL Maps, Traffic Management
+Tags: GCP, Load Balancer, Header-Based Routing, URL Map, Traffic Management
 
 Description: Learn how to implement header-based routing on Google Cloud Application Load Balancer using URL map route rules to direct traffic based on HTTP headers.
 

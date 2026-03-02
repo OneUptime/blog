@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Message Queues, Exchanges, Microservices, Distributed Systems, Messaging Patterns, Event-Driven
+Tags: RabbitMQ, Message Queue, Exchange, Microservices, Distributed Systems, Messaging Patterns, Event-Driven
 
 Description: A comprehensive guide to understanding and using RabbitMQ exchanges for efficient message routing in distributed systems.
 

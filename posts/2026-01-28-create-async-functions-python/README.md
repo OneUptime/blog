@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Async, Asyncio, Concurrency, Performance, Coroutines
+Tags: Python, Async, asyncio, Concurrency, Performance, Coroutines
 
 Description: Learn how to write asynchronous code in Python using async/await. This guide covers coroutines, tasks, event loops, and practical patterns for concurrent programming.
 

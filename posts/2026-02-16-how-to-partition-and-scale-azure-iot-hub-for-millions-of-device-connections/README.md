@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure IoT Hub, Scaling, Partitioning, IoT, Device Connections, Throughput, Event Hubs
+Tags: Azure IoT Hub, Scaling, Partitioning, IoT, Device Connections, Throughput, Event Hub
 
 Description: Learn how to partition and scale Azure IoT Hub to handle millions of concurrent device connections with optimal throughput and message processing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Managed Grafana, Azure Monitor, Monitoring, Dashboards, Observability, Data Visualization
+Tags: Azure, Managed Grafana, Azure Monitor, Monitoring, Dashboard, Observability, Data Visualization
 
 Description: Step-by-step guide to setting up Azure Managed Grafana and connecting it to Azure Monitor, Log Analytics, and other data sources for unified monitoring.
 

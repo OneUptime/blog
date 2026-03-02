@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Pydantic, Python, Validation, Spans, Performance
+Tags: OpenTelemetry, Pydantic, Python, Validation, Span, Performance
 
 Description: Learn how to instrument Pydantic model validation with OpenTelemetry spans to gain visibility into validation performance and error patterns.
 

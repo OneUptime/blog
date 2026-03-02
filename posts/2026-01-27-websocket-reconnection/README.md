@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: WebSockets, JavaScript, Real-time, Networking, Reliability, DevOps
+Tags: WebSocket, JavaScript, Real-Time, Networking, Reliability, DevOps
 
 Description: A comprehensive guide to implementing robust WebSocket reconnection logic including exponential backoff, state recovery, message queuing.
 

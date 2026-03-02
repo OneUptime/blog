@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Message Queues, Distributed Tracing, Kafka, RabbitMQ, SQS, Observability
+Tags: OpenTelemetry, Message Queue, Distributed Tracing, Kafka, RabbitMQ, SQS, Observability
 
 Description: A practical guide to configuring OpenTelemetry for tracing messages through Kafka, RabbitMQ, SQS, and other message queues.
 

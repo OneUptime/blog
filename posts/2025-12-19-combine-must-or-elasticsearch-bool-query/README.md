@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Bool Query, Query DSL, Search, Boolean Logic, Filters
+Tags: Elasticsearch, Bool Query, Query DSL, Search, Boolean Logic, Filter
 
 Description: Learn how to combine must (AND) clauses with OR logic in Elasticsearch bool queries.
 

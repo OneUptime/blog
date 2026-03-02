@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Controllers, Leader Election
+Tags: Kubernetes, Controller, Leader Election
 
 Description: Learn how to implement leader election in custom Kubernetes controllers to ensure only one instance actively reconciles resources at a time, preventing conflicts and race conditions.
 

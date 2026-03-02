@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Outposts, Hybrid Cloud, On-Premises, Infrastructure
+Tags: AWS, Outposts, Hybrid Cloud, On-Premise, Infrastructure
 
 Description: A comprehensive guide to setting up AWS Outposts to run native AWS services on-premises for low-latency and data residency requirements.
 

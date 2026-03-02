@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, C++, Metrics, Collection, Counters, Histograms
+Tags: OpenTelemetry, C++, Metrics, Collection, Counter, Histogram
 
 Description: Complete guide to implementing OpenTelemetry metrics in C++ applications, covering counters, gauges, histograms, and metric exporters.
 

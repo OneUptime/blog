@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, TypeScript, Native Modules, Type Definitions, Mobile Development, Bridge
+Tags: React Native, TypeScript, Native Module, Type Definitions, Mobile Development, Bridge
 
 Description: Learn how to create TypeScript type definitions for native modules and components in React Native.
 

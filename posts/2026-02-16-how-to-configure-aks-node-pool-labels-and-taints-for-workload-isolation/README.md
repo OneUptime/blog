@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Kubernetes, Node Pools, Taints, Labels, Workload Isolation, Scheduling
+Tags: AKS, Kubernetes, Node Pool, Taints, Labels, Workload Isolation, Scheduling
 
 Description: Learn how to use AKS node pool labels and taints to isolate workloads, dedicate nodes to specific teams, and optimize resource allocation across your cluster.
 

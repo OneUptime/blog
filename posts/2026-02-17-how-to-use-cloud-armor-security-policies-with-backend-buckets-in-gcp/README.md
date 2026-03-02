@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Armor, Backend Buckets, Cloud Storage, Security
+Tags: GCP, Cloud Armor, Backend Bucket, Cloud Storage, Security
 
 Description: Protect your Cloud Storage backend buckets with Cloud Armor edge security policies to control access, enforce geo-restrictions, and prevent content scraping.
 

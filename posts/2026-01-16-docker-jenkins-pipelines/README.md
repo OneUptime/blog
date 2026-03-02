@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Jenkins, CI/CD, DevOps, Pipelines
+Tags: Docker, Jenkins, CI/CD, DevOps, Pipeline
 
 Description: Learn how to build Docker images in Jenkins pipelines, including Declarative and Scripted pipelines, Docker agents, multi-stage builds, and registry integration.
 

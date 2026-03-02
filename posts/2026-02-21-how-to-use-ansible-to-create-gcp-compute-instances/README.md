@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, GCP, Compute Engine, Virtual Machines, Cloud Automation
+Tags: Ansible, GCP, Compute Engine, Virtual Machine, Cloud Automation
 
 Description: Create and manage Google Cloud Compute Engine instances with Ansible including machine types, disks, networking, and startup scripts.
 

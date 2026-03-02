@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Templates
+Tags: Ansible, Jinja2, Filter, Template
 
 Description: Learn how to use the Jinja2 default filter in Ansible templates to provide fallback values for undefined or empty variables.
 

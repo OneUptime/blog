@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Async, Tokio, Concurrency, Performance
+Tags: Rust, Async, tokio, Concurrency, Performance
 
 Description: A practical guide to asynchronous programming in Rust using tokio. Learn async/await syntax, spawning tasks, channels, and building concurrent applications.
 

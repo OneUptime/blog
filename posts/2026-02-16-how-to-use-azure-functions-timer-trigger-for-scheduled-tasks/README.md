@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Functions, Timer Trigger, CRON, Scheduled Tasks, Serverless, Azure, Automation
+Tags: Azure Functions, Timer Trigger, Cron, Scheduled Tasks, Serverless, Azure, Automation
 
 Description: Learn how to use Azure Functions timer triggers to run scheduled tasks with CRON expressions, timezone handling, and reliable execution patterns.
 

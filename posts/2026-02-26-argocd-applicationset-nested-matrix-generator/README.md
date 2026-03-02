@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Matrix Generator
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Matrix Generator
 
 Description: Learn how to nest generators using the matrix generator in ArgoCD ApplicationSets to create complex multi-dimensional application deployments.
 

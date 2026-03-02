@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Deno, WebSocket, Real-time, TypeScript
+Tags: Deno, WebSocket, Real-Time, TypeScript
 
 Description: Learn how to build production-ready WebSocket servers in Deno with authentication, rooms, broadcasting, and scaling strategies.
 

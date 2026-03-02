@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CDKTF, Stacks, Dependencies, Infrastructure as Code
+Tags: Terraform, CDKTF, Stack, Dependencies, Infrastructure as Code
 
 Description: Learn how to manage dependencies between CDKTF stacks, pass data across stacks, and control deployment ordering for multi-stack architectures.
 

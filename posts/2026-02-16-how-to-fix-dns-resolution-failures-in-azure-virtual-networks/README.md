@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, DNS, Virtual Networks, Networking, Troubleshooting, VNet, Private DNS
+Tags: Azure, DNS, Virtual Network, Networking, Troubleshooting, VNet, Private DNS
 
 Description: A comprehensive guide to diagnosing and fixing DNS resolution failures within Azure Virtual Networks with real-world solutions.
 

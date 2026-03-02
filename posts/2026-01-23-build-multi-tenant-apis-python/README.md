@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Multi-tenancy, FastAPI, API Design, SaaS, Database, Architecture
+Tags: Python, Multi-Tenancy, FastAPI, API Design, SaaS, Database, Architecture
 
 Description: Learn how to build multi-tenant APIs in Python using FastAPI.
 

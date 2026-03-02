@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Message Queues, Design Patterns, Reliability, Backend
+Tags: Message Queue, Design Pattern, Reliability, Backend
 
 Description: Learn how to implement idempotent message receivers for safe message reprocessing.
 

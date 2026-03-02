@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, E-commerce, Shopping Cart, Custom Metrics, Abandonment, Observability, Business Metrics, Conversion
+Tags: OpenTelemetry, E-Commerce, Shopping Cart, Custom Metrics, Abandonment, Observability, Business Metrics, Conversion
 
 Description: Learn how to use OpenTelemetry custom metrics to track shopping cart abandonment, measure conversion funnels, and correlate drop-off points with backend performance issues.
 

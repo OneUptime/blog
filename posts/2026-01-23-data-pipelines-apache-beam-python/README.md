@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Apache Beam, Data Pipelines, ETL, Big Data, Batch Processing, Stream Processing
+Tags: Python, Apache Beam, Data Pipeline, ETL, Big Data, Batch Processing, Stream Processing
 
 Description: Learn how to build portable data pipelines with Apache Beam in Python.
 

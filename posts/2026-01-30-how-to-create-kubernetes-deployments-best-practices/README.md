@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployments, DevOps, Best Practices
+Tags: Kubernetes, Deployment, DevOps, Best Practices
 
 Description: Learn best practices for creating robust Kubernetes Deployments with proper resource management, health checks, and update strategies.
 

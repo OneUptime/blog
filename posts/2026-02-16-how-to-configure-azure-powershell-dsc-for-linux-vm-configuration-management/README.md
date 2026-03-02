@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, PowerShell DSC, Linux, Configuration Management, Automation, Virtual Machines, DevOps
+Tags: Azure, PowerShell DSC, Linux, Configuration Management, Automation, Virtual Machine, DevOps
 
 Description: A hands-on guide to using Azure Automation State Configuration with PowerShell DSC to manage and enforce configurations on Linux virtual machines.
 

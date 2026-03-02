@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Elasticsearch, Observability, Logs, Traces
+Tags: OpenTelemetry, Collector, Exporter, Elasticsearch, Observability, Logs, Traces
 
 Description: Learn how to configure the Elasticsearch exporter in OpenTelemetry Collector to send telemetry data to Elasticsearch clusters with authentication, TLS, and index management.
 

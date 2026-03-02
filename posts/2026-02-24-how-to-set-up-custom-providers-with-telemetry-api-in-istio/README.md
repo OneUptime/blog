@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Telemetry API, OpenTelemetry, Custom Providers, Observability
+Tags: Istio, Telemetry API, OpenTelemetry, Custom Provider, Observability
 
 Description: How to configure custom telemetry providers in Istio including OpenTelemetry Collectors, custom access log formats, and external tracing backends.
 

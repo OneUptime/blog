@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Data Pipelines, Idempotency, Dataflow, BigQuery, Data Engineering
+Tags: GCP, Data Pipeline, Idempotency, Dataflow, BigQuery, Data Engineering
 
 Description: Learn how to design idempotent data pipelines on GCP that produce the same results regardless of how many times they run, enabling safe retries and reliable data processing.
 

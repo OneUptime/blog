@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Service Bus, Claim Check Pattern, Messaging, Blob Storage, Cloud Architecture, Design Patterns
+Tags: Azure, Service Bus, Claim Check Pattern, Messaging, Blob Storage, Cloud Architecture, Design Pattern
 
 Description: Learn how to handle messages that exceed Azure Service Bus size limits using the claim check pattern with Azure Blob Storage.
 

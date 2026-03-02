@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Testing, Mocking, wiremock, HTTP, API Testing, Integration Tests, Test Doubles
+Tags: Rust, Testing, Mocking, WireMock, HTTP, API Testing, Integration Tests, Test Doubles
 
 Description: Learn how to mock external HTTP APIs in Rust tests using wiremock. This guide covers request matching, response templating, verification, stateful mocks, and testing error scenarios.
 

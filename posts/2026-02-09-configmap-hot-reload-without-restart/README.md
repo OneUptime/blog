@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ConfigMaps, Hot Reload
+Tags: Kubernetes, ConfigMap, Hot Reload
 
 Description: Learn how to implement ConfigMap hot reload in Kubernetes applications without restarting pods, using file watchers and signal handlers for zero-downtime configuration updates.
 

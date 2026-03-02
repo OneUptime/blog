@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Tasks, Dynamic Include, Playbook
+Tags: Ansible, Task, Dynamic Include, Playbook
 
 Description: Learn how to use include_tasks for dynamic task inclusion in Ansible, enabling conditional logic, loops, and runtime decision-making.
 

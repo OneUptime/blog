@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Debugging, DevOps, Troubleshooting, Containers, kubectl
+Tags: Kubernetes, Debugging, DevOps, Troubleshooting, Container, kubectl
 
 Description: A practical guide to debugging Kubernetes applications, covering log analysis, pod inspection, resource diagnostics, networking issues.
 

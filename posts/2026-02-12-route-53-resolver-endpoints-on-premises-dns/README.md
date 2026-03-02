@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Route 53, DNS, On-Premises, Hybrid Cloud
+Tags: AWS, Route 53, DNS, On-Premise, Hybrid Cloud
 
 Description: Detailed walkthrough for setting up Route 53 Resolver inbound and outbound endpoints to integrate on-premises DNS with AWS private hosted zones.
 

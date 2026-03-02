@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CDC, Change Data Capture, Data Engineering, Debezium, Kafka, Database Replication, Real-time Data
+Tags: CDC, Change Data Capture, Data Engineering, Debezium, Kafka, Database Replication, Real-Time Data
 
 Description: Learn how to implement Change Data Capture (CDC) to stream database changes in real-time for analytics, replication, and event-driven architectures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, unsafe, Performance, Optimization, Memory
+Tags: Go, Unsafe, Performance, Optimization, Memory
 
 Description: Use Go's unsafe package for zero-copy operations when performance is critical, with guidelines on when it's appropriate and how to do it safely.
 

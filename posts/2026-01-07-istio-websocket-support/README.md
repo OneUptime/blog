@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebSocket, Real-time, Service Mesh, Kubernetes
+Tags: Istio, WebSocket, Real-Time, Service Mesh, Kubernetes
 
 Description: Learn how to configure Istio for WebSocket connections and real-time applications.
 

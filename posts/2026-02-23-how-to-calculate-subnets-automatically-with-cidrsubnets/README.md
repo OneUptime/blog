@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Networking, CIDR, Subnets, VPC, Infrastructure as Code
+Tags: Terraform, Networking, CIDR, Subnet, VPC, Infrastructure as Code
 
 Description: Learn how to use Terraform's cidrsubnets function to automatically calculate non-overlapping subnets of different sizes from a single VPC CIDR block.
 

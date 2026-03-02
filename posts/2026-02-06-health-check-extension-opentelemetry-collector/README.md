@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extensions, Health Check, Monitoring, Operations, Kubernetes, Production
+Tags: OpenTelemetry, Collector, Extension, Health Check, Monitoring, Operations, Kubernetes, Production
 
 Description: Learn how to configure the Health Check extension in OpenTelemetry Collector to monitor collector health and integrate with orchestration platforms like Kubernetes.
 

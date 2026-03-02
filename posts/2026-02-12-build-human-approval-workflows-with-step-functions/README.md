@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Step Functions, Approval Workflows, Serverless, Automation
+Tags: AWS, Step Functions, Approval Workflow, Serverless, Automation
 
 Description: Build human-in-the-loop approval workflows using AWS Step Functions with task tokens and callback patterns
 

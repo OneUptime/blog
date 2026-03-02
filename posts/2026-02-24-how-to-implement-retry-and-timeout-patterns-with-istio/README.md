@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Retries, Timeouts, Resilience, Kubernetes, Service Mesh
+Tags: Istio, Retries, Timeout, Resilience, Kubernetes, Service Mesh
 
 Description: A practical guide to configuring retry and timeout policies in Istio to build resilient microservices that handle transient failures gracefully.
 

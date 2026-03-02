@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GraphQL, NodeJS, Ubuntu, Apollo Server, API, PostgreSQL, Prisma, Authentication, WebSockets, DevOps
+Tags: GraphQL, NodeJS, Ubuntu, Apollo Server, API, PostgreSQL, Prisma, Authentication, WebSocket, DevOps
 
 Description: A comprehensive guide to building a production-ready GraphQL API server on Ubuntu with Node.js, covering schema design, resolvers, authentication, subscriptions, and deployment.
 

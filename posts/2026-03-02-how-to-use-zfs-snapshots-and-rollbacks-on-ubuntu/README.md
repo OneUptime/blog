@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, ZFS, Snapshots, Backup, Recovery
+Tags: Ubuntu, ZFS, Snapshot, Backup, Recovery
 
 Description: Create, manage, and roll back ZFS snapshots on Ubuntu for instant backups and recovery points, covering automated snapshot schedules and browsing snapshot contents.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Roles, Configuration Management, Overrides
+Tags: Ansible, Roles, Configuration Management, Override
 
 Description: Learn how to override templates, tasks, variables, and other files in Ansible roles without modifying the original role source code.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Tracing, Spans, Configuration, SDK, Performance, Observability
+Tags: OpenTelemetry, Tracing, Span, Configuration, SDK, Performance, Observability
 
 Description: Learn how to configure maximum events per span and maximum links per span in OpenTelemetry SDKs to control memory usage and telemetry volume.
 

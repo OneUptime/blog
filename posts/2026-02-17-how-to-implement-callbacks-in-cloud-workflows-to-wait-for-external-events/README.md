@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Workflows, Callbacks, Serverless, Event-Driven
+Tags: GCP, Cloud Workflows, Callback, Serverless, Event-Driven
 
 Description: Learn how to implement callback endpoints in Google Cloud Workflows so your workflow can pause and wait for external events before continuing execution.
 

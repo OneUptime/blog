@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, HCL, Infrastructure as Code, Configuration
+Tags: Terraform, Provider, HCL, Infrastructure as Code, Configuration
 
 Description: Learn how to use the required_providers block in Terraform to specify provider sources, version constraints, and local names for your infrastructure configuration.
 

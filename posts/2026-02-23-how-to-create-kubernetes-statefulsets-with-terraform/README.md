@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, StatefulSets, Stateful Applications, Infrastructure as Code
+Tags: Terraform, Kubernetes, StatefulSet, Stateful Applications, Infrastructure as Code
 
 Description: How to create Kubernetes StatefulSets using Terraform for running stateful applications like databases, message queues, and distributed systems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Environment Variables, Configuration, Containers
+Tags: AWS, ECS, Environment Variable, Configuration, Container
 
 Description: A complete guide to passing environment variables to ECS tasks using task definitions, Secrets Manager, SSM Parameter Store, and .env file patterns.
 

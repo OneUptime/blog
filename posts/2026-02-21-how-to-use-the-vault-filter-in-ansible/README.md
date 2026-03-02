@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Vault, Jinja2, Filters, Encryption
+Tags: Ansible, Vault, Jinja2, Filter, Encryption
 
 Description: Learn how to use the Ansible vault filter to encrypt data dynamically within playbooks and Jinja2 templates at runtime.
 

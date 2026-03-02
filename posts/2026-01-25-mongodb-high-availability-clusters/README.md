@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, High Availability, Replica Sets, Clustering, DevOps
+Tags: MongoDB, High Availability, Replica Set, Clustering, DevOps
 
 Description: Learn how to architect MongoDB deployments for 99.99% uptime with replica sets, proper member distribution, automated failover, and disaster recovery strategies.
 

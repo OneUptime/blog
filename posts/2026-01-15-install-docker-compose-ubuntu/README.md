@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Docker, Docker Compose, Containers, DevOps, Tutorial
+Tags: Ubuntu, Docker, Docker Compose, Container, DevOps, Tutorial
 
 Description: Step-by-step guide to installing Docker Compose on Ubuntu for managing multi-container Docker applications.
 

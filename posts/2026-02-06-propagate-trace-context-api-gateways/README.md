@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, API Gateway, Context Propagation, Distributed Tracing, Nginx, Kong, AWS API Gateway, Envoy
+Tags: OpenTelemetry, API Gateway, Context Propagation, Distributed Tracing, NGINX, Kong, AWS API Gateway, Envoy
 
 Description: Learn how to configure API gateways like Nginx, Kong, AWS API Gateway, and Envoy to propagate OpenTelemetry trace context to backend services.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, Bulkhead Pattern, Resilience, Microservices, Fault Isolation, Design Patterns, Concurrency
+Tags: Node.js, Bulkhead Pattern, Resilience, Microservices, Fault Isolation, Design Pattern, Concurrency
 
 Description: Learn how to implement the bulkhead pattern in Node.js to isolate failures and prevent cascading outages.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Volumes, Storage, Local Volume Driver, DevOps, Docker CLI
+Tags: Docker, VOLUME, Storage, Local Volume Driver, DevOps, Docker CLI
 
 Description: Learn how to configure Docker's local volume driver with custom mount options for tmpfs, ext4, and bind-style volumes.
 

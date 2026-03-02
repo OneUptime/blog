@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connectors, Signal to Metrics, Metrics Generation, Telemetry Transformation
+Tags: OpenTelemetry, Collector, Connector, Signal to Metrics, Metrics Generation, Telemetry Transformation
 
 Description: Master the Signal to Metrics connector in OpenTelemetry Collector to transform traces and logs into actionable metrics for enhanced monitoring and observability.
 

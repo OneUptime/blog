@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Exporters, Performance, Latency
+Tags: OpenTelemetry, Exporter, Performance, Latency
 
 Description: Avoid blocking your application's request path by understanding the difference between synchronous and batch span exporters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditionals, Task Chaining, Workflow
+Tags: Ansible, Conditional, Task Chaining, Workflow
 
 Description: Learn how to chain conditionals across multiple Ansible tasks using registered variables to build sequential decision-making workflows.
 

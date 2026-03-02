@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Proxy, URL Encoding, proxy_pass, Reverse Proxy, DevOps
+Tags: NGINX, Proxy, URL Encoding, proxy_pass, Reverse Proxy, DevOps
 
 Description: Learn how to properly handle URL encoding and decoding when using Nginx proxy_pass. Understand when URLs get double-encoded and how to preserve the original encoding.
 

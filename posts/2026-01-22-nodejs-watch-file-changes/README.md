@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, FileSystem, Watch, Development, HotReload
+Tags: NodeJS, Filesystem, WATCH, Development, HotReload
 
 Description: Learn how to watch for file changes in Node.js using fs.watch, fs.watchFile, chokidar, and how to build hot reload functionality for development.
 

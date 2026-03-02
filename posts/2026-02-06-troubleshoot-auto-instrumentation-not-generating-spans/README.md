@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Auto-Instrumentation, Troubleshooting, Tracing, Spans, Debugging
+Tags: OpenTelemetry, Auto-Instrumentation, Troubleshooting, Tracing, Span, Debugging
 
 Description: A practical guide to diagnosing and fixing OpenTelemetry auto-instrumentation setups that fail to generate spans or produce incomplete traces.
 

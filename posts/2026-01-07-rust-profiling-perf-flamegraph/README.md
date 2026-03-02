@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Profiling, Performance, perf, flamegraph, samply, CPU, Optimization
+Tags: Rust, Profiling, Performance, perf, Flamegraph, samply, CPU, Optimization
 
 Description: Learn how to profile Rust applications using perf, flamegraph, and samply. This guide covers CPU profiling, flame graph generation, and identifying performance bottlenecks in production Rust code.
 

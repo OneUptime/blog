@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Docker, Containers, Debugging
+Tags: AWS, ECS, Docker, Container, Debugging
 
 Description: Diagnose and resolve ECS OutOfMemoryError issues including container memory limits, JVM heap sizing, memory reservation vs hard limits, and monitoring strategies.
 

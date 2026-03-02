@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, RDS, Backups, Disaster Recovery, Database
+Tags: AWS, RDS, Backup, Disaster Recovery, Database
 
 Description: Learn how to use RDS point-in-time recovery to restore your database to any specific second within your backup retention window.
 

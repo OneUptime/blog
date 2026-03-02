@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Dataflow, Templates, Apache Beam, Pipeline Automation, Reusable Pipelines
+Tags: GCP, Dataflow, Template, Apache Beam, Pipeline Automation, Reusable Pipelines
 
 Description: Learn how to create Dataflow Classic Templates to make your Apache Beam pipelines reusable and launchable without recompiling code.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Vertex AI, Retail Search, Facets, Filters, E-Commerce, Google Cloud
+Tags: GCP, Vertex AI, Retail Search, Facets, Filter, E-Commerce, Google Cloud
 
 Description: Configure retail search facets and filters using Vertex AI Search for Commerce to build effective browse and category pages for your e-commerce site.
 

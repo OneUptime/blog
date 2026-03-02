@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Special Variables, play_hosts, groups, Inventory
+Tags: Ansible, Special Variables, play_hosts, Groups, Inventory
 
 Description: Understand the difference between play_hosts and groups variables in Ansible and learn when to use each for host targeting.
 

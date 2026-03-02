@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Google Cloud, Pub/Sub, Message Queue, Event Streaming, Snapshots, Replay, Disaster Recovery, Python, Node.js
+Tags: Google Cloud, Pub/Sub, Message Queue, Event Streaming, Snapshot, Replay, Disaster Recovery, Python, Node.js
 
 Description: Learn how to implement Google Cloud Pub/Sub snapshot and seek functionality for message replay.
 

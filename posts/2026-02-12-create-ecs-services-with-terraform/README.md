@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Terraform, ECS, Containers, Fargate
+Tags: AWS, Terraform, ECS, Container, Fargate
 
 Description: A comprehensive guide to deploying containerized applications on Amazon ECS with Terraform, covering Fargate, task definitions, services, load balancers, and auto-scaling.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, WebSocket, Real-time, Gorilla, Concurrency
+Tags: Go, WebSocket, Real-Time, Gorilla, Concurrency
 
 Description: Build real-time WebSocket applications in Go using Gorilla WebSocket with proper connection management, broadcasting, and horizontal scaling strategies.
 

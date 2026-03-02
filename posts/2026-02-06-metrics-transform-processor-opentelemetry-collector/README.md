@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Metrics, Data Transformation, Observability
+Tags: OpenTelemetry, Collector, Processor, Metrics, Data Transformation, Observability
 
 Description: Learn how to configure the metrics transform processor in OpenTelemetry Collector to rename metrics, modify labels, aggregate data points, and transform metric types for standardization.
 

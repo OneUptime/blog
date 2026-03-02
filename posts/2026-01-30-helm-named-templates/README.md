@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, Templates, Reusability
+Tags: Helm, Kubernetes, Template, Reusability
 
 Description: Learn to create reusable template snippets in Helm using the _helpers.tpl file with define and include directives.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Azure Linux, Mariner, Security, Node Pools, Kubernetes, Container Host
+Tags: AKS, Azure Linux, Mariner, Security, Node Pool, Kubernetes, Container Host
 
 Description: Learn how to create AKS node pools using Azure Linux (CBL-Mariner) for a minimal, security-hardened container host with reduced attack surface.
 

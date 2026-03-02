@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Volumes, Storage, Containers, DevOps, Docker CLI
+Tags: Docker, VOLUME, Storage, Container, DevOps, Docker CLI
 
 Description: Learn multiple methods to view, browse, and inspect the contents of Docker volumes without modifying your running containers.
 

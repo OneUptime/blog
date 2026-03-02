@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Templates, Go Templates, Functions
+Tags: Helm, Kubernetes, DevOps, Template, Go Templates, Functions
 
 Description: Learn how to use Helm template functions, pipelines, and the Sprig library to create powerful, flexible Kubernetes manifests.
 

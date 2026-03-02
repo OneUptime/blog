@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provider Development, Pagination, Data Sources, Infrastructure as Code
+Tags: Terraform, Provider Development, Pagination, Data Source, Infrastructure as Code
 
 Description: Learn how to implement pagination in custom Terraform provider data sources to efficiently retrieve large datasets from APIs using offset, cursor, and page-based pagination.
 

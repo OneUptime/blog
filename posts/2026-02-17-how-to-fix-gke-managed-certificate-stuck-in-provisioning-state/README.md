@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GKE, Kubernetes, SSL, Managed Certificates, HTTPS, Troubleshooting, GCP
+Tags: GKE, Kubernetes, SSL, Managed Certificate, HTTPS, Troubleshooting, GCP
 
 Description: Step-by-step troubleshooting guide for GKE managed certificates that are stuck in Provisioning status, covering DNS configuration, load balancer setup, and common pitfalls.
 

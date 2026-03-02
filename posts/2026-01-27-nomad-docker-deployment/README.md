@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nomad, Docker, HashiCorp, Containers, DevOps, Orchestration, Service Discovery, Infrastructure
+Tags: Nomad, Docker, HashiCorp, Container, DevOps, Orchestration, Service Discovery, Infrastructure
 
 Description: A comprehensive guide to deploying and managing Docker containers on HashiCorp Nomad, covering job specifications, networking, service discovery, and production best practices.
 

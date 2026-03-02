@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, java, maven, build optimization, layer caching, multi-stage builds, gradle
+Tags: Docker, Java, Maven, Build Optimization, Layer Caching, Multi-Stage Build, Gradle
 
 Description: Reduce Java and Maven Docker build times with dependency caching and multi-stage build strategies
 

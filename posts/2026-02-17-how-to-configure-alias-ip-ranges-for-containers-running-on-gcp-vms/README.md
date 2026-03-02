@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Alias IP, Containers, VPC, Networking
+Tags: GCP, Alias IP, Container, VPC, Networking
 
 Description: Learn how to configure alias IP ranges on GCP VMs so containers get their own routable VPC IP addresses, enabling direct container-to-container communication across the network.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Images, Layers, Diff, Comparison, DevOps, Debugging, Security
+Tags: Docker, Images, Layer, Diff, Comparison, DevOps, Debugging, Security
 
 Description: Learn how to compare two Docker images layer by layer to find differences in size, files, packages, and configuration.
 

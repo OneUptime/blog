@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Data Transformation, Dictionary
+Tags: Ansible, Filter, Data Transformation, Dictionary
 
 Description: Learn how to use the rekey_on_member filter in Ansible to transform a list of dictionaries into a dictionary keyed by a specified member field.
 

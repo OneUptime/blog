@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Playbooks, Task Management, DevOps
+Tags: Ansible, Playbook, Task Management, DevOps
 
 Description: Learn how to use the ansible-playbook --list-tasks flag to preview all tasks in a playbook before execution for review and documentation purposes.
 

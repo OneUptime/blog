@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Infrastructure as Code, Conditionals, Expressions
+Tags: Terraform, HCL, Infrastructure as Code, Conditional, Expressions
 
 Description: Learn how to use ternary conditional expressions in Terraform to dynamically choose values based on conditions for flexible infrastructure configuration.
 

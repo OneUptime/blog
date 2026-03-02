@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Modules, Project Structure, Imports, Organization
+Tags: Rust, Modules, Project Structure, Import, Organization
 
 Description: Learn how to properly import sibling modules in Rust projects. Understand the module system, use statements, and project organization for clean code structure.
 

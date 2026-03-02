@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Roles, Templates, Jinja2
+Tags: Ansible, Roles, Template, Jinja2
 
 Description: Master Ansible role templates with Jinja2 including loops, conditionals, filters, and practical configuration file examples.
 

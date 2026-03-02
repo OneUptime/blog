@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: DevOps, Promotion, Environments, GitOps
+Tags: DevOps, Promotion, Environment, GitOps
 
 Description: Learn to implement environment promotion from dev to staging to production.
 

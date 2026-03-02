@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Modules, Development, Plugins
+Tags: Ansible, Python, Modules, Development, Plugin
 
 Description: Write custom Ansible modules in Python with proper argument handling, check mode support, and documentation integration.
 

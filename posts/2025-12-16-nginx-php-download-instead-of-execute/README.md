@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, PHP, PHP-FPM, Troubleshooting, Web Server
+Tags: NGINX, PHP, PHP-FPM, Troubleshooting, Web Server
 
 Description: Learn how to fix the common issue where Nginx downloads PHP files instead of executing them, including PHP-FPM configuration, socket setup, and proper location block configuration.
 

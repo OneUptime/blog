@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Jenkins, CI/CD, Triggers, Automation
+Tags: Jenkins, CI/CD, Trigger, Automation
 
 Description: A comprehensive guide to implementing Jenkins pipeline triggers, covering SCM polling, webhooks, cron scheduling, upstream/downstream triggers.
 

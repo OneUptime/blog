@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MySQL, Triggers, Data Integrity, Automation
+Tags: MySQL, Trigger, Data Integrity, Automation
 
 Description: Learn to implement MySQL triggers with best practices for audit logging, data validation, and cascading updates while avoiding common pitfalls.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Apache Airflow, Data Pipelines, ETL Orchestration, Workflow Automation, Data Engineering
+Tags: ClickHouse, Apache Airflow, Data Pipeline, ETL Orchestration, Workflow Automation, Data Engineering
 
 Description: A comprehensive guide to orchestrating ClickHouse data pipelines with Apache Airflow, covering DAG patterns, operators, and production best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Containers, Resource Management
+Tags: Kubernetes, Init Container, Resource Management
 
 Description: Learn how Kubernetes calculates effective resource requests and limits when using init containers, and how to properly size both init and app containers to avoid scheduling issues and resource waste.
 

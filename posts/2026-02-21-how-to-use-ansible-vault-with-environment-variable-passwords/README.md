@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Vault, Security, Environment Variables, CI/CD
+Tags: Ansible, Vault, Security, Environment Variable, CI/CD
 
 Description: Learn how to pass Ansible Vault passwords through environment variables for automated workflows and CI/CD pipeline integration.
 

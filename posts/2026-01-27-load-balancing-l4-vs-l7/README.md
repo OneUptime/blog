@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Load Balancing, L4, L7, Networking, High Availability, HAProxy, Nginx
+Tags: Load Balancing, L4, L7, Networking, High Availability, HAProxy, NGINX
 
 Description: Learn the differences between Layer 4 and Layer 7 load balancing, when to use each, and implementation examples with HAProxy, Nginx, and cloud load balancers.
 

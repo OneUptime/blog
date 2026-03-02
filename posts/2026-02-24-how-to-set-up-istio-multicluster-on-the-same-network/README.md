@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Multicluster, Kubernetes, Networking, Service Mesh
+Tags: Istio, MultiCluster, Kubernetes, Networking, Service Mesh
 
 Description: Learn how to configure Istio multicluster when your Kubernetes clusters share a flat network where pods can directly communicate with each other.
 

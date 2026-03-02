@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Troubleshooting, Container Management, DevOps, Errors
+Tags: Docker, Troubleshooting, Container Management, DevOps, Error
 
 Description: Diagnose and resolve Docker 'No such container' errors including stopped container issues, name vs ID mismatches, and scripts that reference containers that no longer exist.
 

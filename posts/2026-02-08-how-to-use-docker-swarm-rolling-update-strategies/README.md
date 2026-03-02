@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Swarm, Rolling Updates, Zero Downtime, Deployment Strategy, DevOps
+Tags: Docker, Docker Swarm, Rolling Update, Zero Downtime, Deployment Strategy, DevOps
 
 Description: Configure Docker Swarm rolling update parameters for zero-downtime deployments with parallelism, delays, and rollback controls.
 

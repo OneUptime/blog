@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Envoy, Resilience, Circuit Breakers
+Tags: Envoy, Resilience, Circuit Breaker
 
 Description: Learn how to configure Envoy circuit breakers to prevent cascading failures and implement fault tolerance patterns in your microservices architecture.
 

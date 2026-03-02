@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, TLS, Security, Troubleshooting, SSL, Certificates, OTLP, Observability
+Tags: OpenTelemetry, TLS, Security, Troubleshooting, SSL, Certificate, OTLP, Observability
 
 Description: A practical guide to diagnosing and fixing TLS handshake errors when connecting OpenTelemetry exporters to collectors and backends, including certificate configuration, trust chain issues.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Cargo, Package Management, Build Tools, Dependencies, Rust Development, Project Structure
+Tags: Rust, Cargo, Package Management, Build Tool, Dependencies, Rust Development, Project Structure
 
 Description: A comprehensive guide to using Cargo for managing Rust projects, from creating new projects to publishing crates.
 

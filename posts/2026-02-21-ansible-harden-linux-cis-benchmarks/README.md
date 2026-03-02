@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Security, CIS Benchmarks, Linux Hardening, DevOps
+Tags: Ansible, Security, CIS Benchmark, Linux Hardening, DevOps
 
 Description: Implement CIS Benchmark security controls on Linux servers using Ansible playbooks for automated and repeatable system hardening.
 

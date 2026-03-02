@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Stream Analytics, Late Events, Watermarks, Event Processing, Real-Time Analytics, Azure Cloud, Stream Processing
+Tags: Azure Stream Analytics, Late Events, Watermark, Event Processing, Real-Time Analytics, Azure Cloud, Stream Processing
 
 Description: Learn how to configure watermarks and handle late-arriving events in Azure Stream Analytics to maintain data accuracy in real-time pipelines.
 

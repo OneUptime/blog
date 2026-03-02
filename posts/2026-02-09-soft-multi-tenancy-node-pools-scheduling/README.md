@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Multi-Tenancy, Node Pools
+Tags: Kubernetes, Multi-Tenancy, Node Pool
 
 Description: Learn how to implement soft multi-tenancy in Kubernetes using node pools, taints, tolerations, and resource quotas to isolate workloads from different teams while sharing cluster infrastructure.
 

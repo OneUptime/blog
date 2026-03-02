@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CircleCI, CI/CD, Approval Jobs, DevOps, Workflows, Deployment Safety
+Tags: CircleCI, CI/CD, Approval Jobs, DevOps, Workflow, Deployment Safety
 
 Description: A practical guide to implementing CircleCI approval jobs for production deployments.
 

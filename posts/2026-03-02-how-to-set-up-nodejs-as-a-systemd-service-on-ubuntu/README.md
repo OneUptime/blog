@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Node.js, systemd, Services, JavaScript
+Tags: Ubuntu, Node.js, systemd, Service, JavaScript
 
 Description: Configure Node.js applications to run as systemd services on Ubuntu with automatic restarts, logging, and proper user permissions.
 

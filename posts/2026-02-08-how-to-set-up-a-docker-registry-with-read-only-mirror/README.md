@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, registry, mirror, pull-through cache, image distribution, DevOps, infrastructure
+Tags: Docker, Registry, Mirror, pull-through cache, Image Distribution, DevOps, Infrastructure
 
 Description: Configure a Docker registry as a read-only mirror and pull-through cache to speed up image pulls and reduce external bandwidth usage.
 

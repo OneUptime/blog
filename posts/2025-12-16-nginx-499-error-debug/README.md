@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, Troubleshooting, HTTP Status Codes, Web Server, DevOps
+Tags: NGINX, Troubleshooting, HTTP Status Codes, Web Server, DevOps
 
 Description: Learn how to debug and fix Nginx 499 error codes, which occur when clients close connections before the server responds. Understand the root causes and implement practical solutions.
 

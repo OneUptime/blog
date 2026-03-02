@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, External DNS, DNS, Route53, CloudFlare, Azure DNS, GCP Cloud DNS, Automation
+Tags: Kubernetes, External DNS, DNS, Route53, Cloudflare, Azure DNS, GCP Cloud DNS, Automation
 
 Description: Learn how to configure External DNS to automatically create and manage DNS records for Kubernetes Services and Ingresses across multiple DNS providers.
 

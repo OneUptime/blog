@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connectors, Sum Connector, Metrics Aggregation, Data Pipeline
+Tags: OpenTelemetry, Collector, Connector, Sum Connector, Metrics Aggregation, Data Pipeline
 
 Description: Learn how to use the Sum connector in OpenTelemetry Collector to aggregate metrics from multiple pipelines and create unified views of your telemetry data.
 

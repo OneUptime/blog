@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Namespaces, Environments
+Tags: ArgoCD, GitOps, Kubernetes, Namespace, Environment
 
 Description: Learn how to implement the namespace-per-environment pattern in ArgoCD where dev, staging, and production run in separate namespaces on a shared cluster.
 

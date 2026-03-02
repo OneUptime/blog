@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collections
+Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collection
 
 Description: Learn how to use the flatten function in Terraform to convert nested lists into flat lists for resource creation with for_each and count patterns.
 

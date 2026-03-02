@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, dataclasses, Object-Oriented Programming, Data Structures, Type Hints, Clean Code
+Tags: Python, Dataclasses, Object-Oriented Programming, Data Structures, Type Hints, Clean Code
 
 Description: Master Python's dataclasses module for creating clean, efficient data containers. Learn about field options, inheritance, immutability, and practical patterns for real-world applications.
 

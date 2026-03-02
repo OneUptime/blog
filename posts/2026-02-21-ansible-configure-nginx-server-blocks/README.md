@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Nginx, Virtual Hosts, Web Server Configuration
+Tags: Ansible, NGINX, Virtual Hosts, Web Server Configuration
 
 Description: Learn how to manage multiple Nginx server blocks for different websites and applications using Ansible templates and variables.
 

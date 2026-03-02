@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker Compose, sysctls, Kernel Parameters, Networking, Performance, DevOps, Docker
+Tags: Docker Compose, Sysctl, Kernel Parameters, Networking, Performance, DevOps, Docker
 
 Description: Configure kernel parameters inside Docker containers using sysctls for network tuning, performance, and security hardening.
 

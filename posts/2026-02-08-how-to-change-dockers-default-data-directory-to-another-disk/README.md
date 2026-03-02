@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Storage, Linux, DevOps, Containers, Disk Management, Configuration, Data Migration
+Tags: Docker, Storage, Linux, DevOps, Container, Disk Management, Configuration, Data Migration
 
 Description: How to move Docker's data directory from the default /var/lib/docker to another disk or partition, with step-by-step migration and verification instructions.
 

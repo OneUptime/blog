@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LXD, cloud-init, Containers, Automation
+Tags: Ubuntu, LXD, cloud-init, Container, Automation
 
 Description: Learn how to pass cloud-init configuration to LXD containers and VMs to automate first-boot setup, install packages, configure users, and run custom scripts.
 

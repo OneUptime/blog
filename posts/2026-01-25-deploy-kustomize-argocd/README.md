@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, Kustomize, Kubernetes, GitOps, Configuration Management, Overlays
+Tags: ArgoCD, Kustomize, Kubernetes, GitOps, Configuration Management, Overlay
 
 Description: Learn how to use Kustomize with ArgoCD for template-free Kubernetes configuration management, including base and overlay patterns, strategic merge patches, and multi-environment deployments.
 

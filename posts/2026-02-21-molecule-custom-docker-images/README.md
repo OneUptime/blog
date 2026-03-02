@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Molecule, Docker, Testing, Container Images
+Tags: Ansible, Molecule, Docker, Testing, Container Image
 
 Description: Build and use custom Docker images for Molecule testing that include systemd, specific packages, and proper init systems.
 

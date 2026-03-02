@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Nginx, Web Server, Reverse Proxy
+Tags: Ansible, NGINX, Web Server, Reverse Proxy
 
 Description: Complete guide to automating Nginx installation, configuration, and SSL setup using Ansible playbooks for web servers and reverse proxies.
 

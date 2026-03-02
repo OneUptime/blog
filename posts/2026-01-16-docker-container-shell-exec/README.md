@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Debugging, DevOps, Containers, Troubleshooting
+Tags: Docker, Debugging, DevOps, Container, Troubleshooting
 
 Description: Learn how to access running Docker containers using exec, attach, and logs commands for debugging, troubleshooting, and inspection of containerized applications.
 

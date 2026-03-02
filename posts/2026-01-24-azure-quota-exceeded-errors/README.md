@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Troubleshooting, Quota, Limits, Cloud, DevOps, Resource Management
+Tags: Azure, Troubleshooting, Quota, Limit, Cloud, DevOps, Resource Management
 
 Description: Learn how to diagnose, resolve, and prevent Azure quota exceeded errors with practical examples and automation strategies.
 

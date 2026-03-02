@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Services, Docker, Testing, CI/CD, Databases
+Tags: GitLab CI, Service, Docker, Testing, CI/CD, Database
 
 Description: Learn how to use services in GitLab CI jobs to run databases, message queues, and other dependencies during testing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, BuildKit, Remote Builds, CI/CD, DevOps, Cloud Builds, Performance
+Tags: Docker, BuildKit, Remote Builds, CI/CD, DevOps, Cloud Build, Performance
 
 Description: Offload Docker builds to remote BuildKit workers over SSH or TCP for faster builds and multi-architecture image support.
 

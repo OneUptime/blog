@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Finalizers, Resource Management, Troubleshooting
+Tags: Istio, Kubernetes, Finalizer, Resource Management, Troubleshooting
 
 Description: How to understand, manage, and troubleshoot Kubernetes finalizers on Istio resources that can block resource deletion and namespace cleanup.
 

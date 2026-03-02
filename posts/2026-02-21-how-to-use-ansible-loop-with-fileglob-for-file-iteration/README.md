@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Loops, File Management, Lookups
+Tags: Ansible, Loops, File Management, Lookup
 
 Description: Learn how to use the fileglob lookup with Ansible loops to iterate over files matching glob patterns on the control node for bulk file operations.
 

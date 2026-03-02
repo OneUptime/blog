@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Collections, Galaxy, Distribution
+Tags: Ansible, Plugin, Collection, Galaxy, Distribution
 
 Description: Learn the different methods for distributing Ansible plugins including Galaxy, private automation hub, Git repos, and PyPI packages.
 

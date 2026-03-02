@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure CLI, Extensions, Azure Preview Features, DevOps, Cloud Management, Automation
+Tags: Azure CLI, Extension, Azure Preview Features, DevOps, Cloud Management, Automation
 
 Description: Install and manage Azure CLI extensions to access preview features, additional services, and specialized commands not included in the core CLI.
 

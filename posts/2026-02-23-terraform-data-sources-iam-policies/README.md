@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, IAM, Data Sources, Infrastructure as Code, Security
+Tags: Terraform, AWS, IAM, Data Source, Infrastructure as Code, Security
 
 Description: Learn how to use Terraform data sources to look up and reference existing IAM policies in your AWS infrastructure configurations without duplicating policy definitions.
 

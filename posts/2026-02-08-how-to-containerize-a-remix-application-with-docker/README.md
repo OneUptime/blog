@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, remix, react, containerization, multi-stage builds, node.js
+Tags: Docker, Remix, React, Containerization, Multi-Stage Build, Node.js
 
 Description: Step-by-step guide to building a production-ready Docker image for Remix applications
 

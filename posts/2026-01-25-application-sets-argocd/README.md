@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, ApplicationSets, Kubernetes, GitOps, Automation, Multi-Environment
+Tags: ArgoCD, ApplicationSet, Kubernetes, GitOps, Automation, Multi-Environment
 
 Description: Learn how to use ArgoCD ApplicationSets to automatically generate and manage multiple applications from a single template, covering generators, templating, and real-world patterns.
 

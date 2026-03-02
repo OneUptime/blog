@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, SEO, Clean URLs, Web Server, Configuration
+Tags: NGINX, SEO, Clean URLs, Web Server, Configuration
 
 Description: Learn how to configure Nginx to serve clean URLs without file extensions, including try_files configurations, redirects for SEO, and handling both .php and .html files.
 

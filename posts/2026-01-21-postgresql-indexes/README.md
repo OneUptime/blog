@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Indexes, Performance, B-tree, GIN, GiST, Database Optimization
+Tags: PostgreSQL, Indexes, Performance, B-Tree, Gin, GiST, Database Optimization
 
 Description: A comprehensive guide to creating effective indexes in PostgreSQL, covering B-tree, GIN, GiST, and partial indexes with practical examples and best practices for query optimization.
 

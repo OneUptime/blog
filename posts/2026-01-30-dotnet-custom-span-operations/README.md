@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: .NET, C#, OpenTelemetry, Spans, Tracing, Observability, ActivitySource, Distributed Systems
+Tags: .NET, C#, OpenTelemetry, Span, Tracing, Observability, ActivitySource, Distributed Systems
 
 Description: Learn how to build reusable, production-ready custom span operations in .NET using OpenTelemetry.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Containers, Orchestration, Sequential Execution, Dependencies
+Tags: Kubernetes, Init Container, Orchestration, Sequential Execution, Dependencies
 
 Description: Master the configuration of multiple init containers in Kubernetes to create complex initialization workflows with sequential execution, dependency management, and proper error handling.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, PagerDuty, Incident Management, On-Call, Providers, Infrastructure as Code
+Tags: Terraform, PagerDuty, Incident Management, On-Call, Provider, Infrastructure as Code
 
 Description: Learn how to configure the Terraform PagerDuty provider to manage services, escalation policies, schedules, and integrations as code for reliable incident response.
 

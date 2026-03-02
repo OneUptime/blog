@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, Pub/Sub, Schemas, Event-Driven Architecture, Data Validation, Avro, Protocol Buffers, Messaging
+Tags: Google Cloud, Pub/Sub, Schema, Event-Driven Architecture, Data Validation, Avro, Protocol Buffers, Messaging
 
 Description: Learn how to configure and manage schemas in Google Cloud Pub/Sub for data validation and governance.
 

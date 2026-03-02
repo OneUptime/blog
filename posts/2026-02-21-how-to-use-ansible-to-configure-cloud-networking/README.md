@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Cloud Networking, VPC, Subnets, Network Security
+Tags: Ansible, Cloud Networking, VPC, Subnet, Network Security
 
 Description: Configure cloud networking across AWS, Azure, and GCP with Ansible including VPCs, subnets, route tables, and peering connections.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Builder Pattern, Multi-Stage Builds, Dockerfile, Image Optimization, DevOps
+Tags: Docker, Builder Pattern, Multi-Stage Build, Dockerfile, Image Optimization, DevOps
 
 Description: Implement the Builder pattern with Docker multi-stage builds to create small, secure production images by separating build and runtime stages.
 

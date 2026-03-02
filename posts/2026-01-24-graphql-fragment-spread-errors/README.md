@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GraphQL, Fragments, Error Handling, Schema Design, Query Optimization, TypeScript
+Tags: GraphQL, Fragment, Error Handling, Schema Design, Query Optimization, TypeScript
 
 Description: Learn how to diagnose and fix common fragment spread errors in GraphQL including type mismatches, circular references, and undefined fragments.
 

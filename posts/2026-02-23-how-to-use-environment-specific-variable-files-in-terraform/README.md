@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Variables, Environments, DevOps, Infrastructure as Code
+Tags: Terraform, HCL, Variables, Environment, DevOps, Infrastructure as Code
 
 Description: Learn how to organize Terraform variable files for multiple environments like dev, staging, and production, with patterns for managing shared and environment-specific configuration.
 

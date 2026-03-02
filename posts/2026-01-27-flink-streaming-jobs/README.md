@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Flink, Stream Processing, Real-time, Data Engineering, Java
+Tags: Apache Flink, Stream Processing, Real-Time, Data Engineering, Java
 
 Description: Learn how to write Apache Flink streaming jobs for real-time data processing, including DataStream API, transformations, and state management.
 

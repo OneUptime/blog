@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Volumes, Troubleshooting, DevOps, Storage
+Tags: Docker, VOLUME, Troubleshooting, DevOps, Storage
 
 Description: A practical guide to diagnosing and fixing Docker volume mount problems including permission errors, missing files, incorrect paths, and performance issues on different operating systems.
 

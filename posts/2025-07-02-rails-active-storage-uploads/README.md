@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby, Rails, Active Storage, File Uploads, S3, Cloud Storage
+Tags: Ruby, Rails, Active Storage, File Upload, S3, Cloud Storage
 
 Description: A comprehensive guide to handling file uploads in Ruby on Rails using Active Storage. Learn configuration, cloud storage integration, direct uploads, image processing, and production best practices.
 

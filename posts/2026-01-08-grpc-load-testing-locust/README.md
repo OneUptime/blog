@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, load-testing, locust, performance, python, distributed-testing, metrics
+Tags: gRPC, load-testing, Locust, Performance, Python, distributed-testing, Metrics
 
 Description: Learn how to load test gRPC services using Locust with custom gRPC clients, test scenarios, distributed testing, and CI integration.
 

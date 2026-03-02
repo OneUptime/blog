@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, Nginx, Ingress, Load Balancing
+Tags: Kubernetes, MetalLB, NGINX, Ingress, Load Balancing
 
 Description: Step-by-step guide to deploying MetalLB with the Nginx Ingress Controller for production-ready bare-metal ingress.
 

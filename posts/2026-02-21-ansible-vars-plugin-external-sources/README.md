@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Variables, Configuration Management, Python
+Tags: Ansible, Plugin, Variables, Configuration Management, Python
 
 Description: Build a custom Ansible vars plugin that loads variables from external sources like Consul, etcd, or any key-value store automatically.
 

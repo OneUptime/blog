@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Facts, Conditionals, System Administration
+Tags: Ansible, Facts, Conditional, System Administration
 
 Description: Learn how to use Ansible gathered facts in when conditionals to write playbooks that adapt to different operating systems and hardware.
 

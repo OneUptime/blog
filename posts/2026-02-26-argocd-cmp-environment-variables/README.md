@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Config Management Plugins, Environment Variables
+Tags: ArgoCD, GitOps, Kubernetes, Config Management Plugins, Environment Variable
 
 Description: Learn how to pass environment variables to ArgoCD Config Management Plugins from application specs, secrets, and ConfigMaps for dynamic configuration.
 

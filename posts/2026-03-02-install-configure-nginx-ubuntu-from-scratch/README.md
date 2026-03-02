@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Nginx, Web Server, Linux, Configuration
+Tags: Ubuntu, NGINX, Web Server, Linux, Configuration
 
 Description: Complete guide to installing Nginx on Ubuntu from scratch, including virtual host configuration, SSL setup, and essential performance settings.
 

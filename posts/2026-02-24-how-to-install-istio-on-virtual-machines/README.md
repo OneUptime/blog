@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Virtual Machines, Kubernetes, Service Mesh, Hybrid Cloud
+Tags: Istio, Virtual Machine, Kubernetes, Service Mesh, Hybrid Cloud
 
 Description: Complete guide to extending your Istio service mesh to include virtual machine workloads running outside of Kubernetes for hybrid deployments.
 

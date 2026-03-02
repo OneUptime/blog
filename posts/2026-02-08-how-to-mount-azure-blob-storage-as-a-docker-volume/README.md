@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Azure, Blob Storage, Volumes, Cloud, DevOps, Containers
+Tags: Docker, Azure, Blob Storage, VOLUME, Cloud, DevOps, Container
 
 Description: Learn how to mount Azure Blob Storage containers as Docker volumes using blobfuse, volume plugins, and Azure Files integration.
 

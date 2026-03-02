@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Metrics, Naming, Standards, Prometheus
+Tags: Metrics, Naming, Standard, Prometheus
 
 Description: Learn to build metric naming conventions for consistent and discoverable metrics.
 

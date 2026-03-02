@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Alternate Exchange, Message Routing, Error Handling, Message Queues, DevOps
+Tags: RabbitMQ, Alternate Exchange, Message Routing, Error Handling, Message Queue, DevOps
 
 Description: Learn how to implement alternate exchanges in RabbitMQ to capture unroutable messages and prevent message loss in complex routing scenarios.
 

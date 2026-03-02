@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vue, Reactivity, ref, reactive, Composition API, Vue 3, State Management
+Tags: Vue, Reactivity, ref, Reactive, Composition API, Vue 3, State Management
 
 Description: Understand the differences between ref and reactive in Vue 3, learn when to use each, and avoid common pitfalls that break reactivity.
 

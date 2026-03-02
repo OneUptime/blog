@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Security, Vulnerabilities, Privilege Escalation, DevSecOps, Access Control, Linux, Containers
+Tags: Security, Vulnerabilities, Privilege Escalation, DevSecOps, Access Control, Linux, Container
 
 Description: A practical guide to identifying and fixing privilege escalation vulnerabilities in your applications, containers, and infrastructure.
 

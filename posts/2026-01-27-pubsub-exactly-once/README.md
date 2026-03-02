@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Pub/Sub, Exactly-Once Processing, Message Queues, Idempotency, Deduplication, Google Cloud, Distributed Systems
+Tags: Pub/Sub, Exactly-Once Processing, Message Queue, Idempotency, Deduplication, Google Cloud, Distributed Systems
 
 Description: Learn how to implement exactly-once processing in Pub/Sub systems using idempotency patterns, deduplication strategies, and proper configuration to ensure reliable message delivery without duplicates.
 

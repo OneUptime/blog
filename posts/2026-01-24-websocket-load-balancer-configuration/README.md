@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Load Balancer, Nginx, HAProxy, AWS ALB, Scaling, DevOps, Infrastructure
+Tags: WebSocket, Load Balancer, NGINX, HAProxy, AWS ALB, Scaling, DevOps, Infrastructure
 
 Description: A comprehensive guide to configuring load balancers for WebSocket applications, covering Nginx, HAProxy, AWS ALB, and sticky session strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Databricks, Data Engineering, Infrastructure as Code
+Tags: Terraform, Provider, Databricks, Data Engineering, Infrastructure as Code
 
 Description: A hands-on guide to configuring the Databricks provider in Terraform for managing workspaces, clusters, jobs, notebooks, and access control.
 

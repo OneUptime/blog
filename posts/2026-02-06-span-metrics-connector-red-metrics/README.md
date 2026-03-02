@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connectors, Span Metrics, RED Metrics, SRE, Observability
+Tags: OpenTelemetry, Collector, Connector, Span Metrics, RED Metrics, SRE, Observability
 
 Description: Learn how to configure the Span Metrics Connector in OpenTelemetry Collector to automatically generate Rate, Error, and Duration (RED) metrics from distributed traces for effective SRE monitoring.
 

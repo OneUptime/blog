@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extensions, HTTP, Networking, Load Balancing, Traffic Management
+Tags: OpenTelemetry, Collector, Extension, HTTP, Networking, Load Balancing, Traffic Management
 
 Description: Comprehensive guide to configuring the HTTP Forwarder extension in OpenTelemetry Collector for advanced traffic routing, load balancing, and request forwarding capabilities.
 

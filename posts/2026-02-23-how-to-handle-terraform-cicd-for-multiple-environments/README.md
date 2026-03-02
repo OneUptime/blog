@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CI/CD, Multiple Environments, Workspaces, DevOps, Infrastructure as Code
+Tags: Terraform, CI/CD, Multiple Environments, Workspace, DevOps, Infrastructure as Code
 
 Description: Learn how to manage Terraform CI/CD pipelines across multiple environments including dev, staging, and production using workspaces, directory structures, and promotion workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, SMI, Service Mesh, Kubernetes, Interoperability, Standards
+Tags: Istio, SMI, Service Mesh, Kubernetes, Interoperability, Standard
 
 Description: Configure Istio to work with the Service Mesh Interface standard using SMI adapter and compatible API resources for portable mesh configurations.
 

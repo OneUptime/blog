@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Upgrades
+Tags: ArgoCD, GitOps, Kubernetes, Upgrade
 
 Description: A comprehensive guide to safely upgrading ArgoCD from version 2.x to version 3.x, covering breaking changes, migration steps, and rollback procedures.
 

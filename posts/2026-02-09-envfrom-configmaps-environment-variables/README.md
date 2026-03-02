@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ConfigMaps, Environment Variables
+Tags: Kubernetes, ConfigMap, Environment Variable
 
 Description: Learn how to use envFrom to load all keys from ConfigMaps and Secrets as environment variables in Kubernetes pods, simplifying configuration management and reducing verbosity.
 

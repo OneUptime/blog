@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Logging, SLIs, SRE, Observability
+Tags: Logging, SLI, SRE, Observability
 
 Description: Learn to build log-based SLIs for measuring service level indicators from logs.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Naming Conventions, Best Practices, Infrastructure as Code, Cloud Architecture
+Tags: Terraform, Azure, Naming Convention, Best Practices, Infrastructure as Code, Cloud Architecture
 
 Description: Learn how to implement consistent Azure resource naming conventions in Terraform using locals, variables, and the Azure CAF naming provider.
 

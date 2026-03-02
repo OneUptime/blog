@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Structs, Tuples, Pattern Matching, Error Handling
+Tags: Rust, Struct, Tuples, Pattern Matching, Error Handling
 
 Description: Learn how to fix 'expected struct, found tuple' errors in Rust. This guide explains the differences between structs and tuples, and how to correctly destructure and construct both.
 

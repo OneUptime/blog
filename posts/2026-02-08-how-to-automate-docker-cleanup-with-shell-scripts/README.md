@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, cleanup, automation, shell scripts, disk space, maintenance, DevOps
+Tags: Docker, Cleanup, Automation, Shell Script, Disk Space, Maintenance, DevOps
 
 Description: Automate Docker cleanup with shell scripts to reclaim disk space by removing unused images, containers, volumes, and build cache.
 

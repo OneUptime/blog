@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Sidecar, Ports, Troubleshooting, Networking
+Tags: Istio, Sidecar, Port, Troubleshooting, Networking
 
 Description: Diagnose and resolve port conflicts between application containers and the Istio sidecar proxy, including reserved ports and iptables redirect issues.
 

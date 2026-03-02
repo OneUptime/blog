@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, State Management, Providers, Migration, Infrastructure as Code
+Tags: Terraform, State Management, Provider, Migration, Infrastructure as Code
 
 Description: Learn how to use the terraform state replace-provider command to migrate resources between provider sources in your Terraform state file.
 

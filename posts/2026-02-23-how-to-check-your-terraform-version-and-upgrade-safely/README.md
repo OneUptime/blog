@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, DevOps, Infrastructure as Code, Versioning, Upgrades
+Tags: Terraform, DevOps, Infrastructure as Code, Versioning, Upgrade
 
 Description: Learn how to check your current Terraform version, understand version constraints, and upgrade Terraform safely without breaking your existing infrastructure configurations.
 

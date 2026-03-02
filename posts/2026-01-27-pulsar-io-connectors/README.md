@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Pulsar, Messaging, Connectors, Data Integration, Event Streaming, Source Connectors, Sink Connectors, Real-Time Data
+Tags: Apache Pulsar, Messaging, Connector, Data Integration, Event Streaming, Source Connector, Sink Connector, Real-Time Data
 
 Description: A comprehensive guide to Apache Pulsar IO Connectors - learn how to use built-in connectors, configure source and sink connectors, build custom connectors.
 

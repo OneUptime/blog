@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, Containers, DevOps, Beginners, Tutorial
+Tags: Docker, Dockerfile, Container, DevOps, Beginner, Tutorial
 
 Description: A beginner-friendly guide to writing your first Dockerfile from scratch with practical examples and best practices.
 

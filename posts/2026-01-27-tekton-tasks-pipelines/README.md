@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Tekton, Kubernetes, CI/CD, Pipelines, Cloud Native, DevOps, Automation
+Tags: Tekton, Kubernetes, CI/CD, Pipeline, Cloud Native, DevOps, Automation
 
 Description: A comprehensive guide to creating Tekton Tasks and Pipelines for cloud-native CI/CD workflows on Kubernetes.
 

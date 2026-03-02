@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Rust, Design Patterns, Type System, Safety
+Tags: Rust, Design Pattern, Type System, Safety
 
 Description: Implement the type-state pattern in Rust to encode state transitions in the type system, preventing invalid state sequences at compile time.
 

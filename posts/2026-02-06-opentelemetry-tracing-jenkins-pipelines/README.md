@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Jenkins, CI/CD, Tracing, Observability, Pipelines
+Tags: OpenTelemetry, Jenkins, CI/CD, Tracing, Observability, Pipeline
 
 Description: Learn how to add OpenTelemetry tracing to Jenkins pipelines for end-to-end build visibility, performance analysis, and failure debugging.
 

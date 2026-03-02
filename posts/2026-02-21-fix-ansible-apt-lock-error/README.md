@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, apt, Ubuntu, Troubleshooting, Package Management
+Tags: Ansible, APT, Ubuntu, Troubleshooting, Package Management
 
 Description: Resolve Ansible apt lock errors caused by concurrent package operations, unattended upgrades, and stale lock files on Ubuntu and Debian.
 

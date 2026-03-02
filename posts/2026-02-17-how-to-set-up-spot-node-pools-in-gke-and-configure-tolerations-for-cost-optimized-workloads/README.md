@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Kubernetes, Spot VMs, Cost Optimization, Node Pools
+Tags: GCP, GKE, Kubernetes, Spot VMs, Cost Optimization, Node Pool
 
 Description: Learn how to create Spot VM node pools in GKE and configure your workloads with proper tolerations and scheduling to save up to 60-91% on compute costs.
 

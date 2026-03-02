@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Soft Deletes, Data Management, Audit, Recovery
+Tags: PostgreSQL, Soft Delete, Data Management, Audit, Recovery
 
 Description: A guide to implementing soft deletes in PostgreSQL, covering design patterns, queries, and best practices for logical deletion.
 

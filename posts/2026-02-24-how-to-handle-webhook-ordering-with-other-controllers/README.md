@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Webhooks, Admission Controllers, Service Mesh
+Tags: Istio, Kubernetes, Webhook, Admission Controller, Service Mesh
 
 Description: Practical guidance on managing webhook ordering between Istio sidecar injection and other mutating admission webhooks in your Kubernetes cluster.
 

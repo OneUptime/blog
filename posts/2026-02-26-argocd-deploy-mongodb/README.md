@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, MongoDB, Databases
+Tags: ArgoCD, GitOps, Kubernetes, MongoDB, Database
 
 Description: Learn how to deploy and manage MongoDB on Kubernetes with ArgoCD, including standalone instances, replica sets for high availability, and the MongoDB Community Operator.
 

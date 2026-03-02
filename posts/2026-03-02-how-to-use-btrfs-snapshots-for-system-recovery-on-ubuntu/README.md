@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Btrfs, Snapshots, System Recovery, Linux
+Tags: Ubuntu, Btrfs, Snapshot, System Recovery, Linux
 
 Description: Create, manage, and restore from Btrfs snapshots on Ubuntu for system recovery, covering manual snapshots, automated tools like Snapper, and boot-time rollback procedures.
 

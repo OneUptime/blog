@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Java, Observability, Tracing, Auto-instrumentation
+Tags: OpenTelemetry, Java, Observability, Tracing, Auto-Instrumentation
 
 Description: Learn how to implement OpenTelemetry auto-instrumentation with Java applications using the Java agent for zero-code distributed tracing and metrics collection.
 

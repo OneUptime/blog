@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, WebSocket, Gorilla, Real-time, Networking
+Tags: Go, Golang, WebSocket, Gorilla, Real-Time, Networking
 
 Description: A practical guide to building WebSocket servers in Go using the Gorilla WebSocket library for real-time communication.
 

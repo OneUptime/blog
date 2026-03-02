@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Function Overloading, Export, Errors, Type Safety, Troubleshooting
+Tags: TypeScript, Function Overloading, Export, Error, Type Safety, Troubleshooting
 
 Description: Learn how to resolve the TypeScript error requiring all overload signatures to share the same export modifier.
 

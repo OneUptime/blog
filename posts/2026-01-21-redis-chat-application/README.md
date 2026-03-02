@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Pub/Sub, Chat, WebSocket, Real-time, Node.js, Python
+Tags: Redis, Pub/Sub, Chat, WebSocket, Real-Time, Node.js, Python
 
 Description: A comprehensive guide to building a real-time chat application using Redis Pub/Sub for message broadcasting, WebSocket integration, and scalable multi-server architectures.
 

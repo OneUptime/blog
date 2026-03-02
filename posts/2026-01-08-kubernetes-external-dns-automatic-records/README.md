@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: kubernetes, external-dns, dns, route53, cloudflare, automation, devops
+Tags: Kubernetes, External-DNS, DNS, Route53, Cloudflare, Automation, DevOps
 
 Description: Learn how to automatically manage DNS records for Kubernetes services and ingresses using ExternalDNS with various DNS providers.
 

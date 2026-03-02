@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, DevOps
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, DevOps
 
 Description: Master ArgoCD ApplicationSets with Git, List, Cluster, and Matrix generators for managing applications at scale across multiple clusters and environments.
 

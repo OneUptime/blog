@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Firewall Rules, Network Tags, Service Accounts, Security
+Tags: GCP, Firewall Rules, Network Tags, Service Account, Security
 
 Description: A detailed comparison of network tags and service accounts for targeting GCP firewall rules, with practical examples showing when to use each approach and how to migrate between them.
 

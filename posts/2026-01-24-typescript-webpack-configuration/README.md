@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Webpack, Build Tools, Configuration, JavaScript, Bundling
+Tags: TypeScript, Webpack, Build Tool, Configuration, JavaScript, Bundling
 
 Description: Learn how to set up and configure TypeScript with Webpack for efficient module bundling and type-safe builds.
 

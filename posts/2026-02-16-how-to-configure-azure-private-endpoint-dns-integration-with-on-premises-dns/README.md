@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Private Endpoint, DNS, Hybrid Networking, Private Link, On-Premises
+Tags: Azure, Private Endpoint, DNS, Hybrid Networking, Private Link, On-Premise
 
 Description: Step-by-step guide to configuring DNS resolution for Azure Private Endpoints when using on-premises DNS servers in hybrid environments.
 

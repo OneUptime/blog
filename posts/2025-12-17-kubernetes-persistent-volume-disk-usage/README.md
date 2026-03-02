@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Prometheus, Persistent Volumes, Disk Usage, Monitoring, Storage, PVC, Observability
+Tags: Kubernetes, Prometheus, Persistent Volume, Disk Usage, Monitoring, Storage, PVC, Observability
 
 Description: Learn how to monitor Kubernetes Persistent Volume disk usage with Prometheus. This guide covers kubelet metrics, PVC monitoring, capacity alerts, and Grafana dashboard queries.
 

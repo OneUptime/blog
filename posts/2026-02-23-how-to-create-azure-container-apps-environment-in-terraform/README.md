@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Container Apps, Serverless, Containers, Microservices
+Tags: Terraform, Azure, Container Apps, Serverless, Container, Microservices
 
 Description: Learn how to create and configure Azure Container Apps environments with Terraform for deploying scalable containerized microservices with built-in observability.
 

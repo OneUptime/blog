@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Go Templates
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Go Templates
 
 Description: Learn how to use Go template syntax in ArgoCD ApplicationSets for advanced string manipulation, conditionals, and dynamic application generation.
 

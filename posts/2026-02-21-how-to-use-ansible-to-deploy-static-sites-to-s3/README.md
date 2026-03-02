@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWS, S3, Static Sites, DevOps
+Tags: Ansible, AWS, S3, Static Site, DevOps
 
 Description: Automate static website deployments to AWS S3 using Ansible playbooks, including CloudFront distribution setup and cache invalidation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, Actuator, Health Checks, Monitoring, Kubernetes, Microservices
+Tags: Java, Spring Boot, Actuator, Health Check, Monitoring, Kubernetes, Microservices
 
 Description: A practical guide to configuring Spring Boot Actuator health checks for production environments, including custom health indicators, Kubernetes probes, and security best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Rust, Custom Exporter, Spans, SDK
+Tags: OpenTelemetry, Rust, Custom Exporter, Span, SDK
 
 Description: Learn how to build custom OpenTelemetry span exporters in Rust for specialized backends, custom formats, or local development workflows.
 

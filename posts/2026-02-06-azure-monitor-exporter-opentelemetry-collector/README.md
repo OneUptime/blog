@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Azure, Azure Monitor, Application Insights, Observability
+Tags: OpenTelemetry, Collector, Exporter, Azure, Azure Monitor, Application Insights, Observability
 
 Description: Complete guide to configuring the Azure Monitor exporter in the OpenTelemetry Collector for seamless integration with Azure's native monitoring services.
 

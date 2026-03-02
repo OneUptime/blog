@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Next.js, Server Actions, React, Forms, Data Mutations, App Router, Full-stack
+Tags: Next.js, Server Actions, React, Forms, Data Mutations, App Router, Full-Stack
 
 Description: A comprehensive guide to implementing and handling Server Actions in Next.js 14 for seamless server-side data mutations.
 

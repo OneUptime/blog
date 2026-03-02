@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Load Balancing, Algorithms, High Availability, Scaling, Networking
+Tags: Load Balancing, Algorithm, High Availability, Scaling, Networking
 
 Description: A comprehensive guide to load balancing algorithms including round-robin, least connections, consistent hashing, and more.
 

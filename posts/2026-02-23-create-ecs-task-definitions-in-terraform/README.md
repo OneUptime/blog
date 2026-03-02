@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, Task Definitions, Containers, Fargate
+Tags: Terraform, AWS, ECS, Task Definition, Container, Fargate
 
 Description: A detailed guide to creating ECS task definitions with Terraform, covering container definitions, resource allocation, logging, secrets management, and multi-container tasks.
 

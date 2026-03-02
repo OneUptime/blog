@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Restic, Backup, Cloud Storage
+Tags: Ansible, restic, Backup, Cloud Storage
 
 Description: Automate Restic backup deployments across your servers with Ansible for encrypted, deduplicated backups to local and cloud storage.
 

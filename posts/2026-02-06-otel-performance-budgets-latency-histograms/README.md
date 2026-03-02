@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Performance Budgets, Latency, Histograms, SLOs
+Tags: OpenTelemetry, Performance Budgets, Latency, Histogram, SLO
 
 Description: Learn how to define performance budgets using OpenTelemetry histogram data at P50, P95, and P99 percentiles and enforce them automatically.
 

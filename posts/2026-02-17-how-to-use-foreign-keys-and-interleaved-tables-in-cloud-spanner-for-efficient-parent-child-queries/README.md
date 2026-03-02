@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Spanner, Database Design, Interleaved Tables, Foreign Keys
+Tags: GCP, Cloud Spanner, Database Design, Interleaved Tables, Foreign Key
 
 Description: Understand the difference between foreign keys and interleaved tables in Cloud Spanner and learn when to use each approach for modeling parent-child relationships efficiently.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, FIPS, Compliance, Security, Kubernetes, Azure, Node Pools
+Tags: AKS, FIPS, Compliance, Security, Kubernetes, Azure, Node Pool
 
 Description: Step-by-step guide to creating AKS node pools with FIPS 140-2 enabled operating systems for meeting government and regulatory compliance requirements.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, API Keys, Metrics, Security
+Tags: OpenTelemetry, API Key, Metrics, Security
 
 Description: Track API key usage patterns, detect anomalies, and monitor key rotation events using OpenTelemetry custom metrics and span attributes.
 

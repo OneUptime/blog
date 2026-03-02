@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Migration, Cloud, On-Premises, Azure Migrate, Lift and Shift, Modernization
+Tags: Azure, Migration, Cloud, On-Premise, Azure Migrate, Lift and Shift, Modernization
 
 Description: A comprehensive guide to planning and executing a successful migration from on-premises infrastructure to Microsoft Azure.
 

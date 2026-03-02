@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Time, Scheduling, Infrastructure as Code
+Tags: Terraform, Provider, Time, Scheduling, Infrastructure as Code
 
 Description: A practical guide to the Time provider in Terraform for managing time-based resources like delays, offsets, rotating schedules, and sleep timers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Troubleshooting
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Troubleshooting
 
 Description: Learn how to diagnose and fix common ApplicationSet generation issues in ArgoCD including template errors, generator failures, and unexpected application output.
 

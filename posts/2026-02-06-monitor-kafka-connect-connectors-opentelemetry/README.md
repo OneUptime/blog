@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kafka Connect, Monitoring, Connectors, Apache Kafka, JMX, Observability
+Tags: OpenTelemetry, Kafka Connect, Monitoring, Connector, Apache Kafka, JMX, Observability
 
 Description: Learn how to monitor Kafka Connect connectors with OpenTelemetry using JMX metrics, connector health checks, and task-level observability for reliable data pipelines.
 

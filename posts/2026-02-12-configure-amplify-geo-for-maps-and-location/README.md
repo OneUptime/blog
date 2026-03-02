@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Amplify, Geo, Maps, Location, Amazon Location Service
+Tags: AWS, Amplify, GEO, Maps, Location, Amazon Location Service
 
 Description: Add interactive maps, geocoding, and location search to your application using Amplify Geo backed by Amazon Location Service.
 

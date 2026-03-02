@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, RBAC, ApplicationSets
+Tags: ArgoCD, GitOps, Kubernetes, RBAC, ApplicationSet
 
 Description: Learn how to configure RBAC policies for ArgoCD ApplicationSets, controlling who can create, modify, and delete ApplicationSets and the applications they generate.
 

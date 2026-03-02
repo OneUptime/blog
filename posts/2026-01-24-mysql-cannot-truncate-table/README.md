@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Database, Errors, Foreign Keys, TRUNCATE, Troubleshooting
+Tags: MySQL, Database, Error, Foreign Key, TRUNCATE, Troubleshooting
 
 Description: Learn how to diagnose and fix MySQL 'Cannot truncate a table referenced in a foreign key constraint' errors with safe workarounds.
 

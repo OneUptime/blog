@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, AWS, API Gateway, Lambda, Serverless, Cloud, Real-time
+Tags: WebSocket, AWS, API Gateway, Lambda, Serverless, Cloud, Real-Time
 
 Description: Learn how to set up and configure WebSocket APIs with AWS API Gateway, including Lambda integrations, connection management, and scaling considerations.
 

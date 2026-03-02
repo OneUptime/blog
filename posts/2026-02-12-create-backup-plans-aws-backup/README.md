@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Backup, Backup Plans, Data Protection, Compliance
+Tags: AWS, Backup, Backup Plan, Data Protection, Compliance
 
 Description: Design and implement effective AWS Backup plans with multiple rules, lifecycle policies, and resource selections to protect your AWS infrastructure systematically.
 

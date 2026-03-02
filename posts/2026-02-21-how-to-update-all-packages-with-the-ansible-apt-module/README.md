@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, apt, Ubuntu, System Updates
+Tags: Ansible, APT, Ubuntu, System Updates
 
 Description: How to update and upgrade all packages on Debian and Ubuntu servers using the Ansible apt module safely and effectively.
 

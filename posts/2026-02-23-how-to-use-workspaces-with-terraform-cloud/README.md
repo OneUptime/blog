@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Terraform Cloud, Workspaces, Remote Operations, Team Collaboration
+Tags: Terraform, Terraform Cloud, Workspace, Remote Operations, Team Collaboration
 
 Description: Learn how Terraform Cloud workspaces differ from CLI workspaces, how to configure them, manage variables per workspace, and integrate with VCS-driven workflows for team collaboration.
 

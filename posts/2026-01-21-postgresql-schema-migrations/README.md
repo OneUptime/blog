@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Schema Migrations, Flyway, Liquibase, Alembic, Database Versioning
+Tags: PostgreSQL, Schema Migration, Flyway, Liquibase, Alembic, Database Versioning
 
 Description: A comprehensive guide to managing PostgreSQL schema migrations, covering migration tools, version control, zero-downtime strategies, and best practices for database changes.
 

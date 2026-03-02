@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Debugging, Playbooks, Troubleshooting
+Tags: Ansible, Debugging, Playbook, Troubleshooting
 
 Description: Understand the differences between msg and var parameters in the Ansible debug module and when to use each one effectively.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Multicluster, Service Mesh, Upgrade
+Tags: Istio, Kubernetes, MultiCluster, Service Mesh, Upgrade
 
 Description: How to safely upgrade Istio across a multicluster mesh, covering version compatibility, upgrade ordering, and cross-cluster traffic considerations.
 

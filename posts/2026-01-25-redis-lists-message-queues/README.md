@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Lists, Message Queues, Background Jobs, Asynchronous, Backend
+Tags: Redis, Lists, Message Queue, Background Jobs, Asynchronous, Backend
 
 Description: Build reliable message queues with Redis lists. Learn LPUSH/BRPOP patterns, reliable queue implementations, and when to choose lists over streams.
 

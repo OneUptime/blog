@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Pod Security, Security, Admission Control, Standards
+Tags: Kubernetes, Pod Security, Security, Admission Control, Standard
 
 Description: Learn how to enforce Pod Security Standards in Kubernetes using the built-in Pod Security Admission controller with enforce, audit, and warn modes.
 

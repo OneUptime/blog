@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboards, Canvas
+Tags: Grafana, Observability, Dashboard, Canvas
 
 Description: Learn how to build interactive, custom visualizations with Grafana Canvas panels to create dynamic infrastructure diagrams and real-time system overviews.
 

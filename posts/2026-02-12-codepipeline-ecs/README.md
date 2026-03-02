@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CodePipeline, ECS, CI/CD, Containers
+Tags: AWS, CodePipeline, ECS, CI/CD, Container
 
 Description: Build a complete CI/CD pipeline for Amazon ECS using CodePipeline, from building Docker images in CodeBuild to blue/green deployments with CodeDeploy.
 

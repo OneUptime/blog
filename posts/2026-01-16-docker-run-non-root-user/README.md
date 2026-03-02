@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Security, Non-Root, Containers, DevSecOps
+Tags: Docker, Security, Non-Root, Container, DevSecOps
 
 Description: Learn how to configure Docker containers to run as non-root users for improved security, including Dockerfile best practices, runtime options, and handling permission challenges.
 

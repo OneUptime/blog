@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecar Pattern, Multi-Container Pods, Design Patterns, DevOps
+Tags: Kubernetes, Sidecar Pattern, Multi-Container Pods, Design Pattern, DevOps
 
 Description: A comprehensive guide to implementing multi-container pods in Kubernetes using the sidecar pattern, including common use cases like logging, proxying, configuration sync, and security sidecars.
 

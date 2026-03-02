@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud APIs, Access Configuration, Troubleshooting, Project Setup
+Tags: GCP, Cloud API, Access Configuration, Troubleshooting, Project Setup
 
 Description: Diagnose and fix Access Not Configured errors for Google Cloud APIs, including enabling APIs, configuring billing, setting up credentials, and resolving project-level issues.
 

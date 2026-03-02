@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nomad, Security, TLS, ACLs, DevOps
+Tags: Nomad, Security, TLS, ACL, DevOps
 
 Description: Learn how to secure a Nomad cluster with TLS, ACLs, and secure gossip, plus hardening tips for production deployments.
 

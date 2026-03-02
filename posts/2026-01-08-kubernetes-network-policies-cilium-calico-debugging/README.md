@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: kubernetes, network policies, cilium, calico, debugging, security, CNI, hubble, calicoctl
+Tags: Kubernetes, Network Policies, Cilium, Calico, Debugging, Security, CNI, Hubble, calicoctl
 
 Description: Learn how to effectively debug and troubleshoot Kubernetes network policy issues using Cilium Hubble and Calico calicoctl with practical examples and common solutions.
 

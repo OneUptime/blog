@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, coqui tts, text-to-speech, ai, voice synthesis, self-hosted, docker compose
+Tags: Docker, coqui tts, Text-to-Speech, AI, Voice Synthesis, Self-Hosted, Docker Compose
 
 Description: Deploy Coqui TTS in Docker for self-hosted text-to-speech synthesis with support for multiple languages, voice cloning, and custom models.
 

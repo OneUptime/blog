@@ -1982,11 +1982,26 @@ function checkTagNormalization(blogsJson: BlogEntry[]): void {
   const pluralGroups: Array<{ variants: string[] }> = [];
   const seen = new Set<string>();
 
+  // False positive singular/plural pairs — these are different concepts, not variants.
+  const falsePluralPairs = new Set([
+    'http|https', 'nat|nats', 'io|ios', 'ftp|ftps',
+    'ip|ips', 'os|oss', 'dr|drs', 'gc|gcs',
+    'ps|pss', 'vm|vms', 'vms|vmss',
+    'label|labels', 'join|joins', 'array|arrays',
+    'datasource|datasources',
+  ]);
+
   for (const key of normalizedKeys) {
     if (seen.has(key)) continue;
 
     // Check if adding/removing 's' matches another tag
     const potentialPlural = key.endsWith('s') ? key.slice(0, -1) : key + 's';
+
+    // Skip known false positive pairs
+    const pairA = `${key}|${potentialPlural}`;
+    const pairB = `${potentialPlural}|${key}`;
+    if (falsePluralPairs.has(pairA) || falsePluralPairs.has(pairB)) continue;
+
     if (tagVariants.has(potentialPlural) && !seen.has(potentialPlural)) {
       const allVariants = new Set([
         ...Array.from(tagVariants.get(key)!),

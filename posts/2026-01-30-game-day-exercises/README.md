@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: SRE, Chaos Engineering, Reliability, DevOps, Incident Response, Game Days
+Tags: SRE, Chaos Engineering, Reliability, DevOps, Incident Response, Game Day
 
 Description: A practical guide to designing and running game day exercises that stress-test your systems, train your teams, and uncover hidden weaknesses before real incidents strike.
 

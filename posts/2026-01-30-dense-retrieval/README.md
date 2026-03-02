@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RAG, Dense Retrieval, Vector Search, Embeddings
+Tags: RAG, Dense Retrieval, Vector Search, Embedding
 
 Description: Learn to implement dense retrieval with bi-encoder models, approximate nearest neighbor search, and query optimization for semantic search systems.
 

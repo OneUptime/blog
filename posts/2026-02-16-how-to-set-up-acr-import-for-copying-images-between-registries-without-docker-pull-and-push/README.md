@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ACR, Azure Container Registry, Docker, Image Import, Containers, Azure, DevOps
+Tags: ACR, Azure Container Registry, Docker, Image Import, Container, Azure, DevOps
 
 Description: Learn how to use ACR import to copy container images between registries server-side without pulling and pushing through your local machine.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Service Mesh, Multicluster, Architecture, Federation
+Tags: Istio, Service Mesh, MultiCluster, Architecture, Federation
 
 Description: A practical guide to deploying Istio in a mesh of meshes architecture where independent service meshes communicate with each other while maintaining autonomy.
 

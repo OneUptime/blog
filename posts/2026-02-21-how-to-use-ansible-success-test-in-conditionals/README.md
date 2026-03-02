@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditionals, Error Handling, Automation
+Tags: Ansible, Conditional, Error Handling, Automation
 
 Description: Learn how to use the Ansible success test in when conditionals to branch playbook logic based on task success status.
 

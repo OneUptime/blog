@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, profiling, latency, performance, debugging, optimization, pprof, tracing
+Tags: gRPC, Profiling, Latency, Performance, Debugging, Optimization, pprof, Tracing
 
 Description: Learn how to identify and fix latency issues in gRPC services using profiling tools, tracing, and systematic optimization strategies.
 

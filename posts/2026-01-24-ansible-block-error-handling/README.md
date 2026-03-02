@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Error Handling, Blocks, Rescue, Always, DevOps, Automation
+Tags: Ansible, Error Handling, Block, Rescue, Always, DevOps, Automation
 
 Description: Learn how to use Ansible blocks with rescue and always sections to implement robust error handling in your playbooks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Date Parsing, Time Calculations, Automation
+Tags: Ansible, Filter, Date Parsing, Time Calculations, Automation
 
 Description: Learn how to use the to_datetime filter in Ansible to parse date strings into datetime objects for comparisons and time-based calculations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MongoDB, Faceted Navigation, Search, E-commerce
+Tags: MongoDB, Faceted Navigation, Search, E-Commerce
 
 Description: Learn to implement faceted navigation with aggregation pipelines, facet counts, and filter combinations for rich search experiences.
 

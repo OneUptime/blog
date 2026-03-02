@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Message Queues, Integration Patterns, Design Patterns, Backend
+Tags: Message Queue, Integration Patterns, Design Pattern, Backend
 
 Description: Learn how to implement the claim check pattern for handling large messages efficiently.
 

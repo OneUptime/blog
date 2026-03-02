@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, reproducible builds, verification, supply chain security, BuildKit, content trust, CI/CD
+Tags: Docker, Reproducible Builds, Verification, Supply Chain Security, BuildKit, Content Trust, CI/CD
 
 Description: Set up Docker build reproducibility verification to ensure your container images produce identical results across different build environments.
 

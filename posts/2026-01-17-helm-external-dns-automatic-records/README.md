@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DNS, External DNS, AWS Route53, CloudFlare, DevOps
+Tags: Helm, Kubernetes, DNS, External DNS, AWS Route53, Cloudflare, DevOps
 
 Description: Complete guide to deploying External DNS with Helm for automatic DNS record management with AWS Route53, CloudFlare, Azure DNS, and Google Cloud DNS.
 

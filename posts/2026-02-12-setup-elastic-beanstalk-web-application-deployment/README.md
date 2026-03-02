@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Elastic Beanstalk, Deployment, Web Applications
+Tags: AWS, Elastic Beanstalk, Deployment, Web Application
 
 Description: Get started with AWS Elastic Beanstalk for deploying and managing web applications, covering environment creation, configuration, scaling, and monitoring.
 

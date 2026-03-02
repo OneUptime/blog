@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Scout, Vulnerability Remediation, Security, Base Images, DevOps
+Tags: Docker, Docker Scout, Vulnerability Remediation, Security, Base Image, DevOps
 
 Description: Use Docker Scout recommendations to fix vulnerabilities by updating base images, packages, and dependencies in your containers.
 

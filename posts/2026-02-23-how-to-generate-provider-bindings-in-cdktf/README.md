@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CDKTF, Providers, Code Generation, TypeScript
+Tags: Terraform, CDKTF, Provider, Code Generation, TypeScript
 
 Description: Learn how to generate typed provider bindings in CDKTF for any Terraform provider, including pre-built providers and custom code generation workflows.
 

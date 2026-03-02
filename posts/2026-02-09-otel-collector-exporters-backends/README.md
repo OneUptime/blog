@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Observability, Exporters, Monitoring, Integration
+Tags: OpenTelemetry, Observability, Exporter, Monitoring, Integration
 
 Description: Configure OpenTelemetry Collector exporters to send telemetry to multiple backends including Prometheus, Jaeger, Grafana, OneUptime, and cloud providers with load balancing and failover strategies.
 

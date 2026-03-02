@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Index Templates, Mappings, EFK Stack, Data Modeling
+Tags: Elasticsearch, Index Templates, Mapping, EFK Stack, Data Modeling
 
 Description: Configure Elasticsearch index templates to automatically apply consistent mappings, settings, and aliases to new indices.
 

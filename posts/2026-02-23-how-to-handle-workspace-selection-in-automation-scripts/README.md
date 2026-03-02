@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, Automation, CI/CD, Scripting, DevOps
+Tags: Terraform, Workspace, Automation, CI/CD, Scripting, DevOps
 
 Description: Learn reliable patterns for selecting and managing Terraform workspaces in automation scripts, CI/CD pipelines, and deployment workflows.
 

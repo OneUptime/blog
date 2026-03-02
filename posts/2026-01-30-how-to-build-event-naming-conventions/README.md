@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Event-Driven Architecture, Naming Conventions, Analytics, OpenTelemetry, Observability, Best Practices
+Tags: Event-Driven Architecture, Naming Convention, Analytics, OpenTelemetry, Observability, Best Practices
 
 Description: A practical guide to building consistent event naming conventions for analytics, observability, and event-driven systems. Learn patterns that scale across teams and make your telemetry data queryable.
 

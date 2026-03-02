@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Amplify, DataStore, Offline-First, Mobile
+Tags: AWS, Amplify, Datastore, Offline-First, Mobile
 
 Description: Learn how to build offline-first applications using AWS Amplify DataStore with automatic cloud sync, conflict resolution, and local persistence.
 

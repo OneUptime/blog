@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Notification Hubs, Push Notifications, Tags, Templates, Mobile Development
+Tags: Azure, Notification Hub, Push Notifications, Tags, Template, Mobile Development
 
 Description: Learn how to use Azure Notification Hubs tags and templates to send targeted, personalized push notifications across platforms.
 

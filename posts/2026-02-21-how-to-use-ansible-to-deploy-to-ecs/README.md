@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWS, ECS, Containers, DevOps
+Tags: Ansible, AWS, ECS, Container, DevOps
 
 Description: Deploy containerized applications to AWS ECS using Ansible for task definition management, service updates, and cluster configuration.
 

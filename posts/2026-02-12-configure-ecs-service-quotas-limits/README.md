@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Service Quotas, Limits, Scaling, Capacity Planning
+Tags: AWS, ECS, Service Quotas, Limit, Scaling, Capacity Planning
 
 Description: Understand and configure Amazon ECS service quotas and limits to prevent deployment failures and plan for scale effectively
 

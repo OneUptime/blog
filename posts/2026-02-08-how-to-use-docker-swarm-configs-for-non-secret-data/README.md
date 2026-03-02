@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Swarm, Configs, Configuration Management, DevOps, Container Orchestration
+Tags: Docker, Docker Swarm, Config, Configuration Management, DevOps, Container Orchestration
 
 Description: Manage non-sensitive configuration files in Docker Swarm using the built-in configs feature for Nginx, app settings, and more.
 

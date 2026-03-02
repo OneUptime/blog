@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Docker, Registry, Containers, DevOps, Tutorial
+Tags: Ubuntu, Docker, Registry, Container, DevOps, Tutorial
 
 Description: Complete guide to setting up a secure private Docker registry on Ubuntu for storing and distributing container images.
 

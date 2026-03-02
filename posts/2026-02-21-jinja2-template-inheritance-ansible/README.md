@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Templates, Configuration Management
+Tags: Ansible, Jinja2, Template, Configuration Management
 
 Description: Learn how to use Jinja2 template inheritance in Ansible to create base templates with overridable blocks for consistent configurations.
 

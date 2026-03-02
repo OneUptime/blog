@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DataOps, Data Engineering, CI/CD, Data Quality, Data Pipelines, Automation, Observability
+Tags: DataOps, Data Engineering, CI/CD, Data Quality, Data Pipeline, Automation, Observability
 
 Description: A practical guide to implementing DataOps practices including version control, CI/CD, testing, monitoring, and collaboration for data teams.
 

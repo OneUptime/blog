@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, Provisioners, Configuration Management, DevOps
+Tags: Terraform, Infrastructure as Code, Provisioner, Configuration Management, DevOps
 
 Description: Learn how to use Terraform provisioners to run scripts and commands on resources after creation, understand when provisioners are appropriate, and explore alternatives for configuration management.
 

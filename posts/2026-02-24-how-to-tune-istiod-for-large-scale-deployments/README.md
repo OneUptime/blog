@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, istiod, Large Scale, Kubernetes, Performance Tuning
+Tags: Istio, Istiod, Large Scale, Kubernetes, Performance Tuning
 
 Description: A deep guide on tuning istiod configuration and resources for deployments with thousands of services and pods.
 

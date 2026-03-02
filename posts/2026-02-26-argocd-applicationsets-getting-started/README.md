@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet
 
 Description: A practical beginner's guide to ArgoCD ApplicationSets covering installation, first generator, templating basics, and deploying your first set of applications from a single definition.
 

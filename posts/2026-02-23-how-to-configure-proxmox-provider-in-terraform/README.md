@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Proxmox, Virtualization, Homelab, Infrastructure as Code
+Tags: Terraform, Provider, Proxmox, Virtualization, Homelab, Infrastructure as Code
 
 Description: Learn how to configure the Proxmox provider in Terraform for managing virtual machines and containers on your Proxmox VE cluster as code.
 

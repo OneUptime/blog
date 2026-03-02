@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, JSON
+Tags: Ansible, Jinja2, Filter, JSON
 
 Description: Learn how to use the to_nice_json filter in Ansible templates to generate human-readable, pretty-printed JSON configuration files.
 

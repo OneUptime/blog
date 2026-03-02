@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Message Queues, Dead Letter Queue, RabbitMQ, Error Handling, Reliability, Distributed Systems
+Tags: Python, Message Queue, Dead Letter Queue, RabbitMQ, Error Handling, Reliability, Distributed Systems
 
 Description: Learn how to implement and manage dead letter queues in Python applications. This guide covers DLQ patterns with RabbitMQ, error handling strategies, and building a complete message recovery system.
 

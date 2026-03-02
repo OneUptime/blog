@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Socket.io, WebSocket, Real-Time, Express
+Tags: NodeJS, Socket.IO, WebSocket, Real-Time, Express
 
 Description: Learn how to build real-time applications using Socket.io in Node.js including chat apps, notifications, live dashboards, and multiplayer features.
 

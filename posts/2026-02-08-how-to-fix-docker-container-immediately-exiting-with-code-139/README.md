@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, exit code 139, segfault, SIGSEGV, troubleshooting, containers, debugging, crash
+Tags: Docker, exit code 139, segfault, SIGSEGV, Troubleshooting, Container, Debugging, Crash
 
 Description: Fix Docker containers crashing with exit code 139, caused by segmentation faults from memory access violations, incompatible binaries, or library issues.
 

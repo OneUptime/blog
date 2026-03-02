@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Endpoints, Cloud Monitoring, Dashboards, API Monitoring
+Tags: GCP, Cloud Endpoints, Cloud Monitoring, Dashboard, API Monitoring
 
 Description: Learn how to build Cloud Monitoring dashboards to track Cloud Endpoints API usage, including request rates, latency, error rates, and per-consumer metrics.
 

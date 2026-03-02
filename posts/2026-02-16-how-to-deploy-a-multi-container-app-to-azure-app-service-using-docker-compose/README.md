@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, App Service, Docker Compose, Multi-Container, Containers, DevOps, Cloud Computing
+Tags: Azure, App Service, Docker Compose, Multi-Container, Container, DevOps, Cloud Computing
 
 Description: How to deploy multi-container applications to Azure App Service on Linux using Docker Compose files for orchestrating multiple services together.
 

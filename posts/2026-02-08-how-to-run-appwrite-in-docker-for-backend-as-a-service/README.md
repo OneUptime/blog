@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Appwrite, BaaS, Backend-as-a-Service, Self-Hosted, Authentication, Database, Storage, Containers
+Tags: Docker, Appwrite, BaaS, Backend-as-a-Service, Self-Hosted, Authentication, Database, Storage, Container
 
 Description: Complete guide to self-hosting Appwrite in Docker, covering installation, database setup, authentication, storage, and serverless functions for your backend needs.
 

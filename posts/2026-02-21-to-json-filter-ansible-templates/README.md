@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, JSON
+Tags: Ansible, Jinja2, Filter, JSON
 
 Description: Learn how to use the to_json filter in Ansible templates to serialize variables into JSON format for configuration files and APIs.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: LlamaIndex, RAG, Document QA, LLM, Python, Vector Database, Embeddings, OpenAI, Retrieval, NLP
+Tags: LlamaIndex, RAG, Document QA, LLM, Python, Vector Database, Embedding, OpenAI, Retrieval, NLP
 
 Description: Learn how to build a production-ready document question-answering system using LlamaIndex, covering document loading, indexing strategies, retrieval techniques, and deployment best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Docker, Docker Provider, Container Images, Infrastructure as Code, DevOps
+Tags: Terraform, Docker, Docker Provider, Container Image, Infrastructure as Code, DevOps
 
 Description: Learn how to build and manage Docker images using the Terraform Docker provider for consistent, declarative container image management as part of your infrastructure code.
 

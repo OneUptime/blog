@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Upgrades, Breaking Changes, Migration, Infrastructure as Code
+Tags: Terraform, Upgrade, Breaking Changes, Migration, Infrastructure as Code
 
 Description: Learn strategies for identifying, planning for, and resolving breaking changes when upgrading Terraform core, providers, and modules in your infrastructure.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Platform Engineering, Golden Paths
+Tags: ArgoCD, GitOps, Kubernetes, Platform Engineering, Golden Path
 
 Description: Learn how to create golden paths for application deployment using ArgoCD, providing opinionated workflows that help developers ship faster while maintaining best practices.
 

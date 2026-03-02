@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Python, Observability, Tracing, Auto-instrumentation
+Tags: OpenTelemetry, Python, Observability, Tracing, Auto-Instrumentation
 
 Description: Learn how to implement OpenTelemetry auto-instrumentation with Python applications using the opentelemetry-bootstrap command for automatic library detection and instrumentation.
 

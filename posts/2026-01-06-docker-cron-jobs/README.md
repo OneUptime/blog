@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Containers, DevOps, Automation, Cron, Scheduling
+Tags: Docker, Container, DevOps, Automation, Cron, Scheduling
 
 Description: Implement reliable scheduled tasks using Supercronic, Ofelia, or host cron with docker exec, and understand why traditional cron fails in containers.
 

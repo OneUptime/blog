@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Manticore Search, Full-Text Search, MySQL Protocol, DevOps, Search Engines
+Tags: Docker, Manticore Search, Full-Text Search, MySQL Protocol, DevOps, Search Engine
 
 Description: Set up Manticore Search in Docker as a fast, lightweight alternative to Elasticsearch with MySQL protocol compatibility.
 

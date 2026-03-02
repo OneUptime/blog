@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Kubernetes, Health Checks, Readiness Probes, FastAPI, Flask, DevOps, Reliability
+Tags: Python, Kubernetes, Health Check, Readiness Probe, FastAPI, Flask, DevOps, Reliability
 
 Description: Learn how to implement robust health checks and readiness probes in Python applications for Kubernetes. This guide covers liveness, readiness, and startup probes with practical examples.
 

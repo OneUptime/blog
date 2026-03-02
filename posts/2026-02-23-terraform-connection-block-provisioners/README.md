@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provisioners, SSH, WinRM, Connection, Infrastructure as Code
+Tags: Terraform, Provisioner, SSH, WinRM, Connection, Infrastructure as Code
 
 Description: Learn how to configure the connection block in Terraform to establish SSH and WinRM connections for remote-exec and file provisioners with bastion hosts and authentication.
 

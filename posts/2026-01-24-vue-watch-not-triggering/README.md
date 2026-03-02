@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vue, Watch, Reactivity, Debugging, Vue 3, Composition API
+Tags: Vue, WATCH, Reactivity, Debugging, Vue 3, Composition API
 
 Description: Learn how to diagnose and fix common issues when Vue 3 watch does not trigger, including deep watching, reactive object pitfalls, and proper watcher syntax.
 

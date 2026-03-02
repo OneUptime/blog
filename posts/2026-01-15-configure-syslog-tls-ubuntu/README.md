@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Syslog, TLS, Security, Encryption, Rsyslog, DevOps, Linux, Logging
+Tags: Ubuntu, Syslog, TLS, Security, Encryption, rsyslog, DevOps, Linux, Logging
 
 Description: A comprehensive guide to securing your syslog infrastructure with TLS encryption on Ubuntu, covering rsyslog, syslog-ng, mutual TLS, and high availability configurations.
 

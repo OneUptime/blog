@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Automation, Plugins, Python
+Tags: Ansible, Automation, Plugin, Python
 
 Description: Build custom Ansible action plugins to execute logic on the control node before delegating to remote hosts for complex task orchestration.
 

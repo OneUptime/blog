@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Rate Limiting, Deployments
+Tags: ArgoCD, GitOps, Kubernetes, Rate Limiting, Deployment
 
 Description: Learn how to implement deployment rate limiting with ArgoCD to prevent deployment storms, control rollout velocity, and protect production stability during busy periods.
 

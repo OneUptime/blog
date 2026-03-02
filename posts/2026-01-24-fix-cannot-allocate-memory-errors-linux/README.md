@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, System Administration, Memory Management, Troubleshooting, OOM Killer, Swap, Performance
+Tags: Linux, System Administration, Memory Management, Troubleshooting, OOM Killer, SWAP, Performance
 
 Description: A practical guide to diagnosing and resolving memory allocation errors in Linux, including OOM killer issues, swap management, and memory optimization strategies.
 

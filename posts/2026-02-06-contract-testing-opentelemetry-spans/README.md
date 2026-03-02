@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Contract Testing, Spans, Testing, Semantic Conventions, Quality Assurance
+Tags: OpenTelemetry, Contract Testing, Span, Testing, Semantic Conventions, Quality Assurance
 
 Description: Learn how to implement contract testing for OpenTelemetry spans to ensure your instrumentation consistently produces correct and complete telemetry data.
 

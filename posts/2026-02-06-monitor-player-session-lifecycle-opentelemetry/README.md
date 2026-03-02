@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Gaming, Player Sessions, Lifecycle Monitoring, Spans
+Tags: OpenTelemetry, Gaming, Player Sessions, Lifecycle Monitoring, Span
 
 Description: Track the full player session lifecycle from login through disconnect using OpenTelemetry spans for end-to-end visibility.
 

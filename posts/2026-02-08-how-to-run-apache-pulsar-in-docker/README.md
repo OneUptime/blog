@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Apache Pulsar, Message Queues, Streaming, Pub/Sub, DevOps
+Tags: Docker, Apache Pulsar, Message Queue, Streaming, Pub/Sub, DevOps
 
 Description: Deploy Apache Pulsar in Docker for local development with topics, subscriptions, and multi-tenant messaging configurations.
 

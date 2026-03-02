@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, ElasticMQ, Amazon SQS, Message Queues, AWS, DevOps, Local Development
+Tags: Docker, ElasticMQ, Amazon SQS, Message Queue, AWS, DevOps, Local Development
 
 Description: Run ElasticMQ in Docker as a local Amazon SQS replacement for development and testing without AWS costs or credentials.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Benthos, Bento, Stream Processing, Data Pipelines, ETL, DevOps
+Tags: Docker, Benthos, Bento, Stream Processing, Data Pipeline, ETL, DevOps
 
 Description: Set up Benthos (now Bento) in Docker for building stream processing pipelines that transform, filter, and route data between systems.
 

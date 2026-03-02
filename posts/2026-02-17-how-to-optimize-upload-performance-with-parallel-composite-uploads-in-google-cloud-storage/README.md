@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Storage, Upload Performance, Parallel Uploads, Optimization
+Tags: GCP, Google Cloud Storage, Upload Performance, Parallel Upload, Optimization
 
 Description: Learn how to use parallel composite uploads in Google Cloud Storage to dramatically speed up large file uploads by splitting files and uploading chunks simultaneously.
 

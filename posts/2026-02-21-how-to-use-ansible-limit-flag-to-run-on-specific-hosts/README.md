@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Limit, Targeting, Playbooks, DevOps
+Tags: Ansible, Limit, Targeting, Playbook, DevOps
 
 Description: Learn how to use the Ansible --limit flag to target specific hosts, groups, and patterns when running playbooks and ad-hoc commands.
 

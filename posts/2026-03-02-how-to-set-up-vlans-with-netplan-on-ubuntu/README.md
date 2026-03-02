@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, VLANs, Netplan, Networking, Network Segmentation
+Tags: Ubuntu, VLAN, Netplan, Networking, Network Segmentation
 
 Description: Configure IEEE 802.1Q VLANs on Ubuntu using Netplan, including tagged trunk interfaces, multiple VLANs, DHCP on VLANs, and bridge integration.
 

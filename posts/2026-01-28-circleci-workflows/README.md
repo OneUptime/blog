@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CircleCI, CI/CD, Workflows, Automation, DevOps
+Tags: CircleCI, CI/CD, Workflow, Automation, DevOps
 
 Description: Learn how to define CircleCI workflows, run jobs in parallel, and control job dependencies for faster pipelines.
 

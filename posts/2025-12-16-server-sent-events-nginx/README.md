@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, SSE, Real-time, Streaming, DevOps
+Tags: NGINX, SSE, Real-Time, Streaming, DevOps
 
 Description: Learn how to properly configure Nginx for Server-Sent Events (SSE), including proxy settings, buffering, timeouts, and connection management for reliable real-time streaming.
 

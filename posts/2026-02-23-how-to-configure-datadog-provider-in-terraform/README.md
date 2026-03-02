@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Datadog, Monitoring, Observability, Providers, Infrastructure as Code
+Tags: Terraform, Datadog, Monitoring, Observability, Provider, Infrastructure as Code
 
 Description: Learn how to configure the Terraform Datadog provider to manage monitors, dashboards, SLOs, and alert policies as infrastructure code for consistent observability.
 

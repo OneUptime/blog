@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Databases, Auto-Scaling, Connection Pools
+Tags: OpenTelemetry, Database, Auto-Scaling, Connection Pool
 
 Description: Instrument database connection pools with OpenTelemetry to drive read replica scaling and connection limit adjustments based on real demand.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, RabbitMQ, Message Queue, AMQP, Event-Driven
+Tags: OpenTelemetry, Collector, Exporter, RabbitMQ, Message Queue, AMQP, Event-Driven
 
 Description: Learn how to configure the RabbitMQ exporter in the OpenTelemetry Collector to send telemetry data to RabbitMQ message queues for event-driven observability architectures.
 

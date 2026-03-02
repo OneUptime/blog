@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Dead Letter Exchange, Error Handling, Message Queues, Reliability, DevOps
+Tags: RabbitMQ, Dead Letter Exchange, Error Handling, Message Queue, Reliability, DevOps
 
 Description: A comprehensive guide to configuring dead letter exchanges in RabbitMQ for handling failed messages, including retry patterns and monitoring strategies.
 

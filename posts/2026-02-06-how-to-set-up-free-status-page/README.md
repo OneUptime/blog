@@ -2,7 +2,7 @@
 
 Author: [mallersjamie](https://www.github.com/mallersjamie)
 
-Tags: Status Pages, Tutorial, Free Tools, Incident Communication, Getting Started
+Tags: Status Page, Tutorial, Free Tools, Incident Communication, Getting Started
 
 Description: Step-by-step guide to creating a free status page for your website or API using OneUptime. Based on the actual product interface.
 

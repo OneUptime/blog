@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Standards, Semantic Conventions, Observability
+Tags: OpenTelemetry, Standard, Semantic Conventions, Observability
 
 Description: A step-by-step approach to building an OpenTelemetry standards document that defines span naming, attribute schemas, and metric conventions across your organization.
 

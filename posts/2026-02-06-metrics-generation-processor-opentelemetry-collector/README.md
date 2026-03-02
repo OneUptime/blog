@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Metrics, Traces, Observability, RED Metrics, Aggregation
+Tags: OpenTelemetry, Collector, Processor, Metrics, Traces, Observability, RED Metrics, Aggregation
 
 Description: Learn how to configure the Metrics Generation Processor in OpenTelemetry Collector to automatically derive RED metrics from trace spans for comprehensive observability.
 

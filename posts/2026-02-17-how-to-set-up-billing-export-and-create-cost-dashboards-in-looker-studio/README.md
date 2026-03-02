@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Billing Export, Looker Studio, Cost Dashboards, Google Cloud
+Tags: GCP, Billing Export, Looker Studio, Cost Dashboard, Google Cloud
 
 Description: A complete walkthrough for setting up GCP billing export to BigQuery and building interactive cost dashboards in Looker Studio for your team.
 

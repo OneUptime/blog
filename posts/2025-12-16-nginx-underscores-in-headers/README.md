@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, HTTP Headers, Configuration, API, Troubleshooting
+Tags: NGINX, HTTP Headers, Configuration, API, Troubleshooting
 
 Description: Learn how to configure Nginx to accept HTTP headers with underscores in their names using the underscores_in_headers directive, including use cases, security considerations, and best practices.
 

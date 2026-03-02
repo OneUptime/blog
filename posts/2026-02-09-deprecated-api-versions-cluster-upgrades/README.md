@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Upgrades, API Versions, Migration
+Tags: Kubernetes, Upgrade, API Versions, Migration
 
 Description: Learn how to identify deprecated Kubernetes API versions in your cluster, migrate resources to supported APIs, and ensure smooth upgrades without breaking existing workloads.
 

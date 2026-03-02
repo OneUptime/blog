@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Podman, Containers, Docker Alternative, DevOps, Tutorial
+Tags: Ubuntu, Podman, Container, Docker Alternative, DevOps, Tutorial
 
 Description: Learn how to install and use Podman as a daemonless Docker alternative for running containers on Ubuntu.
 

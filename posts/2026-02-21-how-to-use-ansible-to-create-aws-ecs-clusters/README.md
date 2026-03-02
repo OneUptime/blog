@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWS, ECS, Containers, Infrastructure as Code
+Tags: Ansible, AWS, ECS, Container, Infrastructure as Code
 
 Description: Step-by-step guide to creating AWS ECS clusters with Ansible including task definitions, services, Fargate configuration, and deployment automation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Flink, Stream Processing, Real-time Analytics, Java, Data Streaming, Big Data
+Tags: Apache Flink, Stream Processing, Real-Time Analytics, Java, Data Streaming, Big Data
 
 Description: Learn how to handle Apache Flink stream processing, including windowing, state management, watermarks, and building production-ready streaming applications.
 

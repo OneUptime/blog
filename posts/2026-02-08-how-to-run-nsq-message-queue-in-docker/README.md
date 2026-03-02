@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, NSQ, Message Queues, Distributed Systems, DevOps, Golang
+Tags: Docker, NSQ, Message Queue, Distributed Systems, DevOps, Golang
 
 Description: Deploy the NSQ real-time distributed messaging platform in Docker with producers, consumers, and the NSQ admin web interface.
 

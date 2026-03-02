@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, stable diffusion, AI, machine learning, GPU, NVIDIA, image generation, containers
+Tags: Docker, stable diffusion, AI, Machine Learning, GPU, NVIDIA, Image Generation, Container
 
 Description: Run Stable Diffusion image generation models in Docker with GPU support, covering setup, model management, web UI, and API access.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, State Management, Providers, Migration, Infrastructure as Code
+Tags: Terraform, State Management, Provider, Migration, Infrastructure as Code
 
 Description: Guide to using terraform state replace-provider to update provider references in Terraform state, covering provider migration scenarios, registry changes, and fork transitions.
 

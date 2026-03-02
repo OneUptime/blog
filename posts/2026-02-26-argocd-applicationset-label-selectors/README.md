@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Multi-Cluster
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Multi-Cluster
 
 Description: Learn how to use label selectors in ArgoCD ApplicationSet cluster generators to target specific subsets of clusters for application deployment.
 

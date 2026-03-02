@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Distributions, Configuration
+Tags: OpenTelemetry, Collector, Distribution, Configuration
 
 Description: Understand the difference between OpenTelemetry Collector Core and Contrib distributions and pick the right one for your needs.
 

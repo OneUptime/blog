@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Images, Layers, Optimization, DevOps, Containers, Image Size
+Tags: Docker, Images, Layer, Optimization, DevOps, Container, Image Size
 
 Description: Learn how to flatten a multi-layer Docker image into a single layer to reduce size and hide build history using export and import.
 

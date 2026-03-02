@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PagerDuty, Response Plays, Incident Response, Automation, Runbooks
+Tags: PagerDuty, Response Plays, Incident Response, Automation, Runbook
 
 Description: Learn how to create and use PagerDuty Response Plays to automate incident response actions and mobilize teams quickly.
 

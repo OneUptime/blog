@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Nginx, WordPress, Web Server
+Tags: Ubuntu, NGINX, WordPress, Web Server
 
 Description: A complete guide to configuring Nginx for WordPress Multisite on Ubuntu, covering both subdomain and subdirectory network setups with PHP-FPM and SSL.
 

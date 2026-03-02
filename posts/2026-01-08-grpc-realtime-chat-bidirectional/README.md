@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, bidirectional streaming, real-time, chat application, WebSocket alternative, Go, microservices
+Tags: gRPC, bidirectional streaming, Real-Time, Chat Application, WebSocket alternative, Go, Microservices
 
 Description: Learn to build a complete real-time chat application using gRPC bidirectional streaming with message broadcasting, user management, and robust connection handling.
 

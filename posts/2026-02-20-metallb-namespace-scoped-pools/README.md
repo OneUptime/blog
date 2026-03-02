@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, Namespaces, IP Pools, Multi-tenancy
+Tags: Kubernetes, MetalLB, Namespace, IP Pools, Multi-Tenancy
 
 Description: Learn how to restrict MetalLB IP pool allocation to specific Kubernetes namespaces for multi-tenant IP address management.
 

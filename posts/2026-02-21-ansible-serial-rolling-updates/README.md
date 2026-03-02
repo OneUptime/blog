@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Rolling Updates, Serial, Deployment, DevOps
+Tags: Ansible, Rolling Update, SERIAL, Deployment, DevOps
 
 Description: Use Ansible serial keyword to perform rolling updates by processing hosts in batches, maintaining service availability during deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Multi-Cluster, ApplicationSets
+Tags: ArgoCD, GitOps, Kubernetes, Multi-Cluster, ApplicationSet
 
 Description: Learn how to use labels and annotations on ArgoCD cluster secrets to organize clusters, drive ApplicationSet generators, implement environment-based deployments.
 

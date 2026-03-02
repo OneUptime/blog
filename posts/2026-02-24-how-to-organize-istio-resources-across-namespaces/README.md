@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Namespaces, Kubernetes, Resource Organization, Service Mesh
+Tags: Istio, Namespace, Kubernetes, Resource Organization, Service Mesh
 
 Description: Practical strategies for organizing Istio VirtualServices, DestinationRules, Gateways, and security policies across Kubernetes namespaces for better maintainability.
 

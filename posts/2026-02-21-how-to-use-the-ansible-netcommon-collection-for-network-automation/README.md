@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Network Automation, netcommon, Multi-Vendor
+Tags: Ansible, Network Automation, NetCommon, Multi-Vendor
 
 Description: Master the ansible.netcommon collection for vendor-agnostic network automation including connection plugins, CLI modules, and NETCONF operations.
 

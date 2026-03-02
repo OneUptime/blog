@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Nginx, Web Server, HTTP, Reverse Proxy, Tutorial
+Tags: Ubuntu, NGINX, Web Server, HTTP, Reverse Proxy, Tutorial
 
 Description: Comprehensive guide to installing, configuring, and optimizing Nginx web server on Ubuntu for high-performance web hosting.
 

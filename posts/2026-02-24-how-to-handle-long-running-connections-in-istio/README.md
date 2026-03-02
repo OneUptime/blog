@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Long-Running Connections, Timeouts, Envoy, Kubernetes
+Tags: Istio, Long-Running Connections, Timeout, Envoy, Kubernetes
 
 Description: How to configure Istio for long-running connections like streaming, server-sent events, and persistent TCP connections with proper timeout settings.
 

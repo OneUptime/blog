@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby on Rails, Service Objects, Design Patterns, Ruby, Refactoring, Clean Code, Software Architecture
+Tags: Ruby on Rails, Service Objects, Design Pattern, Ruby, Refactoring, Clean Code, Software Architecture
 
 Description: Learn how to implement service objects in Rails to keep your controllers thin, models focused, and business logic organized.
 

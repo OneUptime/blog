@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NodeJS, TypeScript, Message Queues, RabbitMQ, Redis, Backend, Reliability
+Tags: NodeJS, TypeScript, Message Queue, RabbitMQ, Redis, Backend, Reliability
 
 Description: Learn how to implement dead letter queues in Node.js for handling failed messages, with retry strategies, monitoring, and reprocessing patterns for reliable message processing.
 

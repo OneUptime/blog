@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Runbooks, Incident Response, Kubernetes, On-Call, Operations
+Tags: Istio, Runbook, Incident Response, Kubernetes, On-Call, Operations
 
 Description: Build practical Istio runbooks for on-call engineers covering common failure scenarios, diagnostic commands, and step-by-step remediation procedures.
 

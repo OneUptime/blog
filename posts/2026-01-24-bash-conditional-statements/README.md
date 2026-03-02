@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Bash, Shell Scripting, Conditionals, Linux, DevOps, Automation, Control Flow
+Tags: Bash, Shell Scripting, Conditional, Linux, DevOps, Automation, Control Flow
 
 Description: A comprehensive guide to conditional statements in Bash covering if-else, case statements, test operators, and advanced conditional patterns for robust shell scripting.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Ruby, Delayed Job, Workers, Background Processing
+Tags: OpenTelemetry, Ruby, Delayed Job, Worker, Background Processing
 
 Description: Complete guide to implementing distributed tracing for Delayed Job background workers using OpenTelemetry in Ruby applications.
 

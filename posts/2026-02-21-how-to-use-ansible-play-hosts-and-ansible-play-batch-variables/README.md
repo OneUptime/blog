@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Special Variables, play_hosts, Rolling Updates
+Tags: Ansible, Special Variables, play_hosts, Rolling Update
 
 Description: Understand the difference between play_hosts and ansible_play_batch in Ansible and learn how to use them for coordinated deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Python, FastAPI, Dependency Injection, Design Patterns, Testing
+Tags: Python, FastAPI, Dependency Injection, Design Pattern, Testing
 
 Description: Master FastAPI's dependency injection system for cleaner code, better testing, and proper separation of concerns in your API applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Security, Secrets, GitOps, Encryption
+Tags: Helm, Kubernetes, DevOps, Security, Secret, GitOps, Encryption
 
 Description: Complete guide to managing Kubernetes secrets securely with Sealed Secrets and Helm for GitOps workflows.
 

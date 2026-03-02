@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Data Processing, Automation
+Tags: Ansible, Filter, Data Processing, Automation
 
 Description: Learn how to use the Ansible unique filter to remove duplicate items from lists before looping, preventing redundant task execution.
 

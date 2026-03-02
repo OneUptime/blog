@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Mappings, Schema, Field Types, Index Configuration, Data Modeling
+Tags: Elasticsearch, Mapping, Schema, Field Types, Index Configuration, Data Modeling
 
 Description: Learn how to design and configure Elasticsearch mappings for optimal search and storage, covering field types, multi-fields, dynamic mappings, and schema evolution strategies.
 

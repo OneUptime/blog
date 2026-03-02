@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machines, Troubleshooting, OperationNotAllowed, VM Resize, Azure Compute, Cloud Infrastructure
+Tags: Azure, Virtual Machine, Troubleshooting, OperationNotAllowed, VM Resize, Azure Compute, Cloud Infrastructure
 
 Description: Step-by-step guide to diagnosing and fixing OperationNotAllowed errors when attempting to resize Azure Virtual Machines across different SKU families.
 

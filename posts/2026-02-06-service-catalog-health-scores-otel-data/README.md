@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Service Catalog, Health Scores, Observability
+Tags: OpenTelemetry, Service Catalog, Health Score, Observability
 
 Description: Build a service catalog that computes real-time health scores from OpenTelemetry metrics, traces, and logs to give teams a single view of service reliability.
 

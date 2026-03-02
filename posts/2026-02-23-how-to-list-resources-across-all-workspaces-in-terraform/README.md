@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, State Management, Resource Inventory, DevOps
+Tags: Terraform, Workspace, State Management, Resource Inventory, DevOps
 
 Description: Learn how to inventory and list all Terraform-managed resources across every workspace for auditing, compliance, and cost management.
 

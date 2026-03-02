@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Dictionaries, Data Transformation, Automation
+Tags: Ansible, Filter, Dictionaries, Data Transformation, Automation
 
 Description: Learn how to convert between dictionaries and lists in Ansible using dict2items and items2dict for flexible data manipulation in playbooks.
 

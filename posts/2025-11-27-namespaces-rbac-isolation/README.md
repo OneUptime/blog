@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DevOps, Security, Environments
+Tags: Kubernetes, DevOps, Security, Environment
 
 Description: Practical steps for carving clusters into dev/stage/prod namespaces, applying least-privilege RBAC, and verifying isolation so accidents in testing never spill into production.
 

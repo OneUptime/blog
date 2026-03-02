@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Services, Facts, System Administration
+Tags: Ansible, Service, Facts, System Administration
 
 Description: Learn how to use the Ansible service_facts module to discover running services, their status, and make decisions based on service state.
 

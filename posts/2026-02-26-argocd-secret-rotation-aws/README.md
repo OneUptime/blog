@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, AWS, Secrets
+Tags: ArgoCD, GitOps, Kubernetes, AWS, Secret
 
 Description: Learn how to implement automated secret rotation with ArgoCD using AWS Secrets Manager, Parameter Store, and IAM Roles for Service Accounts.
 

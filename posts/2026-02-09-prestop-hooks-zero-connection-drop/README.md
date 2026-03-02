@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, PreStop Hooks, Zero Downtime, Lifecycle Management
+Tags: Kubernetes, PreStop Hook, Zero Downtime, Lifecycle Management
 
 Description: Configure preStop hooks that coordinate graceful shutdown across load balancers, service meshes, and applications to achieve truly zero-connection-drop deployments in Kubernetes.
 

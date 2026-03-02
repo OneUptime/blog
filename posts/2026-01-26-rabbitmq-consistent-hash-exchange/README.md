@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Consistent Hash Exchange, Message Distribution, Load Balancing, Sharding, Message Queues
+Tags: RabbitMQ, Consistent Hash Exchange, Message Distribution, Load Balancing, Sharding, Message Queue
 
 Description: Learn how to implement consistent hash exchange in RabbitMQ for deterministic message routing, ensuring related messages always go to the same queue for ordered processing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Troubleshooting, Debugging, Receivers, Connectivity
+Tags: OpenTelemetry, Collector, Troubleshooting, Debugging, Receiver, Connectivity
 
 Description: Systematically diagnose and fix issues when OpenTelemetry Collector fails to receive telemetry data from applications and services.
 

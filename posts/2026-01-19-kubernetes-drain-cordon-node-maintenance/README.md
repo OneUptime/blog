@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Node Maintenance, Drain, Cordon, Operations, Upgrades, DevOps
+Tags: Kubernetes, Node Maintenance, Drain, Cordon, Operations, Upgrade, DevOps
 
 Description: Learn how to safely perform Kubernetes node maintenance using drain and cordon commands, including handling DaemonSets, PodDisruptionBudgets, and local storage.
 

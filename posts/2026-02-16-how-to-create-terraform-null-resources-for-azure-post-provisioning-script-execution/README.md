@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Null Resource, Provisioners, Automation, Infrastructure as Code, Scripting
+Tags: Terraform, Azure, Null Resource, Provisioner, Automation, Infrastructure as Code, Scripting
 
 Description: Learn how to use Terraform null_resource with provisioners to run post-provisioning scripts against Azure resources after infrastructure deployment.
 

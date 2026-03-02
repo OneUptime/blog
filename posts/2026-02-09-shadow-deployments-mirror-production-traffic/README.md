@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Shadow Deployments, Testing
+Tags: Kubernetes, Shadow Deployment, Testing
 
 Description: Learn how to implement shadow deployments in Kubernetes that mirror production traffic to new versions without affecting users, enabling safe testing with real workloads before full rollout.
 

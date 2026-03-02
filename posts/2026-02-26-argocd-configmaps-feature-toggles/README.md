@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Feature Flags, ConfigMaps
+Tags: ArgoCD, GitOps, Kubernetes, Feature Flags, ConfigMap
 
 Description: Learn how to use Kubernetes ConfigMaps as a lightweight feature toggle system managed through ArgoCD GitOps workflows with environment promotion and rollback.
 

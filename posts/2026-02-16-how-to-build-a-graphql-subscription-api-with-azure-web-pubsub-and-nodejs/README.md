@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GraphQL, Subscriptions, Azure Web PubSub, Node.js, Real-Time, WebSocket, API
+Tags: GraphQL, Subscription, Azure Web PubSub, Node.js, Real-Time, WebSocket, API
 
 Description: Implement GraphQL subscriptions using Azure Web PubSub as the transport layer with a Node.js backend for scalable real-time updates.
 

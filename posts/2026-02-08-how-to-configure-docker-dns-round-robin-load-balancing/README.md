@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, DNS, Load Balancing, Round Robin, Networking, Containers, Scaling
+Tags: Docker, DNS, Load Balancing, Round Robin, Networking, Container, Scaling
 
 Description: Set up DNS-based round-robin load balancing across Docker containers using built-in service discovery features.
 

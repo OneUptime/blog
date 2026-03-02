@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, LiteSpeed, Web Servers, PHP, WordPress, DevOps, Performance
+Tags: Docker, LiteSpeed, Web Server, PHP, WordPress, DevOps, Performance
 
 Description: Deploy LiteSpeed web server in Docker for high-performance PHP hosting with built-in caching and HTTP/3 support
 

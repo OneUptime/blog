@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Namespaces, Infrastructure
+Tags: ArgoCD, GitOps, Kubernetes, Namespace, Infrastructure
 
 Description: Learn how to bootstrap Kubernetes namespaces using ArgoCD with labels, annotations, resource quotas, and limit ranges to establish a solid foundation for multi-team clusters.
 

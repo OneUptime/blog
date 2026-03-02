@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Elixir, Phoenix, Channels, WebSockets, Custom Spans
+Tags: OpenTelemetry, Elixir, Phoenix, Channels, WebSocket, Custom Spans
 
 Description: Learn to instrument Phoenix Channels with custom OpenTelemetry spans for tracing WebSocket connections, message handling, and real-time event flows in distributed systems.
 

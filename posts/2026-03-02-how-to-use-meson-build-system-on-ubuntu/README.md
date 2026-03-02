@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Meson, Build Tools, Development, Compilation
+Tags: Ubuntu, Meson, Build Tool, Development, Compilation
 
 Description: Learn how to use the Meson build system on Ubuntu to configure, compile, and install software projects, including cross-compilation, dependencies, and custom build options.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Envoy, Timeouts, Reliability
+Tags: Envoy, Timeout, Reliability
 
 Description: Learn how to configure comprehensive timeout policies in Envoy to prevent resource exhaustion and ensure predictable request handling.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Helm, Kubernetes, Templates, Configuration
+Tags: Istio, Helm, Kubernetes, Template, Configuration
 
 Description: How to use Helm charts and templates to manage Istio custom resources with reusable, parameterized configuration across environments.
 

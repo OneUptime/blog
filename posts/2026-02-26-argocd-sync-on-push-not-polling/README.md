@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Webhooks, Configuration
+Tags: ArgoCD, GitOps, Kubernetes, Webhook, Configuration
 
 Description: Learn how to configure ArgoCD to detect Git changes via webhooks on push instead of polling, with step-by-step setup for GitHub, GitLab, and Bitbucket webhook integration.
 

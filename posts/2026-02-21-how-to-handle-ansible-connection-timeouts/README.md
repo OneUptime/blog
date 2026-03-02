@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, SSH, Timeouts, Networking
+Tags: Ansible, SSH, Timeout, Networking
 
 Description: Learn how to configure and troubleshoot Ansible connection timeouts for SSH, WinRM, and persistent connections.
 

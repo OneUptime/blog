@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Bloom Filters, Data Structures, Duplicate Detection, Performance
+Tags: Go, Bloom Filter, Data Structures, Duplicate Detection, Performance
 
 Description: Learn how to implement and use Bloom filters in Go for memory-efficient duplicate detection, with practical examples for real-world applications like URL deduplication and spam filtering.
 

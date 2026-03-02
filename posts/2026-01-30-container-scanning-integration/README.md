@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Testing, Security, Containers, CICD
+Tags: Testing, Security, Container, CICD
 
 Description: Integrate container scanning tools like Trivy and Grype into your CI/CD pipeline to catch vulnerabilities before they reach production.
 

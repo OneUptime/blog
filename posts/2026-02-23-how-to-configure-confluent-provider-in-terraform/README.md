@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Confluent, Kafka, Event Streaming, Infrastructure as Code
+Tags: Terraform, Provider, Confluent, Kafka, Event Streaming, Infrastructure as Code
 
 Description: Learn how to configure the Confluent provider in Terraform to manage Kafka clusters, topics, schemas, connectors, and access control on Confluent Cloud.
 

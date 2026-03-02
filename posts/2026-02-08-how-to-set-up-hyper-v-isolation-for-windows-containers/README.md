@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, hyper-v, windows containers, isolation, security, Windows Server, virtualization
+Tags: Docker, Hyper-V, Windows Containers, Isolation, Security, Windows Server, Virtualization
 
 Description: Configure Hyper-V isolation for Windows containers to run different Windows versions and achieve stronger security boundaries than process isolation.
 

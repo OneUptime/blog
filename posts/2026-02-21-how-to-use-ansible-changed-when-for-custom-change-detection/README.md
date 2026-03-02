@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Idempotency, Playbooks, Configuration Management
+Tags: Ansible, Idempotency, Playbook, Configuration Management
 
 Description: Learn how to use Ansible changed_when to accurately report whether tasks actually changed system state for better idempotency tracking.
 

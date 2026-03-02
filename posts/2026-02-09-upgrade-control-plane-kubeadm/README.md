@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Upgrades, kubeadm
+Tags: Kubernetes, Upgrade, kubeadm
 
 Description: Upgrade Kubernetes control plane components using kubeadm with minimal downtime, including etcd backup, component version verification, and rollback procedures for self-managed clusters.
 

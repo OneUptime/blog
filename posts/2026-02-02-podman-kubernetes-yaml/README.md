@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Kubernetes, YAML, Containers, DevOps, Container Orchestration, Docker Alternative, Local Development
+Tags: Podman, Kubernetes, YAML, Container, DevOps, Container Orchestration, Docker Alternative, Local Development
 
 Description: A practical guide to using Podman's Kubernetes YAML support for local development and production deployments. Learn to import, export, and manage Kubernetes manifests directly with Podman.
 

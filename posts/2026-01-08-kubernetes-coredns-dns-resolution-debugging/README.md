@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: kubernetes, coredns, dns, debugging, networking, troubleshooting
+Tags: Kubernetes, CoreDNS, DNS, Debugging, Networking, Troubleshooting
 
 Description: A comprehensive guide to diagnosing and resolving DNS resolution problems in Kubernetes clusters using CoreDNS.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, WordPress, Multisite, Virtual Machines, Load Balancer, Scaling, High Availability
+Tags: Azure, WordPress, MultiSite, Virtual Machine, Load Balancer, Scaling, High Availability
 
 Description: Set up a WordPress Multisite network across multiple Azure Virtual Machines with Azure Load Balancer for high availability and performance.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Jobs, CronJobs, Sidecar
+Tags: Istio, Kubernetes, Jobs, CronJob, Sidecar
 
 Description: How to handle Istio sidecar injection with Kubernetes Jobs and CronJobs, including the sidecar termination problem and practical solutions.
 

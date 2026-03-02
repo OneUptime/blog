@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Timestamps, Clock Skew, Kubernetes
+Tags: OpenTelemetry, Timestamp, Clock Skew, Kubernetes
 
 Description: Fix incorrect span timestamps and trace visualization issues caused by clock skew between containers in a Kubernetes cluster.
 

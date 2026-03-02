@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LDAP, Nginx, Authentication, Web Server
+Tags: Ubuntu, LDAP, NGINX, Authentication, Web Server
 
 Description: Configure Nginx on Ubuntu to authenticate users against an LDAP directory using the nginx-auth-ldap module or an authentication proxy for centralized access control.
 

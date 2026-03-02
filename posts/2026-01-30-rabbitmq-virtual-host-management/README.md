@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RabbitMQ, Virtual Hosts, Multi-tenancy, Operations
+Tags: RabbitMQ, Virtual Hosts, Multi-Tenancy, Operations
 
 Description: A practical guide to creating, securing, and managing RabbitMQ virtual hosts for multi-tenant environments with resource isolation.
 

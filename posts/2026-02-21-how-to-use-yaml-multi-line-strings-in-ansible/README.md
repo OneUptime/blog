@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, YAML, Strings, Configuration, DevOps
+Tags: Ansible, YAML, String, Configuration, DevOps
 
 Description: Master YAML multi-line string syntax in Ansible including literal blocks, folded blocks, and their modifiers for clean configuration management.
 

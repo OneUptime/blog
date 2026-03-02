@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, TLS, SSL, Security, Certificates, mTLS, Encryption, Authentication
+Tags: gRPC, TLS, SSL, Security, Certificate, mTLS, Encryption, Authentication
 
 Description: A comprehensive guide to configuring gRPC with TLS/SSL encryption, including server-side TLS, mutual TLS (mTLS), certificate management, and troubleshooting common issues.
 

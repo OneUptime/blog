@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Nginx, Web Server, Observability, Metrics, Monitoring
+Tags: OpenTelemetry, Collector, NGINX, Web Server, Observability, Metrics, Monitoring
 
 Description: Complete guide to configuring the Nginx receiver in OpenTelemetry Collector with practical YAML examples, authentication setup, and production best practices.
 

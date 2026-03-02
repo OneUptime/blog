@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspaces, State Management, Architecture, Best Practices
+Tags: Terraform, Workspace, State Management, Architecture, Best Practices
 
 Description: A practical comparison of Terraform workspaces versus separate state files for managing multiple environments, with guidance on choosing the right approach for your team and project.
 

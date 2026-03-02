@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Cgroups, Resource Management, Linux
+Tags: Ansible, cgroups, Resource Management, Linux
 
 Description: Manage cgroup resource limits with Ansible to control CPU, memory, and I/O allocation for services and applications on Linux.
 

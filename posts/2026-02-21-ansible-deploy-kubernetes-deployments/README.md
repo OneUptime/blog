@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Deployments, Rolling Updates, DevOps
+Tags: Ansible, Kubernetes, Deployment, Rolling Update, DevOps
 
 Description: Create, update, and manage Kubernetes Deployments with Ansible including rolling updates, rollbacks, and scaling strategies.
 

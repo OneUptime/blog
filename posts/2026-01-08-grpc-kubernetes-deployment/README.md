@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Kubernetes, Deployment, Containers, DevOps, Microservices, HPA, Resource Management
+Tags: gRPC, Kubernetes, Deployment, Container, DevOps, Microservices, HPA, Resource Management
 
 Description: A comprehensive guide to deploying gRPC services to Kubernetes with proper manifests, service configuration, resource limits, and horizontal pod autoscaling.
 

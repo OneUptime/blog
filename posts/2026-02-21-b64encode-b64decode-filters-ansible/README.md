@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filters, Base64, Security
+Tags: Ansible, Jinja2, Filter, Base64, Security
 
 Description: Learn how to use the b64encode and b64decode filters in Ansible for encoding and decoding data in base64 format.
 

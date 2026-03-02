@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Web Servers, Performance, Apache, Benchmarking
+Tags: Ubuntu, Web Server, Performance, Apache, Benchmarking
 
 Description: A practical guide to using ApacheBench (ab) on Ubuntu to benchmark web servers, interpret results, and identify performance bottlenecks before they affect production.
 

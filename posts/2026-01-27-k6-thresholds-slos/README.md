@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k6, Load Testing, Performance Testing, SLOs, Thresholds, CI/CD, Site Reliability Engineering, DevOps
+Tags: k6, Load Testing, Performance Testing, SLO, Thresholds, CI/CD, Site Reliability Engineering, DevOps
 
 Description: Learn how to define and enforce Service Level Objectives in your load tests using k6 thresholds with practical examples and CI integration patterns.
 

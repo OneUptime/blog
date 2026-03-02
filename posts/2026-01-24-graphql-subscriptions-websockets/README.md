@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GraphQL, WebSockets, Subscriptions, Real-time, Apollo Server, Node.js
+Tags: GraphQL, WebSocket, Subscription, Real-Time, Apollo Server, Node.js
 
 Description: Learn how to set up GraphQL subscriptions with WebSockets for real-time data updates using Apollo Server and graphql-ws.
 

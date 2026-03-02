@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Dashboards, Monitoring, Observability, Visualization
+Tags: Grafana, Dashboard, Monitoring, Observability, Visualization
 
 Description: Learn how to create reusable Grafana dashboard templates with variables, dynamic queries, and JSON provisioning for consistent monitoring across environments.
 

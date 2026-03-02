@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Troubleshooting, Container Management, DevOps, Errors
+Tags: Docker, Troubleshooting, Container Management, DevOps, Error
 
 Description: Resolve Docker container name conflict errors by understanding why they occur and learning techniques to manage container names, clean up stopped containers.
 

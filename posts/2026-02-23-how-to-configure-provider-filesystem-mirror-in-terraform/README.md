@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Filesystem Mirror, Air-Gapped, Offline, Infrastructure as Code, DevOps
+Tags: Terraform, Provider, Filesystem Mirror, Air-Gapped, Offline, Infrastructure as Code, DevOps
 
 Description: Learn how to configure a Terraform provider filesystem mirror for air-gapped environments, CI/CD pipelines, and local development with step-by-step setup and maintenance procedures.
 

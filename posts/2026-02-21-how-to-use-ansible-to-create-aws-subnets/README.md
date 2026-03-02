@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWS, Subnets, VPC, Networking
+Tags: Ansible, AWS, Subnet, VPC, Networking
 
 Description: Create and manage AWS VPC subnets with Ansible including CIDR planning, availability zone distribution, and route table associations.
 

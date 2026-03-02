@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Service Mesh, Timeouts, Retries, Kubernetes
+Tags: Istio, Service Mesh, Timeout, Retries, Kubernetes
 
 Description: A practical guide to combining timeout and retry configurations in Istio VirtualService to build resilient microservices without sacrificing latency.
 

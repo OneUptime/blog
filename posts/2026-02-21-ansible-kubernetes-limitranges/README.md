@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, LimitRanges, Resource Management, DevOps
+Tags: Ansible, Kubernetes, LimitRange, Resource Management, DevOps
 
 Description: Configure Kubernetes LimitRanges with Ansible to set default resource requests and limits, enforce minimum and maximum constraints per container.
 

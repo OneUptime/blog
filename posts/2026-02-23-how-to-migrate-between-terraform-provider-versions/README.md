@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Migration, Version Management, Infrastructure as Code
+Tags: Terraform, Provider, Migration, Version Management, Infrastructure as Code
 
 Description: Learn how to safely migrate between Terraform provider versions including handling breaking changes, deprecated resources, and state format updates.
 

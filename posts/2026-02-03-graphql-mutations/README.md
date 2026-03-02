@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GraphQL, API, Mutations, TypeScript, NodeJS, Backend, Web Development
+Tags: GraphQL, API, Mutation, TypeScript, NodeJS, Backend, Web Development
 
 Description: A hands-on guide to implementing GraphQL mutations - from basic CRUD operations to advanced patterns like validation, error handling, optimistic updates, and batch mutations.
 

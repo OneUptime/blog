@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Troubleshooting, Performance, Backpressure, Queues
+Tags: OpenTelemetry, Collector, Troubleshooting, Performance, Backpressure, Queue
 
 Description: A comprehensive guide to diagnosing and resolving OpenTelemetry Collector pipeline blocked errors, covering queue saturation, backpressure handling, and performance tuning strategies.
 

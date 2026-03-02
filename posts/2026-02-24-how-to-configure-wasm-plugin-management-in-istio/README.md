@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebAssembly, Wasm, Envoy, Extensibility
+Tags: Istio, WebAssembly, WASM, Envoy, Extensibility
 
 Description: How to deploy, configure, and manage WebAssembly plugins in Istio for custom proxy behavior and traffic processing.
 

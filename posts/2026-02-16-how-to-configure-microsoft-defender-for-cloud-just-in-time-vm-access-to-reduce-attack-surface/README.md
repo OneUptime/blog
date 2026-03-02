@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Microsoft Defender, Just-in-Time Access, VM Security, Network Security, Attack Surface Reduction, Zero Trust
+Tags: Azure, Microsoft Defender, Just-In-Time Access, VM Security, Network Security, Attack Surface Reduction, Zero Trust
 
 Description: Learn how to configure Just-in-Time VM access in Microsoft Defender for Cloud to lock down management ports and only open them when needed for a limited time.
 

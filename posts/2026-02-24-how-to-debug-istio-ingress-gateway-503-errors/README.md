@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Debugging, Ingress Gateway, 503 Errors, Troubleshooting
+Tags: Istio, Debugging, Ingress Gateway, 503 Error, Troubleshooting
 
 Description: Systematic guide to diagnosing and fixing 503 errors at the Istio Ingress Gateway including upstream connect failures and no healthy upstream issues.
 

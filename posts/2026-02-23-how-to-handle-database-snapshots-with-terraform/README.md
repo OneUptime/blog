@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Database, Snapshots, Backup, RDS, Infrastructure as Code
+Tags: Terraform, AWS, Database, Snapshot, Backup, RDS, Infrastructure as Code
 
 Description: Learn how to manage database snapshots with Terraform including creating manual snapshots, configuring automated backups, and managing snapshot lifecycle.
 

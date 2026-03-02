@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, CNI, Containers, Networking, Kubernetes
+Tags: Ubuntu, CNI, Container, Networking, Kubernetes
 
 Description: Configure container networking on Ubuntu using CNI plugins to create bridge networks, VXLAN overlays, and custom network setups for containerized workloads outside Kubernetes.
 

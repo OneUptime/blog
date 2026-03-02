@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: DevOps, Canary, Traffic Control, Deployments
+Tags: DevOps, Canary, Traffic Control, Deployment
 
 Description: Learn to create traffic percentage control for gradual canary rollouts.
 

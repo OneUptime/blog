@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, State Management, Remote State, Data Sources, Infrastructure as Code, Security
+Tags: Terraform, State Management, Remote State, Data Source, Infrastructure as Code, Security
 
 Description: Learn how to configure read-only access to Terraform state files for cross-project references, auditing, and security-conscious workflows using data sources and IAM policies.
 

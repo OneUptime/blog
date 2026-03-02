@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, GCP, Persistent Disks, Storage, Infrastructure as Code
+Tags: Ansible, GCP, Persistent Disk, Storage, Infrastructure as Code
 
 Description: Step-by-step guide to creating and managing GCP Persistent Disks using Ansible playbooks, covering disk types, resizing, and attachment to VMs.
 

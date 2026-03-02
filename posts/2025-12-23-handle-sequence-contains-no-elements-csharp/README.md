@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: C#, .NET, LINQ, Exceptions, Error Handling, Collections
+Tags: C#, .NET, LINQ, Exceptions, Error Handling, Collection
 
 Description: Learn how to diagnose and fix the 'Sequence contains no elements' exception in C#. This guide covers common causes with LINQ methods and provides safe alternatives for handling empty collections.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: GraphQL, Subscriptions, Real-time, WebSockets
+Tags: GraphQL, Subscription, Real-Time, WebSocket
 
 Description: A comprehensive guide to building real-time features using GraphQL subscriptions.
 

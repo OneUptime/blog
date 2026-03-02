@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Control Plane, Monitoring, istiod, Prometheus
+Tags: Istio, Control Plane, Monitoring, Istiod, Prometheus
 
 Description: Monitor Istio control plane health by tracking istiod metrics for configuration pushes, proxy connections, certificate management, and resource usage.
 

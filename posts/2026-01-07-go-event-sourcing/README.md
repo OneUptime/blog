@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Event Sourcing, CQRS, Distributed Systems, Design Patterns
+Tags: Go, Event Sourcing, CQRS, Distributed Systems, Design Pattern
 
 Description: Implement event sourcing in Go with event stores, projections, and CQRS patterns for building audit-friendly and scalable applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Security, Kubernetes, Init Containers, Pod Security
+Tags: Istio, Security, Kubernetes, Init Container, Pod Security
 
 Description: How to manage the privileged init container requirements of Istio sidecar injection and work within security-restricted Kubernetes environments.
 

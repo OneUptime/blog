@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Resource Attributes, Troubleshooting, Infrastructure as Code, Providers
+Tags: Terraform, Resource Attributes, Troubleshooting, Infrastructure as Code, Provider
 
 Description: Learn how to identify and resolve resource attribute conflicts in Terraform, including mutually exclusive attributes, deprecated parameters, and provider-specific quirks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Kubernetes, Monitoring, Prometheus, Observability, Containers, DevOps
+Tags: Grafana, Kubernetes, Monitoring, Prometheus, Observability, Container, DevOps
 
 Description: A comprehensive guide to setting up Kubernetes monitoring in Grafana using Prometheus, including cluster health, workload metrics, and resource utilization dashboards.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Metrics, Histograms, Counters, Gauges, Observability, Python, Monitoring
+Tags: OpenTelemetry, Metrics, Histogram, Counter, Gauge, Observability, Python, Monitoring
 
 Description: A practical guide to building custom application metrics using OpenTelemetry histograms, counters, and gauges with real-world examples in Python.
 

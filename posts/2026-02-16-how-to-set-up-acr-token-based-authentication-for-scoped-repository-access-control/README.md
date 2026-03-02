@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ACR, Azure Container Registry, Authentication, Tokens, Access Control, Security, Docker
+Tags: ACR, Azure Container Registry, Authentication, Token, Access Control, Security, Docker
 
 Description: Learn how to create scoped ACR tokens that grant fine-grained access to specific repositories, replacing broad admin credentials with least-privilege tokens.
 

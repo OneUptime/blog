@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Service Mesh, Debugging, Timeouts, Kubernetes, Troubleshooting
+Tags: Istio, Service Mesh, Debugging, Timeout, Kubernetes, Troubleshooting
 
 Description: Step-by-step guide to diagnosing and fixing timeout issues in Istio service mesh, covering Envoy configs, proxy logs, and common pitfalls.
 

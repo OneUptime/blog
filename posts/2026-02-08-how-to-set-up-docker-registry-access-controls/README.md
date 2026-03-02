@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, registry, access control, authentication, authorization, security, RBAC
+Tags: Docker, Registry, Access Control, Authentication, Authorization, Security, RBAC
 
 Description: Configure Docker registry access controls with authentication, role-based authorization, and token-based policies for secure image management.
 

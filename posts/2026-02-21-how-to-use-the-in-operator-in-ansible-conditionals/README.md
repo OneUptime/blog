@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditionals, Jinja2, Automation
+Tags: Ansible, Conditional, Jinja2, Automation
 
 Description: Learn how to use the in operator in Ansible when conditionals for membership testing in lists, strings, and dictionaries.
 

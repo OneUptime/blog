@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Python, Requests, HTTP Client, Tracing, Auto-Instrumentation
+Tags: OpenTelemetry, Python, Request, HTTP Client, Tracing, Auto-Instrumentation
 
 Description: Complete guide to automatically trace Python requests library HTTP calls with OpenTelemetry for distributed tracing and API monitoring.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Templates, Filters, Configuration Management
+Tags: Ansible, Jinja2, Template, Filter, Configuration Management
 
 Description: Learn how to use the groupby filter in Ansible templates to organize and categorize data by specific attributes for cleaner configuration generation.
 

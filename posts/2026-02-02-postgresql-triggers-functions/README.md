@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Triggers, Functions, Database, PL/pgSQL, Automation, Data Integrity
+Tags: PostgreSQL, Trigger, Functions, Database, PL/pgSQL, Automation, Data Integrity
 
 Description: Learn how to use PostgreSQL triggers and functions effectively with practical examples covering audit trails, data validation, automatic timestamps, cascading updates.
 

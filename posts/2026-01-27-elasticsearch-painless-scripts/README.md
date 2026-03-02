@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Painless, Scripting, Search, Data Transformation, Update By Query, Aggregations
+Tags: Elasticsearch, Painless, Scripting, Search, Data Transformation, Update By Query, Aggregation
 
 Description: A comprehensive guide to writing Elasticsearch Painless scripts for search transformations, scripted metrics, update operations, and real-world data manipulation with security best practices.
 

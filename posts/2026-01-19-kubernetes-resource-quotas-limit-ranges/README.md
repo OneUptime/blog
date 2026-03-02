@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Resource Quotas, Limit Ranges, Multi-Tenancy, Resource Management, DevOps
+Tags: Kubernetes, Resource Quota, Limit Ranges, Multi-Tenancy, Resource Management, DevOps
 
 Description: Learn how to implement Kubernetes resource quotas and limit ranges to manage cluster resources effectively in multi-tenant environments.
 

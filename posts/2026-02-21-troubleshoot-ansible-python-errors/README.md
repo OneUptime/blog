@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Troubleshooting, Debugging, Errors
+Tags: Ansible, Python, Troubleshooting, Debugging, Error
 
 Description: Diagnose and fix common Python-related Ansible errors including interpreter issues, module import failures, and version conflicts.
 

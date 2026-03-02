@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Sidecars, Resource Management
+Tags: Kubernetes, Sidecar, Resource Management
 
 Description: Learn how to properly size resource requests and limits for sidecar containers like service mesh proxies, log collectors, and monitoring agents to avoid over-provisioning and ensure pod stability.
 

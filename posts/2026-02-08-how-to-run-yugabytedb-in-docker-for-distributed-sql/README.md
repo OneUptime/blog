@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, YugabyteDB, Distributed SQL, Databases, PostgreSQL, DevOps
+Tags: Docker, YugabyteDB, Distributed SQL, Database, PostgreSQL, DevOps
 
 Description: Deploy YugabyteDB in Docker for distributed PostgreSQL-compatible SQL with automatic sharding and fault tolerance
 

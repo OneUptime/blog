@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker Compose, Environment Variables, Configuration, DevOps, Docker
+Tags: Docker Compose, Environment Variable, Configuration, DevOps, Docker
 
 Description: Master Docker Compose variable interpolation to build flexible, reusable compose files that adapt to any environment.
 

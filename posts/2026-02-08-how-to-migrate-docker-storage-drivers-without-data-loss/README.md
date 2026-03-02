@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, storage drivers, migration, overlay2, data migration, Docker daemon, DevOps
+Tags: Docker, Storage Driver, Migration, Overlay2, Data Migration, Docker Daemon, DevOps
 
 Description: Safely migrate Docker storage drivers without losing container data, images, or volumes using a tested step-by-step backup and restore process.
 

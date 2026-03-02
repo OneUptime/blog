@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Schema, Telemetry, Data Transformation, Observability
+Tags: OpenTelemetry, Collector, Processor, Schema, Telemetry, Data Transformation, Observability
 
 Description: Learn how to configure the Schema Processor in OpenTelemetry Collector to transform telemetry data between different semantic convention versions and maintain compatibility across instrumentation.
 

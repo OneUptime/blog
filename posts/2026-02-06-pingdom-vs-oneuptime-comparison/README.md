@@ -2,7 +2,7 @@
 
 Author: [mallersjamie](https://www.github.com/mallersjamie)
 
-Tags: Monitoring, Pingdom, Comparison, Open Source, Status Pages
+Tags: Monitoring, Pingdom, Comparison, Open Source, Status Page
 
 Description: A detailed comparison of Pingdom vs OneUptime covering features, pricing, limitations, and why teams are switching to open-source alternatives.
 

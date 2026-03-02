@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Error Budgets, SLO, Metrics
+Tags: OpenTelemetry, Error Budget, SLO, Metrics
 
 Description: Calculate error budgets from OpenTelemetry span metrics including error rate, success rate, and SLO burn rate tracking.
 

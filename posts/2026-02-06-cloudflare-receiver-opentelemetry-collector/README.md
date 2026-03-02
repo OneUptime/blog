@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Cloudflare, Logs, HTTP Logs, Webhooks
+Tags: OpenTelemetry, Collector, Cloudflare, Logs, HTTP Logs, Webhook
 
 Description: Learn how to configure the Cloudflare receiver in OpenTelemetry Collector to ingest HTTP logs from Cloudflare Logpush service, including authentication, data transformation.
 

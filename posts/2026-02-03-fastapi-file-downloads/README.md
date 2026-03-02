@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, FastAPI, File Downloads, FileResponse, StreamingResponse, API Development, Performance
+Tags: Python, FastAPI, File Download, FileResponse, StreamingResponse, API Development, Performance
 
 Description: A practical guide to serving file downloads in FastAPI - from simple static files to streaming large datasets and generating files on the fly.
 

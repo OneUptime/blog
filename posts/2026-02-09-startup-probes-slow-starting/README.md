@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Checks, Startup Probes
+Tags: Kubernetes, Health Check, Startup Probe
 
 Description: Configure Kubernetes startup probes to protect slow-starting applications from premature restarts while allowing aggressive liveness checking after initialization completes successfully.
 

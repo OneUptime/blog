@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, VPC, Subnets, IP Ranges, Networking
+Tags: GCP, VPC, Subnet, IP Ranges, Networking
 
 Description: Learn how to expand subnet IP ranges in GCP without downtime, including prerequisites, step-by-step commands, and what to check before and after expanding to avoid networking conflicts.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, Network Endpoint Groups, NEG, Load Balancing, Infrastructure as Code
+Tags: Terraform, GCP, Network Endpoint Group, NEG, Load Balancing, Infrastructure as Code
 
 Description: Learn how to create and manage Network Endpoint Groups on Google Cloud Platform using Terraform for fine-grained load balancing control.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Containers, ECS, Pods, Sidecar
+Tags: Terraform, Kubernetes, Container, ECS, POD, Sidecar
 
 Description: Learn how to create multi-container pod definitions in Terraform for Kubernetes and ECS, including sidecar patterns, init containers, and shared volumes.
 

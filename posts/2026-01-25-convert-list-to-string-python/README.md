@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Strings, Lists, Type Conversion, Data Processing
+Tags: Python, String, Lists, Type Conversion, Data Processing
 
 Description: Learn multiple ways to convert Python lists to strings, including join(), map(), list comprehensions, and handling mixed-type lists.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Jinja2, Testing, Automation
+Tags: Ansible, Plugin, Jinja2, Testing, Automation
 
 Description: Learn how to create custom Ansible test plugins for building reusable validation logic in your Jinja2 conditionals and templates.
 

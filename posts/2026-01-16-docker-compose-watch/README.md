@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Compose, Watch, Development, Hot Reload
+Tags: Docker, Compose, WATCH, Development, Hot Reload
 
 Description: Learn how to use Docker Compose Watch for automatic rebuilds and syncs during development, enabling fast feedback loops.
 

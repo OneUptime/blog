@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Debugging, Playbooks, Variables
+Tags: Ansible, Debugging, Playbook, Variables
 
 Description: Learn how to use the Ansible debug module to inspect and print variables during playbook execution for faster troubleshooting.
 

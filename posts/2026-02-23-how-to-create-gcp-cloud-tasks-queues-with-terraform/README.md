@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, Cloud Tasks, Task Queues, Serverless, Infrastructure as Code
+Tags: Terraform, GCP, Cloud Tasks, Task Queue, Serverless, Infrastructure as Code
 
 Description: Learn how to create and configure GCP Cloud Tasks queues with Terraform, including rate limiting, retry policies, HTTP targets, and IAM permissions for task dispatching.
 

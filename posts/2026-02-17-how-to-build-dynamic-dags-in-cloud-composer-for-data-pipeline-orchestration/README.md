@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Composer, Airflow, Dynamic DAGs, Data Pipelines
+Tags: GCP, Cloud Composer, Airflow, Dynamic DAGs, Data Pipeline
 
 Description: Learn how to build dynamic DAGs in Cloud Composer that generate pipeline tasks programmatically based on configuration, database queries, or external metadata.
 

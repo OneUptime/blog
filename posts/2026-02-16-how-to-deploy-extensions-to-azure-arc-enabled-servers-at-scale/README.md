@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Arc, VM Extensions, Automation, Hybrid Cloud, At Scale, Server Management
+Tags: Azure, Azure Arc, VM Extension, Automation, Hybrid Cloud, At Scale, Server Management
 
 Description: A practical guide to deploying VM extensions to Azure Arc-enabled servers at scale using Azure Policy, CLI, and automation tools for consistent hybrid management.
 

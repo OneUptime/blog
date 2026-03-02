@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Nginx, Rate Limiting, DevOps, Security
+Tags: Ansible, NGINX, Rate Limiting, DevOps, Security
 
 Description: Learn how to automate Nginx rate limiting configuration using Ansible playbooks to protect your web applications from abuse and DDoS attacks.
 

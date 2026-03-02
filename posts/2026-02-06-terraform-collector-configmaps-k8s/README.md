@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Terraform, Kubernetes, ConfigMaps, Infrastructure as Code
+Tags: OpenTelemetry, Terraform, Kubernetes, ConfigMap, Infrastructure as Code
 
 Description: Manage OpenTelemetry Collector configuration as Terraform-managed Kubernetes ConfigMaps for version-controlled observability infrastructure.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Set Operations, Automation, Configuration Management
+Tags: Ansible, Filter, Set Operations, Automation, Configuration Management
 
 Description: Learn how to use the difference filter in Ansible to find items present in one list but not another for precise configuration management.
 

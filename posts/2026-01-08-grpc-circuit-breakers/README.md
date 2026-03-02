@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, circuit breaker, resilience, fault tolerance, microservices, distributed systems, hystrix, gobreaker
+Tags: gRPC, Circuit Breaker, Resilience, Fault Tolerance, Microservices, Distributed Systems, Hystrix, gobreaker
 
 Description: Learn how to implement the circuit breaker pattern for gRPC services to prevent cascading failures and improve system resilience in distributed architectures.
 

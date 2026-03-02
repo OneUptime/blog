@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Docker, Build Performance, Tracing, Containers, DevOps
+Tags: OpenTelemetry, Docker, Build Performance, Tracing, Container, DevOps
 
 Description: Learn how to trace Docker image build performance with OpenTelemetry to identify slow layers, optimize caching, and reduce build times in your CI/CD pipeline.
 

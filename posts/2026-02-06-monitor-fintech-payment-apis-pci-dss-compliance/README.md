@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, PCI DSS, Fintech, Payment APIs, Compliance, Security, Monitoring
+Tags: OpenTelemetry, PCI DSS, FinTech, Payment APIs, Compliance, Security, Monitoring
 
 Description: Learn how to instrument and monitor fintech payment APIs using OpenTelemetry while maintaining PCI DSS compliance and protecting cardholder data.
 

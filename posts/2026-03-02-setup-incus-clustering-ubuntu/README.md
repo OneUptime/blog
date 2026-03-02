@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Incus, Clustering, High Availability, Containers
+Tags: Ubuntu, Incus, Clustering, High Availability, Container
 
 Description: Configure an Incus cluster across multiple Ubuntu servers to enable high availability, live migration, and distributed container management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Runbooks, On-Call, Incident Response, DevOps
+Tags: Ansible, Runbook, On-Call, Incident Response, DevOps
 
 Description: Convert your on-call runbooks into executable Ansible playbooks to reduce incident response time and minimize human error during outages.
 

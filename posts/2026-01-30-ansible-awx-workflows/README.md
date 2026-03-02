@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, AWX, Automation, Workflows
+Tags: Ansible, AWX, Automation, Workflow
 
 Description: A comprehensive guide to building Ansible AWX workflows for orchestrating complex automation tasks.
 

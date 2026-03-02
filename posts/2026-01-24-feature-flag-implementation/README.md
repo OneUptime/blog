@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Feature Flags, Feature Toggles, Progressive Delivery, DevOps, LaunchDarkly, Unleash, A/B Testing
+Tags: Feature Flags, Feature Toggle, Progressive Delivery, DevOps, LaunchDarkly, Unleash, A/B Testing
 
 Description: A comprehensive guide to implementing feature flags in production applications, covering architecture patterns, SDK integration, and best practices for managing feature toggles at scale.
 

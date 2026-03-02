@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, SSE, Server-Side Events, Real-time, HTTP
+Tags: Go, SSE, Server-Side Events, Real-Time, HTTP
 
 Description: Build server-side events (SSE) in Go for real-time updates with proper connection handling, reconnection, and event broadcasting.
 

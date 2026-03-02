@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Providers, Mirror, Offline, Air-Gapped, Infrastructure as Code, DevOps
+Tags: Terraform, Provider, Mirror, Offline, Air-Gapped, Infrastructure as Code, DevOps
 
 Description: Learn how to set up and use Terraform provider mirrors for offline, air-gapped, and restricted network environments where direct access to the public registry is not available.
 

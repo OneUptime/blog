@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Stream Analytics, IoT, Real-Time Processing, Event Hubs, Azure IoT Hub, Azure
+Tags: Azure Stream Analytics, IoT, Real-Time Processing, Event Hub, Azure IoT Hub, Azure
 
 Description: A step-by-step guide to creating an Azure Stream Analytics job that processes real-time IoT device data for monitoring, alerting, and analytics.
 

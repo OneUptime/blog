@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vector Database, AI, Embeddings, Search, Machine Learning
+Tags: Vector Database, AI, Embedding, Search, Machine Learning
 
 Description: Design vector database architecture with indexing strategies, distance metrics, filtering, and scaling for AI-powered semantic search.
 

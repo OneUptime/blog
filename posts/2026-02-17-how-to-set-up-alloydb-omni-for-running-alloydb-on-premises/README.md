@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, AlloyDB Omni, PostgreSQL, On-Premises, Hybrid Cloud
+Tags: GCP, AlloyDB Omni, PostgreSQL, On-Premise, Hybrid Cloud
 
 Description: A practical guide to installing and running AlloyDB Omni on your own infrastructure, bringing AlloyDB performance features to on-premises and hybrid cloud environments.
 

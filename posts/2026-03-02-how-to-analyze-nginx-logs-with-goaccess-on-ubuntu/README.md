@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Nginx, GoAccess, Log Analysis, Monitoring
+Tags: Ubuntu, NGINX, GoAccess, Log Analysis, Monitoring
 
 Description: Learn how to use GoAccess to analyze Nginx access logs on Ubuntu in real time, generate HTML reports, and set up automated reporting for web traffic insights.
 

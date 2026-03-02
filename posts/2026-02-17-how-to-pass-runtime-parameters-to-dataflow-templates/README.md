@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Dataflow, Apache Beam, Data Pipelines, ETL
+Tags: GCP, Google Cloud Dataflow, Apache Beam, Data Pipeline, ETL
 
 Description: Learn how to pass runtime parameters to Google Cloud Dataflow templates using ValueProvider, enabling reusable and flexible data pipeline configurations.
 

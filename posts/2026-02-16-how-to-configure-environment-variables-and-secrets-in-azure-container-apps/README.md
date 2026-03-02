@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Container Apps, Environment Variables, Secrets, Configuration, Security, DevOps
+Tags: Azure, Container Apps, Environment Variable, Secret, Configuration, Security, DevOps
 
 Description: Learn how to manage environment variables and secrets in Azure Container Apps including Key Vault integration and best practices for secure configuration.
 

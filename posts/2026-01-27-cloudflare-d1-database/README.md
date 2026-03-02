@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cloudflare, D1, Database, SQLite, Serverless, Workers, Edge Computing
+Tags: Cloudflare, D1, Database, SQLite, Serverless, Worker, Edge Computing
 
 Description: Learn how to use Cloudflare D1, a serverless SQLite database that runs at the edge, including database creation, schema migrations, queries in Workers, prepared statements, transactions.
 

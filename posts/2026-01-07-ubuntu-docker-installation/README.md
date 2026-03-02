@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, Docker, Containers, DevOps
+Tags: Ubuntu, Linux, Docker, Container, DevOps
 
 Description: Install Docker on Ubuntu the right way using the official repository, post-install configuration, and optional rootless mode for enhanced security.
 

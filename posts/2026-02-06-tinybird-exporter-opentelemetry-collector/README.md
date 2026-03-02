@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, Tinybird, Real-time Analytics, ClickHouse, Logs, Metrics, Traces
+Tags: OpenTelemetry, Collector, Exporter, Tinybird, Real-Time Analytics, ClickHouse, Logs, Metrics, Traces
 
 Description: Configure the Tinybird exporter in OpenTelemetry Collector to send telemetry data to Tinybird's real-time data platform for instant analytics and API generation.
 

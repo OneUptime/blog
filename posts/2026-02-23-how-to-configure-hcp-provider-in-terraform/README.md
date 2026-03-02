@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP, HashiCorp Cloud Platform, Providers, Infrastructure as Code
+Tags: Terraform, HCP, HashiCorp Cloud Platform, Provider, Infrastructure as Code
 
 Description: Learn how to configure the HCP (HashiCorp Cloud Platform) provider in Terraform to manage Vault clusters, Consul clusters, HCP Packer, and other cloud services programmatically.
 

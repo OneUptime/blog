@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, Transform Processor, OTTL, Data Transformation, Advanced Configuration
+Tags: OpenTelemetry, Collector, Processor, Transform Processor, OTTL, Data Transformation, Advanced Configuration
 
 Description: Learn how to configure the powerful transform processor in OpenTelemetry Collector using OTTL to modify, enrich.
 

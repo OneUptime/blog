@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Relay, Hybrid Connections, On-Premises, Networking, Cloud, Connectivity
+Tags: Azure, Relay, Hybrid Connections, On-Premise, Networking, Cloud, Connectivity
 
 Description: Set up Azure Relay Hybrid Connections to securely connect your cloud applications to on-premises services without opening firewall ports.
 

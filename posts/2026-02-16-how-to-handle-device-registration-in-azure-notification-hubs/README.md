@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Notification Hubs, Device Registration, Installation, Mobile, Backend, Push
+Tags: Azure, Notification Hub, Device Registration, Installation, Mobile, Backend, Push
 
 Description: Master device registration in Azure Notification Hubs using both the registration and installation models for reliable push notification delivery.
 

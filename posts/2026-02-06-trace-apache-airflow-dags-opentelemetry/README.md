@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Apache Airflow, Tracing, Observability, Data Pipelines, DAGs
+Tags: OpenTelemetry, Apache Airflow, Tracing, Observability, Data Pipeline, DAG
 
 Description: Learn how to instrument Apache Airflow DAGs with OpenTelemetry to get end-to-end tracing across your data pipeline tasks and operators.
 

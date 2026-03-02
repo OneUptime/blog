@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, SLO, Histograms, Compliance
+Tags: OpenTelemetry, SLO, Histogram, Compliance
 
 Description: Track SLO compliance using OpenTelemetry histogram data over rolling time windows with practical Prometheus examples.
 

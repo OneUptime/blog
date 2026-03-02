@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Debugging, Python, Troubleshooting
+Tags: Ansible, Plugin, Debugging, Python, Troubleshooting
 
 Description: Practical techniques for debugging Ansible plugins including logging, pdb, remote debugging, and troubleshooting common issues.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, APT, Package Management, Build Tools, System Administration
+Tags: Ubuntu, APT, Package Management, Build Tool, System Administration
 
 Description: Learn how to download, modify, and rebuild Debian packages from source on Ubuntu using apt source, dpkg-buildpackage, and related tools for custom compilation.
 

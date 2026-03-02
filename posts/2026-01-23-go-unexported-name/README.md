@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Errors, Export, Visibility, Packages
+Tags: Go, Golang, Error, Export, Visibility, Package
 
 Description: Learn how to fix 'cannot refer to unexported name' errors in Go by understanding Go's visibility rules and proper package design.
 

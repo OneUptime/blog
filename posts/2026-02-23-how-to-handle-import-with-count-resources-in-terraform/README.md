@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Import, count, State Management, Infrastructure as Code
+Tags: Terraform, Import, Count, State Management, Infrastructure as Code
 
 Description: Learn how to import existing cloud resources into Terraform configurations that use the count meta-argument with proper index-based addressing.
 

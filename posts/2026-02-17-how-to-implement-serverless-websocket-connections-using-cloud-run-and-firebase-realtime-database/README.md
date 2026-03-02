@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, WebSocket, Cloud Run, Firebase Realtime Database, Serverless, Real-time
+Tags: GCP, WebSocket, Cloud Run, Firebase Realtime Database, Serverless, Real-Time
 
 Description: Learn how to implement real-time WebSocket connections using Cloud Run for the server and Firebase Realtime Database for state synchronization on GCP.
 

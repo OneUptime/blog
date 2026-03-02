@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Gateway, HTTP 503, Load Balancer, Troubleshooting, Kubernetes, Nginx, DevOps, SRE
+Tags: Gateway, HTTP 503, Load Balancer, Troubleshooting, Kubernetes, NGINX, DevOps, SRE
 
 Description: A practical guide to diagnosing and fixing HTTP 503 Service Unavailable errors from API gateways, load balancers, and reverse proxies.
 

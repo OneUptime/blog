@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Headless Services, Service Discovery, Kubernetes, DNS
+Tags: Istio, Headless Service, Service Discovery, Kubernetes, DNS
 
 Description: Understanding how headless services work with Istio and how to properly configure service discovery for stateful workloads in the mesh.
 

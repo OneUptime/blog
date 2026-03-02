@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Dataflow Prime, Apache Beam, Cost Optimization, Data Pipelines
+Tags: GCP, Dataflow Prime, Apache Beam, Cost Optimization, Data Pipeline
 
 Description: Learn how to use Dataflow Prime to dynamically allocate worker resources for your pipelines, reducing costs through right-sizing and vertical autoscaling.
 

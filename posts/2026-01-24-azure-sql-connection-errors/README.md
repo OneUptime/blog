@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, SQL, Database, Errors, Troubleshooting, Connection, Microsoft Azure
+Tags: Azure, SQL, Database, Error, Troubleshooting, Connection, Microsoft Azure
 
 Description: Learn how to diagnose and fix common Azure SQL Database connection errors including firewall issues, authentication failures, and timeout problems.
 

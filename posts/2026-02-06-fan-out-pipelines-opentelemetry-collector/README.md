@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Pipelines, Fan-Out, Observability
+Tags: OpenTelemetry, Collector, Pipeline, Fan-Out, Observability
 
 Description: Learn how to configure fan-out pipelines in the OpenTelemetry Collector to duplicate and send telemetry data to multiple destinations simultaneously.
 

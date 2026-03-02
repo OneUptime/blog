@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Capacity Planning, Dashboards, Grafana, Monitoring
+Tags: Capacity Planning, Dashboard, Grafana, Monitoring
 
 Description: Learn how to build effective capacity dashboards for real-time monitoring.
 

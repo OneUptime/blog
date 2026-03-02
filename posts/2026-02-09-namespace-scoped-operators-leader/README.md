@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Operators, Leader Election
+Tags: Kubernetes, Operator, Leader Election
 
 Description: Learn how to build namespace-scoped Kubernetes operators with leader election for high availability and efficient resource management across multiple replicas.
 

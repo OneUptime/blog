@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Outputs, Documentation, Modules, Best Practices
+Tags: Terraform, Output, Documentation, Modules, Best Practices
 
 Description: Learn how to write effective output descriptions in Terraform that document what each output contains, where it comes from, and how it should be used by consumers.
 

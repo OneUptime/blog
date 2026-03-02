@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Service Accounts, Security, RBAC
+Tags: Ansible, Kubernetes, Service Account, Security, RBAC
 
 Description: Create and manage Kubernetes Service Accounts with Ansible for pod identity, RBAC integration, and workload authentication.
 

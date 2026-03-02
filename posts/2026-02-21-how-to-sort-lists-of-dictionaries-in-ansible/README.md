@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Data Manipulation, Filters, Jinja2
+Tags: Ansible, Data Manipulation, Filter, Jinja2
 
 Description: Learn how to sort lists of dictionaries in Ansible by any attribute, with support for reverse order, multiple keys, and case-insensitive sorting.
 

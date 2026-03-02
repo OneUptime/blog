@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Phoenix, Elixir, LiveView, Real-Time, WebSockets, Functional Programming
+Tags: Phoenix, Elixir, LiveView, Real-Time, WebSocket, Functional Programming
 
 Description: Learn how to build real-time user interfaces with Phoenix LiveView. This guide covers setup, state management, real-time updates, forms, PubSub integration, and production deployment patterns.
 

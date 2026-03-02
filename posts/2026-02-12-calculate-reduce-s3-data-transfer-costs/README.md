@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, S3, Cost Optimization, Data Transfer, Cloud Costs
+Tags: AWS, S3, Cost Optimization, Data Transfer, Cloud Cost
 
 Description: A practical guide to understanding, calculating, and reducing S3 data transfer costs, including techniques like CloudFront, VPC endpoints, and same-region access.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, CircleCI, CI/CD, Tracing, Observability, Pipelines, DevOps
+Tags: OpenTelemetry, CircleCI, CI/CD, Tracing, Observability, Pipeline, DevOps
 
 Description: Learn how to trace CircleCI workflows with OpenTelemetry for full visibility into your CI/CD pipeline performance.
 

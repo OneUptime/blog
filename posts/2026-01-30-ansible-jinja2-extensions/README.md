@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Templates, Automation
+Tags: Ansible, Jinja2, Template, Automation
 
 Description: A comprehensive guide to creating custom Jinja2 extensions for Ansible, including filters, tests, and plugins that extend template functionality beyond built-in capabilities.
 

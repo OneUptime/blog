@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Operations, Runbooks
+Tags: OpenTelemetry, Collector, Operations, Runbook
 
 Description: Learn how to document your OpenTelemetry Collector pipeline architecture so that on-call engineers can troubleshoot telemetry issues quickly and confidently.
 

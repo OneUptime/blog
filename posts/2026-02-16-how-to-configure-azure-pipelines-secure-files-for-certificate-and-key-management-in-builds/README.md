@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Pipelines, Secure Files, Certificates, Key Management, CI/CD, Security, Build Pipeline
+Tags: Azure Pipelines, Secure Files, Certificate, Key Management, CI/CD, Security, Build Pipeline
 
 Description: Learn how to upload, manage, and use secure files in Azure Pipelines for handling certificates, signing keys, and other sensitive files in your build process.
 

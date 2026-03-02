@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Processors, OTTL, Filtering, Spans, Performance
+Tags: OpenTelemetry, Collector, Processor, OTTL, Filtering, Span, Performance
 
 Description: Master span filtering with OTTL expressions in the OpenTelemetry Collector to reduce data volume, improve performance, and focus on meaningful telemetry.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, RAG, Retrieval Augmented Generation, Tracing, LLM, Observability, Vector Search, AI Pipelines
+Tags: OpenTelemetry, RAG, Retrieval Augmented Generation, Tracing, LLM, Observability, Vector Search, AI Pipeline
 
 Description: A practical guide to tracing RAG pipelines with OpenTelemetry, covering document retrieval, embedding generation, context assembly, and LLM inference spans.
 

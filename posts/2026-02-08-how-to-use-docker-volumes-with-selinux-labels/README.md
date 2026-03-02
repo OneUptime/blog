@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Volumes, SELinux, Security, Linux, DevOps, Permissions
+Tags: Docker, VOLUME, SELinux, Security, Linux, DevOps, Permissions
 
 Description: A hands-on guide to configuring Docker volumes with SELinux labels to prevent access denied errors on enforcing systems.
 

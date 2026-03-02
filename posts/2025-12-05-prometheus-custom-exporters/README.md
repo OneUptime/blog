@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Exporters, Custom Metrics, Go, Python, Monitoring, Observability
+Tags: Prometheus, Exporter, Custom Metrics, Go, Python, Monitoring, Observability
 
 Description: Learn how to build custom Prometheus exporters to expose metrics from applications and systems that do not have native Prometheus support.
 

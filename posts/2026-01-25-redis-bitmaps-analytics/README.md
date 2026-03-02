@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Bitmaps, Analytics, Data Structures, Performance
+Tags: Redis, Bitmap, Analytics, Data Structures, Performance
 
 Description: Learn how to use Redis Bitmaps for memory-efficient analytics, including tracking user activity, feature flags, and real-time statistics with minimal storage overhead.
 

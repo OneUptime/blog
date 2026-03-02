@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Type System, Errors, Debugging, Type Conversion
+Tags: Rust, Type System, Error, Debugging, Type Conversion
 
 Description: Learn how to diagnose and fix 'mismatched types' errors in Rust. Understand type conversion, coercion, and common type system pitfalls.
 

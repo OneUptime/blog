@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Molecule, Vault, Secrets, Testing
+Tags: Ansible, Molecule, Vault, Secret, Testing
 
 Description: Configure Molecule to work with Ansible Vault encrypted variables and files for secure testing of roles that handle secrets.
 

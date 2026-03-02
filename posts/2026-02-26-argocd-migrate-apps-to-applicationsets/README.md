@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ApplicationSets, Migration
+Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet, Migration
 
 Description: Learn how to safely migrate from individually managed ArgoCD Applications to ApplicationSets without downtime or disruption to running workloads.
 

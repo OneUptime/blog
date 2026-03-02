@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: linkerd, service mesh, kubernetes, mtls, observability, traffic splitting, microservices, security
+Tags: Linkerd, Service Mesh, Kubernetes, mTLS, Observability, Traffic Splitting, Microservices, Security
 
 Description: A complete guide to installing and configuring Linkerd service mesh in Kubernetes with automatic mTLS, observability features, and traffic management.
 

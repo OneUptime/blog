@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy, Upgrades, Compatibility, Kubernetes
+Tags: Istio, Envoy, Upgrade, Compatibility, Kubernetes
 
 Description: A practical guide to managing Envoy proxy version compatibility during Istio upgrades, including version skew policies, canary upgrades, and debugging version mismatches.
 

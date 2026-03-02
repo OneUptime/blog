@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Error Budgets, SRE, Metrics
+Tags: OpenTelemetry, Error Budget, SRE, Metrics
 
 Description: Step-by-step instructions for calculating error budgets using OpenTelemetry traces and metrics as your data source.
 

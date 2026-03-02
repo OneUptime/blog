@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Storage, PersistentVolumes
+Tags: ArgoCD, GitOps, Kubernetes, Storage, PersistentVolume
 
 Description: Learn how to manage Kubernetes PersistentVolume and PersistentVolumeClaim configurations with ArgoCD for reliable stateful storage management through GitOps.
 

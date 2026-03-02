@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Containers, Docker, Microservices
+Tags: AWS, ECS, Container, Docker, Microservices
 
 Description: Learn how to create and manage ECS services for long-running containers, covering desired count, deployment configuration, rolling updates, and service discovery.
 

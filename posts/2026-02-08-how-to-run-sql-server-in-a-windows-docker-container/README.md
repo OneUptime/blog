@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, SQL Server, windows containers, database, Microsoft, containerization, DevOps
+Tags: Docker, SQL Server, Windows Containers, Database, Microsoft, Containerization, DevOps
 
 Description: Run Microsoft SQL Server in Docker containers for development, testing, and CI/CD with persistent data and automated setup scripts.
 

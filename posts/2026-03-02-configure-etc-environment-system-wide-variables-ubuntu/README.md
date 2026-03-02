@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Environment Variables, /etc/environment, PAM, Shell
+Tags: Ubuntu, Environment Variable, /etc/environment, PAM, Shell
 
 Description: Learn how to configure /etc/environment on Ubuntu to set system-wide environment variables for all users and services, and understand when to use it versus other methods.
 

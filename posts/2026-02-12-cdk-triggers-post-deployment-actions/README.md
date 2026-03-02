@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CDK, Triggers, Lambda, Deployment
+Tags: AWS, CDK, Trigger, Lambda, Deployment
 
 Description: Use AWS CDK Triggers to run Lambda functions after deployment for tasks like database migrations, cache warming, health checks, and integration tests.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Outputs, Infrastructure as Code, DevOps
+Tags: Terraform, Modules, Output, Infrastructure as Code, DevOps
 
 Description: Learn how to define and use output values in Terraform modules to expose resource attributes, computed values, and data to calling configurations.
 

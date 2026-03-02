@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Ownership, Borrow Checker, Errors, Debugging
+Tags: Rust, Ownership, Borrow Checker, Error, Debugging
 
 Description: Learn how to diagnose and fix 'cannot move out of borrowed content' errors in Rust. Understand why moves from references are prohibited and discover the correct patterns.
 

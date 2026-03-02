@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Logic Apps, Approval Workflows, Human-in-the-Loop, Office 365, Teams, Business Process
+Tags: Azure, Logic Apps, Approval Workflow, Human-in-the-Loop, Office 365, Team, Business Process
 
 Description: Build human approval workflows in Azure Logic Apps using email approvals, Microsoft Teams, and custom webhook-based approval mechanisms.
 

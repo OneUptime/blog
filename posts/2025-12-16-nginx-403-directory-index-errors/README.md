@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Nginx, Web Server, Troubleshooting, Configuration, Security
+Tags: NGINX, Web Server, Troubleshooting, Configuration, Security
 
 Description: Learn how to diagnose and fix Nginx 403 Forbidden directory index errors caused by missing index files, incorrect permissions, autoindex settings, and SELinux policies.
 

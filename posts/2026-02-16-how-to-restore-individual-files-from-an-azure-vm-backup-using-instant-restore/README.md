@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Backup, Instant Restore, File Recovery, Azure VMs, Recovery Services Vault, Data Recovery, Snapshots
+Tags: Azure Backup, Instant Restore, File Recovery, Azure VMs, Recovery Services Vault, Data Recovery, Snapshot
 
 Description: Learn how to recover individual files and folders from Azure VM backups using the instant restore and file recovery feature without restoring the entire VM.
 

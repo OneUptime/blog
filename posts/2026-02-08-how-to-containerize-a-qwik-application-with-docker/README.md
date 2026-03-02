@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: docker, qwik, qwik city, containerization, node.js, multi-stage builds, edge
+Tags: Docker, qwik, qwik city, Containerization, Node.js, Multi-Stage Build, Edge
 
 Description: Complete guide to containerizing Qwik and Qwik City applications with Docker for production deployment
 

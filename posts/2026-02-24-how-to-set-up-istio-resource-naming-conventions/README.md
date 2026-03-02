@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Naming Conventions, Best Practices, Kubernetes, Configuration Management
+Tags: Istio, Naming Convention, Best Practices, Kubernetes, Configuration Management
 
 Description: Establish consistent naming conventions for Istio VirtualServices, DestinationRules, Gateways, and other resources to keep your mesh configuration maintainable.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Batch, Custom Images, VM Image, Shared Image Gallery, HPC, Pool Configuration
+Tags: Azure, Batch, Custom Image, VM Image, Shared Image Gallery, HPC, Pool Configuration
 
 Description: A step-by-step guide to creating and using custom VM images for Azure Batch pools, including building images with Packer and using Azure Compute Gallery.
 

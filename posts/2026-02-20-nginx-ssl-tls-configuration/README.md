@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Nginx, SSL, TLS, Security, HTTPS
+Tags: NGINX, SSL, TLS, Security, HTTPS
 
 Description: Best practices for configuring SSL/TLS in Nginx including cipher suites, HSTS, OCSP stapling, and certificate management.
 

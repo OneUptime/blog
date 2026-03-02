@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Pub/Sub, Streams, Messaging, Architecture, Real-time
+Tags: Redis, Pub/Sub, Streams, Messaging, Architecture, Real-Time
 
 Description: Compare Redis Pub/Sub and Streams to choose the right messaging pattern. Learn when to use each, their tradeoffs, and how to implement both for different use cases.
 

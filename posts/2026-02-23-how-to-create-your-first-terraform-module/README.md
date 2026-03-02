@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Infrastructure as Code, DevOps, Beginners
+Tags: Terraform, Modules, Infrastructure as Code, DevOps, Beginner
 
 Description: A step-by-step guide to creating your first Terraform module from scratch, covering module structure, variables, outputs, and how to call it from your root configuration.
 

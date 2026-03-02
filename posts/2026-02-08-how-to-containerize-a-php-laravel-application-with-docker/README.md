@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, PHP, Laravel, Containerization, Nginx, DevOps, Web Development
+Tags: Docker, PHP, Laravel, Containerization, NGINX, DevOps, Web Development
 
 Description: Build and deploy Laravel applications with Docker using multi-stage builds, queue workers, schedulers, and production optimizations.
 

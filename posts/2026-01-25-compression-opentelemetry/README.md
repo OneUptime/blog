@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Compression, Performance, Network Optimization, gzip, Telemetry Pipeline
+Tags: OpenTelemetry, Compression, Performance, Network Optimization, Gzip, Telemetry Pipeline
 
 Description: Learn how to configure compression in OpenTelemetry to reduce bandwidth usage and improve telemetry export performance.
 

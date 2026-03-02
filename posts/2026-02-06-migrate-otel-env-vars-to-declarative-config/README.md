@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Migration, Environment Variables, Declarative Configuration
+Tags: OpenTelemetry, Migration, Environment Variable, Declarative Configuration
 
 Description: A practical migration guide for moving from OTEL_* environment variables to OpenTelemetry declarative YAML configuration files.
 

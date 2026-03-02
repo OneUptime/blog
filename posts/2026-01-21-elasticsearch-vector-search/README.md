@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Vector Search, Semantic Search, Embeddings, Machine Learning, kNN, Dense Vectors
+Tags: Elasticsearch, Vector Search, Semantic Search, Embedding, Machine Learning, kNN, Dense Vectors
 
 Description: A comprehensive guide to implementing vector search in Elasticsearch using dense vectors and kNN search for semantic search, similarity matching, and AI-powered search applications.
 

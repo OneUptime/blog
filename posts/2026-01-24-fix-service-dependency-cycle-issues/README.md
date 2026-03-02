@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microservices, Service Dependencies, Circular Dependencies, Architecture, Design Patterns, Dependency Management, Software Engineering
+Tags: Microservices, Service Dependencies, Circular Dependencies, Architecture, Design Pattern, Dependency Management, Software Engineering
 
 Description: A practical guide to detecting, understanding, and resolving circular service dependency cycles in microservices architectures with proven patterns and techniques.
 

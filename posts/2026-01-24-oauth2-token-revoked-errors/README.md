@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OAuth2, Authentication, Security, Tokens, Troubleshooting, Error Handling
+Tags: OAuth2, Authentication, Security, Token, Troubleshooting, Error Handling
 
 Description: Learn how to diagnose and fix OAuth2 token revoked errors, including detection strategies, graceful handling, and re-authentication flows.
 

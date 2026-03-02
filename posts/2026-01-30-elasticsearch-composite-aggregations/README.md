@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Elasticsearch, Aggregations, Analytics, Search
+Tags: Elasticsearch, Aggregation, Analytics, Search
 
 Description: Learn to build paginated composite aggregations in Elasticsearch for efficient bucket iteration across large datasets.
 

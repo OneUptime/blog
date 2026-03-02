@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Repository Pattern, Clean Architecture, Database, Design Patterns
+Tags: Go, Repository Pattern, Clean Architecture, Database, Design Pattern
 
 Description: Implement the repository pattern in Go for clean, testable, and maintainable database access with proper abstraction layers.
 

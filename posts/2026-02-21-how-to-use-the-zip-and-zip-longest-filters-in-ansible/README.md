@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filters, Data Transformation, Jinja2, Automation
+Tags: Ansible, Filter, Data Transformation, Jinja2, Automation
 
 Description: Learn how to use the zip and zip_longest filters in Ansible to pair up elements from multiple lists for parallel iteration and data combination.
 

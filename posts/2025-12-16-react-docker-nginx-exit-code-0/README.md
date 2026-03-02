@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: React, Docker, Nginx, Container, DevOps, Troubleshooting
+Tags: React, Docker, NGINX, Container, DevOps, Troubleshooting
 
 Description: Learn how to fix the common issue of React applications exiting immediately with code 0 when containerized with Docker and Nginx. Understand the root cause and implement proper solutions.
 

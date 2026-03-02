@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Looker, BigQuery ML, Machine Learning, Predictions, LookML, Data Science
+Tags: GCP, Looker, BigQuery ML, Machine Learning, Prediction, LookML, Data Science
 
 Description: Learn how to integrate BigQuery ML models with Looker to surface machine learning predictions directly in dashboards and explores.
 

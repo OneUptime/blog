@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, SSL, TLS, Certificates, Expiration, Security, Monitoring, Observability
+Tags: OpenTelemetry, Collector, SSL, TLS, Certificate, Expiration, Security, Monitoring, Observability
 
 Description: Learn how to monitor SSL/TLS certificate expiration dates using the OpenTelemetry Collector to prevent unexpected outages from expired certificates.
 

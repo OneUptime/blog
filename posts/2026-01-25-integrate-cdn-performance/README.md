@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CDN, Performance, Caching, CloudFlare, AWS CloudFront, Web Performance, Frontend, Infrastructure
+Tags: CDN, Performance, Caching, Cloudflare, AWS CloudFront, Web Performance, Frontend, Infrastructure
 
 Description: Learn how to integrate a Content Delivery Network (CDN) to improve your application's performance.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Services, Boot, Linux, System Administration
+Tags: Ansible, Service, Boot, Linux, System Administration
 
 Description: Learn how to enable and disable Linux services at boot using the Ansible service module, with practical patterns for production server provisioning.
 

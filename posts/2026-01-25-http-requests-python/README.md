@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, HTTP, Requests, API, Web Development, REST
+Tags: Python, HTTP, Request, API, Web Development, REST
 
 Description: Learn how to make HTTP requests in Python using the requests library. This guide covers GET, POST, handling responses, authentication, sessions, and error handling for API interactions.
 

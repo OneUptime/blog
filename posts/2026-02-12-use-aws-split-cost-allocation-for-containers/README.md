@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Cost Management, Containers, ECS, EKS, FinOps, Cost Allocation
+Tags: AWS, Cost Management, Container, ECS, EKS, FinOps, Cost Allocation
 
 Description: Learn how to use AWS Split Cost Allocation for containers to accurately attribute costs to individual ECS tasks and EKS pods running on shared infrastructure.
 

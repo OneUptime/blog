@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Migration, Managed Services
+Tags: Kubernetes, Migration, Managed Service
 
 Description: Learn how to migrate from self-managed Kubernetes clusters to managed services like EKS, GKE, or AKS for reduced operational overhead and improved reliability.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Auto Scaling, Containers, Performance
+Tags: AWS, ECS, Auto Scaling, Container, Performance
 
 Description: Learn how to configure auto scaling for ECS services using target tracking, step scaling, and scheduled scaling to handle traffic changes automatically and optimize costs.
 

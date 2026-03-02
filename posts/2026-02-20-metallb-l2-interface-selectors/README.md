@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, Layer 2, Network Interfaces, L2Advertisement
+Tags: Kubernetes, MetalLB, Layer 2, Network Interface, L2Advertisement
 
 Description: Learn how to configure MetalLB to send Layer 2 announcements only on specific network interfaces. Useful for multi-homed nodes with separate management and data networks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, HTTP, Timeouts, Networking, Best Practices
+Tags: Go, Golang, HTTP, Timeout, Networking, Best Practices
 
 Description: A practical guide to configuring HTTP client timeouts in Go to prevent resource leaks and hanging requests.
 

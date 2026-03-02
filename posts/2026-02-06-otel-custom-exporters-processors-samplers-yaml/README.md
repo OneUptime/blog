@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Custom Exporters, Processors, Samplers, YAML
+Tags: OpenTelemetry, Custom Exporter, Processor, Samplers, YAML
 
 Description: Define custom exporters, processors, and samplers in your OpenTelemetry declarative YAML configuration for advanced use cases.
 

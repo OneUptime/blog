@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Service Accounts
+Tags: Kubernetes, Security, Service Account
 
 Description: Learn how to disable automatic service account token mounting in Kubernetes pods to improve security by reducing the attack surface and following the principle of least privilege.
 

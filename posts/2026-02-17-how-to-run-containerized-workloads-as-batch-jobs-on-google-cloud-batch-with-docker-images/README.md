@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Batch, Docker, Containers, Batch Processing, Compute, Google Cloud
+Tags: GCP, Cloud Batch, Docker, Container, Batch Processing, Compute, Google Cloud
 
 Description: Run containerized workloads as batch jobs on Google Cloud Batch using Docker images for reproducible, portable, and scalable batch processing pipelines.
 

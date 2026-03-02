@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud CDN, Custom Origins, Content Delivery, Networking
+Tags: GCP, Cloud CDN, Custom Origin, Content Delivery, Networking
 
 Description: Learn how to configure Google Cloud CDN with custom origins pointing to non-GCP backends like AWS, Azure, or on-premises servers for content delivery.
 

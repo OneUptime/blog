@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, VPC, AWS, Data Sources, Networking, Infrastructure as Code
+Tags: Terraform, VPC, AWS, Data Source, Networking, Infrastructure as Code
 
 Description: Learn how to use Terraform data sources to look up existing VPC, subnet, security group, and routing information for deploying resources into pre-existing network infrastructure.
 

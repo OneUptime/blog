@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, ResourceQuotas, Multi-Tenancy
+Tags: ArgoCD, GitOps, Kubernetes, ResourceQuota, Multi-Tenancy
 
 Description: Learn how to deploy and manage Kubernetes ResourceQuotas with ArgoCD for namespace-level resource limits, multi-tenant isolation, and capacity management.
 

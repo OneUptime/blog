@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Containers
+Tags: Kubernetes, Security, Container
 
 Description: Learn how to configure user namespace remapping in Kubernetes to run containers as non-root users at the kernel level, enhancing security through privilege isolation.
 

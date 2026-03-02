@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, IP Forwarding, Routing, sysctl
+Tags: Ubuntu, Networking, IP Forwarding, Routing, Sysctl
 
 Description: Enable IP forwarding on Ubuntu to allow the system to route packets between network interfaces, with persistent configuration via sysctl and practical routing examples.
 

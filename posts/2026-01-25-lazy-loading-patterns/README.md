@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Lazy Loading, Performance, JavaScript, React, Python, Design Patterns, Frontend, Backend
+Tags: Lazy Loading, Performance, JavaScript, React, Python, Design Pattern, Frontend, Backend
 
 Description: Learn how to implement lazy loading patterns to improve application performance.
 

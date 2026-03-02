@@ -2,7 +2,7 @@
 
 Author: [mallersjamie](https://www.github.com/mallersjamie)
 
-Tags: Better Uptime, Monitoring, Comparison, Open Source, Status Pages
+Tags: Better Uptime, Monitoring, Comparison, Open Source, Status Page
 
 Description: Comparing Better Uptime and OneUptime - features, pricing, and key differences between these modern monitoring platforms.
 

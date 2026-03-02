@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Input, User Input, Type Conversion, Beginners
+Tags: Python, Input, User Input, Type Conversion, Beginner
 
 Description: Learn the correct way to read numeric input from users in Python, handle conversion errors, and validate input for robust command-line programs.
 

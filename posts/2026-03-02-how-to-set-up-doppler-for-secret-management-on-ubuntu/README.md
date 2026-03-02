@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Secrets, DevOps, Environment Variables
+Tags: Ubuntu, Security, Secret, DevOps, Environment Variable
 
 Description: A complete guide to using Doppler for secret management on Ubuntu, covering CLI installation, project setup, environment injection, and CI/CD integration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Design Patterns, Dynamic Blocks, Modules, Infrastructure as Code
+Tags: Terraform, Design Pattern, Dynamic Blocks, Modules, Infrastructure as Code
 
 Description: Learn how to handle polymorphic resources in Terraform where the same logical concept maps to different resource types or configurations based on input parameters.
 

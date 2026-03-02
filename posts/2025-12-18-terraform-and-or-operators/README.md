@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Conditional Logic, Operators, HCL, Best Practices
+Tags: Terraform, Conditional Logic, Operator, HCL, Best Practices
 
 Description: Learn how to implement AND and OR conditional logic in Terraform using boolean operators, ternary expressions, and conditional resource creation for flexible infrastructure configurations.
 

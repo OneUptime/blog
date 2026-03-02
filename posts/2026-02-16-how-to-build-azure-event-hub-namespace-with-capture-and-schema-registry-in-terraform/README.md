@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Event Hubs, Schema Registry, Streaming, IaC, Data
+Tags: Terraform, Azure, Event Hub, Schema Registry, Streaming, IaC, Data
 
 Description: Deploy an Azure Event Hubs namespace with event capture to storage, schema registry for data governance, and consumer groups using Terraform.
 

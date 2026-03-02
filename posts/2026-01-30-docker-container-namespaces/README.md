@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Namespaces, Container Security, Linux
+Tags: Docker, Namespace, Container Security, Linux
 
 Description: Learn how Docker uses Linux namespaces for container isolation and security.
 

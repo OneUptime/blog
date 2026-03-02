@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporters, ClickHouse, Observability, Analytics, OLAP
+Tags: OpenTelemetry, Collector, Exporter, ClickHouse, Observability, Analytics, OLAP
 
 Description: Complete guide to configuring the ClickHouse exporter in OpenTelemetry Collector for high-performance telemetry data storage with real-world examples and optimization tips.
 

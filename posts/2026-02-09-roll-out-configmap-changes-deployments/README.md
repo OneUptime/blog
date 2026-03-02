@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ConfigMap, Deployments
+Tags: Kubernetes, ConfigMap, Deployment
 
 Description: Learn how to automatically trigger deployment rollouts when ConfigMaps change, ensuring your applications always run with the latest configuration without manual pod restarts.
 

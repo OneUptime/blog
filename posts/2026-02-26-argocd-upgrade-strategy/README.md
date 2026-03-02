@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Upgrades, DevOps
+Tags: ArgoCD, GitOps, Kubernetes, Upgrade, DevOps
 
 Description: Learn how to plan and execute ArgoCD upgrades safely with pre-upgrade checks, rollback strategies, and zero-downtime upgrade patterns for production environments.
 

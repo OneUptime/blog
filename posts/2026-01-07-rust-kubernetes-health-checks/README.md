@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Kubernetes, Health Checks, Readiness Probes, Liveness Probes, axum, Production, High Availability
+Tags: Rust, Kubernetes, Health Check, Readiness Probe, Liveness Probe, axum, Production, High Availability
 
 Description: Learn how to implement health checks and readiness probes in Rust applications for Kubernetes deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, OnCall, Incident Management, Alerting, PagerDuty, Opsgenie, SRE
+Tags: Grafana, OnCall, Incident Management, Alerting, PagerDuty, OpsGenie, SRE
 
 Description: Learn how to connect Grafana alerting with on-call management systems for effective incident response, including Grafana OnCall setup and third-party integrations.
 

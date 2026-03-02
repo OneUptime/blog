@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vercel, Deployment, Next.js, CI/CD, Environment Variables, Serverless, Edge Functions, DevOps
+Tags: Vercel, Deployment, Next.js, CI/CD, Environment Variable, Serverless, Edge Functions, DevOps
 
 Description: A comprehensive guide to configuring and optimizing Vercel deployments, covering project setup, environment variables, build settings, and production best practices.
 
