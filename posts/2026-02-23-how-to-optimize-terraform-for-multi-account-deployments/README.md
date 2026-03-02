@@ -91,14 +91,20 @@ mkdir -p "$RESULTS_DIR"
 accounts=$(ls -d "$ACCOUNTS_DIR"/*)
 
 # Run plans in parallel
-echo "$accounts" | parallel -j 4 '
-  account=$(basename {})
+plan() {
+  dir="$1"
+  account="$2"
   echo "Planning $account..."
-  cd {} && \
-  terraform init -input=false > /dev/null 2>&1 && \
-  terraform plan -no-color -input=false > "'"$RESULTS_DIR"'/${account}.plan" 2>&1
+  cd "$dir" &&
+    terraform init -input=false > /dev/null 2>&1 &&
+    # Put the output in a .plan file
+    terraform plan -no-color -input=false > "$RESULTS_DIR/${account}.plan" 2>&1
   echo "Finished $account (exit code: $?)"
-'
+}
+export -f plan
+export RESULTS_DIR
+
+echo "$accounts" | parallel -j 4 plan {} {/}
 
 # Show results
 for result in "$RESULTS_DIR"/*.plan; do
