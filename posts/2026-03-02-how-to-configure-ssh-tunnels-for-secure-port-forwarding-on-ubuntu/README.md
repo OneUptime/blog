@@ -281,4 +281,4 @@ sudo sshd -T | grep -i forward
 ss -tlnp | grep ssh
 ```
 
-For production setups, always use key-based authentication, keep tunnel sessions limited in scope, and consider restricting the `AllowTcpForwarding` setting in `sshd_config` to users who actually need it. Combine these techniques with monitoring (such as [OneUptime](https://oneuptime.com/blog/post/set-up-ssh-check-receiver/view)) to track connectivity and get alerted when tunnels drop.
+For production setups, always use key-based authentication, keep tunnel sessions limited in scope, and consider restricting the `AllowTcpForwarding` setting in `sshd_config` to users who actually need it. Combine these techniques with monitoring to track connectivity and get alerted when tunnels drop.

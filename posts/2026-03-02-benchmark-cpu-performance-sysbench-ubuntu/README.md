@@ -229,4 +229,4 @@ sysbench cpu --threads=$(nproc) --time=60 run > /var/log/cpu-baseline-$(date +%Y
 
 Running sysbench after each major configuration change - kernel update, BIOS update, new hardware - gives you concrete evidence that performance held steady or improved. It takes minutes and eliminates guesswork.
 
-For tracking application performance alongside infrastructure benchmarks in production, consider using a monitoring platform like OneUptime: https://oneuptime.com/blog/post/benchmark-cpu-performance-sysbench-ubuntu/view
+For tracking application performance alongside infrastructure benchmarks in production, consider using a monitoring platform like OneUptime: https://oneuptime.com/blog/post/2026-03-02-benchmark-cpu-performance-sysbench-ubuntu/view

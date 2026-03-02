@@ -29,7 +29,7 @@ The chain of trust is established by publishing a Delegation Signer (DS) record 
 
 ## Prerequisites
 
-You should have a working BIND9 primary server with at least one zone configured. See the primary DNS server setup guide at https://oneuptime.com/blog/post/how-to-set-up-bind9-as-a-primary-dns-server-on-ubuntu/view.
+You should have a working BIND9 primary server with at least one zone configured. See the primary DNS server setup guide at https://oneuptime.com/blog/post/2026-03-02-how-to-set-up-bind9-as-a-primary-dns-server-on-ubuntu/view.
 
 ## Method 1: Automatic DNSSEC with `dnssec-policy`
 

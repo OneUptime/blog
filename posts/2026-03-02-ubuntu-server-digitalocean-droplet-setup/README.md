@@ -246,6 +246,6 @@ Once installed, you can set CPU, memory, and disk alerts from the Droplet's "Mon
 
 At this point you have a reasonably hardened Ubuntu Server droplet. The next steps depend on what you plan to run - whether that is a web application stack (Nginx/Apache, database, application runtime), a containerized workload with Docker, or something else entirely.
 
-Consider also setting up monitoring with a tool like [OneUptime](https://oneuptime.com/blog/post/ubuntu-server-digitalocean-droplet-setup/view) to track uptime and performance from an external perspective - this catches issues that internal monitoring can miss, like network problems between your droplet and the outside world.
+Consider also setting up monitoring with a tool like [OneUptime](https://oneuptime.com/blog/post/2026-03-02-ubuntu-server-digitalocean-droplet-setup/view) to track uptime and performance from an external perspective - this catches issues that internal monitoring can miss, like network problems between your droplet and the outside world.
 
 Regular maintenance habits matter: check `apt list --upgradable` weekly, rotate SSH keys periodically, and review fail2ban logs to understand what traffic is hitting your server.

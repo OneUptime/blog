@@ -186,7 +186,7 @@ UFW's built-in rate limiting is simple and requires no additional software, but 
 
 For a server where SSH is a major concern, combining both is effective: UFW rate limiting provides immediate protection at the packet level, while fail2ban provides longer-duration bans based on log analysis.
 
-See the fail2ban configuration guide at https://oneuptime.com/blog/post/how-to-configure-fail2ban-with-ufw-on-ubuntu/view for details on the combined setup.
+See the fail2ban configuration guide at https://oneuptime.com/blog/post/2026-03-02-how-to-configure-fail2ban-with-ufw-on-ubuntu/view for details on the combined setup.
 
 ## Monitoring Rate Limiting Effectiveness
 

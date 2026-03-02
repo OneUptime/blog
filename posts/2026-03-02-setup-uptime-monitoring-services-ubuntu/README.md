@@ -368,7 +368,7 @@ OneUptime provides a hosted or self-hosted uptime monitoring solution that track
 # OneUptime tracks uptime percentage, response time, and sends
 # notifications via email, Slack, PagerDuty, and webhooks
 
-# Learn more at https://oneuptime.com/blog/post/setup-uptime-monitoring-services-ubuntu/view
+# Learn more at https://oneuptime.com/blog/post/2026-03-02-setup-uptime-monitoring-services-ubuntu/view
 ```
 
 Uptime monitoring is most valuable when it catches issues before users report them. The combination of frequent checks (every 1-2 minutes), multiple probe locations, and fast alerting channels like Slack or PagerDuty gives operations teams the lead time needed to investigate and resolve issues before they become widespread user complaints.

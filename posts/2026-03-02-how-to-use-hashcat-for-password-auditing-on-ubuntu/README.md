@@ -243,4 +243,4 @@ wc -l /tmp/cracked_hashes.txt
 
 Hashcat should only be used on systems and hashes you own or have explicit written permission to test. Unauthorized use is a criminal offense in most jurisdictions. Always obtain written authorization, document scope, and handle cracked passwords securely - they should be deleted after reporting and never stored unnecessarily.
 
-For monitoring your Ubuntu servers and detecting brute force attempts against your own systems, consider setting up alerting with a tool like [OneUptime](https://oneuptime.com/blog/post/how-to-configure-automated-compliance-monitoring-on-ubuntu/view) to get notified of suspicious authentication activity in real time.
+For monitoring your Ubuntu servers and detecting brute force attempts against your own systems, consider setting up alerting with a tool like [OneUptime](https://oneuptime.com/blog/post/2026-03-02-how-to-configure-automated-compliance-monitoring-on-ubuntu/view) to get notified of suspicious authentication activity in real time.

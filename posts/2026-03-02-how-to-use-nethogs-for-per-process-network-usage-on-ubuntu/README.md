@@ -128,7 +128,7 @@ sudo nethogs -t -d 2 eth0 | head -100 > /tmp/nethogs_capture.txt
 
 ### Finding the Process Responsible for a Bandwidth Spike
 
-Your monitoring system (such as [OneUptime](https://oneuptime.com/blog/post/how-to-monitor-network-bandwidth-on-ubuntu/view)) alerts you that `eth0` is at 90% capacity. Rather than guessing, run:
+Your monitoring system alerts you that `eth0` is at 90% capacity. Rather than guessing, run:
 
 ```bash
 sudo nethogs eth0

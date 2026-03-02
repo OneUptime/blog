@@ -222,4 +222,4 @@ sudo smem -t -p | tail -20
 
 Memory tuning is iterative. Apply conservative changes first, monitor for a few days, then adjust further based on observed behavior. The default Ubuntu settings work fine for most cases - only tune when you have specific problems or workloads that justify it.
 
-For applications running on Ubuntu, tracking memory-related issues in production is important. OneUptime can help monitor system health and alert when memory pressure affects availability: https://oneuptime.com/blog/post/ecryptfs-home-directory-encryption-ubuntu/view
+For applications running on Ubuntu, tracking memory-related issues in production is important. OneUptime can help monitor system health and alert when memory pressure affects availability: https://oneuptime.com/blog/post/2026-03-02-ecryptfs-home-directory-encryption-ubuntu/view
